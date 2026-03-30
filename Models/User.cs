@@ -2,6 +2,7 @@
 {
     public class User
     {
+        public int UserId { get; set; }
         // User.cs
         public string? FullName { get; set; }
         public string? Email { get; set; }
