@@ -2,15 +2,27 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-
-// Ito na 'yung tatawag sa in-install nating Swagger UI!
 builder.Services.AddSwaggerGen();
+
+// ── Dagdag ito — CORS para makapag-connect ang Admin app at Mobile app ──
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
 
 var app = builder.Build();
 
 // Laging naka-on ang Swagger
 app.UseSwagger();
 app.UseSwaggerUI();
+
+// ── Dagdag ito — CORS middleware, dapat bago UseAuthorization ──
+app.UseCors();
 
 // Automatic redirect para iwas 404 Error
 app.MapGet("/", context =>

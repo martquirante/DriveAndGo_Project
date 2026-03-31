@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("DriveAndGo_SuperAdmin")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+4f1d1ea2b696e029de958e4fd7c657234a77d54a")]
 [assembly: System.Reflection.AssemblyProductAttribute("DriveAndGo_SuperAdmin")]
 [assembly: System.Reflection.AssemblyTitleAttribute("DriveAndGo_SuperAdmin")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

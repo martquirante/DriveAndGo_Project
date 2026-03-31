@@ -35,3 +35,4 @@ C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Tech
 C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_SuperAdmin\obj\Debug\net10.0\DriveAndGo_SuperAdmin.genruntimeconfig.cache
 C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_SuperAdmin\obj\Debug\net10.0\ref\DriveAndGo_SuperAdmin.dll
 C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_SuperAdmin\bin\Debug\net10.0\BCrypt.Net-Next.dll
+C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_SuperAdmin\obj\Debug\net10.0\DriveAndGo_SuperAdmin.sourcelink.json
