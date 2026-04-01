@@ -52,7 +52,7 @@ namespace DriveAndGo_SuperAdmin
         }
 
         // ==========================================
-        // 1. CREATE (Ang lumang code mo)
+        // 1. CREATE 
         // ==========================================
         static void CreateAdmin()
         {

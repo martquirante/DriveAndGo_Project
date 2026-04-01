@@ -3,7 +3,6 @@ C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Tech
 C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\bin\Debug\net10.0-windows\DriveAndGo_Admin.runtimeconfig.json
 C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\bin\Debug\net10.0-windows\DriveAndGo_Admin.dll
 C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\bin\Debug\net10.0-windows\DriveAndGo_Admin.pdb
-C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.Form1.resources
 C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.csproj.GenerateResource.cache
 C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.GeneratedMSBuildEditorConfig.editorconfig
 C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.AssemblyInfoInputs.cache
@@ -31,3 +30,9 @@ C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Tech
 C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.Properties.Resources.resources
 C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\bin\Debug\net10.0-windows\BCrypt.Net-Next.dll
 C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.sourcelink.json
+C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\bin\Debug\net10.0-windows\Firebase.dll
+C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\bin\Debug\net10.0-windows\LiteDB.dll
+C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\bin\Debug\net10.0-windows\Newtonsoft.Json.dll
+C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\bin\Debug\net10.0-windows\System.Reactive.dll
+C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.LoginForm.resources
+C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.Form1.resources

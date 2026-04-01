@@ -55,6 +55,10 @@
               "target": "Package",
               "version": "[4.1.0, )"
             },
+            "FirebaseDatabase.net": {
+              "target": "Package",
+              "version": "[5.0.0, )"
+            },
             "MySql.Data": {
               "target": "Package",
               "version": "[9.6.0, )"
