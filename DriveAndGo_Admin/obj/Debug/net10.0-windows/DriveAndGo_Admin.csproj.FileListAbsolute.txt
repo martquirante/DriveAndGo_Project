@@ -36,3 +36,4 @@ C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Tech
 C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\bin\Debug\net10.0-windows\System.Reactive.dll
 C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.LoginForm.resources
 C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.Form1.resources
+C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.MainForm.resources
