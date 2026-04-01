@@ -1,2 +1,0 @@
-C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_SuperAdmin\bin\Debug\net10.0\DriveAndGo_SuperAdmin.exe
-C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_SuperAdmin\bin\Debug\net10.0\DriveAndGo_SuperAdmin.dll
