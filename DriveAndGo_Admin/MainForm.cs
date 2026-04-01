@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using DriveAndGo_Admin.Helpers;
-using DriveAndGo_Admin.Panels;
 
 namespace DriveAndGo_Admin
 {
@@ -13,7 +11,6 @@ namespace DriveAndGo_Admin
         private Panel sidebarPanel;
         private Panel headerPanel;
         private Panel contentPanel;
-        private Panel activeIndicator;
 
         private Label lblLogo;
         private Label lblLogoSub;
@@ -32,6 +29,19 @@ namespace DriveAndGo_Admin
         private Button btnReports;
         private Button btnLogout;
 
+        // ==========================================
+        // 3D EFFECT: FORM DROP SHADOW
+        // ==========================================
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams cp = base.CreateParams;
+                cp.ClassStyle |= 0x00020000; // CS_DROPSHADOW (Nagbibigay ng 3D pop-out effect)
+                return cp;
+            }
+        }
+
         public MainForm()
         {
             InitializeForm();
@@ -40,9 +50,9 @@ namespace DriveAndGo_Admin
             BuildContent();
             ApplyTheme();
 
-            // Load dashboard by default
-            LoadPanel(new DashboardPanel());
+            // Default View
             SetActiveButton(btnDashboard);
+            ShowDummyPanel("📊 Dashboard Stats");
         }
 
         // ── Form setup ──
@@ -54,6 +64,7 @@ namespace DriveAndGo_Admin
             this.Text = "Drive & Go — Vehicle Rental System";
             this.Font = new Font("Segoe UI", 10F);
             this.BackColor = ThemeManager.CurrentBackground;
+            this.FormBorderStyle = FormBorderStyle.Sizable;
         }
 
         // ── Sidebar ──
@@ -103,43 +114,19 @@ namespace DriveAndGo_Admin
 
             // Create nav buttons
             btnDashboard = CreateNavButton("Dashboard", "📊", 130);
-            btnVehicles = CreateNavButton("Fleet", "🚗", 185);
+            btnVehicles = CreateNavButton("Fleet Map (3D)", "🚗", 185);
             btnRentals = CreateNavButton("Rentals", "📝", 240);
             btnDrivers = CreateNavButton("Drivers", "👤", 295);
             btnTransactions = CreateNavButton("Transactions", "💳", 350);
             btnReports = CreateNavButton("Reports", "📈", 405);
 
-            // Wire up click events
-            btnDashboard.Click += (s, e) => {
-                LoadPanel(new DashboardPanel());
-                SetActiveButton(btnDashboard);
-                lblHeaderTitle.Text = "Dashboard";
-            };
-            btnVehicles.Click += (s, e) => {
-                LoadPanel(new VehiclesPanel());
-                SetActiveButton(btnVehicles);
-                lblHeaderTitle.Text = "Fleet Management";
-            };
-            btnRentals.Click += (s, e) => {
-                LoadPanel(new RentalsPanel());
-                SetActiveButton(btnRentals);
-                lblHeaderTitle.Text = "Rentals & Bookings";
-            };
-            btnDrivers.Click += (s, e) => {
-                LoadPanel(new DriversPanel());
-                SetActiveButton(btnDrivers);
-                lblHeaderTitle.Text = "Driver Management";
-            };
-            btnTransactions.Click += (s, e) => {
-                LoadPanel(new TransactionsPanel());
-                SetActiveButton(btnTransactions);
-                lblHeaderTitle.Text = "Transactions";
-            };
-            btnReports.Click += (s, e) => {
-                LoadPanel(new ReportsPanel());
-                SetActiveButton(btnReports);
-                lblHeaderTitle.Text = "Sales & Reports";
-            };
+            // Wire up click events (Tinago ang mga missing panels)
+            btnDashboard.Click += (s, e) => { SetActiveButton(btnDashboard); lblHeaderTitle.Text = "Dashboard"; ShowDummyPanel("📊 Dashboard Stats"); };
+            btnVehicles.Click += (s, e) => { SetActiveButton(btnVehicles); lblHeaderTitle.Text = "Fleet Management"; ShowDummyPanel("🚗 Dito natin ilalagay ang 3D Honda Civic mo!"); };
+            btnRentals.Click += (s, e) => { SetActiveButton(btnRentals); lblHeaderTitle.Text = "Rentals & Bookings"; ShowDummyPanel("📝 Rentals Table coming soon..."); };
+            btnDrivers.Click += (s, e) => { SetActiveButton(btnDrivers); lblHeaderTitle.Text = "Driver Management"; ShowDummyPanel("👤 Drivers List coming soon..."); };
+            btnTransactions.Click += (s, e) => { SetActiveButton(btnTransactions); lblHeaderTitle.Text = "Transactions"; ShowDummyPanel("💳 Transactions coming soon..."); };
+            btnReports.Click += (s, e) => { SetActiveButton(btnReports); lblHeaderTitle.Text = "Sales & Reports"; ShowDummyPanel("📈 Charts and Reports coming soon..."); };
 
             // User info at bottom
             var userPanel = new Panel();
@@ -154,14 +141,14 @@ namespace DriveAndGo_Admin
             dividerBottom.BackColor = ThemeManager.CurrentBorder;
 
             lblUserName = new Label();
-            lblUserName.Text = SessionManager.FullName;
+            lblUserName.Text = "Raymart Quirante";
             lblUserName.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
             lblUserName.ForeColor = ThemeManager.CurrentText;
             lblUserName.Location = new Point(24, 16);
             lblUserName.AutoSize = true;
 
             lblUserRole = new Label();
-            lblUserRole.Text = SessionManager.Role.ToUpper();
+            lblUserRole.Text = "SUPER ADMIN";
             lblUserRole.Font = new Font("Segoe UI", 9F);
             lblUserRole.ForeColor = ThemeManager.CurrentAccent;
             lblUserRole.Location = new Point(26, 40);
@@ -217,12 +204,8 @@ namespace DriveAndGo_Admin
             headerPanel.BackColor = ThemeManager.CurrentBackground;
             headerPanel.Padding = new Padding(20, 0, 20, 0);
 
-            // Bottom border
             headerPanel.Paint += (s, e) => {
-                e.Graphics.DrawLine(
-                    new Pen(ThemeManager.CurrentBorder, 1),
-                    0, headerPanel.Height - 1,
-                    headerPanel.Width, headerPanel.Height - 1);
+                e.Graphics.DrawLine(new Pen(ThemeManager.CurrentBorder, 1), 0, headerPanel.Height - 1, headerPanel.Width, headerPanel.Height - 1);
             };
 
             lblHeaderTitle = new Label();
@@ -232,7 +215,6 @@ namespace DriveAndGo_Admin
             lblHeaderTitle.AutoSize = true;
             lblHeaderTitle.Location = new Point(24, 18);
 
-            // Date label
             var lblDate = new Label();
             lblDate.Text = DateTime.Now.ToString("dddd, MMMM dd, yyyy");
             lblDate.Font = new Font("Segoe UI", 10F);
@@ -247,8 +229,7 @@ namespace DriveAndGo_Admin
             btnThemeToggle.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnThemeToggle.Location = new Point(this.Width - 280, 10);
             btnThemeToggle.FlatStyle = FlatStyle.Flat;
-            btnThemeToggle.FlatAppearance.BorderColor =
-                ThemeManager.CurrentBorder;
+            btnThemeToggle.FlatAppearance.BorderColor = ThemeManager.CurrentBorder;
             btnThemeToggle.FlatAppearance.BorderSize = 1;
             btnThemeToggle.Font = new Font("Segoe UI", 14F);
             btnThemeToggle.BackColor = ThemeManager.CurrentCard;
@@ -274,18 +255,22 @@ namespace DriveAndGo_Admin
             this.Controls.Add(contentPanel);
         }
 
-        // ── Load panel into content area ──
-        public void LoadPanel(UserControl panel)
+        // ── Pansamantalang Panel Loader ──
+        private void ShowDummyPanel(string message)
         {
             contentPanel.Controls.Clear();
-            panel.Dock = DockStyle.Fill;
-            contentPanel.Controls.Add(panel);
+            Label dummyLabel = new Label();
+            dummyLabel.Text = message;
+            dummyLabel.Font = new Font("Segoe UI", 16F, FontStyle.Bold);
+            dummyLabel.ForeColor = ThemeManager.CurrentSubText;
+            dummyLabel.AutoSize = true;
+            dummyLabel.Location = new Point(50, 50);
+            contentPanel.Controls.Add(dummyLabel);
         }
 
         // ── Highlight active nav button ──
         private void SetActiveButton(Button btn)
         {
-            // Reset all buttons
             foreach (Control c in sidebarPanel.Controls)
             {
                 if (c is Button b && b != btnLogout)
@@ -296,11 +281,7 @@ namespace DriveAndGo_Admin
                 }
             }
 
-            // Highlight selected
-            btn.BackColor = Color.FromArgb(
-                ThemeManager.IsDarkMode ? 40 : 230,
-                ThemeManager.IsDarkMode ? 40 : 230,
-                ThemeManager.IsDarkMode ? 80 : 255);
+            btn.BackColor = Color.FromArgb(ThemeManager.IsDarkMode ? 40 : 230, ThemeManager.IsDarkMode ? 40 : 230, ThemeManager.IsDarkMode ? 80 : 255);
             btn.ForeColor = ThemeManager.CurrentPrimary;
             btn.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
             activeButton = btn;
@@ -321,15 +302,8 @@ namespace DriveAndGo_Admin
             btn.BackColor = ThemeManager.CurrentSidebar;
             btn.Cursor = Cursors.Hand;
 
-            // Hover effect
-            btn.MouseEnter += (s, e) => {
-                if (btn != activeButton)
-                    btn.BackColor = ThemeManager.CurrentCard;
-            };
-            btn.MouseLeave += (s, e) => {
-                if (btn != activeButton)
-                    btn.BackColor = ThemeManager.CurrentSidebar;
-            };
+            btn.MouseEnter += (s, e) => { if (btn != activeButton) btn.BackColor = ThemeManager.CurrentCard; };
+            btn.MouseLeave += (s, e) => { if (btn != activeButton) btn.BackColor = ThemeManager.CurrentSidebar; };
 
             return btn;
         }
@@ -338,22 +312,11 @@ namespace DriveAndGo_Admin
         private void OnThemeToggle(object sender, EventArgs e)
         {
             ThemeManager.IsDarkMode = !ThemeManager.IsDarkMode;
-            btnThemeToggle.Text =
-                ThemeManager.IsDarkMode ? "☀️" : "🌙";
+            btnThemeToggle.Text = ThemeManager.IsDarkMode ? "☀️" : "🌙";
             ApplyTheme();
-
-            // Reload current panel with new theme
-            if (contentPanel.Controls.Count > 0 &&
-                contentPanel.Controls[0] is UserControl panel)
-            {
-                var type = panel.GetType();
-                var newPanel = (UserControl)Activator
-                    .CreateInstance(type)!;
-                LoadPanel(newPanel);
-            }
         }
 
-        // ── Apply theme to all controls ──
+        // ── Apply theme ──
         private void ApplyTheme()
         {
             this.BackColor = ThemeManager.CurrentBackground;
@@ -365,15 +328,12 @@ namespace DriveAndGo_Admin
             lblLogo.ForeColor = ThemeManager.CurrentPrimary;
             lblLogoSub.ForeColor = ThemeManager.CurrentSubText;
 
-            if (lblUserName != null)
-                lblUserName.ForeColor = ThemeManager.CurrentText;
-            if (lblUserRole != null)
-                lblUserRole.ForeColor = ThemeManager.CurrentAccent;
+            if (lblUserName != null) lblUserName.ForeColor = ThemeManager.CurrentText;
+            if (lblUserRole != null) lblUserRole.ForeColor = ThemeManager.CurrentAccent;
 
             btnThemeToggle.BackColor = ThemeManager.CurrentCard;
             btnThemeToggle.ForeColor = ThemeManager.CurrentText;
 
-            // Re-apply nav buttons
             foreach (Control c in sidebarPanel.Controls)
             {
                 if (c is Button b && b != btnLogout && b != activeButton)
@@ -390,19 +350,7 @@ namespace DriveAndGo_Admin
         // ── Logout ──
         private void OnLogout(object sender, EventArgs e)
         {
-            var result = MessageBox.Show(
-                "Are you sure you want to log out?",
-                "Confirm Logout",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
-
-            if (result == DialogResult.Yes)
-            {
-                SessionManager.Clear();
-                var login = new LoginForm();
-                login.Show();
-                this.Close();
-            }
+            MessageBox.Show("Logout feature coming soon!", "Info", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 }

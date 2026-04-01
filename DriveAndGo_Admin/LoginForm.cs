@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using MySql.Data.MySqlClient;
+using DriveAndGo_Admin.Helpers; // Idinagdag para makilala si SessionManager at ThemeManager
 
 namespace DriveAndGo_Admin
 {
@@ -22,6 +23,17 @@ namespace DriveAndGo_Admin
         private Panel cardPanel;
         private bool _passwordVisible = false;
 
+        // 3D Drop Shadow Effect
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams cp = base.CreateParams;
+                cp.ClassStyle |= 0x00020000;
+                return cp;
+            }
+        }
+
         public LoginForm()
         {
             BuildUI();
@@ -32,10 +44,10 @@ namespace DriveAndGo_Admin
             // ── Form settings ──
             this.Size = new Size(440, 620);
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.FormBorderStyle = FormBorderStyle.FixedDialog;
+            this.FormBorderStyle = FormBorderStyle.None; // Ginawa kong None para mas modern at lumabas ang 3D shadow
             this.MaximizeBox = false;
             this.Text = "Drive & Go — Login";
-            this.BackColor = ThemeManager.DarkBackground;
+            this.BackColor = ThemeManager.CurrentBackground; // Ginamit ang ThemeManager natin
             this.Font = new Font("Segoe UI", 10F);
 
             // ── Background gradient via Paint ──
@@ -54,19 +66,27 @@ namespace DriveAndGo_Admin
             cardPanel.Location = new Point(40, 80);
             cardPanel.BackColor = Color.FromArgb(30, 30, 45);
             cardPanel.Paint += (s, e) => {
-                // Rounded corners via region
-                var path = GetRoundedRect(
-                    new Rectangle(0, 0,
-                    cardPanel.Width, cardPanel.Height), 16);
+                var path = GetRoundedRect(new Rectangle(0, 0, cardPanel.Width, cardPanel.Height), 16);
                 cardPanel.Region = new Region(path);
-                // Border
-                using var pen = new Pen(
-                    Color.FromArgb(60, 60, 90), 1);
-                e.Graphics.SmoothingMode =
-                    SmoothingMode.AntiAlias;
+                using var pen = new Pen(Color.FromArgb(60, 60, 90), 1);
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
                 e.Graphics.DrawPath(pen, path);
             };
             this.Controls.Add(cardPanel);
+
+            // ── Exit Button (Dahil walang border ang window) ──
+            Button btnExit = new Button();
+            btnExit.Text = "✖";
+            btnExit.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
+            btnExit.ForeColor = Color.Gray;
+            btnExit.BackColor = Color.Transparent;
+            btnExit.FlatStyle = FlatStyle.Flat;
+            btnExit.FlatAppearance.BorderSize = 0;
+            btnExit.Size = new Size(40, 40);
+            btnExit.Location = new Point(this.Width - 40, 0);
+            btnExit.Cursor = Cursors.Hand;
+            btnExit.Click += (s, e) => Application.Exit();
+            this.Controls.Add(btnExit);
 
             // ── Logo ──
             picLogo = new PictureBox();
@@ -76,7 +96,6 @@ namespace DriveAndGo_Admin
             picLogo.BackColor = Color.Transparent;
             try
             {
-                // Gamit ang logo mo sa Resources
                 picLogo.Image = Properties.Resources.DriveAndGo_Logo;
             }
             catch { }
@@ -86,7 +105,7 @@ namespace DriveAndGo_Admin
             lblAppName = new Label();
             lblAppName.Text = "Drive&Go";
             lblAppName.Font = new Font("Segoe UI", 20F, FontStyle.Bold);
-            lblAppName.ForeColor = Color.FromArgb(99, 102, 241);
+            lblAppName.ForeColor = Color.FromArgb(230, 81, 0); // Orange branding
             lblAppName.AutoSize = false;
             lblAppName.Size = new Size(cardPanel.Width, 32);
             lblAppName.TextAlign = ContentAlignment.MiddleCenter;
@@ -140,7 +159,6 @@ namespace DriveAndGo_Admin
             txtPassword = CreateTextBox(30, 312, 260);
             txtPassword.UseSystemPasswordChar = true;
             txtPassword.PlaceholderText = "Enter your password";
-            // Allow login on Enter key
             txtPassword.KeyDown += (s, e) => {
                 if (e.KeyCode == Keys.Enter) OnLogin(s, e);
             };
@@ -161,7 +179,7 @@ namespace DriveAndGo_Admin
                 _passwordVisible = !_passwordVisible;
                 txtPassword.UseSystemPasswordChar = !_passwordVisible;
                 btnShowPassword.ForeColor = _passwordVisible
-                    ? Color.FromArgb(99, 102, 241)
+                    ? Color.FromArgb(230, 81, 0)
                     : Color.FromArgb(120, 120, 160);
             };
             cardPanel.Controls.Add(btnShowPassword);
@@ -173,7 +191,7 @@ namespace DriveAndGo_Admin
             lblError.Location = new Point(30, 362);
             lblError.Font = new Font("Segoe UI", 9F);
             lblError.ForeColor = Color.FromArgb(239, 68, 68);
-            lblError.TextAlign = ContentAlignment.MiddleLeft;
+            lblError.TextAlign = ContentAlignment.MiddleCenter;
             lblError.BackColor = Color.Transparent;
             lblError.Visible = false;
             cardPanel.Controls.Add(lblError);
@@ -185,31 +203,16 @@ namespace DriveAndGo_Admin
             btnLogin.Location = new Point(30, 392);
             btnLogin.FlatStyle = FlatStyle.Flat;
             btnLogin.FlatAppearance.BorderSize = 0;
-            btnLogin.BackColor = Color.FromArgb(99, 102, 241);
+            btnLogin.BackColor = Color.FromArgb(230, 81, 0); // Orange
             btnLogin.ForeColor = Color.White;
             btnLogin.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
             btnLogin.Cursor = Cursors.Hand;
             btnLogin.Click += OnLogin;
 
-            // Hover effect
-            btnLogin.MouseEnter += (s, e) =>
-                btnLogin.BackColor = Color.FromArgb(79, 82, 221);
-            btnLogin.MouseLeave += (s, e) =>
-                btnLogin.BackColor = Color.FromArgb(99, 102, 241);
+            btnLogin.MouseEnter += (s, e) => btnLogin.BackColor = Color.FromArgb(255, 100, 20);
+            btnLogin.MouseLeave += (s, e) => btnLogin.BackColor = Color.FromArgb(230, 81, 0);
 
             cardPanel.Controls.Add(btnLogin);
-
-            // ── Version label ──
-            var lblVersion = new Label();
-            lblVersion.Text = "DriveAndGo v1.0 © 2026";
-            lblVersion.Font = new Font("Segoe UI", 8F);
-            lblVersion.ForeColor = Color.FromArgb(60, 60, 90);
-            lblVersion.AutoSize = false;
-            lblVersion.Size = new Size(440, 20);
-            lblVersion.TextAlign = ContentAlignment.MiddleCenter;
-            lblVersion.Location = new Point(0, this.Height - 50);
-            lblVersion.BackColor = Color.Transparent;
-            this.Controls.Add(lblVersion);
         }
 
         // ── Login logic ──
@@ -218,19 +221,18 @@ namespace DriveAndGo_Admin
             string email = txtEmail.Text.Trim();
             string password = txtPassword.Text;
 
-            // Validation
             if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
             {
                 ShowError("Please enter both email and password.");
                 return;
             }
 
-            // Loading state
             btnLogin.Text = "Logging in...";
             btnLogin.Enabled = false;
 
             try
             {
+                // Dito kumokonekta diretso sa XAMPP
                 using var conn = new MySqlConnection("Server=localhost;Database=vehicle_rental_db;Uid=root;Pwd=;");
                 conn.Open();
 
@@ -253,7 +255,6 @@ namespace DriveAndGo_Admin
                 string storedHash = reader["password_hash"].ToString()!;
                 bool isValid = false;
 
-                // Support both BCrypt and Plain text (from SuperAdmin)
                 if (storedHash.StartsWith("$2"))
                 {
                     isValid = BCrypt.Net.BCrypt.Verify(password, storedHash);
@@ -277,18 +278,17 @@ namespace DriveAndGo_Admin
 
                 lblError.Visible = false;
 
-                // ── Open Form1 (Dashboard) ──
-                var mainForm = new Form1();
+                // ── BUBUSKAN NA ANG MAIN FORM (Pinalitan ko 'yung Form1) ──
+                var mainForm = new MainForm();
                 mainForm.Show();
                 this.Hide();
             }
             catch (Exception ex)
             {
-                ShowError("Database error: " + ex.Message);
+                ShowError("Database error: Check your XAMPP!");
             }
             finally
             {
-                // Restore button state
                 btnLogin.Text = "LOG IN";
                 btnLogin.Enabled = true;
             }
@@ -300,7 +300,6 @@ namespace DriveAndGo_Admin
             lblError.Text = message;
             lblError.Visible = true;
 
-            // Shake animation
             int originalX = cardPanel.Left;
             var timer = new System.Windows.Forms.Timer();
             int shakeCount = 0;
@@ -329,7 +328,6 @@ namespace DriveAndGo_Admin
             tb.BorderStyle = BorderStyle.FixedSingle;
             tb.Padding = new Padding(4);
 
-            // Focus highlight
             tb.Enter += (s, e) => tb.BackColor = Color.FromArgb(28, 28, 48);
             tb.Leave += (s, e) => tb.BackColor = Color.FromArgb(20, 20, 35);
 
@@ -347,14 +345,5 @@ namespace DriveAndGo_Admin
             path.CloseFigure();
             return path;
         }
-    }
-
-    // ── Session Manager (Para ma-save kung sino ang naka-login) ──
-    public static class SessionManager
-    {
-        public static int UserId { get; set; }
-        public static string FullName { get; set; }
-        public static string Email { get; set; }
-        public static string Role { get; set; }
     }
 }

@@ -8,8 +8,10 @@ namespace DriveAndGo_Admin
         [STAThread]
         static void Main()
         {
+            // Eto ang nagse-set ng modern UI graphics
             ApplicationConfiguration.Initialize();
-            // ══ Dito natin papalitan, LoginForm na ang uunahin ══
+
+            // Eto ang nag-uutos na LoginForm ang unang bubukas
             Application.Run(new LoginForm());
         }
     }
