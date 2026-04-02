@@ -1,13 +1,29 @@
-﻿using System.Drawing;
+﻿using System;
+using System.Drawing;
 
 namespace DriveAndGo_Admin.Helpers
 {
     public static class ThemeManager
     {
-        // Default to Dark Mode
-        public static bool IsDarkMode { get; set; } = true;
+        // Backing field for theme mode
+        private static bool _isDarkMode = true;
 
-        // Base Colors (Dito nag-e-error kanina kasi nawawala ito)
+        // Event raised when the theme changes so UI can update immediately
+        public static event EventHandler ThemeChanged;
+
+        // Default to Dark Mode
+        public static bool IsDarkMode
+        {
+            get => _isDarkMode;
+            set
+            {
+                if (_isDarkMode == value) return;
+                _isDarkMode = value;
+                ThemeChanged?.Invoke(null, EventArgs.Empty);
+            }
+        }
+
+        // Base Colors
         public static Color CurrentBackground => IsDarkMode ? Color.FromArgb(27, 27, 41) : Color.FromArgb(245, 246, 250);
         public static Color CurrentSidebar => IsDarkMode ? Color.FromArgb(21, 21, 33) : Color.White;
         public static Color CurrentText => IsDarkMode ? Color.White : Color.Black;

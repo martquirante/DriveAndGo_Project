@@ -1,12 +1,843 @@
-﻿using System.Windows.Forms;
+﻿#nullable disable
+using DriveAndGo_Admin.Helpers;
+using System;
+using System.Data;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Windows.Forms;
+using MySql.Data.MySqlClient;
 
 namespace DriveAndGo_Admin.Panels
 {
     public class DashboardPanel : UserControl
     {
+        // ── Dynamic theme colors (reads from ThemeManager) ──
+        private Color ColBg => ThemeManager.CurrentBackground;
+        private Color ColCard => ThemeManager.CurrentCard;
+        private Color ColText => ThemeManager.CurrentText;
+        private Color ColSub => ThemeManager.CurrentSubText;
+        private Color ColBorder => ThemeManager.CurrentBorder;
+        private Color ColAccent => ThemeManager.CurrentPrimary;
+
+        // ── Fixed accent colors ──
+        private readonly Color ColBlue = Color.FromArgb(59, 130, 246);
+        private readonly Color ColGreen = Color.FromArgb(34, 197, 94);
+        private readonly Color ColPurple = Color.FromArgb(168, 85, 247);
+        private readonly Color ColRed = Color.FromArgb(239, 68, 68);
+        private readonly Color ColYellow = Color.FromArgb(234, 179, 8);
+
+        private readonly string _connStr =
+            "Server=localhost;Database=vehicle_rental_db;Uid=root;Pwd=;";
+
+        // ── Stat values ──
+        private int _totalVehicles = 0;
+        private int _activeRentals = 0;
+        private int _availDrivers = 0;
+        private decimal _todayRevenue = 0;
+        private int _pendingBookings = 0;
+        private int _pendingPayments = 0;
+
+        // ── Layout ──
+        private Panel _scrollContainer;
+        private Panel[] _statCards = new Panel[6];
+        private Panel _bookingsCard;
+        private Panel _quickStatsCard;
+        private Panel _fleetCard;
+        private Panel _pendingCard;
+
+        // ── Animation ──
+        private System.Windows.Forms.Timer _entranceTimer;
+        private float[] _cardAlpha;      // 0..1 per stat card
+        private float[] _cardOffsetY;    // slide offset per card
+        private int _cardsDone = 0;
+
+        // ── Hover lift per card ──
+        private class HoverState
+        {
+            public float Lift = 0f;      // 0..6
+            public bool Hovered = false;
+            public System.Windows.Forms.Timer Timer;
+        }
+
         public DashboardPanel()
         {
-            this.BackColor = DriveAndGo_Admin.Helpers.ThemeManager.CurrentBackground;
+            this.Dock = DockStyle.Fill;
+            this.DoubleBuffered = true;
+
+            // Background color ng theme para walang white borders
+            this.BackColor = ColBg;
+
+            this.Resize += (s, e) => RelayoutAll();
+            // Subscribe to theme changes so dashboard updates immediately when theme toggles
+            ThemeManager.ThemeChanged += ThemeChanged_Handler;
+
+            LoadStatsFromDB();
+            BuildScrollContainer();
+            BuildUI();
+            StartEntranceAnimation();
+        }
+
+        private void ThemeChanged_Handler(object sender, EventArgs e)
+        {
+            // Update background colors and rebuild UI so all controls pick up new theme colors
+            try
+            {
+                this.BackColor = ColBg;
+                if (_scrollContainer != null)
+                {
+                    var scrollPos = new Point(Math.Abs(_scrollContainer.AutoScrollPosition.X), Math.Abs(_scrollContainer.AutoScrollPosition.Y));
+                    _scrollContainer.BackColor = ColBg;
+                    _scrollContainer.Controls.Clear();
+                    _statCards = new Panel[6];
+                    BuildUI();
+                    StartEntranceAnimation();
+                    _scrollContainer.AutoScrollPosition = scrollPos;
+                }
+            }
+            catch { }
+        }
+
+        // ══════════════════════════════════════════════
+        //  SCROLL CONTAINER
+        // ══════════════════════════════════════════════
+        private void BuildScrollContainer()
+        {
+            _scrollContainer = new Panel();
+            _scrollContainer.Dock = DockStyle.Fill;
+            _scrollContainer.AutoScroll = true;
+            _scrollContainer.BackColor = ColBg;
+
+            SetDoubleBuffer(_scrollContainer);
+            this.Controls.Add(_scrollContainer);
+        }
+
+        // ══════════════════════════════════════════════
+        //  LOAD DATA
+        // ══════════════════════════════════════════════
+        private void LoadStatsFromDB()
+        {
+            try
+            {
+                using var conn = new MySqlConnection(_connStr);
+                conn.Open();
+
+                T Query<T>(string sql)
+                {
+                    using var cmd = new MySqlCommand(sql, conn);
+                    var result = cmd.ExecuteScalar();
+                    if (result == null || result == DBNull.Value) return default(T);
+                    return (T)Convert.ChangeType(result, typeof(T));
+                }
+
+                _totalVehicles = Query<int>("SELECT COUNT(*) FROM vehicles");
+                _activeRentals = Query<int>("SELECT COUNT(*) FROM rentals WHERE status='approved'");
+                _availDrivers = Query<int>("SELECT COUNT(*) FROM drivers WHERE status='available'");
+                _pendingBookings = Query<int>("SELECT COUNT(*) FROM rentals WHERE status='pending'");
+                _pendingPayments = Query<int>("SELECT COUNT(*) FROM transactions WHERE status='pending'");
+                _todayRevenue = Query<decimal>(@"
+                    SELECT COALESCE(SUM(amount),0) FROM transactions
+                    WHERE status='confirmed' AND DATE(paid_at)=CURDATE()");
+            }
+            catch (Exception ex) { Console.WriteLine("DB: " + ex.Message); }
+        }
+
+        // ══════════════════════════════════════════════
+        //  BUILD UI
+        // ══════════════════════════════════════════════
+        private void BuildUI()
+        {
+            _scrollContainer.Controls.Clear();
+
+            BuildHeader();
+            BuildStatCards();
+            BuildRecentBookings();
+            BuildQuickStats();
+            BuildVehicleStatus();
+            BuildPendingActions();
+
+            RelayoutAll();
+        }
+
+        // ══════════════════════════════════════════════
+        //  RESPONSIVE RELAYOUT
+        // ══════════════════════════════════════════════
+        private void RelayoutAll()
+        {
+            int W = _scrollContainer.ClientSize.Width;
+            if (W < 10) return;
+
+            int pad = 24;
+            int gap = 16;
+            int usable = W - pad * 2;
+
+            int minCard = 160;
+            int cols = Math.Max(1, Math.Min(6, usable / (minCard + gap)));
+            int cardW = (usable - gap * (cols - 1)) / cols;
+            int cardH = 118;
+
+            // FIX: In-adjust ang statTop para may space yung title at subtitle sa header
+            int statTop = 110;
+
+            for (int i = 0; i < _statCards.Length; i++)
+            {
+                if (_statCards[i] == null) continue;
+                int col = i % cols;
+                int row = i / cols;
+                int x = pad + col * (cardW + gap);
+                int y = statTop + row * (cardH + gap);
+                _statCards[i].Location = new Point(x, y);
+                _statCards[i].Width = cardW;
+            }
+
+            int rows2Start = statTop + (((_statCards.Length - 1) / cols) + 1) * (cardH + gap) + gap;
+
+            bool wide = W >= 900;
+            int bkW = wide ? (int)(usable * 0.68) : usable;
+            int qsW = wide ? usable - bkW - gap : usable;
+            int row2H = 300;
+
+            if (_bookingsCard != null)
+            {
+                _bookingsCard.Location = new Point(pad, rows2Start);
+                _bookingsCard.Size = new Size(bkW, row2H);
+                foreach (Control c in _bookingsCard.Controls)
+                    if (c is DataGridView dgv)
+                    {
+                        dgv.Size = new Size(bkW - 40, row2H - 52);
+                        dgv.Location = new Point(20, 52);
+                    }
+            }
+
+            if (_quickStatsCard != null)
+            {
+                _quickStatsCard.Location = wide
+                    ? new Point(pad + bkW + gap, rows2Start)
+                    : new Point(pad, rows2Start + row2H + gap);
+                _quickStatsCard.Size = new Size(qsW, row2H);
+                foreach (Control c in _quickStatsCard.Controls)
+                    if (c is Panel row && row != null && row.Tag?.ToString() == "qsrow")
+                        row.Width = qsW - 40;
+            }
+
+            int row3Start = rows2Start + row2H + gap + (wide ? 0 : row2H + gap);
+            int row3H = 200;
+            int halfW = (usable - gap) / 2;
+
+            if (_fleetCard != null)
+            {
+                _fleetCard.Location = new Point(pad, row3Start);
+                _fleetCard.Size = new Size(wide ? halfW : usable, row3H);
+            }
+            if (_pendingCard != null)
+            {
+                _pendingCard.Location = wide
+                    ? new Point(pad + halfW + gap, row3Start)
+                    : new Point(pad, row3Start + row3H + gap);
+                _pendingCard.Size = new Size(wide ? halfW : usable, row3H);
+            }
+
+            int bottom = row3Start + row3H + (wide ? 0 : row3H + gap) + 40;
+            _scrollContainer.AutoScrollMinSize = new Size(0, bottom);
+            _scrollContainer.Invalidate(true);
+        }
+
+        // ══════════════════════════════════════════════
+        //  HEADER
+        // ══════════════════════════════════════════════
+        private void BuildHeader()
+        {
+            var pnl = new Panel();
+            pnl.Location = new Point(24, 16);
+            pnl.Size = new Size(_scrollContainer.Width - 48, 80); // Tumaas from 52 to 80
+            pnl.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            pnl.BackColor = Color.Transparent;
+
+            var lblTitle = new Label();
+            lblTitle.Text = "Dashboard Overview";
+            lblTitle.Font = new Font("Segoe UI", 20F, FontStyle.Bold);
+            lblTitle.ForeColor = ColText;
+            lblTitle.AutoSize = true;
+            lblTitle.Location = new Point(0, 2);
+            lblTitle.BackColor = Color.Transparent;
+
+            // FIX: Idinagdag ang Welcome Subtitle!
+            var lblSub = new Label();
+            lblSub.Text = "Welcome back! Here's your fleet and revenue summary for today.";
+            lblSub.Font = new Font("Segoe UI", 11F);
+            lblSub.ForeColor = ColSub;
+            lblSub.AutoSize = true;
+            lblSub.Location = new Point(2, 38);
+            lblSub.BackColor = Color.Transparent;
+
+            var lblDate = new Label();
+            lblDate.Text = DateTime.Now.ToString("dddd, MMMM dd, yyyy");
+            lblDate.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            lblDate.ForeColor = ColAccent;
+            lblDate.AutoSize = true;
+            lblDate.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            lblDate.BackColor = Color.Transparent;
+
+            var btnRefresh = new Button();
+            btnRefresh.Text = "⟳  Refresh";
+            btnRefresh.Size = new Size(110, 36);
+            btnRefresh.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnRefresh.FlatStyle = FlatStyle.Flat;
+            btnRefresh.FlatAppearance.BorderColor = ColAccent;
+            btnRefresh.FlatAppearance.BorderSize = 1;
+            btnRefresh.FlatAppearance.MouseOverBackColor = Color.FromArgb(20, ColAccent);
+            btnRefresh.BackColor = Color.Transparent;
+            btnRefresh.ForeColor = ColAccent;
+            btnRefresh.Font = new Font("Segoe UI", 10F);
+            btnRefresh.Cursor = Cursors.Hand;
+
+            // Position right-anchored controls when header panel resizes so they stay aligned
+            pnl.Resize += (s, e) =>
+            {
+                // place refresh at 10px from right, date to the left of it
+                btnRefresh.Location = new Point(Math.Max(8, pnl.ClientSize.Width - btnRefresh.Width - 10), 7);
+                lblDate.Location = new Point(Math.Max(8, btnRefresh.Left - lblDate.Width - 12), 15);
+            };
+            // btnRefresh properties set above
+            btnRefresh.Click += (s, e) =>
+            {
+                lblDate.Text = DateTime.Now.ToString("dddd, MMMM dd, yyyy");
+                LoadStatsFromDB();
+                _scrollContainer.Controls.Clear();
+                _statCards = new Panel[6];
+                this.BackColor = ColBg;
+                _scrollContainer.BackColor = ColBg;
+                BuildUI();
+                StartEntranceAnimation();
+            };
+
+            pnl.Controls.Add(lblTitle);
+            pnl.Controls.Add(lblSub);
+            pnl.Controls.Add(lblDate);
+            pnl.Controls.Add(btnRefresh);
+            _scrollContainer.Controls.Add(pnl);
+        }
+
+
+        // ══════════════════════════════════════════════
+        //  STAT CARDS
+        // ══════════════════════════════════════════════
+        private void BuildStatCards()
+        {
+            var cards = new[]
+            {
+                ("Total Fleet",       "🚗", _totalVehicles.ToString(),     "All vehicles",      ColBlue),
+                ("Active Rentals",    "🔑", _activeRentals.ToString(),     "Currently rented",  ColGreen),
+                ("Avail. Drivers",    "👤", _availDrivers.ToString(),      "Ready to deploy",   ColPurple),
+                ("Today's Revenue",   "₱",  "₱"+_todayRevenue.ToString("N2"), "Confirmed pays", ColAccent),
+                ("Pending Bookings",  "📋", _pendingBookings.ToString(),   "Needs approval",    ColRed),
+                ("Pending Payments",  "💳", _pendingPayments.ToString(),   "Awaiting confirm",  ColYellow),
+            };
+
+            _cardAlpha = new float[cards.Length];
+            _cardOffsetY = new float[cards.Length];
+            for (int i = 0; i < cards.Length; i++) _cardOffsetY[i] = 28f;
+
+            for (int i = 0; i < cards.Length; i++)
+            {
+                var (title, icon, value, sub, color) = cards[i];
+                var card = CreateStatCard(title, icon, value, sub, 190, 118, color, i);
+                _statCards[i] = card;
+                _scrollContainer.Controls.Add(card);
+            }
+        }
+
+        private Panel CreateStatCard(string title, string icon, string value, string sub, int w, int h, Color accentColor, int idx)
+        {
+            var card = new Panel { Size = new Size(w, h), BackColor = Color.Transparent, Cursor = Cursors.Hand };
+            SetDoubleBuffer(card);
+
+            var hs = new HoverState();
+            hs.Timer = new System.Windows.Forms.Timer { Interval = 12 };
+            hs.Timer.Tick += (s, e) =>
+            {
+                float target = hs.Hovered ? 6f : 0f;
+                float diff = target - hs.Lift;
+                if (Math.Abs(diff) < 0.2f) { hs.Lift = target; hs.Timer.Stop(); }
+                else hs.Lift += diff * 0.28f;
+                card.Invalidate();
+            };
+            card.MouseEnter += (s, e) => { hs.Hovered = true; hs.Timer.Start(); };
+            card.MouseLeave += (s, e) => { hs.Hovered = false; hs.Timer.Start(); };
+
+            card.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+
+                float alpha = _cardAlpha[idx];
+                float offset = _cardOffsetY[idx];
+
+                int drawY = (int)(offset * (1f - alpha));
+                var drawR = new Rectangle(0, drawY, card.Width - 2, h - 2 - drawY);
+                if (drawR.Height < 10) return;
+
+                var path = GetRoundedRect(drawR, 14);
+
+                if (hs.Lift > 0.5f)
+                {
+                    var shadowR = new Rectangle(drawR.X + 4, drawR.Y + (int)hs.Lift + 6, drawR.Width - 4, drawR.Height - 4);
+                    using var shadowPath = GetRoundedRect(shadowR, 14);
+                    using var shadowBr = new PathGradientBrush(shadowPath);
+                    shadowBr.CenterColor = Color.FromArgb(60, 0, 0, 0);
+                    shadowBr.SurroundColors = new[] { Color.Transparent };
+                    g.FillPath(shadowBr, shadowPath);
+                }
+
+                var state = g.Save();
+                g.TranslateTransform(0, -hs.Lift);
+
+                bool dark = ThemeManager.IsDarkMode;
+                Color c1 = dark ? Color.FromArgb(32, 32, 48) : Color.FromArgb(255, 255, 255);
+                Color c2 = dark ? Color.FromArgb(20, 20, 32) : Color.FromArgb(245, 245, 252);
+                using var bg = new LinearGradientBrush(drawR, c1, c2, LinearGradientMode.Vertical);
+                g.FillPath(bg, path);
+
+                g.FillRectangle(new SolidBrush(accentColor), drawR.X, drawR.Y + drawR.Height / 4, 3, drawR.Height / 2);
+
+                using var hiPen = new Pen(Color.FromArgb(dark ? 20 : 60, 255, 255, 255), 1f);
+                g.DrawLine(hiPen, drawR.X + 14, drawR.Y + 1, drawR.Right - 14, drawR.Y + 1);
+
+                using var borderPen = new Pen(Color.FromArgb(dark ? 30 : 180, ThemeManager.CurrentBorder), 1f);
+                g.DrawPath(borderPen, path);
+
+                using var glowPath = new GraphicsPath();
+                glowPath.AddEllipse(drawR.X - 10, drawR.Y - 10, 100, 80);
+                using var glowBr = new PathGradientBrush(glowPath);
+                glowBr.CenterColor = Color.FromArgb((int)(12 * alpha), accentColor);
+                glowBr.SurroundColors = new[] { Color.Transparent };
+                g.FillPath(glowBr, glowPath);
+
+                g.Restore(state);
+            };
+
+            var pnlIcon = new Panel { Size = new Size(42, 42), Location = new Point(w - 58, 14), BackColor = Color.Transparent };
+            SetDoubleBuffer(pnlIcon);
+            pnlIcon.Paint += (s, e) =>
+            {
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(40, accentColor)), 0, 0, 41, 41);
+                e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(15, accentColor)), 5, 5, 31, 31);
+            };
+            var lblIcon = new Label { Text = icon, Font = new Font("Segoe UI Emoji", 14F), ForeColor = accentColor, AutoSize = true, Location = new Point(8, 8), BackColor = Color.Transparent };
+            pnlIcon.Controls.Add(lblIcon);
+
+            var lblValue = new Label { Text = value, Font = new Font("Segoe UI", 20F, FontStyle.Bold), ForeColor = ColText, AutoSize = true, Location = new Point(14, 14), BackColor = Color.Transparent };
+            var lblTitle2 = new Label { Text = title, Font = new Font("Segoe UI", 9F, FontStyle.Bold), ForeColor = ColSub, AutoSize = true, Location = new Point(15, 54), BackColor = Color.Transparent };
+            var lblSub2 = new Label { Text = sub, Font = new Font("Segoe UI", 8F), ForeColor = Color.FromArgb(ThemeManager.IsDarkMode ? 70 : 140, ColSub), AutoSize = true, Location = new Point(15, 72), BackColor = Color.Transparent };
+
+            card.Controls.Add(pnlIcon);
+            card.Controls.Add(lblValue);
+            card.Controls.Add(lblTitle2);
+            card.Controls.Add(lblSub2);
+            return card;
+        }
+
+        // ══════════════════════════════════════════════
+        //  RECENT BOOKINGS
+        // ══════════════════════════════════════════════
+        private void BuildRecentBookings()
+        {
+            _bookingsCard = CreateCard("Recent Bookings");
+
+            var dgv = new DataGridView();
+            dgv.Location = new Point(20, 52);
+            dgv.Size = new Size(700, 228);
+            dgv.BackgroundColor = ColCard;
+            dgv.BorderStyle = BorderStyle.None;
+            dgv.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
+            dgv.GridColor = ThemeManager.IsDarkMode ? Color.FromArgb(32, 32, 48) : Color.FromArgb(220, 220, 230);
+            dgv.RowHeadersVisible = false;
+            dgv.AllowUserToAddRows = false;
+            dgv.AllowUserToDeleteRows = false;
+            dgv.ReadOnly = true;
+            dgv.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            dgv.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            dgv.Font = new Font("Segoe UI", 9F);
+            dgv.EnableHeadersVisualStyles = false;
+            dgv.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
+
+            bool dark = ThemeManager.IsDarkMode;
+            dgv.DefaultCellStyle.BackColor = dark ? Color.FromArgb(22, 22, 35) : Color.White;
+            dgv.DefaultCellStyle.ForeColor = ColText;
+            dgv.DefaultCellStyle.SelectionBackColor = dark ? Color.FromArgb(40, 40, 58) : Color.FromArgb(230, 240, 255);
+            dgv.DefaultCellStyle.SelectionForeColor = ColAccent;
+            dgv.DefaultCellStyle.Padding = new Padding(6, 4, 6, 4);
+
+            dgv.ColumnHeadersDefaultCellStyle.BackColor = dark ? Color.FromArgb(18, 18, 28) : Color.FromArgb(245, 245, 250);
+            dgv.ColumnHeadersDefaultCellStyle.ForeColor = ColSub;
+            dgv.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            dgv.ColumnHeadersDefaultCellStyle.Padding = new Padding(6);
+            dgv.ColumnHeadersHeight = 36;
+            dgv.RowTemplate.Height = 36;
+
+            dgv.CellFormatting += (s, e) =>
+            {
+                if (dgv.Columns.Count > 4 && e.ColumnIndex == 5 && e.Value != null)
+                {
+                    e.CellStyle.ForeColor = e.Value.ToString()!.ToLower() switch
+                    {
+                        "approved" => ColGreen,
+                        "pending" => ColYellow,
+                        "completed" => ColBlue,
+                        "rejected" => ColRed,
+                        _ => ColText
+                    };
+                    e.CellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+                }
+            };
+
+            try
+            {
+                using var conn = new MySqlConnection(_connStr);
+                conn.Open();
+                var cmd = new MySqlCommand(@"
+                    SELECT r.rental_id AS '#',
+                           u.full_name AS 'Customer',
+                           CONCAT(v.brand,' ',v.model) AS 'Vehicle',
+                           r.start_date AS 'Start', r.end_date AS 'End',
+                           r.status AS 'Status',
+                           CONCAT('₱',FORMAT(r.total_amount,2)) AS 'Amount'
+                    FROM rentals r
+                    JOIN users u    ON r.customer_id = u.user_id
+                    JOIN vehicles v ON r.vehicle_id  = v.vehicle_id
+                    ORDER BY r.created_at DESC LIMIT 12", conn);
+                using var adapter = new MySqlDataAdapter(cmd);
+                var dt = new DataTable();
+                adapter.Fill(dt);
+                dgv.DataSource = dt;
+            }
+            catch (Exception ex)
+            {
+                AddErrorLabel(_bookingsCard, ex.Message);
+            }
+
+            _bookingsCard.Controls.Add(dgv);
+            _scrollContainer.Controls.Add(_bookingsCard);
+        }
+
+        // ══════════════════════════════════════════════
+        //  QUICK STATS
+        // ══════════════════════════════════════════════
+        private void BuildQuickStats()
+        {
+            _quickStatsCard = CreateCard("Quick Stats");
+
+            decimal monthRevenue = 0;
+            int totalUsers = 0, totalRatings = 0;
+            decimal avgRating = 0;
+
+            try
+            {
+                using var conn = new MySqlConnection(_connStr);
+                conn.Open();
+                T Q<T>(string sql) { using var c = new MySqlCommand(sql, conn); var res = c.ExecuteScalar(); return res == DBNull.Value || res == null ? default(T) : (T)Convert.ChangeType(res, typeof(T)); }
+                monthRevenue = Q<decimal>(@"SELECT COALESCE(SUM(amount),0) FROM transactions
+                    WHERE status='confirmed' AND MONTH(paid_at)=MONTH(CURDATE()) AND YEAR(paid_at)=YEAR(CURDATE())");
+                totalUsers = Q<int>("SELECT COUNT(*) FROM users WHERE role='customer'");
+                totalRatings = Q<int>("SELECT COUNT(*) FROM ratings");
+                avgRating = Q<decimal>("SELECT COALESCE(AVG(vehicle_score),0) FROM ratings");
+            }
+            catch { }
+
+            var items = new[]
+            {
+                ("Monthly Revenue",   "₱" + monthRevenue.ToString("N2"), ColAccent),
+                ("Total Customers",   totalUsers.ToString(),             ColBlue),
+                ("Total Reviews",     totalRatings.ToString(),           ColPurple),
+                ("Avg. Rating",       avgRating.ToString("0.0") + " / 5.0", ColGreen),
+            };
+
+            int itemY = 56;
+            foreach (var (label, val, color) in items)
+            {
+                var row = new Panel { Size = new Size(280, 46), Location = new Point(20, itemY), BackColor = Color.Transparent, Tag = "qsrow" };
+                SetDoubleBuffer(row);
+
+                row.Paint += (s, e) =>
+                {
+                    var g = e.Graphics;
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    var rect = new Rectangle(0, 0, row.Width - 1, row.Height - 1);
+                    var path = GetRoundedRect(rect, 8);
+                    bool d = ThemeManager.IsDarkMode;
+                    g.FillPath(new SolidBrush(d ? Color.FromArgb(20, 20, 32) : Color.FromArgb(248, 248, 255)), path);
+                    g.FillRectangle(new SolidBrush(color), 0, 10, 3, 26);
+                    g.DrawPath(new Pen(Color.FromArgb(d ? 25 : 180, ThemeManager.CurrentBorder), 0.5f), path);
+                };
+
+                var lblKey = new Label { Text = label, Font = new Font("Segoe UI", 9F), ForeColor = ColSub, AutoSize = true, Location = new Point(14, 5), BackColor = Color.Transparent };
+                var lblVal = new Label { Text = val, Font = new Font("Segoe UI", 13F, FontStyle.Bold), ForeColor = color, AutoSize = true, Location = new Point(14, 22), BackColor = Color.Transparent };
+                row.Controls.Add(lblKey);
+                row.Controls.Add(lblVal);
+                _quickStatsCard.Controls.Add(row);
+                itemY += 56;
+            }
+
+            _scrollContainer.Controls.Add(_quickStatsCard);
+        }
+
+        // ══════════════════════════════════════════════
+        //  VEHICLE STATUS
+        // ══════════════════════════════════════════════
+        private void BuildVehicleStatus()
+        {
+            _fleetCard = CreateCard("Fleet Status");
+
+            int available = 0, rented = 0, maintenance = 0, retired = 0;
+            try
+            {
+                using var conn = new MySqlConnection(_connStr);
+                conn.Open();
+                T Q<T>(string sql) { using var c = new MySqlCommand(sql, conn); var res = c.ExecuteScalar(); return res == DBNull.Value || res == null ? default(T) : (T)Convert.ChangeType(res, typeof(T)); }
+                available = Q<int>("SELECT COUNT(*) FROM vehicles WHERE status='Available'");
+                rented = Q<int>("SELECT COUNT(*) FROM vehicles WHERE status='Rented'");
+                maintenance = Q<int>("SELECT COUNT(*) FROM vehicles WHERE status='Maintenance'");
+                retired = Q<int>("SELECT COUNT(*) FROM vehicles WHERE status='Retired'");
+            }
+            catch { }
+
+            int total = Math.Max(available + rented + maintenance + retired, 1);
+            var statuses = new[]
+            {
+                ("Available",   available,   ColGreen),
+                ("Rented",      rented,      ColBlue),
+                ("Maintenance", maintenance, ColYellow),
+                ("Retired",     retired,     ColRed),
+            };
+
+            int barY = 52;
+            foreach (var (label, count, color) in statuses)
+            {
+                float pct = (float)count / total;
+
+                var lblLabel = new Label { Text = label, Font = new Font("Segoe UI", 9F), ForeColor = ColSub, AutoSize = true, Location = new Point(20, barY), BackColor = Color.Transparent };
+                var lblCount = new Label { Text = count + " units", Font = new Font("Segoe UI", 9F, FontStyle.Bold), ForeColor = color, AutoSize = true, BackColor = Color.Transparent };
+                lblCount.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+                lblCount.Location = new Point(_fleetCard.Width - 90, barY);
+
+                var track = new Panel { Size = new Size(_fleetCard.Width - 50, 8), Location = new Point(20, barY + 20), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+                track.BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(30, 30, 45) : Color.FromArgb(220, 220, 235);
+                SetDoubleBuffer(track);
+
+                float _fillPct = 0f;
+                var fill = new Panel { Size = new Size(4, 8), Location = new Point(0, 0), BackColor = color };
+                SetDoubleBuffer(fill);
+                fill.Paint += (s, e) =>
+                {
+                    using var brush = new LinearGradientBrush(fill.ClientRectangle, Color.FromArgb(180, color), color, LinearGradientMode.Horizontal);
+                    e.Graphics.FillRectangle(brush, fill.ClientRectangle);
+                };
+
+                track.Controls.Add(fill);
+                _fleetCard.Controls.Add(lblLabel);
+                _fleetCard.Controls.Add(lblCount);
+                _fleetCard.Controls.Add(track);
+
+                var barTimer = new System.Windows.Forms.Timer { Interval = 14 };
+                barTimer.Tick += (s, e) =>
+                {
+                    _fillPct += 0.055f;
+                    if (_fillPct >= pct) { _fillPct = pct; barTimer.Stop(); barTimer.Dispose(); }
+                    int fillW = (int)(track.Width * _fillPct);
+                    fill.Width = Math.Max(fillW, 4);
+                    fill.Invalidate();
+                };
+                barTimer.Start();
+
+                barY += 36;
+            }
+
+            _scrollContainer.Controls.Add(_fleetCard);
+        }
+
+        // ══════════════════════════════════════════════
+        //  PENDING ACTIONS
+        // ══════════════════════════════════════════════
+        private void BuildPendingActions()
+        {
+            _pendingCard = CreateCard("Pending Actions");
+
+            try
+            {
+                using var conn = new MySqlConnection(_connStr);
+                conn.Open();
+                var cmd = new MySqlCommand(@"
+                    SELECT CONCAT(u.full_name,' → ',v.brand,' ',v.model) AS description,
+                           r.total_amount, r.created_at, r.status
+                    FROM rentals r
+                    JOIN users u ON r.customer_id=u.user_id
+                    JOIN vehicles v ON r.vehicle_id=v.vehicle_id
+                    WHERE r.status='pending'
+                    ORDER BY r.created_at DESC LIMIT 3", conn);
+
+                using var reader = cmd.ExecuteReader();
+                int itemY = 50;
+
+                while (reader.Read())
+                {
+                    var desc = reader["description"].ToString()!;
+                    var amount = Convert.ToDecimal(reader["total_amount"]);
+                    var dt2 = Convert.ToDateTime(reader["created_at"]);
+
+                    var row = new Panel { Size = new Size(500, 38), Location = new Point(20, itemY), BackColor = Color.Transparent, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+                    SetDoubleBuffer(row);
+                    row.Paint += (s, e) => e.Graphics.DrawLine(new Pen(ColBorder, 1), 0, row.Height - 1, row.Width, row.Height - 1);
+
+                    var dot = new Panel { Size = new Size(8, 8), Location = new Point(0, 15), BackColor = Color.Transparent };
+                    dot.Paint += (s, e) =>
+                    {
+                        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                        e.Graphics.FillEllipse(new SolidBrush(ColYellow), 0, 0, 7, 7);
+                    };
+
+                    var lblDesc = new Label { Text = desc, Font = new Font("Segoe UI", 9F), ForeColor = ColText, AutoSize = false, Size = new Size(340, 18), Location = new Point(16, 4), BackColor = Color.Transparent };
+                    var lblTime = new Label { Text = dt2.ToString("MMM dd, hh:mm tt"), Font = new Font("Segoe UI", 8F), ForeColor = ColSub, AutoSize = true, Location = new Point(16, 20), BackColor = Color.Transparent };
+                    var lblAmt = new Label { Text = "₱" + amount.ToString("N2"), Font = new Font("Segoe UI", 10F, FontStyle.Bold), ForeColor = ColAccent, AutoSize = true, Location = new Point(420, 10), BackColor = Color.Transparent, Anchor = AnchorStyles.Top | AnchorStyles.Right };
+
+                    row.Controls.Add(dot);
+                    row.Controls.Add(lblDesc);
+                    row.Controls.Add(lblTime);
+                    row.Controls.Add(lblAmt);
+                    _pendingCard.Controls.Add(row);
+                    itemY += 44;
+                }
+
+                if (itemY == 50)
+                {
+                    var lbl = new Label { Text = "✓  No pending bookings", Font = new Font("Segoe UI", 11F), ForeColor = ColGreen, AutoSize = true, Location = new Point(20, 76), BackColor = Color.Transparent };
+                    _pendingCard.Controls.Add(lbl);
+                }
+            }
+            catch (Exception ex) { AddErrorLabel(_pendingCard, ex.Message); }
+
+            _scrollContainer.Controls.Add(_pendingCard);
+        }
+
+        // ══════════════════════════════════════════════
+        //  ENTRANCE ANIMATION
+        // ══════════════════════════════════════════════
+        private void StartEntranceAnimation()
+        {
+            if (_cardAlpha == null) return;
+            for (int i = 0; i < _cardAlpha.Length; i++) { _cardAlpha[i] = 0f; _cardOffsetY[i] = 28f; }
+
+            _cardsDone = 0;
+            _entranceTimer = new System.Windows.Forms.Timer { Interval = 14 };
+            _entranceTimer.Tick += (s, e) =>
+            {
+                bool allDone = true;
+                for (int i = 0; i < _cardAlpha.Length; i++)
+                {
+                    float delay = i * 0.12f;
+                    if (_cardsDone < i) { allDone = false; continue; }
+
+                    _cardAlpha[i] += 0.06f;
+                    _cardOffsetY[i] *= 0.78f;
+
+                    if (_cardAlpha[i] >= 1f)
+                    {
+                        _cardAlpha[i] = 1f;
+                        _cardOffsetY[i] = 0f;
+                        if (_cardsDone == i) _cardsDone++;
+                    }
+                    else allDone = false;
+
+                    _statCards[i]?.Invalidate();
+                }
+                if (allDone) { _entranceTimer.Stop(); _entranceTimer.Dispose(); }
+            };
+            _entranceTimer.Start();
+        }
+
+        // ══════════════════════════════════════════════
+        //  HELPERS
+        // ══════════════════════════════════════════════
+        private Panel CreateCard(string title)
+        {
+            var pnl = new Panel { BackColor = Color.Transparent };
+            SetDoubleBuffer(pnl);
+
+            pnl.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                int w = pnl.Width, h = pnl.Height;
+                var rect = new Rectangle(0, 0, w - 1, h - 1);
+                var path = GetRoundedRect(rect, 14);
+
+                bool dark = ThemeManager.IsDarkMode;
+                Color c1 = dark ? Color.FromArgb(28, 28, 42) : Color.White;
+                Color c2 = dark ? Color.FromArgb(16, 16, 26) : Color.FromArgb(248, 248, 255);
+                using var bg = new LinearGradientBrush(rect, c1, c2, LinearGradientMode.Vertical);
+                g.FillPath(bg, path);
+
+                pnl.Region = new Region(path);
+
+                g.DrawLine(new Pen(Color.FromArgb(dark ? 18 : 80, 255, 255, 255), 1f), 14, 1, w - 14, 1);
+                g.DrawPath(new Pen(Color.FromArgb(dark ? 30 : 180, ThemeManager.CurrentBorder), 0.8f), path);
+            };
+
+            var lblTitle = new Label
+            {
+                Text = title,
+                Font = new Font("Segoe UI", 12F, FontStyle.Bold),
+                ForeColor = ColText,
+                AutoSize = true,
+                Location = new Point(20, 14),
+                BackColor = Color.Transparent
+            };
+
+            var accent = new Panel { Size = new Size(36, 3), Location = new Point(20, 36), BackColor = ColAccent };
+
+            pnl.Controls.Add(lblTitle);
+            pnl.Controls.Add(accent);
+            return pnl;
+        }
+
+        private void AddErrorLabel(Panel parent, string msg)
+        {
+            parent.Controls.Add(new Label
+            {
+                Text = "⚠  " + msg,
+                ForeColor = ColRed,
+                Font = new Font("Segoe UI", 9F),
+                AutoSize = true,
+                Location = new Point(20, 80),
+                BackColor = Color.Transparent
+            });
+        }
+
+        private static void SetDoubleBuffer(Control c)
+        {
+            typeof(Control).InvokeMember("DoubleBuffered",
+                System.Reflection.BindingFlags.SetProperty |
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic,
+                null, c, new object[] { true });
+        }
+
+        private GraphicsPath GetRoundedRect(Rectangle b, int r)
+        {
+            int d = r * 2;
+            var arc = new Rectangle(b.Location, new Size(d, d));
+            var path = new GraphicsPath();
+            path.AddArc(arc, 180, 90); arc.X = b.Right - d;
+            path.AddArc(arc, 270, 90); arc.Y = b.Bottom - d;
+            path.AddArc(arc, 0, 90); arc.X = b.Left;
+            path.AddArc(arc, 90, 90);
+            path.CloseFigure();
+            return path;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            _entranceTimer?.Dispose();
+            base.Dispose(disposing);
         }
     }
 }

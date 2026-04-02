@@ -10,5 +10,8 @@
     <Compile Update="Panels\DashboardPanel.cs">
       <SubType>UserControl</SubType>
     </Compile>
+    <Compile Update="Panels\FleetPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
   </ItemGroup>
 </Project>
