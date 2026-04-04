@@ -8,6 +8,8 @@
 
   <ItemGroup>
     <PackageReference Include="BCrypt.Net-Next" Version="4.1.0" />
+    <PackageReference Include="CefSharp.Common" Version="146.0.70" />
+    <PackageReference Include="CefSharp.WinForms" Version="146.0.70" />
     <PackageReference Include="FirebaseDatabase.net" Version="5.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.5" />
     <PackageReference Include="MySql.Data" Version="9.6.0" />
