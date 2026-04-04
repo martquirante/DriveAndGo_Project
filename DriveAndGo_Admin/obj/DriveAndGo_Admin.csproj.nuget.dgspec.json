@@ -55,19 +55,19 @@
               "target": "Package",
               "version": "[4.1.0, )"
             },
-            "CefSharp.Common": {
-              "target": "Package",
-              "version": "[146.0.70, )"
-            },
-            "CefSharp.WinForms": {
-              "target": "Package",
-              "version": "[146.0.70, )"
-            },
             "FirebaseDatabase.net": {
               "target": "Package",
               "version": "[5.0.0, )"
             },
+            "Microsoft.Web.WebView2": {
+              "target": "Package",
+              "version": "[1.0.2903.40, )"
+            },
             "MySql.Data": {
+              "target": "Package",
+              "version": "[9.6.0, )"
+            },
+            "itext7": {
               "target": "Package",
               "version": "[9.6.0, )"
             }

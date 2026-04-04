@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DriveAndGo_App.LoginPage"
+             BackgroundColor="{AppThemeBinding Light=#f4f6f8, Dark=#0a0a12}"
+             NavigationPage.HasNavigationBar="False">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="30" Spacing="25" VerticalOptions="Center">
+
+            <VerticalStackLayout Spacing="5" HorizontalOptions="Center" Margin="0,0,0,20">
+                <Image Source="car_logo.png" WidthRequest="80" HeightRequest="80" HorizontalOptions="Center"/>
+                <Label Text="Let's you in" FontSize="32" FontAttributes="Bold" TextColor="{AppThemeBinding Light=#1a1a2e, Dark=#ffffff}" HorizontalOptions="Center" />
+                <Label Text="Select your account type to proceed" FontSize="14" TextColor="{AppThemeBinding Light=#606070, Dark=#a0a0c0}" HorizontalOptions="Center" />
+            </VerticalStackLayout>
+
+            <Frame Padding="5" CornerRadius="25" BackgroundColor="{AppThemeBinding Light=#e0e0e0, Dark=#14142a}" BorderColor="Transparent" HasShadow="False" Margin="0,0,0,10">
+                <Grid ColumnDefinitions="*, *">
+                    <Button x:Name="btnCustomer" Grid.Column="0" Text="Customer" CornerRadius="20" BackgroundColor="#e6510d" TextColor="White" FontAttributes="Bold" Clicked="OnRoleSelected"/>
+
+                    <Button x:Name="btnDriver" Grid.Column="1" Text="Driver" CornerRadius="20" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light=#404060, Dark=#a0a0c0}" FontAttributes="Bold" Clicked="OnRoleSelected"/>
+                </Grid>
+            </Frame>
+
+            <VerticalStackLayout Spacing="15">
+                <Frame CornerRadius="12" BackgroundColor="{AppThemeBinding Light=#ffffff, Dark=#1a1a2e}" BorderColor="{AppThemeBinding Light=#d0d0d0, Dark=#2a2a42}" Padding="15,5" HasShadow="False">
+                    <Entry x:Name="txtEmail" Placeholder="Email or Username" TextColor="{AppThemeBinding Light=#1a1a2e, Dark=#ffffff}" PlaceholderColor="#a0a0c0" Keyboard="Email" ClearButtonVisibility="WhileEditing"/>
+                </Frame>
+
+                <Frame CornerRadius="12" BackgroundColor="{AppThemeBinding Light=#ffffff, Dark=#1a1a2e}" BorderColor="{AppThemeBinding Light=#d0d0d0, Dark=#2a2a42}" Padding="15,5" HasShadow="False">
+                    <Entry x:Name="txtPassword" Placeholder="Password" TextColor="{AppThemeBinding Light=#1a1a2e, Dark=#ffffff}" PlaceholderColor="#a0a0c0" IsPassword="True" ClearButtonVisibility="WhileEditing"/>
+                </Frame>
+            </VerticalStackLayout>
+
+            <Label Text="Forgot password?" FontSize="14" TextColor="#e6510d" FontAttributes="Bold" HorizontalOptions="End">
+                <Label.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnForgotPasswordTapped" />
+                </Label.GestureRecognizers>
+            </Label>
+
+            <Button Text="Sign In" BackgroundColor="#e6510d" TextColor="White" FontAttributes="Bold" CornerRadius="15" HeightRequest="55" Margin="0,20,0,0" Clicked="OnSignInClicked"/>
+
+            <Grid ColumnDefinitions="*, Auto, *" Margin="0,20">
+                <BoxView Grid.Column="0" HeightRequest="1" Color="{AppThemeBinding Light=#d0d0d0, Dark=#2a2a42}" VerticalOptions="Center"/>
+                <Label Grid.Column="1" Text="or continue with" Margin="10,0" TextColor="#a0a0c0" FontSize="12" VerticalOptions="Center"/>
+                <BoxView Grid.Column="2" HeightRequest="1" Color="{AppThemeBinding Light=#d0d0d0, Dark=#2a2a42}" VerticalOptions="Center"/>
+            </Grid>
+
+            <HorizontalStackLayout HorizontalOptions="Center" Spacing="5">
+                <Label Text="Don't have an account?" TextColor="{AppThemeBinding Light=#606070, Dark=#a0a0c0}" VerticalOptions="Center"/>
+                <Label Text="Sign up" TextColor="#e6510d" FontAttributes="Bold" VerticalOptions="Center">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnSignUpTapped" />
+                    </Label.GestureRecognizers>
+                </Label>
+            </HorizontalStackLayout>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

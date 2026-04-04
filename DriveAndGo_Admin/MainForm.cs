@@ -308,11 +308,20 @@ namespace DriveAndGo_Admin
             btnReports = CreateNavButton("Reports", "📈", 380);
 
             btnDashboard.Click += (s, e) => { SetActiveButton(btnDashboard); LoadPanel(new DashboardPanel()); };
-            btnVehicles.Click += (s, e) => { SetActiveButton(btnVehicles); ShowPlaceholder("🚗 Fleet Management", "Vehicle CRUD will be here."); };
-            btnRentals.Click += (s, e) => { SetActiveButton(btnRentals); ShowPlaceholder("📝 Rentals & Bookings", "Manage active reservations."); };
-            btnDrivers.Click += (s, e) => { SetActiveButton(btnDrivers); ShowPlaceholder("👤 Driver Management", "Driver profiles and assignments."); };
-            btnTransactions.Click += (s, e) => { SetActiveButton(btnTransactions); ShowPlaceholder("💳 Transactions", "Payment confirmations."); };
-            btnReports.Click += (s, e) => { SetActiveButton(btnReports); ShowPlaceholder("📈 Sales & Reports", "Financial reports and exports."); };
+            btnVehicles.Click += (s, e) => { SetActiveButton(btnVehicles); LoadPanel(new FleetPanel()); };
+
+            btnRentals.Click += (s, e) => {
+                SetActiveButton(btnRentals);
+
+                // Tatawagin na natin yung ginawa nating RentalsPanel!
+                LoadPanel(new RentalsPanel());
+            };
+
+            // Note: DriversPanel is not yet implemented, but we can still set it up in the sidebar and show a placeholder when clicked.
+            // Ito ung pinaplitan ko lagigit ng actual panel pag na-click, para ma-test yung navigation at theme consistency kahit hindi pa tapos yung panel.
+            btnDrivers.Click += (s, e) => { SetActiveButton(btnDrivers); LoadPanel(new DriversPanel()); };
+            btnTransactions.Click += (s, e) => { SetActiveButton(btnTransactions); LoadPanel(new TransactionsPanel()); };
+            btnReports.Click += (s, e) => { SetActiveButton(btnReports); LoadPanel(new ReportsPanel()); };
 
             dividerBottom = new Panel();
             dividerBottom.Size = new Size(200, 1);
@@ -485,6 +494,8 @@ namespace DriveAndGo_Admin
             SetRoundRegion(btnNotifications, 20);
             AttachRipple(btnNotifications, ThemeManager.CurrentPrimary);
 
+
+            // Ung button na toggle ng theme (dark/light) - custom drawn para smooth at walang text
             btnThemeToggle = new Button();
             btnThemeToggle.Size = new Size(70, 36);
             btnThemeToggle.Anchor = AnchorStyles.Top | AnchorStyles.Right;

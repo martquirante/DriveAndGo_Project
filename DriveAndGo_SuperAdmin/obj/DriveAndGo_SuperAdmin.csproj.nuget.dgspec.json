@@ -55,10 +55,6 @@
               "target": "Package",
               "version": "[4.1.0, )"
             },
-            "CefSharp.Common": {
-              "target": "Package",
-              "version": "[146.0.70, )"
-            },
             "FirebaseDatabase.net": {
               "target": "Package",
               "version": "[5.0.0, )"

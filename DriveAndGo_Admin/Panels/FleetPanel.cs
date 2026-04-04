@@ -1,669 +1,854 @@
 ﻿#nullable disable
-
-using CefSharp;
-using CefSharp.WinForms;
-using CefSharp;
-using CefSharp.WinForms;
+using DriveAndGo_Admin;
 using DriveAndGo_Admin.Helpers;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
 using MySql.Data.MySqlClient;
+using System;
 using System.Data;
+using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.IO;
+using System.Net.Http;
+using System.Text.Json;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+
+// Para walang conflict sa VisualStyles
+using Button = System.Windows.Forms.Button;
+using ComboBox = System.Windows.Forms.ComboBox;
+using TextBox = System.Windows.Forms.TextBox;
 
 namespace DriveAndGo_Admin.Panels
 {
     public class FleetPanel : UserControl
     {
-        // ── Colors (Dynamic based on ThemeManager) ──
+        // ── Colors ──
         private Color ColBg => ThemeManager.CurrentBackground;
         private Color ColCard => ThemeManager.CurrentCard;
         private Color ColText => ThemeManager.CurrentText;
         private Color ColSub => ThemeManager.CurrentSubText;
         private Color ColBorder => ThemeManager.CurrentBorder;
 
-        // Fixed Colors
-        private readonly Color ColAccent = Color.FromArgb(230, 81, 0);
         private readonly Color ColGreen = Color.FromArgb(34, 197, 94);
         private readonly Color ColRed = Color.FromArgb(239, 68, 68);
         private readonly Color ColBlue = Color.FromArgb(59, 130, 246);
-        private readonly Color ColYellow = Color.FromArgb(234, 179, 8);
+        private readonly Color ColYellow = Color.FromArgb(245, 158, 11);
         private readonly Color ColPurple = Color.FromArgb(168, 85, 247);
+        private readonly Color ColAccent = Color.FromArgb(230, 81, 0);
 
-        private readonly string _connStr =
-            "Server=localhost;Database=vehicle_rental_db;" +
-            "Uid=root;Pwd=;";
+        private const string FirebaseUrl = "https://vechiclerentaldb-default-rtdb.asia-southeast1.firebasedatabase.app";
+        private const string FirebaseGpsPath = "/gps.json";
+
+        private readonly string _connStr = "Server=localhost;Database=vehicle_rental_db;Uid=root;Pwd=;";
 
         // ── UI ──
-        private Panel leftPanel;
-        private Panel rightPanel;
+        private SplitContainer splitContainer;
+        private Panel topBar;
+        private Panel bottomBar;
         private DataGridView dgvVehicles;
-        private ChromiumWebBrowser browser;
-        private Label lblTitle;
-        private Label lblCount;
-        private Button btnAdd;
-        private Button btnEdit;
-        private Button btnDelete;
-        private Button btnRefresh;
+        private WebView2 browser;
+
+        private Label lblTitle, lblCount, lblLiveStatus;
+        private Button btnAdd, btnEdit, btnDelete, btnRefresh;
         private TextBox txtSearch;
-        private Panel statsBar;
-        private Panel btnRow;
-        private Panel searchPanel;
-        private Panel titleRow;
+        private ComboBox cboFilterStatus;
 
         // ── State ──
         private DataTable _vehicleData = new DataTable();
-        private int _selectedVehicleId = -1;
+        private int _selectedId = -1;
+        private bool _mapReady = false;
+
+        private System.Windows.Forms.Timer _liveTimer;
+        private static readonly HttpClient _http = new HttpClient();
+
+        private double _hqLat = 14.6760;
+        private double _hqLng = 121.0437;
 
         public FleetPanel()
         {
             this.Dock = DockStyle.Fill;
             this.DoubleBuffered = true;
             this.BackColor = ColBg;
-
-            this.Resize += OnPanelResize;
             ThemeManager.ThemeChanged += OnThemeChanged;
 
             BuildUI();
+            GetPCApproximateLocation();
             LoadVehiclesFromDB();
+            StartLiveGPSPolling();
         }
 
-        private void OnPanelResize(object sender, EventArgs e)
+        private async void GetPCApproximateLocation()
         {
-            if (this.Width < 900)
-                leftPanel.Width = 380;
-            else
-                leftPanel.Width = 480;
+            try
+            {
+                var resp = await _http.GetStringAsync("http://ip-api.com/json/?fields=lat,lon,city");
+                using var doc = JsonDocument.Parse(resp);
+                _hqLat = doc.RootElement.GetProperty("lat").GetDouble();
+                _hqLng = doc.RootElement.GetProperty("lon").GetDouble();
+                string city = doc.RootElement.GetProperty("city").GetString() ?? "HQ";
 
-            leftPanel.Invalidate();
-            statsBar?.Invalidate();
-        }
-
-        private void OnThemeChanged(object sender, EventArgs e)
-        {
-            this.BackColor = ColBg;
-            leftPanel.BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(14, 14, 22) : Color.FromArgb(250, 250, 250);
-
-            lblTitle.ForeColor = ColText;
-            lblCount.ForeColor = ColSub;
-
-            statsBar.BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(12, 12, 20) : Color.FromArgb(240, 240, 245);
-            btnRow.BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(12, 12, 20) : Color.FromArgb(240, 240, 245);
-
-            txtSearch.BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(20, 20, 32) : Color.White;
-            txtSearch.ForeColor = ColText;
-
-            StyleGrid(dgvVehicles);
-
-            leftPanel.Invalidate();
-            statsBar.Invalidate();
-            btnRow.Invalidate();
+                if (_mapReady && browser?.CoreWebView2 != null)
+                    await browser.CoreWebView2.ExecuteScriptAsync($"setHeadquarters({_hqLat}, {_hqLng}, '{city}');");
+            }
+            catch { _hqLat = 14.9080; _hqLng = 121.0422; }
         }
 
         private void BuildUI()
         {
-            leftPanel = new Panel();
-            leftPanel.Dock = DockStyle.Left;
-            leftPanel.Width = 480;
-            leftPanel.BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(14, 14, 22) : Color.FromArgb(250, 250, 250);
-            leftPanel.Paint += (s, e) =>
+            splitContainer = new SplitContainer
             {
-                e.Graphics.DrawLine(new Pen(ColBorder, 1), leftPanel.Width - 1, 0, leftPanel.Width - 1, leftPanel.Height);
+                Dock = DockStyle.Fill,
+                Orientation = Orientation.Vertical,
+                SplitterWidth = 4,
+                SplitterDistance = 550,
+                BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(40, 40, 55) : Color.FromArgb(220, 220, 230)
             };
 
-            titleRow = new Panel();
-            titleRow.Size = new Size(leftPanel.Width, 56);
-            titleRow.Location = new Point(0, 0);
-            titleRow.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            titleRow.BackColor = Color.Transparent;
+            splitContainer.Panel1.BackColor = ColBg;
+            splitContainer.Panel2.BackColor = ColBg;
+            splitContainer.SplitterMoved += (s, e) => { dgvVehicles?.Invalidate(); };
 
-            lblTitle = new Label();
-            lblTitle.Text = "Fleet Management";
-            lblTitle.Font = new Font("Segoe UI", 15F, FontStyle.Bold);
-            lblTitle.ForeColor = ColText;
-            lblTitle.AutoSize = true;
-            lblTitle.Location = new Point(20, 14);
+            BuildLeftPanel();
+            BuildRightPanel();
 
-            lblCount = new Label();
-            lblCount.Text = "0 vehicles";
-            lblCount.Font = new Font("Segoe UI", 9F);
-            lblCount.ForeColor = ColSub;
-            lblCount.AutoSize = true;
-            lblCount.Location = new Point(22, 42);
+            this.Controls.Add(splitContainer);
+        }
 
-            titleRow.Controls.Add(lblTitle);
-            titleRow.Controls.Add(lblCount);
+        private void BuildLeftPanel()
+        {
+            topBar = new Panel { Dock = DockStyle.Top, Height = 110, BackColor = ThemeManager.IsDarkMode ? ColBg : Color.FromArgb(250, 250, 255), Padding = new Padding(16, 12, 16, 8) };
 
-            statsBar = new Panel();
-            statsBar.Size = new Size(leftPanel.Width, 52);
-            statsBar.Location = new Point(0, 60);
-            statsBar.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            statsBar.BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(12, 12, 20) : Color.FromArgb(240, 240, 245);
-            statsBar.Paint += OnStatsBarPaint;
+            lblTitle = new Label { Text = "Fleet Management", Font = new Font("Segoe UI", 16F, FontStyle.Bold), ForeColor = ColText, AutoSize = true, Location = new Point(16, 14) };
+            lblCount = new Label { Text = "Loading...", Font = new Font("Segoe UI", 9F), ForeColor = ColSub, AutoSize = true, Location = new Point(270, 22) };
+            lblLiveStatus = new Label { Text = "● LIVE", Font = new Font("Segoe UI", 9F, FontStyle.Bold), ForeColor = ColGreen, AutoSize = true, Location = new Point(390, 22) };
 
-            searchPanel = new Panel();
-            searchPanel.Size = new Size(leftPanel.Width, 48);
-            searchPanel.Location = new Point(0, 112);
-            searchPanel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            searchPanel.BackColor = Color.Transparent;
-            searchPanel.Padding = new Padding(16, 8, 16, 8);
+            topBar.Controls.Add(lblTitle); topBar.Controls.Add(lblCount); topBar.Controls.Add(lblLiveStatus);
 
-            txtSearch = new TextBox();
-            txtSearch.Size = new Size(leftPanel.Width - 32, 32);
-            txtSearch.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            txtSearch.Location = new Point(16, 8);
-            txtSearch.Font = new Font("Segoe UI", 10F);
-            txtSearch.BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(20, 20, 32) : Color.White;
-            txtSearch.ForeColor = ColText;
-            txtSearch.BorderStyle = BorderStyle.FixedSingle;
-            txtSearch.PlaceholderText = "🔍  Search vehicle...";
+            txtSearch = new TextBox { Size = new Size(200, 30), Location = new Point(16, 62), Font = new Font("Segoe UI", 10F), BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(20, 20, 32) : Color.White, ForeColor = ColText, BorderStyle = BorderStyle.FixedSingle, PlaceholderText = "🔍 Search..." };
             txtSearch.TextChanged += OnSearch;
-            searchPanel.Controls.Add(txtSearch);
 
-            dgvVehicles = new DataGridView();
-            dgvVehicles.Location = new Point(0, 160);
-            dgvVehicles.Size = new Size(leftPanel.Width, this.Height - 216);
-            dgvVehicles.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            StyleGrid(dgvVehicles);
-            dgvVehicles.SelectionChanged += OnVehicleSelected;
-            dgvVehicles.CellFormatting += OnCellFormatting;
+            cboFilterStatus = new ComboBox { Size = new Size(130, 30), Location = new Point(226, 62), DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 9F), BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(20, 20, 32) : Color.White, ForeColor = ColText };
+            cboFilterStatus.Items.AddRange(new object[] { "All", "available", "Rented", "Maintenance", "Retired" });
+            cboFilterStatus.SelectedIndex = 0;
+            cboFilterStatus.SelectedIndexChanged += (s, e) => FilterGrid();
 
-            btnRow = new Panel();
-            btnRow.Height = 56;
-            btnRow.Dock = DockStyle.Bottom;
-            btnRow.BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(12, 12, 20) : Color.FromArgb(240, 240, 245);
-            btnRow.Paint += (s, e) =>
-            {
-                e.Graphics.DrawLine(new Pen(ColBorder, 1), 0, 0, btnRow.Width, 0);
-            };
-
-            btnAdd = CreateActionButton("＋ Add", ColAccent, 10, 8);
-            btnEdit = CreateActionButton("✏ Edit", ColBlue, 10 + 110, 8);
-            btnDelete = CreateActionButton("🗑 Delete", ColRed, 10 + 220, 8);
-            btnRefresh = CreateActionButton("⟳ Refresh", ColGreen, 10 + 330, 8);
-
-            btnAdd.Click += OnAddVehicle;
-            btnEdit.Click += OnEditVehicle;
-            btnDelete.Click += OnDeleteVehicle;
+            btnRefresh = CreateBtn("⟳", ColGreen, 366, 60, 40);
+            btnRefresh.Font = new Font("Segoe UI", 12F);
             btnRefresh.Click += (s, e) => LoadVehiclesFromDB();
 
-            btnRow.Controls.Add(btnAdd);
-            btnRow.Controls.Add(btnEdit);
-            btnRow.Controls.Add(btnDelete);
-            btnRow.Controls.Add(btnRefresh);
+            topBar.Controls.Add(txtSearch); topBar.Controls.Add(cboFilterStatus); topBar.Controls.Add(btnRefresh);
 
-            leftPanel.Controls.Add(titleRow);
-            leftPanel.Controls.Add(statsBar);
-            leftPanel.Controls.Add(searchPanel);
-            leftPanel.Controls.Add(dgvVehicles);
-            leftPanel.Controls.Add(btnRow);
+            bottomBar = new Panel { Dock = DockStyle.Bottom, Height = 60, BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(10, 10, 18) : Color.FromArgb(240, 240, 245) };
+            bottomBar.Paint += (s, e) => { e.Graphics.DrawLine(new Pen(ColBorder, 1), 0, 0, bottomBar.Width, 0); };
 
-            rightPanel = new Panel();
-            rightPanel.Dock = DockStyle.Fill;
-            rightPanel.BackColor = ColBg;
+            btnAdd = CreateBtn("✚ Add Vehicle", ColGreen, 16, 12, 130);
+            btnEdit = CreateBtn("✎ Edit", ColBlue, 156, 12, 90);
+            btnDelete = CreateBtn("🗑 Delete", ColRed, 256, 12, 90);
 
-            string mapPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "map.html");
+            btnAdd.Click += OnAddVehicle; btnEdit.Click += OnEditVehicle; btnDelete.Click += OnDeleteVehicle;
+            bottomBar.Controls.Add(btnAdd); bottomBar.Controls.Add(btnEdit); bottomBar.Controls.Add(btnDelete);
 
-            if (File.Exists(mapPath))
+            dgvVehicles = new DataGridView { Dock = DockStyle.Fill };
+            StyleGrid(dgvVehicles);
+            dgvVehicles.SelectionChanged += OnVehicleSelected;
+            dgvVehicles.CellPainting += OnCellPainting;
+
+            splitContainer.Panel1.Controls.Add(dgvVehicles);
+            splitContainer.Panel1.Controls.Add(topBar);
+            splitContainer.Panel1.Controls.Add(bottomBar);
+            dgvVehicles.BringToFront();
+        }
+
+        private void BuildRightPanel()
+        {
+            browser = new WebView2 { Dock = DockStyle.Fill };
+            splitContainer.Panel2.Controls.Add(browser);
+            InitWebView();
+        }
+
+        private async void InitWebView()
+        {
+            await browser.EnsureCoreWebView2Async(null);
+
+            string assetsFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets");
+            if (!Directory.Exists(assetsFolder)) Directory.CreateDirectory(assetsFolder);
+            browser.CoreWebView2.SetVirtualHostNameToFolderMapping("appassets", assetsFolder, CoreWebView2HostResourceAccessKind.Allow);
+
+            browser.NavigateToString(GetMapHtml());
+
+            browser.NavigationCompleted += async (s, e) =>
             {
-                browser = new ChromiumWebBrowser(mapPath);
-                browser.Dock = DockStyle.Fill;
+                if (!e.IsSuccess) return;
+                _mapReady = true;
+                await browser.CoreWebView2.ExecuteScriptAsync($"setTheme({(ThemeManager.IsDarkMode ? "true" : "false")});");
+                await browser.CoreWebView2.ExecuteScriptAsync($"setHeadquarters({_hqLat}, {_hqLng}, 'Admin HQ');");
+                await PushAllMarkersAsync();
+            };
+        }
 
-                // ✅ CORRECTED: LoadingStateChanged event signature
-                browser.LoadingStateChanged += (sender, args) =>
-                {
-                    if (!args.IsLoading)
-                    {
-                        this.Invoke(new Action(() => PushAllMarkersToMap()));
-                    }
-                };
+        private async void OnThemeChanged(object s, EventArgs e)
+        {
+            this.BackColor = ColBg;
+            splitContainer.Panel1.BackColor = ColBg;
+            splitContainer.Panel2.BackColor = ColBg;
+            splitContainer.BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(40, 40, 55) : Color.FromArgb(220, 220, 230);
 
-                rightPanel.Controls.Add(browser);
-            }
-            else
-            {
-                var lbl = new Label();
-                lbl.Text = "⚠  map.html not found in WebAssets/ folder.";
-                lbl.Font = new Font("Segoe UI", 12F);
-                lbl.ForeColor = ColRed;
-                lbl.AutoSize = true;
-                lbl.Location = new Point(40, 40);
-                lbl.BackColor = Color.Transparent;
-                rightPanel.Controls.Add(lbl);
-            }
+            topBar.BackColor = ThemeManager.IsDarkMode ? ColBg : Color.FromArgb(250, 250, 255);
+            bottomBar.BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(10, 10, 18) : Color.FromArgb(240, 240, 245);
+            lblTitle.ForeColor = ColText;
+            lblCount.ForeColor = ColSub;
 
-            this.Controls.Add(rightPanel);
-            this.Controls.Add(leftPanel);
+            txtSearch.BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(20, 20, 32) : Color.White;
+            txtSearch.ForeColor = ColText;
+            cboFilterStatus.BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(20, 20, 32) : Color.White;
+            cboFilterStatus.ForeColor = ColText;
+
+            StyleGrid(dgvVehicles);
+
+            if (browser?.CoreWebView2 != null)
+                await browser.CoreWebView2.ExecuteScriptAsync($"setTheme({(ThemeManager.IsDarkMode ? "true" : "false")});");
+
+            this.Invalidate(true);
         }
 
         private void LoadVehiclesFromDB()
         {
-            _vehicleData.Clear();
             _vehicleData = new DataTable();
-
             try
             {
                 using var conn = new MySqlConnection(_connStr);
                 conn.Open();
+                string query = @"
+                    SELECT 
+                        vehicle_id, CONCAT(brand, ' ', model) AS vehicle_name, plate_no, type, status, rate_per_day,
+                        COALESCE(model_3d_url, '') AS model_3d_url, COALESCE(photo_url, '') AS custom_icon_url,
+                        latitude, longitude, current_speed AS odometer_km, last_update,
+                        CASE WHEN latitude IS NULL THEN 1 ELSE 0 END AS is_lost,
+                        NULL AS destination_lat, NULL AS destination_lng
+                    FROM vehicles ORDER BY brand, model";
 
-                bool hasGpsTable = false;
-                try
-                {
-                    using var checkCmd = new MySqlCommand("SHOW TABLES LIKE 'gps_log'", conn);
-                    hasGpsTable = checkCmd.ExecuteScalar() != null;
-                }
-                catch { }
-
-                string query = "";
-
-                if (hasGpsTable)
-                {
-                    query = @"
-                        SELECT
-                            v.vehicle_id,
-                            CONCAT(v.brand, ' ', v.model) AS vehicle_name,
-                            v.plate_number,
-                            v.type,
-                            v.status,
-                            v.daily_rate,
-                            v.model_3d_url,
-                            g.latitude,
-                            g.longitude,
-                            g.odometer_km,
-                            g.logged_at      AS last_update,
-                            CASE WHEN g.latitude IS NULL THEN 1 ELSE 0 END AS is_lost
-                        FROM vehicles v
-                        LEFT JOIN (
-                            SELECT vehicle_id, latitude, longitude, odometer_km, logged_at
-                            FROM   gps_log
-                            WHERE  (vehicle_id, logged_at) IN (
-                                SELECT vehicle_id, MAX(logged_at) FROM gps_log GROUP BY vehicle_id
-                            )
-                        ) g ON v.vehicle_id = g.vehicle_id
-                        ORDER BY v.brand, v.model";
-                }
-                else
-                {
-                    query = @"
-                        SELECT
-                            vehicle_id,
-                            CONCAT(brand, ' ', model) AS vehicle_name,
-                            plate_number,
-                            type,
-                            status,
-                            daily_rate,
-                            model_3d_url,
-                            NULL AS latitude,
-                            NULL AS longitude,
-                            0 AS odometer_km,
-                            NULL AS last_update,
-                            1 AS is_lost
-                        FROM vehicles
-                        ORDER BY brand, model";
-                }
-
-                var cmd = new MySqlCommand(query, conn);
-                using var adapter = new MySqlDataAdapter(cmd);
+                using var adapter = new MySqlDataAdapter(new MySqlCommand(query, conn));
                 adapter.Fill(_vehicleData);
-
                 RefreshGrid(_vehicleData);
-                UpdateStatsBar();
-                PushAllMarkersToMap();
+                if (_mapReady) _ = PushAllMarkersAsync();
+
+                if (lblLiveStatus.InvokeRequired) lblLiveStatus.Invoke(new Action(() => { lblLiveStatus.Text = "● LIVE"; lblLiveStatus.ForeColor = ColGreen; }));
             }
             catch (Exception ex)
             {
-                LoadDummyData();
-                MessageBox.Show("Using Dummy Data because Database connection failed.\n\nError: " + ex.Message, "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                if (lblLiveStatus.InvokeRequired) lblLiveStatus.Invoke(new Action(() => { lblLiveStatus.Text = "⚠ DB Error"; lblLiveStatus.ForeColor = ColRed; }));
+                MessageBox.Show(ex.Message, "Database Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-        }
-
-        private void LoadDummyData()
-        {
-            _vehicleData.Clear();
-            _vehicleData.Columns.Add("vehicle_id", typeof(int));
-            _vehicleData.Columns.Add("vehicle_name", typeof(string));
-            _vehicleData.Columns.Add("plate_number", typeof(string));
-            _vehicleData.Columns.Add("type", typeof(string));
-            _vehicleData.Columns.Add("status", typeof(string));
-            _vehicleData.Columns.Add("daily_rate", typeof(decimal));
-            _vehicleData.Columns.Add("model_3d_url", typeof(string));
-            _vehicleData.Columns.Add("latitude", typeof(double));
-            _vehicleData.Columns.Add("longitude", typeof(double));
-            _vehicleData.Columns.Add("odometer_km", typeof(double));
-            _vehicleData.Columns.Add("last_update", typeof(DateTime));
-            _vehicleData.Columns.Add("is_lost", typeof(int));
-
-            _vehicleData.Rows.Add(1, "Yamaha NMAX Neo", "NMAX-123", "Motorcycle", "Rented", 800, "https://sketchfab.com/models/5f4d6331dae349b8b3d0b8ea9d8bc089/embed?autostart=1&ui_theme=dark", 14.6760, 121.0437, 1250, DateTime.Now.AddMinutes(-5), 0);
-            _vehicleData.Rows.Add(2, "Honda Civic Type R", "TYPR-999", "Car", "Available", 3500, "https://sketchfab.com/models/30baf88fcfa642a8bda71f84d081816e/embed?autostart=1&ui_theme=dark", 14.8850, 121.0500, 500, DateTime.Now.AddHours(-1), 0);
-            _vehicleData.Rows.Add(3, "Toyota Hiace", "VAN-777", "Van", "Lost Signal", 4000, "", DBNull.Value, DBNull.Value, 15000, DBNull.Value, 1);
-
-            RefreshGrid(_vehicleData);
-            UpdateStatsBar();
-            PushAllMarkersToMap();
         }
 
         private void RefreshGrid(DataTable dt)
         {
-            dgvVehicles.DataSource = null;
-            dgvVehicles.Columns.Clear();
+            if (dgvVehicles.InvokeRequired) { dgvVehicles.Invoke(new Action(() => RefreshGrid(dt))); return; }
 
+            dgvVehicles.DataSource = null; dgvVehicles.Columns.Clear();
             var display = new DataTable();
-            display.Columns.Add("ID", typeof(int));
-            display.Columns.Add("Vehicle", typeof(string));
-            display.Columns.Add("Plate", typeof(string));
-            display.Columns.Add("Type", typeof(string));
-            display.Columns.Add("Status", typeof(string));
-            display.Columns.Add("Rate/Day", typeof(string));
-            display.Columns.Add("Last GPS", typeof(string));
+            display.Columns.Add("ID", typeof(int)); display.Columns.Add("Vehicle", typeof(string)); display.Columns.Add("Plate", typeof(string));
+            display.Columns.Add("Type", typeof(string)); display.Columns.Add("Rate/Day", typeof(string)); display.Columns.Add("Status", typeof(string));
 
+            int avail = 0;
             foreach (DataRow row in dt.Rows)
             {
-                string lastGps = row["last_update"] != DBNull.Value
-                    ? Convert.ToDateTime(row["last_update"]).ToString("MMM dd HH:mm")
-                    : "No signal";
-
-                display.Rows.Add(
-                    row["vehicle_id"],
-                    row["vehicle_name"],
-                    row["plate_number"],
-                    row["type"],
-                    row["status"],
-                    "₱" + Convert.ToDecimal(row["daily_rate"]).ToString("N0"),
-                    lastGps);
+                if (row["vehicle_id"] == DBNull.Value) continue;
+                string status = row["status"]?.ToString() ?? "Unknown";
+                if (status.ToLower() == "available") avail++;
+                display.Rows.Add(row["vehicle_id"], row["vehicle_name"], row["plate_no"], row["type"], "₱" + Convert.ToDecimal(row["rate_per_day"]).ToString("N0"), status);
             }
 
             dgvVehicles.DataSource = display;
-
-            if (dgvVehicles.Columns.Count >= 7)
+            if (dgvVehicles.Columns.Count >= 6)
             {
-                dgvVehicles.Columns[0].Width = 40;
-                dgvVehicles.Columns[1].Width = 140;
-                dgvVehicles.Columns[2].Width = 80;
-                dgvVehicles.Columns[3].Width = 60;
-                dgvVehicles.Columns[4].Width = 80;
-                dgvVehicles.Columns[5].Width = 60;
-                dgvVehicles.Columns[6].Width = 90;
+                dgvVehicles.Columns[0].Width = 36; dgvVehicles.Columns[1].Width = 160; dgvVehicles.Columns[2].Width = 90;
+                dgvVehicles.Columns[3].Width = 80; dgvVehicles.Columns[4].Width = 80; dgvVehicles.Columns[5].Width = 100;
             }
-
-            lblCount.Text = $"{dt.Rows.Count} vehicles";
+            lblCount.Text = $"{avail} available · {dt.Rows.Count} total";
         }
 
-        // ✅ FIXED: Use GetMainFrame().ExecuteJavaScriptAsync()
-        private void PushAllMarkersToMap()
+        private void FilterGrid()
         {
-            if (browser == null || !browser.IsBrowserInitialized) return;
-
-            browser.GetMainFrame().ExecuteJavaScriptAsync("clearMarkers();", null);
-
-            foreach (DataRow row in _vehicleData.Rows)
-            {
-                double lat = row["latitude"] != DBNull.Value ? Convert.ToDouble(row["latitude"]) : 14.6760;
-                double lng = row["longitude"] != DBNull.Value ? Convert.ToDouble(row["longitude"]) : 121.0437;
-                bool isLost = row["latitude"] == DBNull.Value || Convert.ToInt32(row["is_lost"]) == 1;
-
-                string name = Escape(row["vehicle_name"]);
-                string plate = Escape(row["plate_number"]);
-                string status = Escape(row["status"]);
-                string modelUrl = Escape(row["model_3d_url"]);
-                string lastUpd = row["last_update"] != DBNull.Value
-                    ? Convert.ToDateTime(row["last_update"]).ToString("MMM dd, HH:mm")
-                    : "No data";
-
-                int id = Convert.ToInt32(row["vehicle_id"]);
-
-                string script = $"updateVehicle({id}, '{name}', '{plate}', '{status}', {lat}, {lng}, 0, '{lastUpd}', '{modelUrl}', {(isLost ? "true" : "false")});";
-                browser.GetMainFrame().ExecuteJavaScriptAsync(script, null);
-            }
-        }
-
-        // ✅ FIXED: Use GetMainFrame().ExecuteJavaScriptAsync()
-        private void OnVehicleSelected(object sender, EventArgs e)
-        {
-            if (dgvVehicles.SelectedRows.Count == 0) return;
-
-            var row = dgvVehicles.SelectedRows[0];
-            int id = Convert.ToInt32(row.Cells[0].Value);
-            _selectedVehicleId = id;
-
-            var dataRow = _vehicleData.Select($"vehicle_id = {id}");
-            if (dataRow.Length == 0) return;
-
-            var dr = dataRow[0];
-            double lat = dr["latitude"] != DBNull.Value ? Convert.ToDouble(dr["latitude"]) : 14.6760;
-            double lng = dr["longitude"] != DBNull.Value ? Convert.ToDouble(dr["longitude"]) : 121.0437;
-
-            string name = Escape(dr["vehicle_name"]);
-            string plate = Escape(dr["plate_number"]);
-            string status = Escape(dr["status"]);
-            string modelUrl = Escape(dr["model_3d_url"]);
-            double odo = dr["odometer_km"] != DBNull.Value ? Convert.ToDouble(dr["odometer_km"]) : 0;
-            string lastUpd = dr["last_update"] != DBNull.Value
-                ? Convert.ToDateTime(dr["last_update"]).ToString("MMM dd, yyyy HH:mm")
-                : "No data";
-
-            if (browser != null && browser.IsBrowserInitialized)
-            {
-                string script = $"selectVehicle({id}, '{name}', '{plate}', '{status}', {lat}, {lng}, {(int)odo}, '{lastUpd}', '{modelUrl}');";
-                browser.GetMainFrame().ExecuteJavaScriptAsync(script, null);
-            }
-        }
-
-        private void OnSearch(object sender, EventArgs e)
-        {
-            string q = txtSearch.Text.Trim().ToLower();
-            if (string.IsNullOrEmpty(q))
-            {
-                RefreshGrid(_vehicleData);
-                return;
-            }
-
+            string filter = cboFilterStatus.SelectedItem?.ToString().ToLower();
+            string search = txtSearch.Text.Trim().ToLower();
             var filtered = _vehicleData.Clone();
             foreach (DataRow row in _vehicleData.Rows)
             {
-                string name = row["vehicle_name"].ToString()!.ToLower();
-                string plate = row["plate_number"].ToString()!.ToLower();
-                string type = row["type"].ToString()!.ToLower();
-                if (name.Contains(q) || plate.Contains(q) || type.Contains(q))
-                    filtered.ImportRow(row);
+                bool matchStatus = filter == "all" || row["status"].ToString().ToLower() == filter;
+                bool matchSearch = string.IsNullOrEmpty(search) || row["vehicle_name"].ToString()!.ToLower().Contains(search) || row["plate_no"].ToString()!.ToLower().Contains(search);
+                if (matchStatus && matchSearch) filtered.ImportRow(row);
             }
             RefreshGrid(filtered);
         }
 
-        private void OnAddVehicle(object sender, EventArgs e)
+        private void OnSearch(object s, EventArgs e) => FilterGrid();
+
+        private async Task PushAllMarkersAsync()
         {
-            using var dlg = new VehicleFormDialog(null, _connStr);
-            if (dlg.ShowDialog() == DialogResult.OK)
-                LoadVehiclesFromDB();
+            if (!_mapReady || browser?.CoreWebView2 == null) return;
+            await browser.CoreWebView2.ExecuteScriptAsync("clearMarkers();");
+            await browser.CoreWebView2.ExecuteScriptAsync($"setHeadquarters({_hqLat}, {_hqLng}, 'Admin HQ');");
+            foreach (DataRow row in _vehicleData.Rows) await PushVehicleMarker(row);
         }
 
-        private void OnEditVehicle(object sender, EventArgs e)
+        private async Task PushVehicleMarker(DataRow row)
         {
-            if (_selectedVehicleId < 0)
-            {
-                MessageBox.Show("Please select a vehicle first.", "No Selection", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
+            if (browser?.CoreWebView2 == null) return;
 
-            var dataRow = _vehicleData.Select($"vehicle_id = {_selectedVehicleId}");
-            if (dataRow.Length == 0) return;
+            double lat = row["latitude"] != DBNull.Value ? Convert.ToDouble(row["latitude"]) : _hqLat;
+            double lng = row["longitude"] != DBNull.Value ? Convert.ToDouble(row["longitude"]) : _hqLng;
+            bool isLost = row["is_lost"] != DBNull.Value && Convert.ToInt32(row["is_lost"]) == 1;
 
-            using var dlg = new VehicleFormDialog(dataRow[0], _connStr);
-            if (dlg.ShowDialog() == DialogResult.OK)
-                LoadVehiclesFromDB();
+            int id = Convert.ToInt32(row["vehicle_id"]);
+            string name = Esc(row["vehicle_name"]);
+            string plate = Esc(row["plate_no"]);
+            string type = Esc(row["type"]);
+            string status = Esc(row["status"]);
+            string model3d = Esc(row["model_3d_url"]);
+            string customIcon = Esc(row["custom_icon_url"]);
+            double odo = row["odometer_km"] != DBNull.Value ? Convert.ToDouble(row["odometer_km"]) : 0;
+            string lastUpd = row["last_update"] != DBNull.Value ? Convert.ToDateTime(row["last_update"]).ToString("MMM dd, HH:mm") : "No data";
+
+            string js = $"updateVehicle({id}, '{name}', '{plate}', '{type}', '{status}', {lat}, {lng}, null, null, 0, {odo}, '{lastUpd}', '{model3d}', '{customIcon}', {(isLost ? "true" : "false")});";
+            await browser.CoreWebView2.ExecuteScriptAsync(js);
         }
 
-        private void OnDeleteVehicle(object sender, EventArgs e)
+        private void StartLiveGPSPolling()
         {
-            if (_selectedVehicleId < 0)
-            {
-                MessageBox.Show("Please select a vehicle first.", "No Selection", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
+            _liveTimer = new System.Windows.Forms.Timer { Interval = 5000 };
+            _liveTimer.Tick += async (s, e) => { await PollFirebaseGPS(); };
+            _liveTimer.Start();
+        }
 
-            var dataRow = _vehicleData.Select($"vehicle_id = {_selectedVehicleId}");
-            string name = dataRow.Length > 0 ? dataRow[0]["vehicle_name"].ToString()! : "this vehicle";
-
-            var result = MessageBox.Show($"Delete {name}?\n\nThis cannot be undone.", "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-            if (result != DialogResult.Yes) return;
-
+        private async Task PollFirebaseGPS()
+        {
             try
             {
-                using var conn = new MySqlConnection(_connStr);
-                conn.Open();
+                var resp = await _http.GetStringAsync(FirebaseUrl + FirebaseGpsPath);
+                if (resp == "null" || string.IsNullOrEmpty(resp)) return;
 
-                bool hasRentalsTable = false;
+                using var doc = JsonDocument.Parse(resp);
+                foreach (var vehicle in doc.RootElement.EnumerateObject())
+                {
+                    if (!int.TryParse(vehicle.Name, out int vid)) continue;
+                    var val = vehicle.Value;
+                    if (!val.TryGetProperty("lat", out var latEl) || !val.TryGetProperty("lng", out var lngEl)) continue;
+
+                    double lat = latEl.GetDouble(); double lng = lngEl.GetDouble();
+                    double speed = val.TryGetProperty("speed", out var spEl) ? spEl.GetDouble() : 0;
+
+                    if (_mapReady && browser?.CoreWebView2 != null)
+                        await browser.CoreWebView2.ExecuteScriptAsync($"liveUpdateGPS({vid}, {lat}, {lng}, {speed});");
+
+                    using var conn = new MySqlConnection(_connStr);
+                    await conn.OpenAsync();
+                    using var cmd = new MySqlCommand("UPDATE vehicles SET latitude=@lat, longitude=@lng, current_speed=@sp, last_update=NOW() WHERE vehicle_id=@vid", conn);
+                    cmd.Parameters.AddWithValue("@lat", lat); cmd.Parameters.AddWithValue("@lng", lng); cmd.Parameters.AddWithValue("@sp", speed); cmd.Parameters.AddWithValue("@vid", vid);
+                    await cmd.ExecuteNonQueryAsync();
+                }
+            }
+            catch { }
+        }
+
+        private async void OnVehicleSelected(object sender, EventArgs e)
+        {
+            if (dgvVehicles.SelectedRows.Count == 0) return;
+            int id = Convert.ToInt32(dgvVehicles.SelectedRows[0].Cells[0].Value);
+            _selectedId = id;
+
+            var rows = _vehicleData.Select($"vehicle_id = {id}");
+            if (rows.Length == 0) return;
+
+            var dr = rows[0];
+            double lat = dr["latitude"] != DBNull.Value ? Convert.ToDouble(dr["latitude"]) : _hqLat;
+            double lng = dr["longitude"] != DBNull.Value ? Convert.ToDouble(dr["longitude"]) : _hqLng;
+            string name = Esc(dr["vehicle_name"]); string plate = Esc(dr["plate_no"]); string status = Esc(dr["status"]);
+            string modelUrl = Esc(dr["model_3d_url"]);
+            string lastUpd = dr["last_update"] != DBNull.Value ? Convert.ToDateTime(dr["last_update"]).ToString("MMM dd, yyyy HH:mm") : "No data";
+
+            if (_mapReady && browser?.CoreWebView2 != null)
+                await browser.CoreWebView2.ExecuteScriptAsync($"focusVehicle({id}, '{name}', '{plate}', '{status}', {lat}, {lng}, 0, '{lastUpd}', '{modelUrl}');");
+        }
+
+        private void OnAddVehicle(object s, EventArgs e)
+        {
+            using var dlg = new VehicleFormDialog(null, _connStr);
+            if (dlg.ShowDialog() == DialogResult.OK) LoadVehiclesFromDB();
+        }
+
+        private void OnEditVehicle(object s, EventArgs e)
+        {
+            if (_selectedId < 0) return;
+            var rows = _vehicleData.Select($"vehicle_id = {_selectedId}");
+            if (rows.Length == 0) return;
+            using var dlg = new VehicleFormDialog(rows[0], _connStr);
+            if (dlg.ShowDialog() == DialogResult.OK) LoadVehiclesFromDB();
+        }
+
+        private void OnDeleteVehicle(object s, EventArgs e)
+        {
+            if (_selectedId < 0) return;
+            if (MessageBox.Show("Delete this vehicle?", "Confirm", MessageBoxButtons.YesNo) == DialogResult.Yes)
+            {
                 try
                 {
-                    using var chk = new MySqlCommand("SHOW TABLES LIKE 'rentals'", conn);
-                    hasRentalsTable = chk.ExecuteScalar() != null;
+                    using var conn = new MySqlConnection(_connStr); conn.Open();
+                    using var cmd = new MySqlCommand("DELETE FROM vehicles WHERE vehicle_id=@id", conn);
+                    cmd.Parameters.AddWithValue("@id", _selectedId);
+                    cmd.ExecuteNonQuery();
+                    LoadVehiclesFromDB();
                 }
                 catch { }
-
-                if (hasRentalsTable)
-                {
-                    var check = new MySqlCommand(@"SELECT COUNT(*) FROM rentals WHERE vehicle_id = @id AND status IN ('pending','approved')", conn);
-                    check.Parameters.AddWithValue("@id", _selectedVehicleId);
-                    int active = Convert.ToInt32(check.ExecuteScalar());
-
-                    if (active > 0)
-                    {
-                        MessageBox.Show("Cannot delete — vehicle has active rentals.", "Delete Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        return;
-                    }
-                }
-
-                var del = new MySqlCommand("DELETE FROM vehicles WHERE vehicle_id = @id", conn);
-                del.Parameters.AddWithValue("@id", _selectedVehicleId);
-                del.ExecuteNonQuery();
-
-                _selectedVehicleId = -1;
-                LoadVehiclesFromDB();
-                MessageBox.Show("Vehicle deleted.", "Deleted", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("DB Error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        private void UpdateStatsBar()
+        private void OnCellPainting(object sender, DataGridViewCellPaintingEventArgs e)
         {
-            statsBar.Tag = _vehicleData;
-            statsBar.Invalidate();
-        }
+            if (e.RowIndex < 0 || e.ColumnIndex != 5 || e.Value == null) return;
+            e.Handled = true;
+            e.PaintBackground(e.ClipBounds, true);
 
-        private void OnStatsBarPaint(object sender, PaintEventArgs e)
-        {
-            var g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            int available = 0, rented = 0, maintenance = 0, lost = 0;
-
-            if (statsBar.Tag is DataTable dt)
+            string val = e.Value.ToString();
+            Color baseColor = val.ToLower() switch
             {
-                foreach (DataRow row in dt.Rows)
-                {
-                    string s = row["status"].ToString()!;
-                    if (s == "Available") available++;
-                    else if (s == "Rented") rented++;
-                    else if (s == "Maintenance") maintenance++;
-                    if (Convert.ToInt32(row["is_lost"]) == 1) lost++;
-                }
-            }
-
-            var items = new[] {
-                ($"✓ {available} Available",  ColGreen),
-                ($"🔑 {rented} Rented",       ColYellow),
-                ($"🔧 {maintenance} Maint.",   ColPurple),
-                ($"⚠ {lost} Lost Signal",     ColRed),
+                "available" => ColGreen,
+                "rented" => ColYellow,
+                "maintenance" => ColPurple,
+                _ => ColRed
             };
 
-            int x = 16;
-            foreach (var (label, color) in items)
-            {
-                using var b = new SolidBrush(color);
-                g.DrawString(label, new Font("Segoe UI", 9F, FontStyle.Bold), b, x, 16);
-                x += 110;
-            }
-        }
+            var rect = new Rectangle(e.CellBounds.X + 6, e.CellBounds.Y + 8, e.CellBounds.Width - 12, e.CellBounds.Height - 16);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using var path = RoundRect(rect, 10);
 
-        private void OnCellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
-        {
-            if (dgvVehicles.Columns.Count > 4 && e.ColumnIndex == 4)
+            if (ThemeManager.IsDarkMode)
             {
-                string val = e.Value?.ToString() ?? "";
-                e.CellStyle.ForeColor = val switch
-                {
-                    "Available" => ColGreen,
-                    "Rented" => ColYellow,
-                    "Maintenance" => ColPurple,
-                    "Retired" => ColRed,
-                    "Lost Signal" => ColRed,
-                    _ => ColSub
-                };
-                e.CellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+                e.Graphics.FillPath(new SolidBrush(Color.FromArgb(30, baseColor)), path);
+                e.Graphics.DrawPath(new Pen(baseColor, 1.5f), path);
+                TextRenderer.DrawText(e.Graphics, val, new Font("Segoe UI", 8.5F, FontStyle.Bold), rect, baseColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            }
+            else
+            {
+                e.Graphics.FillPath(new SolidBrush(Color.FromArgb(20, baseColor)), path);
+                e.Graphics.DrawPath(new Pen(baseColor, 1.5f), path);
+                TextRenderer.DrawText(e.Graphics, val, new Font("Segoe UI", 8.5F, FontStyle.Bold), rect, baseColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
             }
         }
 
         private void StyleGrid(DataGridView dgv)
         {
-            dgv.BackgroundColor = ThemeManager.IsDarkMode ? Color.FromArgb(14, 14, 22) : Color.FromArgb(250, 250, 250);
+            dgv.BackgroundColor = ThemeManager.IsDarkMode ? ColBg : Color.FromArgb(250, 250, 255);
             dgv.BorderStyle = BorderStyle.None;
             dgv.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
-            dgv.GridColor = ThemeManager.IsDarkMode ? Color.FromArgb(25, 25, 38) : Color.FromArgb(230, 230, 235);
+            dgv.GridColor = ThemeManager.IsDarkMode ? ColBorder : Color.FromArgb(230, 230, 240);
             dgv.RowHeadersVisible = false;
             dgv.AllowUserToAddRows = false;
             dgv.AllowUserToDeleteRows = false;
             dgv.ReadOnly = true;
             dgv.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgv.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
             dgv.Font = new Font("Segoe UI", 10F);
-            dgv.RowTemplate.Height = 36;
+            dgv.RowTemplate.Height = 42;
             dgv.EnableHeadersVisualStyles = false;
+            dgv.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
 
-            dgv.DefaultCellStyle.BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(14, 14, 22) : Color.White;
-            dgv.DefaultCellStyle.ForeColor = ColText;
-            dgv.DefaultCellStyle.SelectionBackColor = ThemeManager.IsDarkMode ? Color.FromArgb(35, 35, 52) : Color.FromArgb(220, 230, 250);
-            dgv.DefaultCellStyle.SelectionForeColor = ThemeManager.CurrentPrimary;
-            dgv.DefaultCellStyle.Padding = new Padding(4, 0, 4, 0);
+            if (ThemeManager.IsDarkMode)
+            {
+                dgv.DefaultCellStyle.BackColor = ColBg;
+                dgv.DefaultCellStyle.ForeColor = ColText;
+                dgv.DefaultCellStyle.SelectionBackColor = Color.FromArgb(30, 30, 45);
+                dgv.DefaultCellStyle.SelectionForeColor = ColAccent;
+                dgv.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(8, 8, 16);
+                dgv.ColumnHeadersDefaultCellStyle.ForeColor = ColSub;
+            }
+            else
+            {
+                dgv.DefaultCellStyle.BackColor = Color.White;
+                dgv.DefaultCellStyle.ForeColor = Color.FromArgb(30, 30, 45);
+                dgv.DefaultCellStyle.SelectionBackColor = Color.FromArgb(220, 235, 255);
+                dgv.DefaultCellStyle.SelectionForeColor = Color.FromArgb(10, 10, 30);
+                dgv.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(235, 235, 245);
+                dgv.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(80, 80, 100);
+            }
 
-            dgv.ColumnHeadersDefaultCellStyle.BackColor = ThemeManager.CurrentBackground;
-            dgv.ColumnHeadersDefaultCellStyle.ForeColor = ColSub;
             dgv.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            dgv.ColumnHeadersHeight = 36;
+            dgv.ColumnHeadersHeight = 40;
         }
 
-        private Button CreateActionButton(string text, Color color, int x, int y)
+        private Button CreateBtn(string text, Color color, int x, int y, int w)
         {
-            var btn = new Button();
-            btn.Text = text;
-            btn.Size = new Size(106, 38);
-            btn.Location = new Point(x, y);
-            btn.FlatStyle = FlatStyle.Flat;
-            btn.FlatAppearance.BorderColor = color;
-            btn.FlatAppearance.BorderSize = 1;
-            btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(30, color);
-            btn.BackColor = Color.FromArgb(20, color);
-            btn.ForeColor = color;
-            btn.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            btn.Cursor = Cursors.Hand;
+            var btn = new Button { Text = text, Size = new Size(w, 36), Location = new Point(x, y), FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 9F, FontStyle.Bold), Cursor = Cursors.Hand };
+            btn.BackColor = Color.FromArgb(20, color); btn.ForeColor = color;
+            btn.FlatAppearance.BorderColor = color; btn.FlatAppearance.BorderSize = 1; btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(40, color);
             return btn;
         }
 
-        private string Escape(object val) => val?.ToString()?.Replace("'", "\\'") ?? "";
+        private GraphicsPath RoundRect(Rectangle b, int r)
+        {
+            int d = r * 2; var arc = new Rectangle(b.Location, new Size(d, d)); var path = new GraphicsPath();
+            path.AddArc(arc, 180, 90); arc.X = b.Right - d; path.AddArc(arc, 270, 90); arc.Y = b.Bottom - d;
+            path.AddArc(arc, 0, 90); arc.X = b.Left; path.AddArc(arc, 90, 90); path.CloseFigure(); return path;
+        }
+
+        private string Esc(object v) => v?.ToString()?.Replace("'", "\\'") ?? "";
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing)
-            {
-                ThemeManager.ThemeChanged -= OnThemeChanged;
-            }
+            _liveTimer?.Stop(); _liveTimer?.Dispose();
+            ThemeManager.ThemeChanged -= OnThemeChanged;
+            browser?.Dispose();
             base.Dispose(disposing);
+        }
+
+        private string GetMapHtml()
+        {
+            return @"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8' />
+    <title>DriveAndGo Map</title>
+    <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
+    <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html { height: 100%; font-family: 'Segoe UI',sans-serif; display: flex; flex-direction: column; overflow: hidden; transition: background 0.3s, color 0.3s; }
+
+        body     { background: #0a0a12; color: #e0e0f0; }
+        #topbar  { background: #0e0e1c; border-bottom: 1px solid #1e1e32; }
+        #infobar { background: #0c0c18; border-top: 1px solid #1e1e32; }
+        #viewer3d { background: #06060e; border-top: 1px solid #1e1e32; }
+        .btn { background: #14142a; border: 1px solid #2a2a42; color: #a0a0c0; }
+        .btn.active { background: #e6510d; color: #fff; border-color: #e6510d; }
+        .leaflet-popup-content-wrapper { background: #1a1a2e !important; color: #e0e0f0 !important; border: 1px solid #3a3a55 !important; }
+        .leaflet-popup-tip { background: #1a1a2e !important; }
+        .popup-plate { background: #1a1a35; }
+
+        /* Light Theme Overrides */
+        body.light-theme { background: #f0f0f5; color: #1a1a2e; }
+        body.light-theme #topbar   { background: #ffffff; border-bottom: 1px solid #d0d0e0; }
+        body.light-theme #infobar  { background: #ffffff; border-top: 1px solid #d0d0e0; }
+        body.light-theme #viewer3d { background: #e8e8f0; border-top: 1px solid #d0d0e0; }
+        body.light-theme .btn { background: #f0f0f5; border-color: #d0d0e0; color: #404060; }
+        body.light-theme .leaflet-popup-content-wrapper { background: #ffffff !important; color: #1a1a2e !important; border: 1px solid #d0d0e0 !important; box-shadow: 0 4px 15px rgba(0,0,0,0.2) !important; }
+        body.light-theme .leaflet-popup-tip { background: #ffffff !important; }
+        body.light-theme .popup-plate { background: #e0e0eb; color: #1a1a2e; }
+        body.light-theme #speed-badge { background: rgba(255,255,255,0.9); }
+        body.light-theme #speed-val   { color: #1a1a2e; }
+        body.light-theme .distance-label      { background: rgba(255,255,255,0.9); color: #3b82f6; border-color: #3b82f6; }
+        body.light-theme .distance-label.dest { color: #eab308; border-color: #eab308; }
+        body.light-theme .car-icon { filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.3)); }
+
+        #topbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; flex-shrink: 0; gap: 10px; transition: background 0.3s; }
+        .controls { display: flex; gap: 6px; flex-wrap: wrap; }
+        .btn { padding: 4px 10px; border-radius: 5px; cursor: pointer; font-size: 10px; transition: all .2s; white-space: nowrap; }
+        #map { flex: 1; width: 100%; min-height: 0; position: relative; }
+
+        #speed-badge { position: absolute; bottom: 14px; right: 14px; background: rgba(10,10,20,.9); border: 2px solid #e6510d; border-radius: 50%; width: 72px; height: 72px; display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(8px); box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        #speed-val  { font-size: 22px; font-weight: 700; color: #fff; line-height: 1; }
+        #speed-unit { font-size: 9px; color: #a0a0c0; letter-spacing: 1px; }
+
+        .distance-label      { background: rgba(10,10,20,0.85); color: #3b82f6; border: 1px solid #3b82f6; border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: bold; text-align: center; white-space: nowrap; backdrop-filter: blur(4px); box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
+        .distance-label.dest { color: #eab308; border-color: #eab308; }
+
+        #infobar { display: flex; align-items: center; gap: 16px; padding: 8px 16px; flex-shrink: 0; min-height: 44px; font-size: 12px; transition: background 0.3s; }
+        #viewer3d     { height: 220px; position: relative; flex-shrink: 0; transition: background 0.3s; }
+        #model-iframe { width: 100%; height: 100%; border: none; display: none; }
+        #placeholder  { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color: #8080a0; font-size: 13px; text-align: center; pointer-events: none; }
+
+        .car-icon            { width: 44px; height: 44px; background-size: cover; background-repeat: no-repeat; background-position: center; filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.8)); transition: transform 0.5s ease-out; border-radius: 8px; }
+        .car-icon.car        { background-image: url('https://cdn-icons-png.flaticon.com/512/2933/2933930.png'); }
+        .car-icon.motorcycle { background-image: url('https://cdn-icons-png.flaticon.com/512/2933/2933983.png'); }
+        .car-icon.van        { background-image: url('https://cdn-icons-png.flaticon.com/512/2933/2933994.png'); }
+        .car-icon.default    { background-image: url('https://cdn-icons-png.flaticon.com/512/2933/2933930.png'); }
+
+        .vehicle-pin       { width: 18px; height: 18px; border-radius: 50%; border: 3px solid #fff; animation: pulse 2s infinite; }
+        .vehicle-pin.lost { animation: pulse-red 1.5s infinite; }
+        @keyframes pulse     { 0% { box-shadow: 0 0 0 0 rgba(255,255,255,.4); } 70% { box-shadow: 0 0 0 10px rgba(255,255,255,0); } 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); } }
+        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,.6);   } 70% { box-shadow: 0 0 0 12px rgba(239,68,68,0);   } 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0);   } }
+
+        .hq-icon  { width: 70px; height: 70px; background-image: url('http://appassets/garage_3D.png'); background-size: cover; background-position: center; border-radius: 8px; border: 2px solid #e6510d; box-shadow: 0 4px 12px rgba(0,0,0,.6); }
+        .hq-label { background: #e6510d; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-top: 4px; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.5); text-align: center; }
+
+        .leaflet-popup-content-wrapper { border-radius: 10px !important; }
+        .popup-name   { font-size: 13px; font-weight: 700; color: #e6510d; }
+        .popup-plate  { font-size: 11px; padding: 1px 6px; border-radius: 4px; margin-top: 2px; display: inline-block; }
+        .popup-status { font-size: 11px; margin-top: 6px; }
+    </style>
+</head>
+<body>
+    <div id='topbar'>
+        <div style='font-weight:bold; color:#e6510d; font-size:12px; display:flex; align-items:center;'>🗺 LIVE FLEET MAP</div>
+        <div class='controls'>
+            <button class='btn active' id='btnStreet'  onclick=""setLayer('street')"">Street</button>
+            <button class='btn'        id='btnSat'     onclick=""setLayer('satellite')"">Satellite</button>
+            <button class='btn'        id='btnTraffic' onclick=""toggleTraffic()"">Traffic</button>
+            <button class='btn'                        onclick=""fitAllMarkers()"">Fit All</button>
+            <button class='btn active' id='btnLines'   onclick=""toggleLines()"">Route Lines</button>
+        </div>
+    </div>
+    <div id='map'>
+        <div id='speed-badge'>
+            <div id='speed-val'>0</div>
+            <div id='speed-unit'>km/h</div>
+        </div>
+    </div>
+    <div id='infobar'>
+        <div>🚗 <span id='lblName'>No vehicle selected</span></div>
+        <div>🔖 <span id='lblPlate'>—</span></div>
+        <div>📍 <span id='lblStatus'>—</span></div>
+        <div>⚡ <span id='lblSpeed'>—</span></div>
+        <div style='margin-left:auto; color:#a0a0c0; font-size:10px;'>🕐 <span id='lblLastUpdate'>—</span></div>
+    </div>
+    <div id='viewer3d'>
+        <div id='placeholder'>Select a vehicle to view 3D model</div>
+        <iframe id='model-iframe' allow='autoplay; fullscreen; xr-spatial-tracking' execution-while-out-of-viewport execution-while-not-rendered web-share></iframe>
+    </div>
+
+    <script>
+        var map = L.map('map', { zoomControl: true, attributionControl: false }).setView([14.6760, 121.0437], 12);
+
+        var darkStreetLayer  = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',    { maxZoom: 20 });
+        var lightStreetLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',   { maxZoom: 20 });
+        var satelliteLayer   = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20 });
+        var trafficLayer     = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { opacity: 0.25 });
+
+        var activeBaseLayer = darkStreetLayer;
+        activeBaseLayer.addTo(map);
+
+        var isDarkMode = true;
+        var currentMapType = 'street';
+        var trafficOn = false;
+        var linesOn = true;
+
+        var markers = {};
+        var polylines = {};
+        var distMarkers = {};
+        var hqMarker = null;
+        var hqLat = 14.6760;
+        var hqLng = 121.0437;
+
+        function setTheme(isDark) {
+            isDarkMode = isDark;
+            if (isDark) { document.body.classList.remove('light-theme'); }
+            else        { document.body.classList.add('light-theme'); }
+            updateBaseLayer();
+        }
+
+        function updateBaseLayer() {
+            map.removeLayer(darkStreetLayer);
+            map.removeLayer(lightStreetLayer);
+            map.removeLayer(satelliteLayer);
+            if (currentMapType === 'satellite') { activeBaseLayer = satelliteLayer; }
+            else { activeBaseLayer = isDarkMode ? darkStreetLayer : lightStreetLayer; }
+            activeBaseLayer.addTo(map);
+            if (trafficOn) trafficLayer.bringToFront();
+        }
+
+        function setLayer(type) {
+            currentMapType = type;
+            document.getElementById('btnStreet').classList.toggle('active', type === 'street');
+            document.getElementById('btnSat').classList.toggle('active', type === 'satellite');
+            updateBaseLayer();
+        }
+
+        function toggleTraffic() {
+            trafficOn = !trafficOn;
+            var btn = document.getElementById('btnTraffic');
+            if (trafficOn) { trafficLayer.addTo(map); btn.classList.add('active'); trafficLayer.bringToFront(); }
+            else           { map.removeLayer(trafficLayer); btn.classList.remove('active'); }
+        }
+
+        function toggleLines() {
+            linesOn = !linesOn;
+            document.getElementById('btnLines').classList.toggle('active', linesOn);
+            for (var id in polylines) {
+                polylines[id].forEach(function(p) { if(linesOn) map.addLayer(p); else map.removeLayer(p); });
+            }
+            for (var id in distMarkers) {
+                distMarkers[id].forEach(function(m) { if(linesOn) map.addLayer(m); else map.removeLayer(m); });
+            }
+        }
+
+        function setHeadquarters(lat, lng, cityName) {
+            hqLat = lat; hqLng = lng;
+            if (hqMarker) map.removeLayer(hqMarker);
+            var hqIcon = L.divIcon({
+                className: '',
+                html: ""<div style='display:flex;flex-direction:column;align-items:center;'><div class='hq-icon'></div><div class='hq-label'>"" + cityName + ""</div></div>"",
+                iconSize: [70, 80],
+                iconAnchor: [35, 40]
+            });
+            hqMarker = L.marker([lat, lng], { icon: hqIcon, zIndexOffset: 1000 }).addTo(map);
+        }
+
+        function getIconType(type) {
+            type = (type || '').toLowerCase();
+            if (type.indexOf('motor') !== -1) return 'motorcycle';
+            if (type.indexOf('van') !== -1) return 'van';
+            return 'car';
+        }
+
+        function clearMarkers() {
+            for (var id in markers)     { map.removeLayer(markers[id]); }
+            for (var id in polylines)   { polylines[id].forEach(function(p) { map.removeLayer(p); }); }
+            for (var id in distMarkers) { distMarkers[id].forEach(function(m) { map.removeLayer(m); }); }
+            markers = {}; polylines = {}; distMarkers = {};
+        }
+
+        async function drawRoute(vehicleId, startLat, startLng, endLat, endLng, color, isDest) {
+            try {
+                var url = ""https://router.project-osrm.org/route/v1/driving/"" + startLng + "","" + startLat + "";"" + endLng + "","" + endLat + ""?overview=full&geometries=geojson"";
+                var response = await fetch(url);
+                var data = await response.json();
+
+                var lines = polylines[vehicleId] || [];
+                var dMarkers = distMarkers[vehicleId] || [];
+
+                if (data.routes && data.routes.length > 0) {
+                    var coords = data.routes[0].geometry.coordinates.map(function(c) { return [c[1], c[0]]; });
+                    var distKm = (data.routes[0].distance / 1000).toFixed(1) + ' km';
+
+                    var poly = L.polyline(coords, { color: color, weight: 4, opacity: 0.8 });
+                    if (linesOn) poly.addTo(map);
+                    lines.push(poly);
+
+                    var midPt = coords[Math.floor(coords.length / 2)];
+                    var dm = L.marker(midPt, {
+                        icon: L.divIcon({
+                            className: isDest ? 'distance-label dest' : 'distance-label',
+                            html: distKm,
+                            iconSize: [50, 20]
+                        })
+                    });
+                    if (linesOn) dm.addTo(map);
+                    dMarkers.push(dm);
+                } else {
+                    var p = L.polyline([[startLat, startLng], [endLat, endLng]], { color: color, weight: 3, opacity: 0.6, dashArray: '5, 10' });
+                    if (linesOn) p.addTo(map);
+                    lines.push(p);
+                }
+                polylines[vehicleId] = lines;
+                distMarkers[vehicleId] = dMarkers;
+            } catch(err) { }
+        }
+
+        function updateVehicle(vehicleId, name, plate, type, status, lat, lng, destLat, destLng, speed, odo, lastUpdate, modelUrl, customIconUrl, isLost) {
+            if (markers[vehicleId]) map.removeLayer(markers[vehicleId]);
+            if (polylines[vehicleId]) polylines[vehicleId].forEach(function(p) { map.removeLayer(p); });
+            if (distMarkers[vehicleId]) distMarkers[vehicleId].forEach(function(m) { map.removeLayer(m); });
+
+            polylines[vehicleId] = [];
+            distMarkers[vehicleId] = [];
+
+            var color = '#3b82f6';
+            var cssClass = 'vehicle-pin';
+
+            if (isLost || status === 'Lost Signal') {
+                color = '#ef4444';
+                cssClass = 'vehicle-pin lost';
+            } else if (status.toLowerCase() === 'available') { color = '#22c55e'; }
+              else if (status.toLowerCase() === 'rented') { color = '#eab308'; }
+              else if (status.toLowerCase() === 'maintenance') { color = '#a855f7'; }
+
+            if (!isLost) {
+                drawRoute(vehicleId, hqLat, hqLng, lat, lng, '#3b82f6', false);
+                if (destLat && destLng && destLat !== 'null' && destLng !== 'null') {
+                    drawRoute(vehicleId, lat, lng, destLat, destLng, '#eab308', true);
+                }
+            }
+
+            var iconHtml = '';
+            if (isLost) {
+                iconHtml = ""<div class='"" + cssClass + ""' style='background:"" + color + ""'></div>"";
+            } else if (customIconUrl && customIconUrl.trim() !== '' && customIconUrl !== 'null') {
+                iconHtml = ""<div class='car-icon' style='background-image:url(\"""" + customIconUrl + ""\"");transform:rotate(0deg);'></div>"";
+            } else {
+                iconHtml = ""<div class='car-icon "" + getIconType(type) + ""' style='transform:rotate(0deg);'></div>"";
+            }
+
+            var icon = L.divIcon({ className: '', html: iconHtml, iconSize: [44, 44], iconAnchor: [22, 22] });
+
+            var popupHtml = 
+                ""<div class='popup-name'>"" + name + ""</div>"" +
+                ""<div class='popup-plate'>"" + plate + ""</div>"" +
+                ""<div style='font-size:11px; margin-top:6px;'><span style='color:"" + color + "";'>● </span>"" + status + ""</div>"";
+
+            var marker = L.marker([lat, lng], { icon: icon });
+            marker.bindPopup(popupHtml);
+            marker.addTo(map);
+            marker.on('click', function() { focusVehicle(vehicleId, name, plate, status, lat, lng, speed, lastUpdate, modelUrl); });
+            markers[vehicleId] = marker;
+        }
+
+        function liveUpdateGPS(vehicleId, lat, lng, speed) {
+            if (!markers[vehicleId]) return;
+
+            var oldLatLng = markers[vehicleId].getLatLng();
+            markers[vehicleId].setLatLng([lat, lng]);
+
+            var badge = document.getElementById('speed-badge');
+            if (speed > 0) {
+                badge.style.display = 'flex';
+                document.getElementById('speed-val').textContent = speed;
+                document.getElementById('lblSpeed').textContent = speed + ' km/h';
+                badge.style.borderColor = speed > 80 ? '#ef4444' : speed > 40 ? '#eab308' : '#22c55e';
+            } else {
+                badge.style.display = 'none';
+                document.getElementById('lblSpeed').textContent = 'Parked';
+            }
+
+            if (lat !== oldLatLng.lat || lng !== oldLatLng.lng) {
+                var dy = lat - oldLatLng.lat;
+                var dx = Math.cos(Math.PI / 180 * oldLatLng.lat) * (lng - oldLatLng.lng);
+                var angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                var bearing = (90 - angle + 360) % 360;
+                var iconDiv = markers[vehicleId].getElement().querySelector('.car-icon');
+                if (iconDiv) iconDiv.style.transform = ""rotate("" + bearing + ""deg)"";
+            }
+        }
+
+        function focusVehicle(vehicleId, name, plate, status, lat, lng, speed, lastUpdate, modelUrl) {
+            document.getElementById('lblName').textContent = name;
+            document.getElementById('lblPlate').textContent = plate;
+            document.getElementById('lblStatus').textContent = status;
+            document.getElementById('lblSpeed').textContent = speed > 0 ? speed + ' km/h' : 'Parked';
+            document.getElementById('lblLastUpdate').textContent = lastUpdate;
+
+            map.flyTo([lat, lng], 16, { animate: true, duration: 1.2 });
+            if (markers[vehicleId]) markers[vehicleId].openPopup();
+
+            var iframe = document.getElementById('model-iframe');
+            var ph = document.getElementById('placeholder');
+            if (modelUrl && modelUrl.trim() !== '' && modelUrl !== 'null') {
+                iframe.src = modelUrl;
+                iframe.style.display = 'block';
+                ph.style.display = 'none';
+            } else {
+                iframe.src = '';
+                iframe.style.display = 'none';
+                ph.style.display = 'block';
+            }
+        }
+
+        function fitAllMarkers() {
+            var bounds = [];
+            for (var id in markers) bounds.push(markers[id].getLatLng());
+            if (hqMarker) bounds.push(hqMarker.getLatLng());
+            if (bounds.length > 0) map.fitBounds(bounds, { padding: [50, 50] });
+        }
+    </script>
+</body>
+</html>";
         }
     }
 
+    // ══ VEHICLE ADD/EDIT DIALOG WITH BROWSE BUTTON ══
     public class VehicleFormDialog : Form
     {
         private readonly string _connStr;
         private readonly DataRow _existing;
-        private TextBox txtBrand, txtModel, txtPlate, txtType, txtRate, txtModel3D;
+        private TextBox txtBrand, txtModel, txtPlate, txtType, txtRate, txtModel3D, txtIconUrl;
         private ComboBox cboStatus;
 
         public VehicleFormDialog(DataRow existing, string connStr)
@@ -677,34 +862,50 @@ namespace DriveAndGo_Admin.Panels
         {
             bool isEdit = _existing != null;
             this.Text = isEdit ? "Edit Vehicle" : "Add Vehicle";
-            this.Size = new Size(440, 500);
+            this.Size = new Size(440, 550);
             this.StartPosition = FormStartPosition.CenterParent;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.BackColor = ThemeManager.CurrentBackground;
             this.Font = new Font("Segoe UI", 10F);
 
-            int y = 20;
-            int tbW = 260;
-            int tbX = 140;
+            int y = 20, tbW = 260, tbX = 140;
 
             txtBrand = AddField("Brand:", tbX, ref y, tbW);
             txtModel = AddField("Model:", tbX, ref y, tbW);
             txtPlate = AddField("Plate Number:", tbX, ref y, tbW);
             txtType = AddField("Type:", tbX, ref y, tbW);
             txtRate = AddField("Daily Rate (₱):", tbX, ref y, tbW);
-            txtModel3D = AddField("Sketchfab URL:", tbX, ref y, tbW);
+            txtModel3D = AddField("3D Model URL:", tbX, ref y, tbW);
 
-            var lblStatus = MakeLabel("Status:", 20, y);
-            cboStatus = new ComboBox();
-            cboStatus.Size = new Size(tbW, 30);
-            cboStatus.Location = new Point(tbX, y);
-            cboStatus.DropDownStyle = ComboBoxStyle.DropDownList;
+            this.Controls.Add(new Label { Text = "Map Icon:", Font = new Font("Segoe UI", 9F), ForeColor = ThemeManager.CurrentSubText, AutoSize = true, Location = new Point(20, y + 6), BackColor = Color.Transparent });
+            txtIconUrl = new TextBox { Size = new Size(tbW - 40, 30), Location = new Point(tbX, y), Font = new Font("Segoe UI", 10F), BackColor = ThemeManager.CurrentCard, ForeColor = ThemeManager.CurrentText, BorderStyle = BorderStyle.FixedSingle, ReadOnly = true };
+            this.Controls.Add(txtIconUrl);
+
+            Button btnBrowse = new Button { Text = "...", Size = new Size(35, 30), Location = new Point(tbX + tbW - 35, y), FlatStyle = FlatStyle.Flat, BackColor = ThemeManager.CurrentPrimary, ForeColor = Color.White, Cursor = Cursors.Hand };
+            btnBrowse.FlatAppearance.BorderSize = 0;
+            btnBrowse.Click += (s, e) =>
+            {
+                using OpenFileDialog ofd = new OpenFileDialog { Filter = "Image Files|*.png;*.jpg;*.jpeg", Title = "Select Top-Down Vehicle Image" };
+                if (ofd.ShowDialog() == DialogResult.OK)
+                {
+                    txtIconUrl.Text = ofd.FileName;
+                }
+            };
+            this.Controls.Add(btnBrowse);
+            y += 44;
+
+            this.Controls.Add(new Label { Text = "Status:", Font = new Font("Segoe UI", 9F), ForeColor = ThemeManager.CurrentSubText, AutoSize = true, Location = new Point(20, y + 6), BackColor = Color.Transparent });
+            cboStatus = new ComboBox
+            {
+                Size = new Size(tbW, 30),
+                Location = new Point(tbX, y),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                BackColor = ThemeManager.CurrentCard,
+                ForeColor = ThemeManager.CurrentText
+            };
             cboStatus.Items.AddRange(new object[] { "Available", "Rented", "Maintenance", "Retired" });
             cboStatus.SelectedIndex = 0;
-            cboStatus.BackColor = ThemeManager.CurrentCard;
-            cboStatus.ForeColor = ThemeManager.CurrentText;
-            this.Controls.Add(lblStatus);
             this.Controls.Add(cboStatus);
             y += 50;
 
@@ -714,40 +915,47 @@ namespace DriveAndGo_Admin.Panels
                 var parts = fullName.Split(' ');
                 txtBrand.Text = parts.Length > 0 ? parts[0] : "";
                 txtModel.Text = parts.Length > 1 ? string.Join(" ", parts, 1, parts.Length - 1) : "";
-                txtPlate.Text = _existing["plate_number"].ToString();
+                txtPlate.Text = _existing["plate_no"].ToString();
                 txtType.Text = _existing["type"].ToString();
-                txtRate.Text = Convert.ToDecimal(_existing["daily_rate"]).ToString("0.00");
+                txtRate.Text = Convert.ToDecimal(_existing["rate_per_day"]).ToString("0.00");
                 txtModel3D.Text = _existing["model_3d_url"].ToString();
-                var s = _existing["status"].ToString();
-                int idx = cboStatus.Items.IndexOf(s);
-                if (idx >= 0) cboStatus.SelectedIndex = idx;
+                txtIconUrl.Text = _existing["custom_icon_url"].ToString();
+
+                string s = _existing["status"].ToString();
+                for (int i = 0; i < cboStatus.Items.Count; i++)
+                    if (cboStatus.Items[i].ToString().ToLower() == s.ToLower()) { cboStatus.SelectedIndex = i; break; }
             }
 
-            var btnSave = new Button();
-            btnSave.Text = isEdit ? "Save Changes" : "Add Vehicle";
-            btnSave.Size = new Size(180, 44);
-            btnSave.Location = new Point((this.Width - 180) / 2, y);
-            btnSave.FlatStyle = FlatStyle.Flat;
+            var btnSave = new Button { Text = isEdit ? "Save Changes" : "Add Vehicle", Size = new Size(180, 44), Location = new Point((this.Width - 180) / 2, y), FlatStyle = FlatStyle.Flat, BackColor = ThemeManager.CurrentPrimary, ForeColor = Color.White, Font = new Font("Segoe UI", 11F, FontStyle.Bold), Cursor = Cursors.Hand };
             btnSave.FlatAppearance.BorderSize = 0;
-            btnSave.BackColor = ThemeManager.CurrentPrimary;
-            btnSave.ForeColor = Color.White;
-            btnSave.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
-            btnSave.Cursor = Cursors.Hand;
             btnSave.Click += OnSave;
             this.Controls.Add(btnSave);
         }
 
         private void OnSave(object sender, EventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(txtBrand.Text) || string.IsNullOrWhiteSpace(txtModel.Text) || string.IsNullOrWhiteSpace(txtPlate.Text))
-            {
-                MessageBox.Show("Brand, Model, and Plate are required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
+            if (string.IsNullOrWhiteSpace(txtBrand.Text) || string.IsNullOrWhiteSpace(txtPlate.Text))
+            { MessageBox.Show("Brand, Model, and Plate are required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+
             if (!decimal.TryParse(txtRate.Text, out decimal rate))
+            { MessageBox.Show("Invalid daily rate.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+
+            string finalIconUrl = txtIconUrl.Text.Trim();
+            if (finalIconUrl.Contains("\\") && File.Exists(finalIconUrl))
             {
-                MessageBox.Show("Invalid daily rate.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                try
+                {
+                    string assetsFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets");
+                    if (!Directory.Exists(assetsFolder)) Directory.CreateDirectory(assetsFolder);
+
+                    string extension = Path.GetExtension(finalIconUrl);
+                    string newFileName = "vehicle_" + DateTime.Now.Ticks + extension;
+                    string destinationPath = Path.Combine(assetsFolder, newFileName);
+
+                    File.Copy(finalIconUrl, destinationPath, true);
+                    finalIconUrl = "http://appassets/" + newFileName;
+                }
+                catch { }
             }
 
             try
@@ -757,17 +965,17 @@ namespace DriveAndGo_Admin.Panels
 
                 if (_existing == null)
                 {
-                    var cmd = new MySqlCommand(@"INSERT INTO vehicles (brand, model, plate_number, type, daily_rate, status, model_3d_url) 
-                                                 VALUES (@brand, @model, @plate, @type, @rate, @status, @url)", conn);
-                    AddParams(cmd, rate);
+                    var cmd = new MySqlCommand(@"INSERT INTO vehicles (brand, model, plate_no, type, rate_per_day, status, model_3d_url, photo_url)
+                                                 VALUES (@brand, @model, @plate, @type, @rate, @status, @url, @icon)", conn);
+                    AddParams(cmd, rate, finalIconUrl);
                     cmd.ExecuteNonQuery();
                 }
                 else
                 {
-                    var cmd = new MySqlCommand(@"UPDATE vehicles SET brand = @brand, model = @model, plate_number = @plate, 
-                                                 type = @type, daily_rate = @rate, status = @status, model_3d_url = @url 
-                                                 WHERE vehicle_id = @id", conn);
-                    AddParams(cmd, rate);
+                    var cmd = new MySqlCommand(@"UPDATE vehicles SET brand=@brand, model=@model, plate_no=@plate, type=@type,
+                                                 rate_per_day=@rate, status=@status, model_3d_url=@url, photo_url=@icon
+                                                 WHERE vehicle_id=@id", conn);
+                    AddParams(cmd, rate, finalIconUrl);
                     cmd.Parameters.AddWithValue("@id", _existing["vehicle_id"]);
                     cmd.ExecuteNonQuery();
                 }
@@ -775,48 +983,28 @@ namespace DriveAndGo_Admin.Panels
                 this.DialogResult = DialogResult.OK;
                 this.Close();
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show("DB Error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            catch (Exception ex) { MessageBox.Show("DB Error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); }
         }
 
-        private void AddParams(MySqlCommand cmd, decimal rate)
+        private void AddParams(MySqlCommand cmd, decimal rate, string iconUrl)
         {
             cmd.Parameters.AddWithValue("@brand", txtBrand.Text.Trim());
             cmd.Parameters.AddWithValue("@model", txtModel.Text.Trim());
             cmd.Parameters.AddWithValue("@plate", txtPlate.Text.Trim());
             cmd.Parameters.AddWithValue("@type", txtType.Text.Trim());
             cmd.Parameters.AddWithValue("@rate", rate);
-            cmd.Parameters.AddWithValue("@status", cboStatus.SelectedItem?.ToString() ?? "Available");
+            cmd.Parameters.AddWithValue("@status", cboStatus.SelectedItem?.ToString().ToLower() ?? "available");
             cmd.Parameters.AddWithValue("@url", txtModel3D.Text.Trim());
+            cmd.Parameters.AddWithValue("@icon", iconUrl);
         }
 
         private TextBox AddField(string label, int x, ref int y, int w)
         {
-            this.Controls.Add(MakeLabel(label, 20, y));
-            var tb = new TextBox();
-            tb.Size = new Size(w, 30);
-            tb.Location = new Point(x, y);
-            tb.Font = new Font("Segoe UI", 10F);
-            tb.BackColor = ThemeManager.CurrentCard;
-            tb.ForeColor = ThemeManager.CurrentText;
-            tb.BorderStyle = BorderStyle.FixedSingle;
+            this.Controls.Add(new Label { Text = label, Font = new Font("Segoe UI", 9F), ForeColor = ThemeManager.CurrentSubText, AutoSize = true, Location = new Point(20, y + 6), BackColor = Color.Transparent });
+            var tb = new TextBox { Size = new Size(w, 30), Location = new Point(x, y), Font = new Font("Segoe UI", 10F), BackColor = ThemeManager.CurrentCard, ForeColor = ThemeManager.CurrentText, BorderStyle = BorderStyle.FixedSingle };
             this.Controls.Add(tb);
             y += 44;
             return tb;
-        }
-
-        private Label MakeLabel(string text, int x, int y)
-        {
-            var lbl = new Label();
-            lbl.Text = text;
-            lbl.Font = new Font("Segoe UI", 9F);
-            lbl.ForeColor = ThemeManager.CurrentSubText;
-            lbl.AutoSize = true;
-            lbl.Location = new Point(x, y + 6);
-            lbl.BackColor = Color.Transparent;
-            return lbl;
         }
     }
 }

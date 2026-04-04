@@ -6,6 +6,9 @@
   <Project Path="../DriveAndGo_Admin/DriveAndGo_Admin.csproj" Id="d18c06a9-cbeb-4994-9145-1563b667efb3">
     <Platform Solution="*|x64" Project="x64" />
   </Project>
+  <Project Path="../DriveAndGo_App/DriveAndGo_App.csproj" Id="52016066-2d23-4ead-8a74-e5f4b655e2c2">
+    <Deploy Solution="Debug|x64" />
+  </Project>
   <Project Path="../DriveAndGo_SuperAdmin/DriveAndGo_SuperAdmin.csproj" Id="bae77922-7fdb-42ff-ac2a-4f3a1f8ad1e0" />
   <Project Path="DriveAndGo_API.csproj" />
 </Solution>

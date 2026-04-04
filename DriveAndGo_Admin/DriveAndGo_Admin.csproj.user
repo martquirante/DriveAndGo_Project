@@ -10,7 +10,19 @@
     <Compile Update="Panels\DashboardPanel.cs">
       <SubType>UserControl</SubType>
     </Compile>
+    <Compile Update="Panels\DriversPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
     <Compile Update="Panels\FleetPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="Panels\RentalsPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="Panels\ReportsPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="Panels\TransactionsPanel.cs">
       <SubType>UserControl</SubType>
     </Compile>
   </ItemGroup>

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DriveAndGo_App.AnimatedSplashPage"
+             BackgroundColor="{AppThemeBinding Light=#f4f6f8, Dark=#0a0a12}"
+             NavigationPage.HasNavigationBar="False">
+
+    <Grid>
+        <Image x:Name="CarImage"
+               Source="car_logo.png" 
+               WidthRequest="180" 
+               HeightRequest="120"
+               Aspect="AspectFit"
+               HorizontalOptions="Center"
+               VerticalOptions="Center"
+               Opacity="0" />
+
+        <VerticalStackLayout x:Name="BrandTextLayout"
+                             HorizontalOptions="Center"
+                             VerticalOptions="Center"
+                             Opacity="0"
+                             Spacing="5">
+
+            <Label Text="Drive&amp;Go"
+                   FontSize="42"
+                   FontAttributes="Bold"
+                   TextColor="{AppThemeBinding Light=#1a1a2e, Dark=#ffffff}"
+                   HorizontalOptions="Center" />
+
+            <Label Text="COMPLETE VEHICLE RENTAL"
+                   FontSize="12"
+                   FontAttributes="Bold"
+                   TextColor="#e6510d"
+                   CharacterSpacing="2" 
+                   HorizontalOptions="Center" />
+
+            <ActivityIndicator x:Name="LoadingSpinner"
+                               IsRunning="True"
+                               Color="#e6510d"
+                               Margin="0,30,0,0"
+                               WidthRequest="40"
+                               HeightRequest="40" />
+        </VerticalStackLayout>
+    </Grid>
+
+</ContentPage>
