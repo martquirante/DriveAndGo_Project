@@ -1,10 +1,12 @@
+using DriveAndGo_API.Services; // ── DAGDAG ITO SA TAAS (Para makilala ang Service) ──
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// ── Dagdag ito — CORS para makapag-connect ang Admin app at Mobile app ──
+// ── CORS para makapag-connect ang Admin app at Mobile app ──
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -15,13 +17,16 @@ builder.Services.AddCors(options =>
     });
 });
 
+// ── DAGDAG ITO: Buhayin ang Firebase Auto-Sync Background Worker ──
+builder.Services.AddHostedService<FirebaseSyncService>();
+
 var app = builder.Build();
 
 // Laging naka-on ang Swagger
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// ── Dagdag ito — CORS middleware, dapat bago UseAuthorization ──
+// ── CORS middleware, dapat bago UseAuthorization ──
 app.UseCors();
 
 // Automatic redirect para iwas 404 Error
