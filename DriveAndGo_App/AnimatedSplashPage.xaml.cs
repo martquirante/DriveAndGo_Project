@@ -1,8 +1,10 @@
+using DriveAndGo_App.Services;
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Devices;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Maui.ApplicationModel; // ── DAGDAG ITO PARA SA MAINTHREAD ──
 
 namespace DriveAndGo_App
 {
@@ -10,9 +12,14 @@ namespace DriveAndGo_App
     {
         private CancellationTokenSource _cts = new();
 
-        public AnimatedSplashPage()
+        // ── 1. NAKA-READY NA AGAD ANG LOGIN PAGE ──
+        private readonly LoginPage _loginPage;
+
+        // ── 2. HINIHINGI NA NATIN SIYA PAGKABUKAS PA LANG ──
+        public AnimatedSplashPage(LoginPage loginPage)
         {
             InitializeComponent();
+            _loginPage = loginPage;
         }
 
         protected override async void OnAppearing()
@@ -46,14 +53,11 @@ namespace DriveAndGo_App
             _ = AnimateParticles(ct);
 
             // ── Phase 3: Vehicle drives in from LEFT ──
-            // Show headlight glow first
             HeadlightGlow.TranslationX = -300;
             _ = HeadlightGlow.FadeTo(0.6, 300, Easing.CubicOut);
 
-            // Speed lines appear
             _ = ShowSpeedLines();
 
-            // Vehicle + glow slide in together
             var vehicleSlide = VehicleImage.TranslateTo(
                 screenW + 50, 0, 1200, Easing.CubicOut);
             var glowSlide = HeadlightGlow.TranslateTo(
@@ -78,7 +82,6 @@ namespace DriveAndGo_App
             var logoFade = LogoImage.FadeTo(1, 400, Easing.CubicOut);
             await Task.WhenAll(logoScale, logoFade);
 
-            // Slight bounce back
             await LogoImage.ScaleTo(1.0, 200, Easing.CubicIn);
 
             // ── Phase 6: App name slides up ──
@@ -126,13 +129,15 @@ namespace DriveAndGo_App
                 RootLayout.FadeTo(0, 500, Easing.CubicIn),
                 RootLayout.ScaleTo(1.06, 500, Easing.CubicIn));
 
-            // ── Navigate to Login ──
-            Application.Current!.MainPage =
-                new NavigationPage(new LoginPage())
+            // ── 3. I-FORCE NATIN SA MAIN THREAD PARA HINDI MAG-CRASH ──
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                Application.Current!.MainPage = new NavigationPage(_loginPage)
                 {
                     BarBackgroundColor = Color.FromArgb("#0A0A14"),
                     BarTextColor = Colors.White
                 };
+            });
         }
 
         // ── Speed lines reveal ──

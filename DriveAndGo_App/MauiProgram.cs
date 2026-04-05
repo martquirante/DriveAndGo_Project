@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
+using DriveAndGo_App.Services; // ── DAGDAG ITO SA TAAS (Para makilala si Firebase) ──
 
 namespace DriveAndGo_App
 {
@@ -19,13 +20,16 @@ namespace DriveAndGo_App
             builder.Logging.AddDebug();
 #endif
 
-            // ── GOOD PRACTICE: I-register ang mga Pages dito ──
+            // ── 1. I-REGISTER ANG DATABASE NATIN (PINAKA-IMPORTANTE) ──
+            builder.Services.AddSingleton<FirebaseHelper>();
+
+            // ── 2. I-REGISTER ANG MGA PAGES ──
             builder.Services.AddTransient<AnimatedSplashPage>();
             builder.Services.AddTransient<LoginPage>();
             builder.Services.AddTransient<CustomerHomePage>();
 
             // Kung nagawa mo na rin yung sa driver, i-uncomment mo ito:
-            // builder.Services.AddTransient<DriverDashboardPage>();
+            // builder.Services.AddTransient<DriverHomePage>();
 
             return builder.Build();
         }

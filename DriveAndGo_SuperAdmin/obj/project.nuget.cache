@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "6/8wYvqvO7s=",
+  "dgSpecHash": "lylZoVCowGg=",
   "success": true,
-  "projectFilePath": "C:\\Users\\martquirante\\Desktop\\2bd sem__2nd yae files\\Integartive Programing Technologies\\Project\\Codding_fille\\DriveAndGo_SuperAdmin\\DriveAndGo_SuperAdmin.csproj",
+  "projectFilePath": "C:\\Users\\martquirante\\source\\repos\\DriveAndGo_Project\\DriveAndGo_SuperAdmin\\DriveAndGo_SuperAdmin.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\martquirante\\.nuget\\packages\\bcrypt.net-next\\4.1.0\\bcrypt.net-next.4.1.0.nupkg.sha512",
     "C:\\Users\\martquirante\\.nuget\\packages\\bouncycastle.cryptography\\2.6.2\\bouncycastle.cryptography.2.6.2.nupkg.sha512",

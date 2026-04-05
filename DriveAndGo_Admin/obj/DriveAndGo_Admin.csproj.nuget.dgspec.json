@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\martquirante\\Desktop\\2bd sem__2nd yae files\\Integartive Programing Technologies\\Project\\Codding_fille\\DriveAndGo_Admin\\DriveAndGo_Admin.csproj": {}
+    "C:\\Users\\martquirante\\source\\repos\\DriveAndGo_Project\\DriveAndGo_Admin\\DriveAndGo_Admin.csproj": {}
   },
   "projects": {
-    "C:\\Users\\martquirante\\Desktop\\2bd sem__2nd yae files\\Integartive Programing Technologies\\Project\\Codding_fille\\DriveAndGo_Admin\\DriveAndGo_Admin.csproj": {
+    "C:\\Users\\martquirante\\source\\repos\\DriveAndGo_Project\\DriveAndGo_Admin\\DriveAndGo_Admin.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\martquirante\\Desktop\\2bd sem__2nd yae files\\Integartive Programing Technologies\\Project\\Codding_fille\\DriveAndGo_Admin\\DriveAndGo_Admin.csproj",
+        "projectUniqueName": "C:\\Users\\martquirante\\source\\repos\\DriveAndGo_Project\\DriveAndGo_Admin\\DriveAndGo_Admin.csproj",
         "projectName": "DriveAndGo_Admin",
-        "projectPath": "C:\\Users\\martquirante\\Desktop\\2bd sem__2nd yae files\\Integartive Programing Technologies\\Project\\Codding_fille\\DriveAndGo_Admin\\DriveAndGo_Admin.csproj",
+        "projectPath": "C:\\Users\\martquirante\\source\\repos\\DriveAndGo_Project\\DriveAndGo_Admin\\DriveAndGo_Admin.csproj",
         "packagesPath": "C:\\Users\\martquirante\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\martquirante\\Desktop\\2bd sem__2nd yae files\\Integartive Programing Technologies\\Project\\Codding_fille\\DriveAndGo_Admin\\obj\\",
+        "outputPath": "C:\\Users\\martquirante\\source\\repos\\DriveAndGo_Project\\DriveAndGo_Admin\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"

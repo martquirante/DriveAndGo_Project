@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\martquirante\\Desktop\\2bd sem__2nd yae files\\Integartive Programing Technologies\\Project\\Codding_fille\\DriveAndGo_SuperAdmin\\DriveAndGo_SuperAdmin.csproj": {}
+    "C:\\Users\\martquirante\\source\\repos\\DriveAndGo_Project\\DriveAndGo_SuperAdmin\\DriveAndGo_SuperAdmin.csproj": {}
   },
   "projects": {
-    "C:\\Users\\martquirante\\Desktop\\2bd sem__2nd yae files\\Integartive Programing Technologies\\Project\\Codding_fille\\DriveAndGo_SuperAdmin\\DriveAndGo_SuperAdmin.csproj": {
+    "C:\\Users\\martquirante\\source\\repos\\DriveAndGo_Project\\DriveAndGo_SuperAdmin\\DriveAndGo_SuperAdmin.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\martquirante\\Desktop\\2bd sem__2nd yae files\\Integartive Programing Technologies\\Project\\Codding_fille\\DriveAndGo_SuperAdmin\\DriveAndGo_SuperAdmin.csproj",
+        "projectUniqueName": "C:\\Users\\martquirante\\source\\repos\\DriveAndGo_Project\\DriveAndGo_SuperAdmin\\DriveAndGo_SuperAdmin.csproj",
         "projectName": "DriveAndGo_SuperAdmin",
-        "projectPath": "C:\\Users\\martquirante\\Desktop\\2bd sem__2nd yae files\\Integartive Programing Technologies\\Project\\Codding_fille\\DriveAndGo_SuperAdmin\\DriveAndGo_SuperAdmin.csproj",
+        "projectPath": "C:\\Users\\martquirante\\source\\repos\\DriveAndGo_Project\\DriveAndGo_SuperAdmin\\DriveAndGo_SuperAdmin.csproj",
         "packagesPath": "C:\\Users\\martquirante\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\martquirante\\Desktop\\2bd sem__2nd yae files\\Integartive Programing Technologies\\Project\\Codding_fille\\DriveAndGo_SuperAdmin\\obj\\",
+        "outputPath": "C:\\Users\\martquirante\\source\\repos\\DriveAndGo_Project\\DriveAndGo_SuperAdmin\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
