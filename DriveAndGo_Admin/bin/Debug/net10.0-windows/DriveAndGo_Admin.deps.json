@@ -9,13 +9,14 @@
       "DriveAndGo_Admin/1.0.0": {
         "dependencies": {
           "BCrypt.Net-Next": "4.1.0",
+          "CloudinaryDotNet": "1.28.0",
           "FirebaseDatabase.net": "5.0.0",
-          "Microsoft.Web.WebView2": "1.0.2903.40",
+          "Microsoft.Web.WebView2": "1.0.3856.49",
           "MySql.Data": "9.6.0",
           "itext7": "9.6.0",
-          "Microsoft.Web.WebView2.Core": "1.0.2903.40",
-          "Microsoft.Web.WebView2.WinForms": "1.0.2903.40",
-          "Microsoft.Web.WebView2.Wpf": "1.0.2903.40"
+          "Microsoft.Web.WebView2.Core": "1.0.3856.49",
+          "Microsoft.Web.WebView2.WinForms": "1.0.3856.49",
+          "Microsoft.Web.WebView2.Wpf": "1.0.3856.49"
         },
         "runtime": {
           "DriveAndGo_Admin.dll": {}
@@ -34,6 +35,17 @@
           "lib/net6.0/BouncyCastle.Cryptography.dll": {
             "assemblyVersion": "2.0.0.0",
             "fileVersion": "2.6.2.46322"
+          }
+        }
+      },
+      "CloudinaryDotNet/1.28.0": {
+        "dependencies": {
+          "Newtonsoft.Json": "13.0.3"
+        },
+        "runtime": {
+          "lib/netstandard2.0/CloudinaryDotNet.dll": {
+            "assemblyVersion": "1.28.0.0",
+            "fileVersion": "1.28.0.0"
           }
         }
       },
@@ -241,22 +253,22 @@
           }
         }
       },
-      "Microsoft.Web.WebView2/1.0.2903.40": {
+      "Microsoft.Web.WebView2/1.0.3856.49": {
         "runtimeTargets": {
           "runtimes/win-arm64/native/WebView2Loader.dll": {
             "rid": "win-arm64",
             "assetType": "native",
-            "fileVersion": "1.0.2903.40"
+            "fileVersion": "1.0.3856.49"
           },
           "runtimes/win-x64/native/WebView2Loader.dll": {
             "rid": "win-x64",
             "assetType": "native",
-            "fileVersion": "1.0.2903.40"
+            "fileVersion": "1.0.3856.49"
           },
           "runtimes/win-x86/native/WebView2Loader.dll": {
             "rid": "win-x86",
             "assetType": "native",
-            "fileVersion": "1.0.2903.40"
+            "fileVersion": "1.0.3856.49"
           }
         }
       },
@@ -325,27 +337,27 @@
           }
         }
       },
-      "Microsoft.Web.WebView2.Core/1.0.2903.40": {
+      "Microsoft.Web.WebView2.Core/1.0.3856.49": {
         "runtime": {
           "Microsoft.Web.WebView2.Core.dll": {
-            "assemblyVersion": "1.0.2903.40",
-            "fileVersion": "1.0.2903.40"
+            "assemblyVersion": "1.0.3856.49",
+            "fileVersion": "1.0.3856.49"
           }
         }
       },
-      "Microsoft.Web.WebView2.WinForms/1.0.2903.40": {
+      "Microsoft.Web.WebView2.WinForms/1.0.3856.49": {
         "runtime": {
           "Microsoft.Web.WebView2.WinForms.dll": {
-            "assemblyVersion": "1.0.2903.40",
-            "fileVersion": "1.0.2903.40"
+            "assemblyVersion": "1.0.3856.49",
+            "fileVersion": "1.0.3856.49"
           }
         }
       },
-      "Microsoft.Web.WebView2.Wpf/1.0.2903.40": {
+      "Microsoft.Web.WebView2.Wpf/1.0.3856.49": {
         "runtime": {
           "Microsoft.Web.WebView2.Wpf.dll": {
-            "assemblyVersion": "1.0.2903.40",
-            "fileVersion": "1.0.2903.40"
+            "assemblyVersion": "1.0.3856.49",
+            "fileVersion": "1.0.3856.49"
           }
         }
       }
@@ -370,6 +382,13 @@
       "sha512": "sha512-7oWOcvnntmMKNzDLsdxAYqApt+AjpRpP2CShjMfIa3umZ42UQMvH0tl1qAliYPNYO6vTdcGMqnRrCPmsfzTI1w==",
       "path": "bouncycastle.cryptography/2.6.2",
       "hashPath": "bouncycastle.cryptography.2.6.2.nupkg.sha512"
+    },
+    "CloudinaryDotNet/1.28.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-o5Dfp5DrpF69s8qjlh4dxzXuJUCRxt7KQaweU8wMDxd1cPFONCVNZsgFQZ3v0PZDN76fLonZ5vFDjVTA3UTjCA==",
+      "path": "cloudinarydotnet/1.28.0",
+      "hashPath": "cloudinarydotnet.1.28.0.nupkg.sha512"
     },
     "FirebaseDatabase.net/5.0.0": {
       "type": "package",
@@ -490,12 +509,12 @@
       "path": "microsoft.extensions.primitives/5.0.0",
       "hashPath": "microsoft.extensions.primitives.5.0.0.nupkg.sha512"
     },
-    "Microsoft.Web.WebView2/1.0.2903.40": {
+    "Microsoft.Web.WebView2/1.0.3856.49": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-THrzYAnJgE3+cNH+9Epr44XjoZoRELdVpXlWGPs6K9C9G6TqyDfVCeVAR/Er8ljLitIUX5gaSkPsy9wRhD1sgQ==",
-      "path": "microsoft.web.webview2/1.0.2903.40",
-      "hashPath": "microsoft.web.webview2.1.0.2903.40.nupkg.sha512"
+      "sha512": "sha512-OOBKvFgK0pUKcndvTK6/jUsbrPRwce62Wt/0hkJWDsK2AcsJ2ylOS/mLa4xAcNUTOs96YIjpPN4AHMADXJcrgQ==",
+      "path": "microsoft.web.webview2/1.0.3856.49",
+      "hashPath": "microsoft.web.webview2.1.0.3856.49.nupkg.sha512"
     },
     "MySql.Data/9.6.0": {
       "type": "package",
@@ -525,17 +544,17 @@
       "path": "zstdsharp.port/0.8.6",
       "hashPath": "zstdsharp.port.0.8.6.nupkg.sha512"
     },
-    "Microsoft.Web.WebView2.Core/1.0.2903.40": {
+    "Microsoft.Web.WebView2.Core/1.0.3856.49": {
       "type": "reference",
       "serviceable": false,
       "sha512": ""
     },
-    "Microsoft.Web.WebView2.WinForms/1.0.2903.40": {
+    "Microsoft.Web.WebView2.WinForms/1.0.3856.49": {
       "type": "reference",
       "serviceable": false,
       "sha512": ""
     },
-    "Microsoft.Web.WebView2.Wpf/1.0.2903.40": {
+    "Microsoft.Web.WebView2.Wpf/1.0.3856.49": {
       "type": "reference",
       "serviceable": false,
       "sha512": ""

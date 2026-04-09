@@ -6,6 +6,9 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+
+builder.Services.AddHostedService<FirebaseSyncService>();
+
 // ── CORS para makapag-connect ang Admin app at Mobile app ──
 builder.Services.AddCors(options =>
 {

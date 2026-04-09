@@ -1,4 +1,6 @@
-﻿namespace DriveAndGo_API.Models
+﻿using System;
+
+namespace DriveAndGo_API.Models
 {
     public class Rental
     {
@@ -6,15 +8,17 @@
         public int CustomerId { get; set; }
         public int VehicleId { get; set; }
         public int? DriverId { get; set; }
-        public DateTime StartDate { get; set; }
-        public DateTime EndDate { get; set; }
         public string? Destination { get; set; }
-        public string? Status { get; set; }
+        public DateTime StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+        public string Status { get; set; } = "pending";
         public decimal TotalAmount { get; set; }
-        public string? PaymentMethod { get; set; }
-        public string? PaymentStatus { get; set; }
+        public string PaymentMethod { get; set; }
+        public string PaymentStatus { get; set; } = "unpaid";
+        public string? QrCode { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-        // Extra fields para sa display (JOIN results)
+        // 🟢 MGA DAGDAG PARA SA UI BINDING:
         public string? CustomerName { get; set; }
         public string? VehicleName { get; set; }
     }

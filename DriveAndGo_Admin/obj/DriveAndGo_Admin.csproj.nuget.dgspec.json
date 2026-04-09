@@ -55,13 +55,17 @@
               "target": "Package",
               "version": "[4.1.0, )"
             },
+            "CloudinaryDotNet": {
+              "target": "Package",
+              "version": "[1.28.0, )"
+            },
             "FirebaseDatabase.net": {
               "target": "Package",
               "version": "[5.0.0, )"
             },
             "Microsoft.Web.WebView2": {
               "target": "Package",
-              "version": "[1.0.2903.40, )"
+              "version": "[1.0.3856.49, )"
             },
             "MySql.Data": {
               "target": "Package",

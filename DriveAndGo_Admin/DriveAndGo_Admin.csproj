@@ -11,10 +11,11 @@
 
 	<ItemGroup>
 		<PackageReference Include="BCrypt.Net-Next" Version="4.1.0" />
+		<PackageReference Include="CloudinaryDotNet" Version="1.28.0" />
 		<PackageReference Include="FirebaseDatabase.net" Version="5.0.0" />
 		<PackageReference Include="itext7" Version="9.6.0" />
 		<PackageReference Include="MySql.Data" Version="9.6.0" />
-		<PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+		<PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3856.49" />
 	</ItemGroup>
 
 	<ItemGroup>

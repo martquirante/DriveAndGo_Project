@@ -28,6 +28,22 @@
           }
         }
       },
+      "CloudinaryDotNet/1.28.0": {
+        "type": "package",
+        "dependencies": {
+          "Newtonsoft.Json": "13.0.3"
+        },
+        "compile": {
+          "lib/netstandard2.0/CloudinaryDotNet.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/netstandard2.0/CloudinaryDotNet.dll": {
+            "related": ".xml"
+          }
+        }
+      },
       "FirebaseDatabase.net/5.0.0": {
         "type": "package",
         "dependencies": {
@@ -332,7 +348,7 @@
           }
         }
       },
-      "Microsoft.Web.WebView2/1.0.2903.40": {
+      "Microsoft.Web.WebView2/1.0.3856.49": {
         "type": "package",
         "build": {
           "buildTransitive/Microsoft.Web.WebView2.targets": {}
@@ -481,6 +497,25 @@
         "lib/netstandard2.0/BouncyCastle.Cryptography.dll",
         "lib/netstandard2.0/BouncyCastle.Cryptography.xml",
         "packageIcon.png"
+      ]
+    },
+    "CloudinaryDotNet/1.28.0": {
+      "sha512": "o5Dfp5DrpF69s8qjlh4dxzXuJUCRxt7KQaweU8wMDxd1cPFONCVNZsgFQZ3v0PZDN76fLonZ5vFDjVTA3UTjCA==",
+      "type": "package",
+      "path": "cloudinarydotnet/1.28.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "CloudinaryIcon.png",
+        "README.md",
+        "cloudinarydotnet.1.28.0.nupkg.sha512",
+        "cloudinarydotnet.nuspec",
+        "lib/net452/CloudinaryDotNet.dll",
+        "lib/net452/CloudinaryDotNet.xml",
+        "lib/netstandard1.3/CloudinaryDotNet.dll",
+        "lib/netstandard1.3/CloudinaryDotNet.xml",
+        "lib/netstandard2.0/CloudinaryDotNet.dll",
+        "lib/netstandard2.0/CloudinaryDotNet.xml"
       ]
     },
     "FirebaseDatabase.net/5.0.0": {
@@ -867,10 +902,10 @@
         "version.txt"
       ]
     },
-    "Microsoft.Web.WebView2/1.0.2903.40": {
-      "sha512": "THrzYAnJgE3+cNH+9Epr44XjoZoRELdVpXlWGPs6K9C9G6TqyDfVCeVAR/Er8ljLitIUX5gaSkPsy9wRhD1sgQ==",
+    "Microsoft.Web.WebView2/1.0.3856.49": {
+      "sha512": "OOBKvFgK0pUKcndvTK6/jUsbrPRwce62Wt/0hkJWDsK2AcsJ2ylOS/mLa4xAcNUTOs96YIjpPN4AHMADXJcrgQ==",
       "type": "package",
-      "path": "microsoft.web.webview2/1.0.2903.40",
+      "path": "microsoft.web.webview2/1.0.3856.49",
       "hasTools": true,
       "files": [
         ".nupkg.metadata",
@@ -916,7 +951,7 @@
         "lib_manual/netcoreapp3.0/Microsoft.Web.WebView2.WinForms.xml",
         "lib_manual/netcoreapp3.0/Microsoft.Web.WebView2.Wpf.dll",
         "lib_manual/netcoreapp3.0/Microsoft.Web.WebView2.Wpf.xml",
-        "microsoft.web.webview2.1.0.2903.40.nupkg.sha512",
+        "microsoft.web.webview2.1.0.3856.49.nupkg.sha512",
         "microsoft.web.webview2.nuspec",
         "runtimes/win-arm64/native/WebView2Loader.dll",
         "runtimes/win-arm64/native_uap/Microsoft.Web.WebView2.Core.dll",
@@ -1080,8 +1115,9 @@
   "projectFileDependencyGroups": {
     "net10.0-windows7.0": [
       "BCrypt.Net-Next >= 4.1.0",
+      "CloudinaryDotNet >= 1.28.0",
       "FirebaseDatabase.net >= 5.0.0",
-      "Microsoft.Web.WebView2 >= 1.0.2903.40",
+      "Microsoft.Web.WebView2 >= 1.0.3856.49",
       "MySql.Data >= 9.6.0",
       "itext7 >= 9.6.0"
     ]
@@ -1141,13 +1177,17 @@
             "target": "Package",
             "version": "[4.1.0, )"
           },
+          "CloudinaryDotNet": {
+            "target": "Package",
+            "version": "[1.28.0, )"
+          },
           "FirebaseDatabase.net": {
             "target": "Package",
             "version": "[5.0.0, )"
           },
           "Microsoft.Web.WebView2": {
             "target": "Package",
-            "version": "[1.0.2903.40, )"
+            "version": "[1.0.3856.49, )"
           },
           "MySql.Data": {
             "target": "Package",
