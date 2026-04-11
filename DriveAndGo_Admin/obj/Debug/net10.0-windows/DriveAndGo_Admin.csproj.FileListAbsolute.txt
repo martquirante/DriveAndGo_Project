@@ -48,6 +48,7 @@ C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\DriveAndGo_Admin.pdb
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\BCrypt.Net-Next.dll
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\BouncyCastle.Cryptography.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\CloudinaryDotNet.dll
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\Firebase.dll
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\Google.Protobuf.dll
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\itext.barcodes.dll
@@ -110,4 +111,12 @@ C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.pdb
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.genruntimeconfig.cache
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\ref\DriveAndGo_Admin.dll
-C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\CloudinaryDotNet.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\runtimes\win-x86\native\WebView2Loader.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\runtimes\win-x64\native\WebView2Loader.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\runtimes\win-arm64\native\WebView2Loader.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\WebAssets\garage_3D.png
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\DriveAndGo_Admin.exe
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\DriveAndGo_Admin.deps.json
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\DriveAndGo_Admin.runtimeconfig.json
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\DriveAndGo_Admin.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\DriveAndGo_Admin.pdb

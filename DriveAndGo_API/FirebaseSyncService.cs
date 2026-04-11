@@ -14,8 +14,6 @@ namespace DriveAndGo_API.Services
 {
     public class FirebaseSyncService : BackgroundService
     {
-        private const string FirebaseUrl = "https://vechiclerentaldb-default-rtdb.asia-southeast1.firebasedatabase.app/";
-        private const string FirebaseSecret = "lHe5EnlSCQQxYaaTQtwzqZta5OMcRNaQefuBeCEK";
         private const int MaxRetries = 3;
 
         private readonly string _mysqlConn;
@@ -31,12 +29,25 @@ namespace DriveAndGo_API.Services
             _mysqlConn = config.GetConnectionString("DefaultConnection")
                       ?? "Server=127.0.0.1;Port=3306;Database=vehicle_rental_db;Uid=root;Pwd=;";
 
-            _fb = new FirebaseClient(
-                FirebaseUrl,
+            var bridgeOptions = config.GetSection("FirebaseBridge").Get<DriveAndGo_API.Services.FirebaseBridgeOptions>()
+                               ?? new DriveAndGo_API.Services.FirebaseBridgeOptions();
+            string firebaseUrl = string.IsNullOrWhiteSpace(bridgeOptions.DatabaseUrl)
+                ? "https://vechiclerentaldb-default-rtdb.asia-southeast1.firebasedatabase.app/"
+                : bridgeOptions.DatabaseUrl;
+
+            if (string.IsNullOrWhiteSpace(bridgeOptions.Secret))
+            {
+                _fb = new FirebaseClient(firebaseUrl);
+            }
+            else
+            {
+                _fb = new FirebaseClient(
+                firebaseUrl,
                 new FirebaseOptions
                 {
-                    AuthTokenAsyncFactory = () => Task.FromResult(FirebaseSecret)
+                    AuthTokenAsyncFactory = () => Task.FromResult(bridgeOptions.Secret)
                 });
+            }
         }
 
         // ─────────────────────────────────────────────────────────────────

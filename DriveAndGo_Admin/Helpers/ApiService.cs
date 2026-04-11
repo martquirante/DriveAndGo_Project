@@ -9,14 +9,14 @@ namespace DriveAndGo_Admin.Helpers
     {
         // Change this to your deployed URL kapag naka-deploy na
         private static readonly string BaseUrl =
-            "http://localhost:7243/api";
+            "http://localhost:5233/api";
 
         private static readonly HttpClient _client = new HttpClient();
 
         public static async Task<string> GetAsync(string endpoint)
         {
             var response = await _client.GetAsync(
-                $"{BaseUrl}/{endpoint}");
+                BuildUrl(endpoint));
             return await response.Content.ReadAsStringAsync();
         }
 
@@ -27,21 +27,21 @@ namespace DriveAndGo_Admin.Helpers
             var content = new StringContent(
                 json, Encoding.UTF8, "application/json");
             var response = await _client.PostAsync(
-                $"{BaseUrl}/{endpoint}", content);
+                BuildUrl(endpoint), content);
             return await response.Content.ReadAsStringAsync();
         }
 
         public static async Task<string> PatchAsync(string endpoint)
         {
             var response = await _client.PatchAsync(
-                $"{BaseUrl}/{endpoint}", null);
+                BuildUrl(endpoint), null);
             return await response.Content.ReadAsStringAsync();
         }
 
         public static async Task<string> DeleteAsync(string endpoint)
         {
             var response = await _client.DeleteAsync(
-                $"{BaseUrl}/{endpoint}");
+                BuildUrl(endpoint));
             return await response.Content.ReadAsStringAsync();
         }
 
@@ -52,8 +52,13 @@ namespace DriveAndGo_Admin.Helpers
             var content = new StringContent(
                 json, Encoding.UTF8, "application/json");
             var response = await _client.PutAsync(
-                $"{BaseUrl}/{endpoint}", content);
+                BuildUrl(endpoint), content);
             return await response.Content.ReadAsStringAsync();
+        }
+
+        public static string BuildUrl(string endpoint)
+        {
+            return $"{BaseUrl.TrimEnd('/')}/{endpoint.TrimStart('/')}";
         }
     }
 }

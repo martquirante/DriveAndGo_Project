@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using MySql.Data.MySqlClient;
 using DriveAndGo_API.Models;
+using System;
 
 namespace DriveAndGo_API.Controllers
 {
@@ -146,7 +147,7 @@ namespace DriveAndGo_API.Controllers
                 decimal totalAmount = Convert.ToDecimal(reader["total_amount"]);
                 reader.Close();
 
-                if (rentalStatus != "approved")
+                if (!string.Equals(rentalStatus, "approved", StringComparison.OrdinalIgnoreCase))
                     return BadRequest(new
                     {
                         message =
@@ -156,7 +157,7 @@ namespace DriveAndGo_API.Controllers
                 // Kunin ang daily rate ng sasakyan para
                 // ma-compute ang added fee
                 var vehicleCmd = new MySqlCommand(@"
-                    SELECT daily_rate FROM vehicles
+                    SELECT rate_per_day FROM vehicles
                     WHERE vehicle_id = @vehicle_id", conn);
                 vehicleCmd.Parameters.AddWithValue("@vehicle_id", vehicleId);
                 decimal dailyRate = Convert.ToDecimal(
@@ -226,7 +227,7 @@ namespace DriveAndGo_API.Controllers
                 decimal addedFee = Convert.ToDecimal(reader["added_fee"]);
                 reader.Close();
 
-                if (currentStatus != "pending")
+                if (!string.Equals(currentStatus, "pending", StringComparison.OrdinalIgnoreCase))
                     return BadRequest(new
                     {
                         message =
@@ -286,7 +287,7 @@ namespace DriveAndGo_API.Controllers
                 if (status == null)
                     return NotFound(new { message = "Extension not found." });
 
-                if (status != "pending")
+                if (!string.Equals(status, "pending", StringComparison.OrdinalIgnoreCase))
                     return BadRequest(new
                     {
                         message =

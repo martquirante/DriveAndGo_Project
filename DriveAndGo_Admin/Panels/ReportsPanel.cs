@@ -47,6 +47,7 @@ namespace DriveAndGo_Admin.Panels
         private ComboBox cboPeriod;
         private Button btnExportPDF, btnExportCSV;
         private Label lblTotalRev, lblTotalTx, lblPending;
+        private Label lblInsight;
 
         private Panel pnlMainContent;
         private Panel pnlChartContainer;
@@ -82,6 +83,7 @@ namespace DriveAndGo_Admin.Panels
 
             btnExportPDF = CreateBtn("📄 Export PDF", ColRed, 180, 54, 130);
             btnExportCSV = CreateBtn("📊 Export Excel (CSV)", ColGreen, 320, 54, 160);
+            lblInsight = new Label { Text = "Loading analytics…", Font = new Font("Segoe UI", 8.5F), ForeColor = ColSub, AutoSize = true, Location = new Point(500, 60), BackColor = WinColor.Transparent };
 
             btnExportPDF.Click += OnExportPDF;
             btnExportCSV.Click += OnExportCSV;
@@ -90,6 +92,7 @@ namespace DriveAndGo_Admin.Panels
             topBar.Controls.Add(cboPeriod);
             topBar.Controls.Add(btnExportPDF);
             topBar.Controls.Add(btnExportCSV);
+            topBar.Controls.Add(lblInsight);
 
             // ── MAIN CONTENT (Split between Chart and Table) ──
             pnlMainContent = new Panel { Dock = DockStyle.Fill, Padding = new Padding(16) };
@@ -164,6 +167,7 @@ namespace DriveAndGo_Admin.Panels
         private void LoadReportData()
         {
             _reportData = new DataTable();
+            int repairedTransactions = 0;
 
             // Format format date grouping based on selected period
             string dateGroupFormat = "";
@@ -191,6 +195,8 @@ namespace DriveAndGo_Admin.Panels
 
             try
             {
+                repairedTransactions = AdminDataHelper.ReconcilePaidRentalTransactions(_connStr);
+
                 using var conn = new MySqlConnection(_connStr);
                 conn.Open();
 
@@ -198,9 +204,11 @@ namespace DriveAndGo_Admin.Panels
                     SELECT 
                         {dateGroupFormat} AS group_key,
                         {displayFormat} AS period_label,
-                        COUNT(transaction_id) AS total_transactions,
-                        SUM(CASE WHEN status = 'confirmed' OR status = 'paid' THEN amount ELSE 0 END) AS total_revenue,
-                        SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS pending_amount
+                        COUNT(*) AS total_transactions,
+                        COUNT(DISTINCT CASE WHEN LOWER(COALESCE(status,'')) IN ('confirmed','paid') THEN rental_id END) AS paid_rentals,
+                        SUM(CASE WHEN LOWER(COALESCE(status,'')) IN ('confirmed','paid') THEN amount ELSE 0 END) AS total_revenue,
+                        AVG(CASE WHEN LOWER(COALESCE(status,'')) IN ('confirmed','paid') THEN amount END) AS avg_ticket,
+                        SUM(CASE WHEN LOWER(COALESCE(status,'')) = 'pending' THEN amount ELSE 0 END) AS pending_amount
                     FROM transactions
                     GROUP BY group_key, period_label
                     ORDER BY group_key DESC
@@ -210,33 +218,23 @@ namespace DriveAndGo_Admin.Panels
                 adapter.Fill(_reportData);
 
                 UpdateDashboard();
+                lblInsight.Text = repairedTransactions > 0
+                    ? $"Repaired {repairedTransactions} missing payment log(s) before loading {_currentPeriod.ToLower()} analytics."
+                    : $"{_currentPeriod} analytics loaded from MySQL and synced payment records.";
             }
             catch (Exception ex)
             {
-                LoadDummyData(); // Load dummy data if DB fails so UI can be tested
+                _reportData.Columns.Clear();
+                _reportData.Columns.Add("period_label", typeof(string));
+                _reportData.Columns.Add("total_transactions", typeof(int));
+                _reportData.Columns.Add("paid_rentals", typeof(int));
+                _reportData.Columns.Add("total_revenue", typeof(decimal));
+                _reportData.Columns.Add("avg_ticket", typeof(decimal));
+                _reportData.Columns.Add("pending_amount", typeof(decimal));
+                UpdateDashboard();
+                lblInsight.Text = "Analytics load failed. Check the database connection and payment table state.";
+                MessageBox.Show("Could not load analytics.\n" + ex.Message, "Reports Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
-        }
-
-        private void LoadDummyData()
-        {
-            _reportData.Clear();
-            _reportData.Columns.Add("period_label", typeof(string));
-            _reportData.Columns.Add("total_transactions", typeof(int));
-            _reportData.Columns.Add("total_revenue", typeof(decimal));
-            _reportData.Columns.Add("pending_amount", typeof(decimal));
-
-            if (_currentPeriod == "Daily")
-            {
-                for (int i = 0; i < 7; i++)
-                    _reportData.Rows.Add(DateTime.Now.AddDays(-i).ToString("MMM dd, yyyy"), new Random(i).Next(2, 10), new Random(i).Next(1500, 8000), new Random(i).Next(0, 1000));
-            }
-            else if (_currentPeriod == "Monthly")
-            {
-                for (int i = 0; i < 6; i++)
-                    _reportData.Rows.Add(DateTime.Now.AddMonths(-i).ToString("MMMM yyyy"), new Random(i).Next(20, 50), new Random(i).Next(25000, 80000), new Random(i).Next(1000, 5000));
-            }
-
-            UpdateDashboard();
         }
 
         private void UpdateDashboard()
@@ -248,6 +246,8 @@ namespace DriveAndGo_Admin.Panels
             var display = new DataTable();
             display.Columns.Add("Period", typeof(string));
             display.Columns.Add("Transactions", typeof(int));
+            display.Columns.Add("Paid Rentals", typeof(int));
+            display.Columns.Add("Avg Ticket", typeof(string));
             display.Columns.Add("Revenue", typeof(string));
             display.Columns.Add("Pending", typeof(string));
 
@@ -260,6 +260,8 @@ namespace DriveAndGo_Admin.Panels
                 decimal rev = row["total_revenue"] != DBNull.Value ? Convert.ToDecimal(row["total_revenue"]) : 0;
                 decimal pen = row["pending_amount"] != DBNull.Value ? Convert.ToDecimal(row["pending_amount"]) : 0;
                 int txs = row["total_transactions"] != DBNull.Value ? Convert.ToInt32(row["total_transactions"]) : 0;
+                int paidRentals = row.Table.Columns.Contains("paid_rentals") && row["paid_rentals"] != DBNull.Value ? Convert.ToInt32(row["paid_rentals"]) : 0;
+                decimal avgTicket = row.Table.Columns.Contains("avg_ticket") && row["avg_ticket"] != DBNull.Value ? Convert.ToDecimal(row["avg_ticket"]) : 0;
 
                 grandTotalRev += rev;
                 grandTotalTx += txs;
@@ -268,6 +270,8 @@ namespace DriveAndGo_Admin.Panels
                 display.Rows.Add(
                     row["period_label"].ToString(),
                     txs,
+                    paidRentals,
+                    $"₱ {avgTicket:N2}",
                     $"₱ {rev:N2}",
                     $"₱ {pen:N2}"
                 );
@@ -275,12 +279,14 @@ namespace DriveAndGo_Admin.Panels
 
             dgvReport.DataSource = display;
 
-            if (dgvReport.Columns.Count >= 4)
+            if (dgvReport.Columns.Count >= 6)
             {
                 dgvReport.Columns[0].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
-                dgvReport.Columns[1].Width = 150;
-                dgvReport.Columns[2].Width = 200;
-                dgvReport.Columns[3].Width = 200;
+                dgvReport.Columns[1].Width = 110;
+                dgvReport.Columns[2].Width = 110;
+                dgvReport.Columns[3].Width = 130;
+                dgvReport.Columns[4].Width = 160;
+                dgvReport.Columns[5].Width = 160;
             }
 
             // 2. Update Stats Cards
@@ -424,11 +430,11 @@ namespace DriveAndGo_Admin.Panels
                 try
                 {
                     using StreamWriter sw = new StreamWriter(sfd.FileName);
-                    sw.WriteLine("Period,Total Transactions,Total Revenue,Pending Amount");
+                    sw.WriteLine("Period,Total Transactions,Paid Rentals,Average Ticket,Total Revenue,Pending Amount");
 
                     foreach (DataRow row in _reportData.Rows)
                     {
-                        sw.WriteLine($"{row["period_label"]},{row["total_transactions"]},{row["total_revenue"]},{row["pending_amount"]}");
+                        sw.WriteLine($"{row["period_label"]},{row["total_transactions"]},{row["paid_rentals"]},{row["avg_ticket"]},{row["total_revenue"]},{row["pending_amount"]}");
                     }
 
                     MessageBox.Show("Excel/CSV export successful!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -518,11 +524,11 @@ namespace DriveAndGo_Admin.Panels
                 doc.Add(new Paragraph(" "));
 
                 // Data Table
-                var dataTable = new iText.Layout.Element.Table(new float[] { 3, 2, 3, 3 })
+                var dataTable = new iText.Layout.Element.Table(new float[] { 3, 2, 2, 2, 3, 3 })
                     .UseAllAvailableWidth().SetMarginBottom(12);
 
                 // Table Headers
-                string[] headers = { "Period", "Transactions", "Revenue (PHP)", "Pending (PHP)" };
+                string[] headers = { "Period", "Transactions", "Paid Rentals", "Avg Ticket", "Revenue (PHP)", "Pending (PHP)" };
                 foreach (var h in headers)
                 {
                     dataTable.AddHeaderCell(new Cell().SetBackgroundColor(dark).SetFontColor(white).SetPadding(6).Add(new Paragraph(h).SetFont(fontBold).SetFontSize(10)));
@@ -533,10 +539,13 @@ namespace DriveAndGo_Admin.Panels
                 foreach (DataRow row in _reportData.Rows)
                 {
                     decimal rev = row["total_revenue"] != DBNull.Value ? Convert.ToDecimal(row["total_revenue"]) : 0;
+                    decimal avgTicket = row.Table.Columns.Contains("avg_ticket") && row["avg_ticket"] != DBNull.Value ? Convert.ToDecimal(row["avg_ticket"]) : 0;
                     totalRev += rev;
 
                     dataTable.AddCell(new Cell().SetPadding(5).Add(new Paragraph(row["period_label"].ToString()).SetFont(fontNormal).SetFontSize(9)));
                     dataTable.AddCell(new Cell().SetPadding(5).SetTextAlignment(TextAlignment.CENTER).Add(new Paragraph(row["total_transactions"].ToString()).SetFont(fontNormal).SetFontSize(9)));
+                    dataTable.AddCell(new Cell().SetPadding(5).SetTextAlignment(TextAlignment.CENTER).Add(new Paragraph(row["paid_rentals"].ToString()).SetFont(fontNormal).SetFontSize(9)));
+                    dataTable.AddCell(new Cell().SetPadding(5).SetTextAlignment(TextAlignment.RIGHT).Add(new Paragraph(avgTicket.ToString("N2")).SetFont(fontNormal).SetFontSize(9)));
                     dataTable.AddCell(new Cell().SetPadding(5).SetTextAlignment(TextAlignment.RIGHT).Add(new Paragraph(rev.ToString("N2")).SetFont(fontNormal).SetFontSize(9)));
                     dataTable.AddCell(new Cell().SetPadding(5).SetTextAlignment(TextAlignment.RIGHT).Add(new Paragraph(Convert.ToDecimal(row["pending_amount"]).ToString("N2")).SetFont(fontNormal).SetFontSize(9).SetFontColor(new iText.Kernel.Colors.DeviceRgb(200, 50, 50))));
                 }

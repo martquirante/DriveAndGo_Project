@@ -5,13 +5,16 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 	</PropertyGroup>
 	<ItemGroup>
+	  <Compile Remove="DriveAndGo_Admin\**" />
+	  <Content Remove="DriveAndGo_Admin\**" />
+	  <EmbeddedResource Remove="DriveAndGo_Admin\**" />
+	  <None Remove="DriveAndGo_Admin\**" />
+	</ItemGroup>
+	<ItemGroup>
 		<PackageReference Include="BCrypt.Net-Next" Version="4.1.0" />
 		<PackageReference Include="FirebaseDatabase.net" Version="5.0.0" />
 		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.5" />
 		<PackageReference Include="MySql.Data" Version="9.6.0" />
-		<PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.5" />
-	</ItemGroup>
-	<ItemGroup>
-		<Folder Include="DriveAndGo_Admin\Panels\" />
+		<PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.7" />
 	</ItemGroup>
 </Project>

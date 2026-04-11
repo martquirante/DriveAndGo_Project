@@ -44,11 +44,14 @@ namespace DriveAndGo_Admin.Panels
         private Label lblRating;
         private Label lblTrips;
         private Label lblLicense;
+        private Label lblActiveRentals;
+        private Label lblRevenueHandled;
+        private Label lblLastAssigned;
 
         private TextBox txtSearch;
         private ComboBox cboStatus;
 
-        private Button btnActivate, btnSuspend, btnDelete;
+        private Button btnActivate, btnOffDuty, btnSuspend, btnDelete;
 
         // ── State ──
         private DataTable _data = new DataTable();
@@ -98,12 +101,12 @@ namespace DriveAndGo_Admin.Panels
             txtSearch = new TextBox { Size = new Size(200, 30), Location = new Point(16, 56), Font = new Font("Segoe UI", 10F), BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White, ForeColor = ColText, BorderStyle = BorderStyle.FixedSingle, PlaceholderText = "🔍 Search driver name..." };
             txtSearch.TextChanged += (s, e) => FilterGrid();
 
-            cboStatus = new ComboBox { Size = new Size(130, 30), Location = new Point(226, 56), DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 9F), BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White, ForeColor = ColText };
-            cboStatus.Items.AddRange(new object[] { "All Status", "active", "inactive", "suspended" });
+            cboStatus = new ComboBox { Size = new Size(140, 30), Location = new Point(226, 56), DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 9F), BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White, ForeColor = ColText };
+            cboStatus.Items.AddRange(new object[] { "All Status", "available", "on-trip", "off-duty", "active", "inactive", "suspended" });
             cboStatus.SelectedIndex = 0;
             cboStatus.SelectedIndexChanged += (s, e) => FilterGrid();
 
-            var btnRefresh = CreateBtn("⟳ Reload", ColSub, 366, 54, 90);
+            var btnRefresh = CreateBtn("⟳ Reload", ColSub, 376, 54, 90);
             btnRefresh.Click += (s, e) => LoadFromDB();
 
             topBar.Controls.Add(lblTitle);
@@ -130,7 +133,7 @@ namespace DriveAndGo_Admin.Panels
                 BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(25, 25, 35) : WinColor.White,
                 Location = new Point(20, 20),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                Height = 350
+                Height = 430
             };
             pnlProfileCard.Paint += (s, e) => {
                 var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -172,6 +175,15 @@ namespace DriveAndGo_Admin.Panels
             Label lblRatingTitle = new Label { Text = "RATING", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = ColSub, AutoSize = true, Location = new Point(150, 220) };
             lblRating = new Label { Text = "0.0", Font = new Font("Segoe UI", 14F, FontStyle.Bold), ForeColor = ColYellow, AutoSize = true, Location = new Point(150, 240) };
 
+            Label lblActiveTitle = new Label { Text = "ACTIVE RENTALS", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = ColSub, AutoSize = true, Location = new Point(20, 292) };
+            lblActiveRentals = new Label { Text = "0", Font = new Font("Segoe UI", 14F, FontStyle.Bold), ForeColor = ColGreen, AutoSize = true, Location = new Point(20, 312) };
+
+            Label lblRevenueTitle = new Label { Text = "REVENUE HANDLED", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = ColSub, AutoSize = true, Location = new Point(150, 292) };
+            lblRevenueHandled = new Label { Text = "₱0.00", Font = new Font("Segoe UI", 13F, FontStyle.Bold), ForeColor = ColAccent, AutoSize = true, Location = new Point(150, 312) };
+
+            Label lblLastAssignedTitle = new Label { Text = "LAST ASSIGNMENT", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = ColSub, AutoSize = true, Location = new Point(20, 360) };
+            lblLastAssigned = new Label { Text = "No active booking", Font = new Font("Segoe UI", 9F), ForeColor = ColText, AutoSize = true, Location = new Point(20, 380) };
+
             pnlProfileCard.Controls.Add(pnlAvatar);
             pnlProfileCard.Controls.Add(lblDriverName);
             pnlProfileCard.Controls.Add(lblStatus);
@@ -181,21 +193,31 @@ namespace DriveAndGo_Admin.Panels
             pnlProfileCard.Controls.Add(lblTrips);
             pnlProfileCard.Controls.Add(lblRatingTitle);
             pnlProfileCard.Controls.Add(lblRating);
+            pnlProfileCard.Controls.Add(lblActiveTitle);
+            pnlProfileCard.Controls.Add(lblActiveRentals);
+            pnlProfileCard.Controls.Add(lblRevenueTitle);
+            pnlProfileCard.Controls.Add(lblRevenueHandled);
+            pnlProfileCard.Controls.Add(lblLastAssignedTitle);
+            pnlProfileCard.Controls.Add(lblLastAssigned);
 
             Panel pnlActions = new Panel { Dock = DockStyle.Bottom, Height = 60, BackColor = WinColor.Transparent };
-            btnActivate = CreateBtn("✔ Activate", ColGreen, 0, 12, 100);
-            btnSuspend = CreateBtn("⏸ Suspend", ColYellow, 110, 12, 100);
-            btnDelete = CreateBtn("🗑 Delete", ColRed, 220, 12, 90);
+            btnActivate = CreateBtn("✔ Ready", ColGreen, 0, 12, 92);
+            btnOffDuty = CreateBtn("☾ Off Duty", ColBlue, 100, 12, 98);
+            btnSuspend = CreateBtn("⏸ Suspend", ColYellow, 206, 12, 96);
+            btnDelete = CreateBtn("🗑 Delete", ColRed, 310, 12, 90);
 
-            btnActivate.Click += (s, e) => UpdateDriverStatus("active");
+            btnActivate.Click += (s, e) => UpdateDriverStatus("available");
+            btnOffDuty.Click += (s, e) => UpdateDriverStatus("off-duty");
             btnSuspend.Click += (s, e) => UpdateDriverStatus("suspended");
             btnDelete.Click += OnDeleteDriver;
 
             btnActivate.Enabled = false;
+            btnOffDuty.Enabled = false;
             btnSuspend.Enabled = false;
             btnDelete.Enabled = false;
 
             pnlActions.Controls.Add(btnActivate);
+            pnlActions.Controls.Add(btnOffDuty);
             pnlActions.Controls.Add(btnSuspend);
             pnlActions.Controls.Add(btnDelete);
 
@@ -228,6 +250,7 @@ namespace DriveAndGo_Admin.Panels
 
             if (lblDriverName != null) lblDriverName.ForeColor = ColText;
             if (lblLicense != null) lblLicense.ForeColor = ColText;
+            if (lblLastAssigned != null) lblLastAssigned.ForeColor = ColText;
 
             foreach (Control c in topBar.Controls) { if (c is Label l) l.ForeColor = ColText; }
 
@@ -251,10 +274,32 @@ namespace DriveAndGo_Admin.Panels
                         COALESCE(u.full_name, 'Unknown User') AS driver_name,
                         d.license_no, 
                         d.status, 
-                        d.rating_avg, 
-                        d.total_trips
+                        COALESCE(d.rating_avg, 0) AS rating_avg, 
+                        COALESCE(d.total_trips, 0) AS total_trips,
+                        COALESCE(active_summary.active_rentals, 0) AS active_rentals,
+                        COALESCE(revenue_summary.revenue_handled, 0) AS revenue_handled,
+                        active_summary.last_assignment
                     FROM drivers d
                     LEFT JOIN users u ON d.user_id = u.user_id
+                    LEFT JOIN
+                    (
+                        SELECT driver_id,
+                               COUNT(*) AS active_rentals,
+                               MAX(start_date) AS last_assignment
+                        FROM rentals
+                        WHERE driver_id IS NOT NULL
+                          AND LOWER(COALESCE(status, '')) IN ('approved', 'in-use', 'rented')
+                        GROUP BY driver_id
+                    ) active_summary ON active_summary.driver_id = d.user_id
+                    LEFT JOIN
+                    (
+                        SELECT r.driver_id,
+                               SUM(CASE WHEN LOWER(COALESCE(t.status, '')) IN ('confirmed', 'paid') THEN t.amount ELSE 0 END) AS revenue_handled
+                        FROM rentals r
+                        LEFT JOIN transactions t ON t.rental_id = r.rental_id
+                        WHERE r.driver_id IS NOT NULL
+                        GROUP BY r.driver_id
+                    ) revenue_summary ON revenue_summary.driver_id = d.user_id
                     ORDER BY d.driver_id DESC", conn);
 
                 using var adapter = new MySqlDataAdapter(cmd);
@@ -284,6 +329,8 @@ namespace DriveAndGo_Admin.Panels
             display.Columns.Add("Driver Name", typeof(string));
             display.Columns.Add("License", typeof(string));
             display.Columns.Add("Trips", typeof(int));
+            display.Columns.Add("Active", typeof(int));
+            display.Columns.Add("Revenue", typeof(string));
             display.Columns.Add("Rating", typeof(string));
             display.Columns.Add("Status", typeof(string));
 
@@ -293,6 +340,8 @@ namespace DriveAndGo_Admin.Panels
                 {
                     decimal rating = row["rating_avg"] != DBNull.Value ? Convert.ToDecimal(row["rating_avg"]) : 0;
                     int trips = row["total_trips"] != DBNull.Value ? Convert.ToInt32(row["total_trips"]) : 0;
+                    int activeRentals = row["active_rentals"] != DBNull.Value ? Convert.ToInt32(row["active_rentals"]) : 0;
+                    decimal revenueHandled = row["revenue_handled"] != DBNull.Value ? Convert.ToDecimal(row["revenue_handled"]) : 0;
 
                     // Super safe null conversions
                     string status = row["status"] != DBNull.Value ? row["status"].ToString() : "inactive";
@@ -304,6 +353,8 @@ namespace DriveAndGo_Admin.Panels
                         driverName,
                         license,
                         trips,
+                        activeRentals,
+                        $"₱{revenueHandled:N0}",
                         rating > 0 ? $"⭐ {rating:0.0}" : "No Rating",
                         status
                     );
@@ -312,14 +363,16 @@ namespace DriveAndGo_Admin.Panels
 
             dgvDrivers.DataSource = display;
 
-            if (dgvDrivers.Columns.Count >= 6)
+            if (dgvDrivers.Columns.Count >= 8)
             {
                 dgvDrivers.Columns[0].Width = 40;
-                dgvDrivers.Columns[1].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill; // SUPER RESPONSIVE COLUMN
-                dgvDrivers.Columns[2].Width = 140;
-                dgvDrivers.Columns[3].Width = 70;
-                dgvDrivers.Columns[4].Width = 90;
+                dgvDrivers.Columns[1].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+                dgvDrivers.Columns[2].Width = 120;
+                dgvDrivers.Columns[3].Width = 60;
+                dgvDrivers.Columns[4].Width = 60;
                 dgvDrivers.Columns[5].Width = 90;
+                dgvDrivers.Columns[6].Width = 90;
+                dgvDrivers.Columns[7].Width = 90;
             }
         }
 
@@ -370,19 +423,23 @@ namespace DriveAndGo_Admin.Panels
             lblDriverName.Text = r["driver_name"] != DBNull.Value ? r["driver_name"].ToString() : "Unknown Driver";
             lblLicense.Text = r["license_no"] != DBNull.Value ? r["license_no"].ToString() : "N/A";
             lblTrips.Text = r["total_trips"] != DBNull.Value ? r["total_trips"].ToString() : "0";
+            lblActiveRentals.Text = r["active_rentals"] != DBNull.Value ? r["active_rentals"].ToString() : "0";
+            lblRevenueHandled.Text = r["revenue_handled"] != DBNull.Value ? $"₱{Convert.ToDecimal(r["revenue_handled"]):N2}" : "₱0.00";
+            lblLastAssigned.Text = r["last_assignment"] != DBNull.Value ? Convert.ToDateTime(r["last_assignment"]).ToString("MMM dd, yyyy") : "No active booking";
 
             decimal rating = r["rating_avg"] != DBNull.Value ? Convert.ToDecimal(r["rating_avg"]) : 0;
             lblRating.Text = rating > 0 ? $"{rating:0.0} / 5.0" : "N/A";
 
             string status = r["status"] != DBNull.Value ? r["status"].ToString().ToLower() : "inactive";
             lblStatus.Text = "● " + status.ToUpper();
-            lblStatus.ForeColor = status == "active" ? ColGreen : status == "suspended" ? ColRed : ColYellow;
+            lblStatus.ForeColor = StatusToColor(status);
 
             // Trigger repaint for Avatar Initial
             pnlProfileCard.Invalidate(true);
 
-            btnActivate.Enabled = status != "active";
-            btnSuspend.Enabled = status == "active";
+            btnActivate.Enabled = !IsReadyStatus(status);
+            btnOffDuty.Enabled = status != "off-duty";
+            btnSuspend.Enabled = status != "suspended";
             btnDelete.Enabled = true;
         }
 
@@ -391,7 +448,7 @@ namespace DriveAndGo_Admin.Panels
         {
             if (_selectedDriverId < 0) return;
 
-            string actionName = newStatus == "active" ? "Activate" : "Suspend";
+            string actionName = newStatus == "available" ? "Mark ready" : newStatus == "off-duty" ? "Set off duty" : "Suspend";
             if (MessageBox.Show($"Are you sure you want to {actionName.ToLower()} this driver?", "Confirm Action", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
 
             try
@@ -403,7 +460,7 @@ namespace DriveAndGo_Admin.Panels
                 cmd.Parameters.AddWithValue("@id", _selectedDriverId);
                 cmd.ExecuteNonQuery();
 
-                MessageBox.Show($"Driver successfully {newStatus}!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show($"Driver status updated to {newStatus}.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 LoadFromDB();
             }
             catch (Exception ex)
@@ -433,7 +490,11 @@ namespace DriveAndGo_Admin.Panels
                 lblLicense.Text = "—";
                 lblTrips.Text = "0";
                 lblRating.Text = "0.0";
+                lblActiveRentals.Text = "0";
+                lblRevenueHandled.Text = "₱0.00";
+                lblLastAssigned.Text = "No active booking";
                 btnActivate.Enabled = false;
+                btnOffDuty.Enabled = false;
                 btnSuspend.Enabled = false;
                 btnDelete.Enabled = false;
                 pnlProfileCard.Invalidate(true);
@@ -449,14 +510,14 @@ namespace DriveAndGo_Admin.Panels
         {
             if (e.RowIndex < 0 || e.Value == null || e.Value == DBNull.Value) return;
 
-            // Status column index is 5
-            if (e.ColumnIndex == 5)
+            // Status column index is 7
+            if (e.ColumnIndex == 7)
             {
                 e.Handled = true;
                 e.PaintBackground(e.ClipBounds, true);
 
                 string val = e.Value.ToString();
-                WinColor c = val.ToLower() == "active" ? ColGreen : val.ToLower() == "suspended" ? ColRed : ColYellow;
+                WinColor c = StatusToColor(val);
 
                 var rect = new Rectangle(e.CellBounds.X + 6, e.CellBounds.Y + 9, e.CellBounds.Width - 12, e.CellBounds.Height - 18);
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
@@ -508,6 +569,22 @@ namespace DriveAndGo_Admin.Panels
             int d = r * 2; var arc = new Rectangle(b.Location, new Size(d, d)); var path = new GraphicsPath();
             path.AddArc(arc, 180, 90); arc.X = b.Right - d; path.AddArc(arc, 270, 90); arc.Y = b.Bottom - d;
             path.AddArc(arc, 0, 90); arc.X = b.Left; path.AddArc(arc, 90, 90); path.CloseFigure(); return path;
+        }
+
+        private bool IsReadyStatus(string status) =>
+            string.Equals(status, "available", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(status, "active", StringComparison.OrdinalIgnoreCase);
+
+        private WinColor StatusToColor(string status)
+        {
+            string value = status?.ToLower() ?? "";
+            return value switch
+            {
+                "available" or "active" => ColGreen,
+                "on-trip" => ColBlue,
+                "suspended" => ColRed,
+                _ => ColYellow
+            };
         }
 
         protected override void Dispose(bool disposing)

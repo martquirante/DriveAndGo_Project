@@ -1,45 +1,46 @@
-using DriveAndGo_API.Services; // ── DAGDAG ITO SA TAAS (Para makilala ang Service) ──
+using Microsoft.Extensions.FileProviders;
+using DriveAndGo_API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddScoped<DriveAndGo_API.Services.DbService>();
+builder.Services.Configure<FirebaseBridgeOptions>(builder.Configuration.GetSection("FirebaseBridge"));
+builder.Services.AddHostedService<MySqlFirebaseBridgeService>();
 
-
-builder.Services.AddHostedService<FirebaseSyncService>();
-
-// ── CORS para makapag-connect ang Admin app at Mobile app ──
 builder.Services.AddCors(options =>
 {
-    options.AddDefaultPolicy(policy =>
+    options.AddPolicy("AllowAll", policy =>
     {
         policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+              .AllowAnyHeader()
+              .AllowAnyMethod();
     });
 });
 
-// ── DAGDAG ITO: Buhayin ang Firebase Auto-Sync Background Worker ──
-builder.Services.AddHostedService<FirebaseSyncService>();
-
 var app = builder.Build();
 
-// Laging naka-on ang Swagger
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// ── CORS middleware, dapat bago UseAuthorization ──
-app.UseCors();
+app.UseCors("AllowAll");
 
-// Automatic redirect para iwas 404 Error
-app.MapGet("/", context =>
+var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "uploads");
+if (!Directory.Exists(uploadsPath))
+    Directory.CreateDirectory(uploadsPath);
+
+app.UseStaticFiles();
+
+app.UseStaticFiles(new StaticFileOptions
 {
-    context.Response.Redirect("/swagger");
-    return Task.CompletedTask;
+    FileProvider = new PhysicalFileProvider(
+        Path.Combine(builder.Environment.ContentRootPath, "wwwroot")),
+    RequestPath = ""
 });
 
-app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
+
 app.Run();

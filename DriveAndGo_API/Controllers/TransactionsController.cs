@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using MySql.Data.MySqlClient;
 using DriveAndGo_API.Models;
+using System;
 
 namespace DriveAndGo_API.Controllers
 {
@@ -224,7 +225,7 @@ namespace DriveAndGo_API.Controllers
                 int rentalId = Convert.ToInt32(reader["rental_id"]);
                 reader.Close();
 
-                if (currentStatus != "pending")
+                if (!string.Equals(currentStatus, "pending", StringComparison.OrdinalIgnoreCase))
                     return BadRequest(new
                     {
                         message =
@@ -283,7 +284,7 @@ namespace DriveAndGo_API.Controllers
                         "Transaction not found."
                     });
 
-                if (status != "pending")
+                if (!string.Equals(status, "pending", StringComparison.OrdinalIgnoreCase))
                     return BadRequest(new
                     {
                         message =
@@ -336,7 +337,7 @@ namespace DriveAndGo_API.Controllers
                            COUNT(*) AS total_transactions,
                            SUM(amount) AS total_amount
                     FROM transactions
-                    WHERE status = 'confirmed'
+                    WHERE LOWER(COALESCE(status, '')) IN ('confirmed', 'paid')
                     GROUP BY {groupBy}
                     ORDER BY period DESC
                     LIMIT 12", conn);

@@ -36,10 +36,12 @@ namespace DriveAndGo_Admin.Panels
         private decimal _todayRevenue = 0;
         private int _pendingBookings = 0;
         private int _pendingPayments = 0;
+        private int _overdueRentals = 0;
+        private int _openIssues = 0;
 
         // ── Layout ──
         private Panel _scrollContainer;
-        private Panel[] _statCards = new Panel[6];
+        private Panel[] _statCards = new Panel[8];
         private Panel _bookingsCard;
         private Panel _quickStatsCard;
         private Panel _fleetCard;
@@ -88,7 +90,7 @@ namespace DriveAndGo_Admin.Panels
                     var scrollPos = new Point(Math.Abs(_scrollContainer.AutoScrollPosition.X), Math.Abs(_scrollContainer.AutoScrollPosition.Y));
                     _scrollContainer.BackColor = ColBg;
                     _scrollContainer.Controls.Clear();
-                    _statCards = new Panel[6];
+                    _statCards = new Panel[8];
                     BuildUI();
                     StartEntranceAnimation();
                     _scrollContainer.AutoScrollPosition = scrollPos;
@@ -118,6 +120,8 @@ namespace DriveAndGo_Admin.Panels
         {
             try
             {
+                AdminDataHelper.ReconcilePaidRentalTransactions(_connStr);
+
                 using var conn = new MySqlConnection(_connStr);
                 conn.Open();
 
@@ -130,13 +134,20 @@ namespace DriveAndGo_Admin.Panels
                 }
 
                 _totalVehicles = Query<int>("SELECT COUNT(*) FROM vehicles");
-                _activeRentals = Query<int>("SELECT COUNT(*) FROM rentals WHERE status='approved'");
-                _availDrivers = Query<int>("SELECT COUNT(*) FROM drivers WHERE status='available'");
-                _pendingBookings = Query<int>("SELECT COUNT(*) FROM rentals WHERE status='pending'");
-                _pendingPayments = Query<int>("SELECT COUNT(*) FROM transactions WHERE status='pending'");
+                _activeRentals = Query<int>("SELECT COUNT(*) FROM rentals WHERE LOWER(COALESCE(status,'')) IN ('approved','in-use','rented')");
+                _availDrivers = Query<int>("SELECT COUNT(*) FROM drivers WHERE LOWER(COALESCE(status,'')) IN ('available','active')");
+                _pendingBookings = Query<int>("SELECT COUNT(*) FROM rentals WHERE LOWER(COALESCE(status,''))='pending'");
+                _pendingPayments = Query<int>("SELECT COUNT(*) FROM transactions WHERE LOWER(COALESCE(status,''))='pending'");
+                _overdueRentals = Query<int>(@"
+                    SELECT COUNT(*) FROM rentals
+                    WHERE LOWER(COALESCE(status,'')) IN ('approved','in-use','rented')
+                      AND end_date IS NOT NULL
+                      AND DATE(end_date) < CURDATE()");
+                _openIssues = Query<int>("SELECT COUNT(*) FROM issues WHERE LOWER(COALESCE(status,'')) <> 'resolved'");
                 _todayRevenue = Query<decimal>(@"
                     SELECT COALESCE(SUM(amount),0) FROM transactions
-                    WHERE status='confirmed' AND DATE(paid_at)=CURDATE()");
+                    WHERE LOWER(COALESCE(status,'')) IN ('confirmed','paid')
+                      AND DATE(COALESCE(paid_at, NOW()))=CURDATE()");
             }
             catch (Exception ex) { Console.WriteLine("DB: " + ex.Message); }
         }
@@ -194,7 +205,7 @@ namespace DriveAndGo_Admin.Panels
             bool wide = W >= 900;
             int bkW = wide ? (int)(usable * 0.68) : usable;
             int qsW = wide ? usable - bkW - gap : usable;
-            int row2H = 300;
+            int row2H = 456;
 
             if (_bookingsCard != null)
             {
@@ -303,7 +314,7 @@ namespace DriveAndGo_Admin.Panels
                 lblDate.Text = DateTime.Now.ToString("dddd, MMMM dd, yyyy");
                 LoadStatsFromDB();
                 _scrollContainer.Controls.Clear();
-                _statCards = new Panel[6];
+                _statCards = new Panel[8];
                 this.BackColor = ColBg;
                 _scrollContainer.BackColor = ColBg;
                 BuildUI();
@@ -331,6 +342,8 @@ namespace DriveAndGo_Admin.Panels
                 ("Today's Revenue",   "₱",  "₱"+_todayRevenue.ToString("N2"), "Confirmed pays", ColAccent),
                 ("Pending Bookings",  "📋", _pendingBookings.ToString(),   "Needs approval",    ColRed),
                 ("Pending Payments",  "💳", _pendingPayments.ToString(),   "Awaiting confirm",  ColYellow),
+                ("Overdue Rentals",   "⏰", _overdueRentals.ToString(),    "Needs follow-up",   ColRed),
+                ("Open Issues",       "🛠", _openIssues.ToString(),        "Reported incidents", ColYellow),
             };
 
             _cardAlpha = new float[cards.Length];
@@ -528,19 +541,53 @@ namespace DriveAndGo_Admin.Panels
             _quickStatsCard = CreateCard("Quick Stats");
 
             decimal monthRevenue = 0;
-            int totalUsers = 0, totalRatings = 0;
+            int totalUsers = 0, totalRatings = 0, dueToday = 0, overdue = 0, pendingExtensions = 0, openIssues = 0;
             decimal avgRating = 0;
+            string topDriverName = "No driver ratings yet";
+            decimal topDriverRating = 0;
 
             try
             {
+                AdminDataHelper.ReconcilePaidRentalTransactions(_connStr);
+
                 using var conn = new MySqlConnection(_connStr);
                 conn.Open();
                 T Q<T>(string sql) { using var c = new MySqlCommand(sql, conn); var res = c.ExecuteScalar(); return res == DBNull.Value || res == null ? default(T) : (T)Convert.ChangeType(res, typeof(T)); }
                 monthRevenue = Q<decimal>(@"SELECT COALESCE(SUM(amount),0) FROM transactions
-                    WHERE status='confirmed' AND MONTH(paid_at)=MONTH(CURDATE()) AND YEAR(paid_at)=YEAR(CURDATE())");
+                    WHERE LOWER(COALESCE(status,'')) IN ('confirmed','paid')
+                      AND MONTH(COALESCE(paid_at, NOW()))=MONTH(CURDATE())
+                      AND YEAR(COALESCE(paid_at, NOW()))=YEAR(CURDATE())");
                 totalUsers = Q<int>("SELECT COUNT(*) FROM users WHERE role='customer'");
                 totalRatings = Q<int>("SELECT COUNT(*) FROM ratings");
                 avgRating = Q<decimal>("SELECT COALESCE(AVG(vehicle_score),0) FROM ratings");
+                dueToday = Q<int>(@"
+                    SELECT COUNT(*) FROM rentals
+                    WHERE LOWER(COALESCE(status,'')) IN ('approved','in-use','rented')
+                      AND end_date IS NOT NULL
+                      AND DATE(end_date) = CURDATE()");
+                overdue = Q<int>(@"
+                    SELECT COUNT(*) FROM rentals
+                    WHERE LOWER(COALESCE(status,'')) IN ('approved','in-use','rented')
+                      AND end_date IS NOT NULL
+                      AND DATE(end_date) < CURDATE()");
+                pendingExtensions = Q<int>("SELECT COUNT(*) FROM extensions WHERE LOWER(COALESCE(status,''))='pending'");
+                openIssues = Q<int>("SELECT COUNT(*) FROM issues WHERE LOWER(COALESCE(status,'')) <> 'resolved'");
+
+                using var topDriverCmd = new MySqlCommand(@"
+                    SELECT u.full_name, ROUND(AVG(r.driver_score), 1) AS avg_rating
+                    FROM ratings r
+                    JOIN drivers d ON r.driver_id = d.user_id
+                    JOIN users u ON d.user_id = u.user_id
+                    WHERE r.driver_score IS NOT NULL
+                    GROUP BY u.user_id, u.full_name
+                    ORDER BY avg_rating DESC, COUNT(*) DESC
+                    LIMIT 1", conn);
+                using var topDriverReader = topDriverCmd.ExecuteReader();
+                if (topDriverReader.Read())
+                {
+                    topDriverName = topDriverReader["full_name"]?.ToString() ?? topDriverName;
+                    topDriverRating = topDriverReader["avg_rating"] == DBNull.Value ? 0 : Convert.ToDecimal(topDriverReader["avg_rating"]);
+                }
             }
             catch { }
 
@@ -550,6 +597,9 @@ namespace DriveAndGo_Admin.Panels
                 ("Total Customers",   totalUsers.ToString(),             ColBlue),
                 ("Total Reviews",     totalRatings.ToString(),           ColPurple),
                 ("Avg. Rating",       avgRating.ToString("0.0") + " / 5.0", ColGreen),
+                ("Due Today / Overdue", $"{dueToday} due  ·  {overdue} overdue", overdue > 0 ? ColRed : ColYellow),
+                ("Ops Queue",         $"{pendingExtensions} extensions  ·  {openIssues} issues", (pendingExtensions + openIssues) > 0 ? ColYellow : ColGreen),
+                ("Top Driver",        topDriverRating > 0 ? $"{topDriverName}  ·  {topDriverRating:0.0}★" : topDriverName, ColBlue),
             };
 
             int itemY = 56;
@@ -594,10 +644,10 @@ namespace DriveAndGo_Admin.Panels
                 using var conn = new MySqlConnection(_connStr);
                 conn.Open();
                 T Q<T>(string sql) { using var c = new MySqlCommand(sql, conn); var res = c.ExecuteScalar(); return res == DBNull.Value || res == null ? default(T) : (T)Convert.ChangeType(res, typeof(T)); }
-                available = Q<int>("SELECT COUNT(*) FROM vehicles WHERE status='Available'");
-                rented = Q<int>("SELECT COUNT(*) FROM vehicles WHERE status='Rented'");
-                maintenance = Q<int>("SELECT COUNT(*) FROM vehicles WHERE status='Maintenance'");
-                retired = Q<int>("SELECT COUNT(*) FROM vehicles WHERE status='Retired'");
+                available = Q<int>("SELECT COUNT(*) FROM vehicles WHERE LOWER(COALESCE(status,''))='available'");
+                rented = Q<int>("SELECT COUNT(*) FROM vehicles WHERE LOWER(COALESCE(status,'')) IN ('rented','in-use')");
+                maintenance = Q<int>("SELECT COUNT(*) FROM vehicles WHERE LOWER(COALESCE(status,''))='maintenance'");
+                retired = Q<int>("SELECT COUNT(*) FROM vehicles WHERE LOWER(COALESCE(status,''))='retired'");
             }
             catch { }
 
@@ -660,29 +710,92 @@ namespace DriveAndGo_Admin.Panels
         // ══════════════════════════════════════════════
         private void BuildPendingActions()
         {
-            _pendingCard = CreateCard("Pending Actions");
+            _pendingCard = CreateCard("Admin Action Feed");
 
             try
             {
                 using var conn = new MySqlConnection(_connStr);
                 conn.Open();
                 var cmd = new MySqlCommand(@"
-                    SELECT CONCAT(u.full_name,' → ',v.brand,' ',v.model) AS description,
-                           r.total_amount, r.created_at, r.status
-                    FROM rentals r
-                    JOIN users u ON r.customer_id=u.user_id
-                    JOIN vehicles v ON r.vehicle_id=v.vehicle_id
-                    WHERE r.status='pending'
-                    ORDER BY r.created_at DESC LIMIT 3", conn);
+                    SELECT *
+                    FROM
+                    (
+                        SELECT 'booking' AS action_type,
+                               CONCAT(u.full_name,' → ',v.brand,' ',v.model) AS description,
+                               r.total_amount AS action_amount,
+                               r.created_at AS action_time,
+                               r.status AS action_status
+                        FROM rentals r
+                        JOIN users u ON r.customer_id = u.user_id
+                        JOIN vehicles v ON r.vehicle_id = v.vehicle_id
+                        WHERE LOWER(COALESCE(r.status,'')) = 'pending'
+
+                        UNION ALL
+
+                        SELECT 'extension' AS action_type,
+                               CONCAT(u.full_name,' requested +',e.added_days,' day(s) on ',v.brand,' ',v.model) AS description,
+                               e.added_fee AS action_amount,
+                               e.requested_at AS action_time,
+                               e.status AS action_status
+                        FROM extensions e
+                        JOIN rentals r ON e.rental_id = r.rental_id
+                        JOIN users u ON r.customer_id = u.user_id
+                        JOIN vehicles v ON r.vehicle_id = v.vehicle_id
+                        WHERE LOWER(COALESCE(e.status,'')) = 'pending'
+
+                        UNION ALL
+
+                        SELECT 'issue' AS action_type,
+                               CONCAT(COALESCE(i.issue_type,'Issue'),' · ',u.full_name,' · ',v.brand,' ',v.model) AS description,
+                               NULL AS action_amount,
+                               i.reported_at AS action_time,
+                               i.status AS action_status
+                        FROM issues i
+                        JOIN users u ON i.reporter_id = u.user_id
+                        JOIN rentals r ON i.rental_id = r.rental_id
+                        JOIN vehicles v ON r.vehicle_id = v.vehicle_id
+                        WHERE LOWER(COALESCE(i.status,'')) <> 'resolved'
+
+                        UNION ALL
+
+                        SELECT 'overdue' AS action_type,
+                               CONCAT(u.full_name,' overdue on ',v.brand,' ',v.model) AS description,
+                               r.total_amount AS action_amount,
+                               r.end_date AS action_time,
+                               r.status AS action_status
+                        FROM rentals r
+                        JOIN users u ON r.customer_id = u.user_id
+                        JOIN vehicles v ON r.vehicle_id = v.vehicle_id
+                        WHERE LOWER(COALESCE(r.status,'')) IN ('approved','in-use','rented')
+                          AND r.end_date IS NOT NULL
+                          AND DATE(r.end_date) < CURDATE()
+                    ) feed
+                    ORDER BY action_time DESC
+                    LIMIT 5", conn);
 
                 using var reader = cmd.ExecuteReader();
                 int itemY = 50;
 
                 while (reader.Read())
                 {
+                    string actionType = reader["action_type"]?.ToString()?.ToLower() ?? "booking";
                     var desc = reader["description"].ToString()!;
-                    var amount = Convert.ToDecimal(reader["total_amount"]);
-                    var dt2 = Convert.ToDateTime(reader["created_at"]);
+                    var dt2 = Convert.ToDateTime(reader["action_time"]);
+                    decimal? amount = reader["action_amount"] == DBNull.Value ? null : Convert.ToDecimal(reader["action_amount"]);
+                    Color actionColor = actionType switch
+                    {
+                        "issue" => ColRed,
+                        "extension" => ColYellow,
+                        "overdue" => ColRed,
+                        _ => ColAccent
+                    };
+                    string actionLabel = actionType switch
+                    {
+                        "issue" => "Needs attention",
+                        "extension" => "Extension fee",
+                        "overdue" => "Overdue amount",
+                        _ => "Booking amount"
+                    };
 
                     var row = new Panel { Size = new Size(500, 38), Location = new Point(20, itemY), BackColor = Color.Transparent, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
                     SetDoubleBuffer(row);
@@ -692,12 +805,21 @@ namespace DriveAndGo_Admin.Panels
                     dot.Paint += (s, e) =>
                     {
                         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                        e.Graphics.FillEllipse(new SolidBrush(ColYellow), 0, 0, 7, 7);
+                        e.Graphics.FillEllipse(new SolidBrush(actionColor), 0, 0, 7, 7);
                     };
 
                     var lblDesc = new Label { Text = desc, Font = new Font("Segoe UI", 9F), ForeColor = ColText, AutoSize = false, Size = new Size(340, 18), Location = new Point(16, 4), BackColor = Color.Transparent };
                     var lblTime = new Label { Text = dt2.ToString("MMM dd, hh:mm tt"), Font = new Font("Segoe UI", 8F), ForeColor = ColSub, AutoSize = true, Location = new Point(16, 20), BackColor = Color.Transparent };
-                    var lblAmt = new Label { Text = "₱" + amount.ToString("N2"), Font = new Font("Segoe UI", 10F, FontStyle.Bold), ForeColor = ColAccent, AutoSize = true, Location = new Point(420, 10), BackColor = Color.Transparent, Anchor = AnchorStyles.Top | AnchorStyles.Right };
+                    var lblAmt = new Label
+                    {
+                        Text = amount.HasValue ? "₱" + amount.Value.ToString("N2") : actionLabel,
+                        Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
+                        ForeColor = amount.HasValue ? ColAccent : actionColor,
+                        AutoSize = true,
+                        Location = new Point(390, 10),
+                        BackColor = Color.Transparent,
+                        Anchor = AnchorStyles.Top | AnchorStyles.Right
+                    };
 
                     row.Controls.Add(dot);
                     row.Controls.Add(lblDesc);
@@ -709,7 +831,7 @@ namespace DriveAndGo_Admin.Panels
 
                 if (itemY == 50)
                 {
-                    var lbl = new Label { Text = "✓  No pending bookings", Font = new Font("Segoe UI", 11F), ForeColor = ColGreen, AutoSize = true, Location = new Point(20, 76), BackColor = Color.Transparent };
+                    var lbl = new Label { Text = "✓  No urgent admin actions", Font = new Font("Segoe UI", 11F), ForeColor = ColGreen, AutoSize = true, Location = new Point(20, 76), BackColor = Color.Transparent };
                     _pendingCard.Controls.Add(lbl);
                 }
             }

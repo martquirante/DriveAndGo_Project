@@ -63,7 +63,7 @@ namespace DriveAndGo_API.Controllers
                 // Naka-JOIN para makuha ang pangalan ng nag-report at anong sasakyan
                 var cmd = new MySqlCommand(@"
                     SELECT i.*, u.full_name AS reporter_name, 
-                           CONCAT(v.brand, ' ', v.model, ' (', v.plate_number, ')') AS vehicle_name
+                           CONCAT(v.brand, ' ', v.model, ' (', v.plate_no, ')') AS vehicle_name
                     FROM issues i
                     JOIN users u ON i.reporter_id = u.user_id
                     JOIN rentals r ON i.rental_id = r.rental_id

@@ -10,8 +10,6 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.Net.Http;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -42,23 +40,30 @@ namespace DriveAndGo_Admin.Panels
         private readonly Color ColPurple = Color.FromArgb(168, 85, 247);
         private readonly Color ColAccent = Color.FromArgb(230, 81, 0);
         private readonly Color ColCyan = Color.FromArgb(6, 182, 212);
+        private readonly Color ColNeon = Color.FromArgb(0, 255, 200);
+        private const int MaxVehicleMediaItems = 8;
 
-        // ── Cloudinary ────────────────────────────────────────────────────
-        private const string CloudName = "dducouuy5";
-        private const string CloudApiKey = "818381663113767";
-        private const string CloudSecret = "FVHDbX63zD5hD0xYAYCyNeJhAxM";
+        private static readonly HashSet<string> SupportedImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".jfif"
+        };
 
-        // ── HQ / Firebase ─────────────────────────────────────────────────
+        private static readonly HashSet<string> SupportedVideoExtensions = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ".mp4", ".webm", ".mov", ".m4v"
+        };
+
+        // ── HQ / Firebase ──────────────────────────────────────────────────
         private const double HQ_LAT = 14.8169;
         private const double HQ_LNG = 121.0453;
         private const string HQ_NAME = "DriveAndGo Garage";
         private const string FbUrl = "https://vechiclerentaldb-default-rtdb.asia-southeast1.firebasedatabase.app";
-        private const string FbGpsPath = "/location_logs.json";
+        private const string FbGpsPath = "/vehicle_locations.json";
 
         private readonly string _connStr =
             "Server=127.0.0.1;Port=3306;Database=vehicle_rental_db;Uid=root;Pwd=;";
 
-        // ── UI ─────────────────────────────────────────────────────────────
+        // ── UI ──────────────────────────────────────────────────────────────
         private SplitContainer splitContainer;
         private Panel topBar, bottomBar, cardScrollPanel;
         private FlowLayoutPanel flowCards;
@@ -68,20 +73,45 @@ namespace DriveAndGo_Admin.Panels
         private TextBox txtSearch;
         private ComboBox cboFilterStatus;
 
-        // ── Detail overlay ─────────────────────────────────────────────────
+        // ── Detail overlay ──────────────────────────────────────────────────
         private Panel _overlay;
         private bool _overlayOpen = false;
         private System.Windows.Forms.Timer _slideTimer;
+        private System.Windows.Forms.Timer _carouselAutoTimer;
 
-        // ── State ──────────────────────────────────────────────────────────
+        // ── State ───────────────────────────────────────────────────────────
         private DataTable _vehicleData = new DataTable();
         private int _selectedId = -1;
         private bool _mapReady = false;
         private readonly Dictionary<int, Panel> _cardMap = new();
         private readonly Dictionary<int, Image> _imgCache = new();
+        private int _lastCardPanelWidth = 0;
 
         private System.Windows.Forms.Timer _liveTimer;
         private static readonly HttpClient _http = new HttpClient();
+
+        private string _garage3DBase64 = "";
+
+        private enum VehicleMediaKind
+        {
+            Unknown,
+            Image,
+            Video
+        }
+
+        private sealed class VehicleMediaItem
+        {
+            public VehicleMediaItem(string source)
+            {
+                Source = NormalizeMediaSource(source);
+                Kind = DetectMediaKind(Source);
+            }
+
+            public string Source { get; }
+            public VehicleMediaKind Kind { get; }
+            public bool IsImage => Kind == VehicleMediaKind.Image;
+            public bool IsVideo => Kind == VehicleMediaKind.Video;
+        }
 
         // ════════════════════════════════════════════════════════════════════
         public FleetPanel()
@@ -91,9 +121,35 @@ namespace DriveAndGo_Admin.Panels
             this.BackColor = ColBg;
             ThemeManager.ThemeChanged += OnThemeChanged;
 
+            LoadGarage3DImage();
             BuildUI();
             LoadVehiclesFromDB();
             StartLiveGPSPolling();
+        }
+
+        // ── Load garage image ───────────────────────────────────────────────
+        private void LoadGarage3DImage()
+        {
+            try
+            {
+                string[] searchPaths = {
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "garage_3D.png"),
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets",    "garage_3D.png"),
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "garage_3D.png"),
+                    Path.Combine(Application.StartupPath, "garage_3D.png")
+                };
+                foreach (var p in searchPaths)
+                {
+                    if (!File.Exists(p)) continue;
+                    string webAssets = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets");
+                    Directory.CreateDirectory(webAssets);
+                    string dest = Path.Combine(webAssets, "garage_3D.png");
+                    if (p != dest) File.Copy(p, dest, true);
+                    _garage3DBase64 = Convert.ToBase64String(File.ReadAllBytes(p));
+                    break;
+                }
+            }
+            catch { }
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -109,42 +165,43 @@ namespace DriveAndGo_Admin.Panels
                 Orientation = Orientation.Vertical,
                 SplitterWidth = 2,
                 SplitterDistance = 440,
-                BackColor = dk ? Color.FromArgb(20, 20, 38) : Color.FromArgb(200, 200, 220)
+                BackColor = dk ? Color.FromArgb(16, 16, 32) : Color.FromArgb(200, 200, 220)
             };
 
-            this.SizeChanged += (s, e) => {
+            this.SizeChanged += (s, e) =>
+            {
                 if (this.Width > 900)
                     splitContainer.SplitterDistance = Math.Min(480, this.Width / 3);
             };
 
             splitContainer.Panel1.BackColor = ColBg;
-            splitContainer.Panel2.BackColor = Color.FromArgb(5, 5, 12);
+            splitContainer.Panel2.BackColor = Color.FromArgb(3, 3, 8);
 
             BuildLeftPanel();
             BuildRightPanel();
             this.Controls.Add(splitContainer);
 
-            // Overlay (hidden, sits above Panel2)
             _overlay = new Panel
             {
                 Visible = false,
-                BackColor = dk ? Color.FromArgb(6, 6, 16) : Color.White,
+                BackColor = dk ? Color.FromArgb(4, 4, 12) : Color.White,
                 Dock = DockStyle.None
             };
             splitContainer.Panel2.Controls.Add(_overlay);
             _overlay.BringToFront();
         }
 
-        // ── LEFT PANEL ────────────────────────────────────────────────────
+        // ── LEFT PANEL ─────────────────────────────────────────────────────
         private void BuildLeftPanel()
         {
             bool dk = ThemeManager.IsDarkMode;
-            Color hdrBg = dk ? Color.FromArgb(6, 6, 16) : Color.FromArgb(248, 248, 255);
+            Color hdrBg = dk ? Color.FromArgb(4, 4, 14) : Color.FromArgb(248, 248, 255);
 
+            // ── Top bar ──────────────────────────────────────────────────
             topBar = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 118,
+                Height = 124,
                 BackColor = hdrBg,
                 Padding = new Padding(14, 10, 14, 8)
             };
@@ -152,23 +209,19 @@ namespace DriveAndGo_Admin.Panels
             {
                 var g = e.Graphics;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
-                // gradient accent line at bottom
                 using var br = new LinearGradientBrush(
-                    new Point(0, topBar.Height - 2),
-                    new Point(topBar.Width, topBar.Height - 2),
+                    new Point(0, topBar.Height - 2), new Point(topBar.Width, topBar.Height - 2),
                     ColAccent, Color.Transparent);
                 g.FillRectangle(br, 0, topBar.Height - 2, topBar.Width, 2);
-                // subtle top glow stripe
-                using var glow = new LinearGradientBrush(
-                    new Rectangle(0, 0, topBar.Width, 3),
-                    Color.FromArgb(60, ColAccent), Color.Transparent, LinearGradientMode.Vertical);
-                g.FillRectangle(glow, 0, 0, topBar.Width, 3);
+                using var scanPen = new Pen(Color.FromArgb(dk ? 8 : 4, ColAccent), 1);
+                for (int sy = 0; sy < topBar.Height; sy += 4)
+                    g.DrawLine(scanPen, 0, sy, topBar.Width, sy);
             };
 
             lblTitle = new Label
             {
                 Text = "⬡  FLEET MANAGEMENT",
-                Font = new Font("Segoe UI", 12F, FontStyle.Bold),
+                Font = new Font("Segoe UI", 11F, FontStyle.Bold),
                 ForeColor = ColAccent,
                 AutoSize = true,
                 Location = new Point(14, 10)
@@ -177,27 +230,36 @@ namespace DriveAndGo_Admin.Panels
             lblCount = new Label
             {
                 Text = "Loading…",
-                Font = new Font("Segoe UI", 8F),
+                Font = new Font("Segoe UI", 7.5F),
                 ForeColor = ColSub,
                 AutoSize = true,
-                Location = new Point(16, 36)
+                Location = new Point(16, 34)
             };
 
             lblLiveStatus = new Label
             {
                 Text = "● LIVE",
-                Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
                 ForeColor = ColGreen,
                 AutoSize = true,
-                Location = new Point(190, 36)
+                Location = new Point(190, 34)
             };
+
+            var blink = new System.Windows.Forms.Timer { Interval = 900 };
+            blink.Tick += (s, e) =>
+            {
+                if (lblLiveStatus.Text == "● LIVE")
+                    lblLiveStatus.ForeColor = lblLiveStatus.ForeColor == ColGreen
+                        ? Color.FromArgb(80, ColGreen) : ColGreen;
+            };
+            blink.Start();
 
             txtSearch = new TextBox
             {
                 Size = new Size(210, 30),
-                Location = new Point(14, 64),
+                Location = new Point(14, 68),
                 Font = new Font("Segoe UI", 9F),
-                BackColor = dk ? Color.FromArgb(12, 12, 24) : Color.White,
+                BackColor = dk ? Color.FromArgb(10, 10, 22) : Color.White,
                 ForeColor = ColText,
                 BorderStyle = BorderStyle.FixedSingle,
                 PlaceholderText = "  Search name or plate…"
@@ -207,49 +269,41 @@ namespace DriveAndGo_Admin.Panels
             cboFilterStatus = new ComboBox
             {
                 Size = new Size(130, 30),
-                Location = new Point(232, 64),
+                Location = new Point(232, 68),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 Font = new Font("Segoe UI", 9F),
-                BackColor = dk ? Color.FromArgb(12, 12, 24) : Color.White,
+                BackColor = dk ? Color.FromArgb(10, 10, 22) : Color.White,
                 ForeColor = ColText
             };
-            cboFilterStatus.Items.AddRange(new object[]
-                { "All", "Available", "In-Use", "Maintenance" });
+            cboFilterStatus.Items.AddRange(new object[] { "All", "Available", "In-Use", "Maintenance" });
             cboFilterStatus.SelectedIndex = 0;
             cboFilterStatus.SelectedIndexChanged += (s, e) => FilterAndRebuildCards();
 
-            btnRefresh = MakeBtn("⟳", ColCyan, 372, 60, 44, 36);
+            btnRefresh = MakeBtn("⟳", ColCyan, 372, 64, 44, 36);
             btnRefresh.Font = new Font("Segoe UI", 14F);
             btnRefresh.Click += (s, e) => { _imgCache.Clear(); LoadVehiclesFromDB(); };
-
-            // Stats strip
-            var statsStrip = new Panel
-            {
-                Dock = DockStyle.Bottom,
-                Height = 22,
-                BackColor = Color.Transparent
-            };
-            topBar.Controls.Add(statsStrip);
 
             topBar.Controls.AddRange(new Control[]
                 { lblTitle, lblCount, lblLiveStatus, txtSearch, cboFilterStatus, btnRefresh });
 
-            // Bottom bar
+            // ── Bottom bar ────────────────────────────────────────────────
             bottomBar = new Panel
             {
                 Dock = DockStyle.Bottom,
-                Height = 58,
-                BackColor = dk ? Color.FromArgb(5, 5, 13) : Color.FromArgb(238, 238, 250)
+                Height = 60,
+                BackColor = dk ? Color.FromArgb(4, 4, 12) : Color.FromArgb(238, 238, 250)
             };
             bottomBar.Paint += (s, e) =>
             {
                 using var p = new Pen(ColBorder, 1);
                 e.Graphics.DrawLine(p, 0, 0, bottomBar.Width, 0);
+                using var glow = new Pen(Color.FromArgb(30, ColAccent), 1);
+                e.Graphics.DrawLine(glow, 0, 1, bottomBar.Width, 1);
             };
 
-            btnAdd = MakeBtn("✚  Add Vehicle", ColGreen, 14, 11, 128, 36);
-            btnEdit = MakeBtn("✎  Edit", ColBlue, 150, 11, 82, 36);
-            btnDelete = MakeBtn("⊗  Delete", ColRed, 240, 11, 90, 36);
+            btnAdd = MakeBtn("✚  Add Vehicle", ColGreen, 14, 12, 128, 36);
+            btnEdit = MakeBtn("✎  Edit", ColBlue, 150, 12, 82, 36);
+            btnDelete = MakeBtn("⊗  Delete", ColRed, 240, 12, 90, 36);
 
             btnAdd.Click += OnAddVehicle;
             btnEdit.Click += OnEditVehicle;
@@ -257,7 +311,7 @@ namespace DriveAndGo_Admin.Panels
 
             bottomBar.Controls.AddRange(new Control[] { btnAdd, btnEdit, btnDelete });
 
-            // Card scroll
+            // ── Card scroll panel ─────────────────────────────────────────
             cardScrollPanel = new Panel
             {
                 Dock = DockStyle.Fill,
@@ -266,23 +320,36 @@ namespace DriveAndGo_Admin.Panels
                 Padding = new Padding(6, 4, 6, 4)
             };
 
+            // ── Vertical flow (TopDown = scrollable list) ─────────────────
             flowCards = new FlowLayoutPanel
             {
                 AutoSize = true,
                 AutoSizeMode = AutoSizeMode.GrowAndShrink,
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = true,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false,
                 BackColor = Color.Transparent,
                 Location = new Point(0, 0)
             };
             cardScrollPanel.Controls.Add(flowCards);
+
+            // Keep card widths in sync when panel is resized
+            cardScrollPanel.Resize += (s, e) =>
+            {
+                int nw = cardScrollPanel.ClientSize.Width;
+                if (Math.Abs(nw - _lastCardPanelWidth) > 6)
+                {
+                    _lastCardPanelWidth = nw;
+                    flowCards.Width = nw;
+                    FilterAndRebuildCards();
+                }
+            };
 
             splitContainer.Panel1.Controls.Add(cardScrollPanel);
             splitContainer.Panel1.Controls.Add(topBar);
             splitContainer.Panel1.Controls.Add(bottomBar);
         }
 
-        // ── RIGHT PANEL ───────────────────────────────────────────────────
+        // ── RIGHT PANEL ────────────────────────────────────────────────────
         private void BuildRightPanel()
         {
             browser = new WebView2 { Dock = DockStyle.Fill };
@@ -294,22 +361,87 @@ namespace DriveAndGo_Admin.Panels
         {
             await browser.EnsureCoreWebView2Async(null);
 
-            string assetsFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets");
-            if (!Directory.Exists(assetsFolder)) Directory.CreateDirectory(assetsFolder);
+            string outputAssetsFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets");
+            if (!Directory.Exists(outputAssetsFolder))
+                Directory.CreateDirectory(outputAssetsFolder);
+
+            // Try possible source locations
+            string[] sourceCandidates =
+            {
+        Path.Combine(Application.StartupPath, "WebAssets", "FleetMap.html"),
+        Path.Combine(Application.StartupPath, "FleetMap.html"),
+        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "FleetMap.html"),
+        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "FleetMap.html"),
+        Path.GetFullPath(Path.Combine(Application.StartupPath, @"..\..\WebAssets\FleetMap.html")),
+        Path.GetFullPath(Path.Combine(Application.StartupPath, @"..\..\..\WebAssets\FleetMap.html"))
+    };
+
+            string sourceHtml = sourceCandidates.FirstOrDefault(File.Exists);
+            string destHtml = Path.Combine(outputAssetsFolder, "FleetMap.html");
+
+            // Copy HTML to runtime WebAssets folder if found somewhere else
+            if (!string.IsNullOrEmpty(sourceHtml))
+            {
+                if (!string.Equals(sourceHtml, destHtml, StringComparison.OrdinalIgnoreCase))
+                    File.Copy(sourceHtml, destHtml, true);
+            }
+
+            // Copy garage image too
+            string[] garageCandidates =
+            {
+        Path.Combine(Application.StartupPath, "WebAssets", "garage_3D.png"),
+        Path.Combine(Application.StartupPath, "garage_3D.png"),
+        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "garage_3D.png"),
+        Path.GetFullPath(Path.Combine(Application.StartupPath, @"..\..\WebAssets\garage_3D.png")),
+        Path.GetFullPath(Path.Combine(Application.StartupPath, @"..\..\..\WebAssets\garage_3D.png"))
+    };
+
+            string sourceGarage = garageCandidates.FirstOrDefault(File.Exists);
+            string destGarage = Path.Combine(outputAssetsFolder, "garage_3D.png");
+
+            if (!string.IsNullOrEmpty(sourceGarage))
+            {
+                if (!string.Equals(sourceGarage, destGarage, StringComparison.OrdinalIgnoreCase))
+                    File.Copy(sourceGarage, destGarage, true);
+            }
 
             browser.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                "appassets", assetsFolder, CoreWebView2HostResourceAccessKind.Allow);
+                "appassets",
+                outputAssetsFolder,
+                CoreWebView2HostResourceAccessKind.Allow);
 
-            browser.NavigateToString(GetMapHtml());
             browser.NavigationCompleted += async (s, e) =>
             {
                 if (!e.IsSuccess) return;
+
                 _mapReady = true;
                 bool dk = ThemeManager.IsDarkMode;
+
                 await browser.CoreWebView2.ExecuteScriptAsync($"setTheme({(dk ? "true" : "false")});");
-                await browser.CoreWebView2.ExecuteScriptAsync($"setHQ({HQ_LAT},{HQ_LNG},'{HQ_NAME}');");
+
+                string garageImgSrc = File.Exists(destGarage)
+                    ? "https://appassets/garage_3D.png"
+                    : "";
+
+                await browser.CoreWebView2.ExecuteScriptAsync(
+                    $"setHQ({HQ_LAT},{HQ_LNG},'{HQ_NAME}','{garageImgSrc}');");
+
                 await PushAllMarkersAsync();
             };
+
+            if (File.Exists(destHtml))
+            {
+                browser.CoreWebView2.Navigate("https://appassets/FleetMap.html");
+            }
+            else
+            {
+                browser.NavigateToString(
+                    "<html><body style='background:#030308;color:#c8d0f0;font-family:Segoe UI;" +
+                    "display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>" +
+                    "<div style='text-align:center'><div style='font-size:32px'>⬡</div>" +
+                    "<p>FleetMap.html not found.</p>" +
+                    "<p style='color:#404060;font-size:12px'>Check WebAssets output copy settings.</p></div></body></html>");
+            }
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -328,11 +460,11 @@ namespace DriveAndGo_Admin.Panels
                         CONCAT(brand,' ',model) AS vehicle_name,
                         brand, model, plate_no, type, cc,
                         status, rate_per_day, rate_with_driver,
-                        COALESCE(photo_url,'')         AS photo_url,
-                        COALESCE(description,'')       AS description,
-                        COALESCE(seat_capacity,5)      AS seat_capacity,
-                        COALESCE(transmission,'Automatic') AS transmission,
-                        COALESCE(model_3d_url,'')      AS model_3d_url,
+                        COALESCE(photo_url,'')              AS photo_url,
+                        COALESCE(description,'')            AS description,
+                        COALESCE(seat_capacity,5)           AS seat_capacity,
+                        COALESCE(transmission,'Automatic')  AS transmission,
+                        COALESCE(model_3d_url,'')           AS model_3d_url,
                         latitude, longitude, current_speed, last_update, in_garage,
                         CASE WHEN latitude IS NULL THEN 1 ELSE 0 END AS is_lost
                     FROM vehicles
@@ -348,8 +480,7 @@ namespace DriveAndGo_Admin.Panels
             catch (Exception ex)
             {
                 SetLiveLabel(false);
-                MessageBox.Show(ex.Message, "DB Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(ex.Message, "DB Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -364,7 +495,7 @@ namespace DriveAndGo_Admin.Panels
         }
 
         // ════════════════════════════════════════════════════════════════════
-        //  VEHICLE CARDS
+        //  VEHICLE CARDS  (vertical list — full-width rows)
         // ════════════════════════════════════════════════════════════════════
         private void BuildVehicleCards(DataTable dt)
         {
@@ -375,17 +506,27 @@ namespace DriveAndGo_Admin.Panels
             flowCards.Controls.Clear();
             _cardMap.Clear();
 
+            // Set flow width to match scroll panel
+            int panelW = cardScrollPanel.ClientSize.Width;
+            if (panelW < 10) panelW = 440;
+            flowCards.Width = panelW;
+            _lastCardPanelWidth = panelW;
+
             foreach (DataRow row in dt.Rows)
             {
                 if (row["vehicle_id"] == DBNull.Value) continue;
-                var card = CreateVehicleCard(row);
+                var card = CreateVehicleCard(row, panelW);
                 flowCards.Controls.Add(card);
                 _cardMap[Convert.ToInt32(row["vehicle_id"])] = card;
             }
             flowCards.ResumeLayout();
         }
 
-        private Panel CreateVehicleCard(DataRow row)
+        /// <summary>
+        /// Creates a horizontal list-row card:
+        ///   [colorBar 3px] [photo 82px] [info: name / plate / rate+dist / spd]
+        /// </summary>
+        private Panel CreateVehicleCard(DataRow row, int panelW)
         {
             int vid = Convert.ToInt32(row["vehicle_id"]);
             string name = row["vehicle_name"]?.ToString() ?? "";
@@ -393,7 +534,7 @@ namespace DriveAndGo_Admin.Panels
             string type = row["type"]?.ToString() ?? "";
             string status = row["status"]?.ToString() ?? "available";
             decimal rate = row["rate_per_day"] != DBNull.Value ? Convert.ToDecimal(row["rate_per_day"]) : 0;
-            string photoUrl = GetFirstPhoto(row["photo_url"]?.ToString() ?? "");
+            string photo = GetPrimaryMediaPreviewSource(row["photo_url"]?.ToString() ?? "");
             double lat = row["latitude"] != DBNull.Value ? Convert.ToDouble(row["latitude"]) : HQ_LAT;
             double lng = row["longitude"] != DBNull.Value ? Convert.ToDouble(row["longitude"]) : HQ_LNG;
             bool isLost = row["is_lost"] != DBNull.Value && Convert.ToInt32(row["is_lost"]) == 1;
@@ -401,88 +542,71 @@ namespace DriveAndGo_Admin.Panels
 
             bool dk = ThemeManager.IsDarkMode;
             Color sc = StatusToColor(status);
-            Color cardBg = dk ? Color.FromArgb(10, 10, 22) : Color.White;
+            Color cardBg = dk ? Color.FromArgb(8, 8, 20) : Color.White;
 
-            const int W = 206, H = 232;
+            // Width fills the panel; height is a compact row
+            int W = Math.Max(200, panelW - 12);
+            const int H = 90;
+            const int IMG_W = 82;
+            const int BAR_W = 3;
+            int infoX = BAR_W + IMG_W + 4;
+            int infoW = W - infoX - 8;
 
             var card = new Panel
             {
                 Size = new Size(W, H),
-                Margin = new Padding(5),
+                Margin = new Padding(4, 3, 4, 3),
                 BackColor = cardBg,
                 Cursor = Cursors.Hand,
                 Tag = row
             };
 
-            // Photo strip
-            var photoPanel = new Panel
+            // ── 3-px left accent bar ──────────────────────────────────────
+            var colorBar = new Panel
             {
-                Size = new Size(W, 118),
                 Location = new Point(0, 0),
-                BackColor = dk ? Color.FromArgb(7, 7, 17) : Color.FromArgb(232, 232, 250)
+                Size = new Size(BAR_W, H),
+                BackColor = sc
             };
 
+            // ── Photo ─────────────────────────────────────────────────────
             var pic = new PictureBox
             {
-                Size = new Size(W, 118),
+                Location = new Point(BAR_W, 0),
+                Size = new Size(IMG_W, H),
                 SizeMode = PictureBoxSizeMode.Zoom,
+                BackColor = dk ? Color.FromArgb(6, 6, 16) : Color.FromArgb(224, 224, 246)
+            };
+            _ = LoadImageAsync(pic, photo, vid, type);
+
+            // ── Info area ─────────────────────────────────────────────────
+            var info = new Panel
+            {
+                Location = new Point(infoX, 0),
+                Size = new Size(infoW, H),
                 BackColor = Color.Transparent
             };
-            _ = LoadImageAsync(pic, photoUrl, vid, type);
 
-            // Status badge
+            // Status badge (top-right of info panel)
             var badge = new Label
             {
                 Text = "  " + status.ToUpper() + "  ",
-                Font = new Font("Segoe UI", 6.5F, FontStyle.Bold),
+                Font = new Font("Segoe UI", 6F, FontStyle.Bold),
                 ForeColor = Color.White,
-                BackColor = Color.FromArgb(210, sc.R, sc.G, sc.B),
+                BackColor = Color.FromArgb(200, sc.R, sc.G, sc.B),
                 AutoSize = true,
-                Location = new Point(7, 7),
-                Padding = new Padding(4, 2, 4, 2)
+                Padding = new Padding(3, 1, 3, 1)
             };
-
-            // Speed label
-            var spdLbl = new Label
-            {
-                Name = "spd_" + vid,
-                Text = "",
-                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
-                ForeColor = ColGreen,
-                BackColor = Color.FromArgb(190, 4, 4, 14),
-                AutoSize = true,
-                Location = new Point(7, 92),
-                Padding = new Padding(4, 1, 4, 1),
-                Visible = false
-            };
-
-            photoPanel.Controls.AddRange(new Control[] { pic, badge, spdLbl });
-            badge.BringToFront(); spdLbl.BringToFront();
-
-            // Info area
-            var info = new Panel
-            {
-                Location = new Point(0, 120),
-                Size = new Size(W, H - 120),
-                BackColor = Color.Transparent
-            };
-
-            // Left accent bar
-            var accentBar = new Panel
-            {
-                Location = new Point(0, 0),
-                Size = new Size(3, H - 120),
-                BackColor = sc
-            };
+            badge.Location = new Point(infoW - badge.PreferredWidth - 6, 8);
 
             var lblName = new Label
             {
                 Text = name,
-                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
                 ForeColor = ColText,
                 AutoSize = false,
-                Size = new Size(W - 12, 22),
-                Location = new Point(9, 5),
+                Size = new Size(infoW - badge.PreferredWidth - 12, 22),
+                Location = new Point(6, 6),
                 TextAlign = ContentAlignment.MiddleLeft
             };
 
@@ -492,8 +616,8 @@ namespace DriveAndGo_Admin.Panels
                 Font = new Font("Segoe UI", 7.5F),
                 ForeColor = ColSub,
                 AutoSize = false,
-                Size = new Size(W - 12, 18),
-                Location = new Point(9, 26),
+                Size = new Size(infoW - 8, 18),
+                Location = new Point(6, 30),
                 TextAlign = ContentAlignment.MiddleLeft
             };
 
@@ -503,8 +627,8 @@ namespace DriveAndGo_Admin.Panels
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold),
                 ForeColor = ColAccent,
                 AutoSize = false,
-                Size = new Size(100, 20),
-                Location = new Point(9, 48),
+                Size = new Size(infoW / 2, 20),
+                Location = new Point(6, 52),
                 TextAlign = ContentAlignment.MiddleLeft
             };
 
@@ -515,47 +639,60 @@ namespace DriveAndGo_Admin.Panels
                 Font = new Font("Segoe UI", 7.5F),
                 ForeColor = isLost ? ColRed : ColBlue,
                 AutoSize = false,
-                Size = new Size(88, 20),
-                Location = new Point(W - 96, 48),
+                Size = new Size(infoW / 2 - 4, 20),
+                Location = new Point(infoW / 2 + 4, 52),
                 TextAlign = ContentAlignment.MiddleRight
             };
 
-            info.Controls.AddRange(new Control[] { accentBar, lblName, lblPlate, lblRate, lblDist });
-            card.Controls.AddRange(new Control[] { photoPanel, info });
+            var spdLbl = new Label
+            {
+                Name = "spd_" + vid,
+                Text = "",
+                Font = new Font("Segoe UI", 7F, FontStyle.Bold),
+                ForeColor = ColNeon,
+                BackColor = Color.FromArgb(160, 2, 2, 12),
+                AutoSize = true,
+                Location = new Point(6, 70),
+                Padding = new Padding(3, 1, 3, 1),
+                Visible = false
+            };
 
-            // Paint rounded + glow
+            info.Controls.AddRange(new Control[]
+                { lblName, badge, lblPlate, lblRate, lblDist, spdLbl });
+
+            card.Controls.AddRange(new Control[] { colorBar, pic, info });
+
+            // ── Rounded corners + selection glow ─────────────────────────
             card.Paint += (s, e) =>
             {
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
                 bool sel = _selectedId == vid;
                 var rect = new Rectangle(0, 0, card.Width - 1, card.Height - 1);
                 using var path = RoundRect(rect, 10);
+
                 if (sel)
                 {
-                    for (int g = 14; g >= 2; g -= 3)
-                    {
-                        using var gp = new Pen(Color.FromArgb(18, sc), g);
-                        e.Graphics.DrawPath(gp, path);
-                    }
+                    int[] glowA = { 6, 14, 26, 40 };
+                    int[] glowW = { 16, 10, 6, 2 };
+                    for (int gi = 0; gi < glowA.Length; gi++)
+                        using (var gp = new Pen(Color.FromArgb(glowA[gi], sc), glowW[gi]))
+                            e.Graphics.DrawPath(gp, path);
                 }
-                using var brd = new Pen(sel ? sc : (dk ? Color.FromArgb(22, 22, 44) : Color.FromArgb(220, 220, 240)), sel ? 1.8f : 1f);
+
+                using var brd = new Pen(
+                    sel ? sc : (dk ? Color.FromArgb(18, 18, 40) : Color.FromArgb(218, 218, 238)),
+                    sel ? 2f : 1f);
                 e.Graphics.DrawPath(brd, path);
                 card.Region = new Region(path);
             };
 
-            // Hover / click
-            Color hoverBg = dk ? Color.FromArgb(16, 16, 32) : Color.FromArgb(244, 244, 255);
-
+            Color hoverBg = dk ? Color.FromArgb(14, 14, 30) : Color.FromArgb(242, 242, 255);
             void Enter(object _, EventArgs __) => card.BackColor = hoverBg;
             void Leave(object _, EventArgs __) => card.BackColor = cardBg;
             void Click(object _, EventArgs __) => SelectCard(vid, row);
 
             foreach (Control c in FlattenControls(card))
-            {
-                c.Click += Click;
-                c.MouseEnter += Enter;
-                c.MouseLeave += Leave;
-            }
+            { c.Click += Click; c.MouseEnter += Enter; c.MouseLeave += Leave; }
 
             return card;
         }
@@ -568,30 +705,22 @@ namespace DriveAndGo_Admin.Panels
                     yield return sub;
         }
 
-        // ── Image loading ─────────────────────────────────────────────────
+        // ── Image loading ──────────────────────────────────────────────────
         private async Task LoadImageAsync(PictureBox pic, string url, int vid, string type)
         {
+            if (DetectMediaKind(url) == VehicleMediaKind.Video)
+            {
+                DrawDefaultIcon(pic, type, true);
+                return;
+            }
+
             if (_imgCache.TryGetValue(vid, out Image cached))
             { SafeSetImage(pic, cached); return; }
 
-            Image img = null;
-            try
-            {
-                if (!string.IsNullOrEmpty(url) && url != "null")
-                {
-                    if (url.StartsWith("http"))
-                    {
-                        var bytes = await _http.GetByteArrayAsync(url);
-                        img = Image.FromStream(new MemoryStream(bytes));
-                    }
-                    else if (File.Exists(url))
-                        img = Image.FromFile(url);
-                }
-            }
-            catch { }
+            Image img = await LoadImageFromSourceAsync(_http, url);
 
             if (img != null) { _imgCache[vid] = img; SafeSetImage(pic, img); }
-            else DrawDefaultIcon(pic, type);
+            else DrawDefaultIcon(pic, type, false);
         }
 
         private void SafeSetImage(PictureBox p, Image img)
@@ -601,18 +730,22 @@ namespace DriveAndGo_Admin.Panels
             catch { }
         }
 
-        private void DrawDefaultIcon(PictureBox pic, string type)
+        private void DrawDefaultIcon(PictureBox pic, string type, bool isVideo = false)
         {
             if (!pic.IsHandleCreated) return;
             try
             {
-                pic.Invoke(new Action(() => {
+                pic.Invoke(new Action(() =>
+                {
                     if (pic.IsDisposed) return;
                     int w = Math.Max(pic.Width, 1), h = Math.Max(pic.Height, 1);
                     var bmp = new Bitmap(w, h);
                     using var g = Graphics.FromImage(bmp);
                     bool dk = ThemeManager.IsDarkMode;
-                    g.Clear(dk ? Color.FromArgb(10, 10, 20) : Color.FromArgb(230, 230, 252));
+                    g.Clear(dk ? Color.FromArgb(8, 8, 18) : Color.FromArgb(228, 228, 250));
+                    using var gp = new Pen(Color.FromArgb(dk ? 14 : 20, ColAccent), 1);
+                    for (int gx = 0; gx < w; gx += 20) g.DrawLine(gp, gx, 0, gx, h);
+                    for (int gy = 0; gy < h; gy += 20) g.DrawLine(gp, 0, gy, w, gy);
                     string em = type?.ToLower() switch
                     {
                         var t when t != null && t.Contains("motor") => "🏍",
@@ -623,9 +756,25 @@ namespace DriveAndGo_Admin.Panels
                     };
                     using var fmt = new StringFormat
                     { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-                    g.DrawString(em, new Font("Segoe UI Emoji", 28F),
-                        new SolidBrush(dk ? Color.FromArgb(55, 55, 80) : Color.FromArgb(180, 180, 220)),
+                    g.DrawString(em, new Font("Segoe UI Emoji", 24F),
+                        new SolidBrush(dk ? Color.FromArgb(50, 50, 80) : Color.FromArgb(170, 170, 210)),
                         new RectangleF(0, 0, w, h), fmt);
+
+                    if (isVideo)
+                    {
+                        using var badgeBrush = new SolidBrush(Color.FromArgb(220, 0, 0, 0));
+                        using var badgeTextBrush = new SolidBrush(Color.White);
+                        var badgeRect = new Rectangle(6, h - 24, Math.Max(44, w - 12), 18);
+                        g.FillRectangle(badgeBrush, badgeRect);
+                        g.DrawString("VIDEO", new Font("Segoe UI", 7F, FontStyle.Bold),
+                            badgeTextBrush, badgeRect,
+                            new StringFormat
+                            {
+                                Alignment = StringAlignment.Center,
+                                LineAlignment = StringAlignment.Center
+                            });
+                    }
+
                     pic.Image = bmp;
                 }));
             }
@@ -639,10 +788,8 @@ namespace DriveAndGo_Admin.Panels
         {
             _selectedId = vid;
             foreach (var kv in _cardMap) kv.Value.Invalidate();
-
             if (_cardMap.TryGetValue(vid, out Panel sel))
                 cardScrollPanel.ScrollControlIntoView(sel);
-
             _ = FocusOnMap(vid, row);
             ShowDetailOverlay(row);
         }
@@ -652,29 +799,33 @@ namespace DriveAndGo_Admin.Panels
             if (!_mapReady || browser?.CoreWebView2 == null) return;
             double lat = row["latitude"] != DBNull.Value ? Convert.ToDouble(row["latitude"]) : HQ_LAT;
             double lng = row["longitude"] != DBNull.Value ? Convert.ToDouble(row["longitude"]) : HQ_LNG;
+            double speed = row["current_speed"] != DBNull.Value ? Convert.ToDouble(row["current_speed"]) : 0;
             string name = Esc(row["vehicle_name"]);
             string plate = Esc(row["plate_no"]);
             string status = Esc(row["status"]);
             string desc = Esc(row["description"]);
-            int seats = row["seat_capacity"] != DBNull.Value ? Convert.ToInt32(row["seat_capacity"]) : 5;
             string lastU = row["last_update"] != DBNull.Value
                 ? Convert.ToDateTime(row["last_update"]).ToString("MMM dd, yyyy HH:mm") : "No data";
+            string mapIcon = Esc(GetMarkerIconSource(row));
 
             await browser.CoreWebView2.ExecuteScriptAsync(
-                $"focusVehicle({vid},'{name}','{plate}','{status}',{lat},{lng},0,'{lastU}','{desc}',{seats});");
+                $"focusVehicle({vid},'{name}','{plate}','{status}',{lat},{lng},{speed},'{lastU}','{mapIcon}','{desc}');");
         }
 
         // ════════════════════════════════════════════════════════════════════
-        //  DETAIL OVERLAY — Product-page shopping UX
+        //  DETAIL OVERLAY
         // ════════════════════════════════════════════════════════════════════
         private void ShowDetailOverlay(DataRow row)
         {
             int vid = Convert.ToInt32(row["vehicle_id"]);
             bool dk = ThemeManager.IsDarkMode;
-            Color bg = dk ? Color.FromArgb(6, 6, 16) : Color.FromArgb(252, 252, 255);
-            Color cardBg = dk ? Color.FromArgb(12, 12, 26) : Color.White;
-            Color border = dk ? Color.FromArgb(22, 22, 46) : Color.FromArgb(220, 220, 240);
+            Color bg = dk ? Color.FromArgb(4, 4, 12) : Color.FromArgb(251, 251, 255);
+            Color cardBg = dk ? Color.FromArgb(10, 10, 24) : Color.White;
+            Color border = dk ? Color.FromArgb(20, 20, 44) : Color.FromArgb(218, 218, 238);
 
+            _carouselAutoTimer?.Stop();
+            _carouselAutoTimer?.Dispose();
+            _carouselAutoTimer = null;
             _overlay.Controls.Clear();
             _overlay.BackColor = bg;
 
@@ -683,7 +834,7 @@ namespace DriveAndGo_Admin.Panels
             _overlay.Size = new Size(pw, ph);
             _overlay.Location = new Point(pw, 0);
 
-            // ── Close button ─────────────────────────────────────────────
+            // Close
             var btnClose = new Button
             {
                 Text = "← Back to Map",
@@ -692,7 +843,7 @@ namespace DriveAndGo_Admin.Panels
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
                 ForeColor = ColSub,
-                BackColor = Color.FromArgb(18, ColSub),
+                BackColor = Color.FromArgb(16, ColSub),
                 Cursor = Cursors.Hand
             };
             btnClose.FlatAppearance.BorderColor = border;
@@ -700,187 +851,260 @@ namespace DriveAndGo_Admin.Panels
             btnClose.Click += (s, e) => HideDetailOverlay();
             _overlay.Controls.Add(btnClose);
 
-            // ── Vehicle header ────────────────────────────────────────────
+            // Header
             string name = row["vehicle_name"]?.ToString() ?? "";
             string plate = row["plate_no"]?.ToString() ?? "";
             string status = row["status"]?.ToString() ?? "available";
             Color sc = StatusToColor(status);
             decimal ratePD = row["rate_per_day"] != DBNull.Value ? Convert.ToDecimal(row["rate_per_day"]) : 0;
 
-            var lblHdrName = new Label
+            _overlay.Controls.Add(new Label
             {
                 Text = name,
                 Font = new Font("Segoe UI", 17F, FontStyle.Bold),
                 ForeColor = ColText,
                 AutoSize = true,
-                Location = new Point(14, 50)
-            };
-            var lblPlateType = new Label
+                Location = new Point(14, 52)
+            });
+            _overlay.Controls.Add(new Label
             {
                 Text = plate + "  ·  " + (row["type"]?.ToString() ?? ""),
                 Font = new Font("Segoe UI", 9F),
                 ForeColor = ColSub,
                 AutoSize = true,
-                Location = new Point(16, 80)
-            };
-            var lblStatus = new Label
+                Location = new Point(16, 82)
+            });
+            _overlay.Controls.Add(new Label
             {
                 Text = "  " + status.ToUpper() + "  ",
-                Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
                 ForeColor = Color.White,
                 BackColor = Color.FromArgb(200, sc.R, sc.G, sc.B),
                 AutoSize = true,
-                Location = new Point(14, 104),
+                Location = new Point(14, 106),
                 Padding = new Padding(6, 3, 6, 3)
-            };
-            var lblRateHdr = new Label
+            });
+            _overlay.Controls.Add(new Label
             {
                 Text = "₱" + ratePD.ToString("N0") + " / day",
                 Font = new Font("Segoe UI", 13F, FontStyle.Bold),
                 ForeColor = ColAccent,
                 AutoSize = true,
-                Location = new Point(pw - 180, 54)
-            };
+                Location = new Point(pw - 190, 54)
+            });
 
-            _overlay.Controls.AddRange(new Control[]
-                { lblHdrName, lblPlateType, lblStatus, lblRateHdr });
-
-            // ── Image Carousel ────────────────────────────────────────────
-            List<string> photos = GetAllPhotos(row["photo_url"]?.ToString() ?? "");
-            int carouselTop = 130;
-            int carouselH = 210;
+            // Carousel
+            List<VehicleMediaItem> mediaItems = ParseMediaItems(row["photo_url"]?.ToString() ?? "");
+            int carouselTop = 132, carouselH = 220;
 
             var carouselPanel = new Panel
             {
                 Location = new Point(0, carouselTop),
                 Size = new Size(pw, carouselH),
-                BackColor = dk ? Color.FromArgb(4, 4, 12) : Color.FromArgb(228, 228, 248)
+                BackColor = dk ? Color.FromArgb(3, 3, 10) : Color.FromArgb(224, 224, 245)
             };
 
             var carouselPic = new PictureBox
             {
-                Size = new Size(pw, carouselH),
+                Dock = DockStyle.Fill,
                 SizeMode = PictureBoxSizeMode.Zoom,
-                BackColor = Color.Transparent
+                BackColor = Color.Transparent,
+                Visible = false
+            };
+
+            var carouselVideo = new WebView2
+            {
+                Dock = DockStyle.Fill,
+                Visible = false
+            };
+
+            var lblNoMedia = new Label
+            {
+                Text = "No media uploaded yet.",
+                Font = new Font("Segoe UI", 10F, FontStyle.Bold),
+                ForeColor = ColSub,
+                AutoSize = false,
+                Size = new Size(pw, carouselH),
+                Location = new Point(0, 0),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Visible = false
             };
 
             int currentPhoto = 0;
-            var loadedPhotos = new List<Image>();
+            var loadedMedia = new Dictionary<int, Image>();
+            bool videoReady = false;
+            Button btnPrev = null;
+            Button btnNext = null;
+            FlowLayoutPanel dotFlow = null;
+            Label lblPhotoCount = null;
 
-            _ = Task.Run(async () =>
+            void RestartCarouselAutoTimer()
             {
-                foreach (var url in photos)
+                _carouselAutoTimer?.Stop();
+                if (mediaItems.Count <= 1) return;
+
+                _carouselAutoTimer ??= new System.Windows.Forms.Timer();
+                _carouselAutoTimer.Interval = 1500;
+                _carouselAutoTimer.Tick -= CarouselAutoAdvance;
+                _carouselAutoTimer.Tick += CarouselAutoAdvance;
+                _carouselAutoTimer.Start();
+            }
+
+            async void CarouselAutoAdvance(object sender, EventArgs e)
+            {
+                if (!_overlayOpen || mediaItems.Count <= 1)
                 {
-                    Image img = null;
-                    try
-                    {
-                        if (url.StartsWith("http"))
-                        {
-                            var b = await _http.GetByteArrayAsync(url);
-                            img = Image.FromStream(new MemoryStream(b));
-                        }
-                        else if (File.Exists(url))
-                            img = Image.FromFile(url);
-                    }
-                    catch { }
-                    if (img != null) loadedPhotos.Add(img);
+                    _carouselAutoTimer?.Stop();
+                    return;
                 }
-                if (loadedPhotos.Count > 0) SafeSetImage(carouselPic, loadedPhotos[0]);
-            });
 
-            var lblPhotoCount = new Label
+                currentPhoto = (currentPhoto + 1) % mediaItems.Count;
+                await ShowCarouselItemAsync(currentPhoto);
+            }
+
+            async Task EnsureCarouselVideoReadyAsync()
             {
-                Text = photos.Count > 0 ? $"1 / {photos.Count}" : "No photos",
+                if (videoReady || carouselVideo.IsDisposed) return;
+                await carouselVideo.EnsureCoreWebView2Async(null);
+                videoReady = true;
+            }
+
+            async Task ShowCarouselItemAsync(int index)
+            {
+                if (carouselPanel.IsDisposed || carouselPic.IsDisposed) return;
+
+                btnPrev.Visible = mediaItems.Count > 1;
+                btnNext.Visible = mediaItems.Count > 1;
+                dotFlow.Visible = mediaItems.Count > 1;
+
+                if (mediaItems.Count == 0)
+                {
+                    lblPhotoCount.Text = "No media";
+                    lblNoMedia.Visible = true;
+                    carouselPic.Visible = false;
+                    carouselVideo.Visible = false;
+                    return;
+                }
+
+                if (index < 0 || index >= mediaItems.Count)
+                    index = 0;
+
+                currentPhoto = index;
+                var item = mediaItems[index];
+
+                lblNoMedia.Visible = false;
+                lblPhotoCount.Text = $"{index + 1} / {mediaItems.Count}";
+                UpdateDots(carouselPanel, index, mediaItems.Count);
+
+                if (item.IsVideo)
+                {
+                    carouselPic.Visible = false;
+                    carouselVideo.Visible = true;
+                    await EnsureCarouselVideoReadyAsync();
+                    if (!carouselVideo.IsDisposed)
+                        carouselVideo.NavigateToString(BuildVideoPreviewHtml(item.Source));
+                    return;
+                }
+
+                if (videoReady && !carouselVideo.IsDisposed)
+                    carouselVideo.NavigateToString("<html><body style='margin:0;background:#030308'></body></html>");
+
+                carouselVideo.Visible = false;
+                carouselPic.Visible = true;
+
+                if (!loadedMedia.TryGetValue(index, out var img))
+                {
+                    img = await LoadImageFromSourceAsync(_http, item.Source);
+                    if (img != null)
+                        loadedMedia[index] = img;
+                }
+
+                if (img != null) SafeSetImage(carouselPic, img);
+                else DrawDefaultIcon(carouselPic, row["type"]?.ToString() ?? "", false);
+            }
+
+            carouselPic.Cursor = mediaItems.Count > 0 ? Cursors.Hand : Cursors.Default;
+            carouselPic.Click += (s, e) =>
+            {
+                if (mediaItems.Count == 0) return;
+                ShowFleetMediaPreview(mediaItems[currentPhoto].Source, $"{name} Media Preview");
+            };
+
+            lblPhotoCount = new Label
+            {
+                Text = mediaItems.Count > 0 ? $"1 / {mediaItems.Count}" : "No media",
                 Font = new Font("Segoe UI", 8F, FontStyle.Bold),
                 ForeColor = Color.White,
-                BackColor = Color.FromArgb(150, 0, 0, 0),
+                BackColor = Color.FromArgb(160, 0, 0, 0),
                 AutoSize = true,
-                Location = new Point(pw - 72, carouselH - 26),
+                Location = new Point(pw - 74, carouselH - 28),
                 Padding = new Padding(6, 2, 6, 2)
             };
 
-            var btnPrev = new Button
+            btnPrev = MakeCarouselBtn("‹", 0, carouselH);
+            btnNext = MakeCarouselBtn("›", pw - 42, carouselH);
+            btnPrev.Location = new Point(0, 0);
+            btnNext.Location = new Point(pw - 42, 0);
+
+            btnPrev.Click += (s, e) =>
             {
-                Text = "‹",
-                Size = new Size(38, carouselH),
-                Location = new Point(0, 0),
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 20F, FontStyle.Bold),
-                ForeColor = Color.White,
-                BackColor = Color.FromArgb(80, 0, 0, 0),
-                Cursor = Cursors.Hand
+                if (mediaItems.Count == 0) return;
+                currentPhoto = (currentPhoto - 1 + mediaItems.Count) % mediaItems.Count;
+                RestartCarouselAutoTimer();
+                _ = ShowCarouselItemAsync(currentPhoto);
             };
-            btnPrev.FlatAppearance.BorderSize = 0;
-
-            var btnNext = new Button
+            btnNext.Click += (s, e) =>
             {
-                Text = "›",
-                Size = new Size(38, carouselH),
-                Location = new Point(pw - 38, 0),
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 20F, FontStyle.Bold),
-                ForeColor = Color.White,
-                BackColor = Color.FromArgb(80, 0, 0, 0),
-                Cursor = Cursors.Hand
-            };
-            btnNext.FlatAppearance.BorderSize = 0;
-
-            btnPrev.Click += (s, e) => {
-                if (loadedPhotos.Count == 0) return;
-                currentPhoto = (currentPhoto - 1 + loadedPhotos.Count) % loadedPhotos.Count;
-                SafeSetImage(carouselPic, loadedPhotos[currentPhoto]);
-                lblPhotoCount.Text = $"{currentPhoto + 1} / {photos.Count}";
-            };
-            btnNext.Click += (s, e) => {
-                if (loadedPhotos.Count == 0) return;
-                currentPhoto = (currentPhoto + 1) % loadedPhotos.Count;
-                SafeSetImage(carouselPic, loadedPhotos[currentPhoto]);
-                lblPhotoCount.Text = $"{currentPhoto + 1} / {photos.Count}";
+                if (mediaItems.Count == 0) return;
+                currentPhoto = (currentPhoto + 1) % mediaItems.Count;
+                RestartCarouselAutoTimer();
+                _ = ShowCarouselItemAsync(currentPhoto);
             };
 
-            // Dot indicators
-            var dotFlow = new FlowLayoutPanel
+            dotFlow = new FlowLayoutPanel
             {
                 FlowDirection = FlowDirection.LeftToRight,
                 AutoSize = true,
                 BackColor = Color.Transparent,
-                Location = new Point(pw / 2 - (photos.Count * 14) / 2, carouselH - 22)
+                Location = new Point(pw / 2 - (mediaItems.Count * 14) / 2, carouselH - 20)
             };
-            for (int i = 0; i < photos.Count; i++)
+            for (int i = 0; i < mediaItems.Count; i++)
             {
                 int idx = i;
                 var dot = new Label
                 {
                     Size = new Size(10, 10),
-                    BackColor = i == 0 ? ColAccent : Color.FromArgb(80, 255, 255, 255),
-                    Margin = new Padding(2),
+                    BackColor = i == 0 ? ColAccent : Color.FromArgb(70, 255, 255, 255),
+                    Margin = new Padding(3),
                     Tag = idx,
-                    Cursor = Cursors.Hand,
-                    Name = "dot_" + i
+                    Name = "dot_" + i,
+                    Cursor = Cursors.Hand
                 };
-                dot.Paint += (s, e) => {
+                dot.Paint += (s, e) =>
+                {
                     e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
                     e.Graphics.FillEllipse(new SolidBrush(dot.BackColor), 0, 0, dot.Width - 1, dot.Height - 1);
                 };
-                dot.Click += (s, e) => {
-                    if (loadedPhotos.Count == 0) return;
+                dot.Click += (s, e) =>
+                {
+                    if (mediaItems.Count == 0) return;
                     currentPhoto = idx;
-                    SafeSetImage(carouselPic, loadedPhotos[idx]);
-                    lblPhotoCount.Text = $"{idx + 1} / {photos.Count}";
-                    foreach (Control d in dotFlow.Controls)
-                        if (d is Label dl) dl.BackColor = ((int)dl.Tag == idx) ? ColAccent : Color.FromArgb(80, 255, 255, 255);
+                    RestartCarouselAutoTimer();
+                    _ = ShowCarouselItemAsync(idx);
                 };
                 dotFlow.Controls.Add(dot);
             }
 
             carouselPanel.Controls.AddRange(new Control[]
-                { carouselPic, btnPrev, btnNext, lblPhotoCount, dotFlow });
+                { carouselPic, carouselVideo, lblNoMedia, btnPrev, btnNext, lblPhotoCount, dotFlow });
             btnPrev.BringToFront(); btnNext.BringToFront();
             lblPhotoCount.BringToFront(); dotFlow.BringToFront();
             _overlay.Controls.Add(carouselPanel);
+            _ = ShowCarouselItemAsync(0);
+            RestartCarouselAutoTimer();
 
-            // ── Scrollable body ───────────────────────────────────────────
-            int actionBarH = 60;
+            // Scrollable body
+            int actionBarH = 62;
             var scrollBody = new Panel
             {
                 Location = new Point(0, carouselTop + carouselH),
@@ -890,31 +1114,36 @@ namespace DriveAndGo_Admin.Panels
             };
             _overlay.Controls.Add(scrollBody);
 
-            int y = 16;
+            int y = 18;
 
-            // ── SPECIFICATIONS ────────────────────────────────────────────
-            SectionLabel(scrollBody, "SPECIFICATIONS", 14, ref y);
+            // SPECIFICATIONS
+            OverlaySectionLabel(scrollBody, "SPECIFICATIONS", 14, ref y);
 
             int seats = row["seat_capacity"] != DBNull.Value ? Convert.ToInt32(row["seat_capacity"]) : 5;
             string trans = row["transmission"]?.ToString() ?? "Automatic";
             string typeStr = row["type"]?.ToString() ?? "";
-            string cc = row["cc"] != DBNull.Value ? row["cc"].ToString() + "cc" : "—";
+            string cc = row["cc"] != DBNull.Value ? row["cc"].ToString() + " cc" : "—";
             decimal rateWD = row["rate_with_driver"] != DBNull.Value ? Convert.ToDecimal(row["rate_with_driver"]) : 0;
             bool inGarage = row["in_garage"] != DBNull.Value && Convert.ToBoolean(row["in_garage"]);
+            double lat = row["latitude"] != DBNull.Value ? Convert.ToDouble(row["latitude"]) : HQ_LAT;
+            double lng = row["longitude"] != DBNull.Value ? Convert.ToDouble(row["longitude"]) : HQ_LNG;
+            double curSpd = row["current_speed"] != DBNull.Value ? Convert.ToDouble(row["current_speed"]) : 0;
             string lastGPS = row["last_update"] != DBNull.Value
                 ? Convert.ToDateTime(row["last_update"]).ToString("MMM dd HH:mm") : "—";
+            double dist = CalculateDistance(HQ_LAT, HQ_LNG, lat, lng);
 
-            // Spec cards grid
-            var specs = new (string icon, string label, string value)[]
+            var specs = new (string icon, string label, string val)[]
             {
-                ("🚗", "Type",        typeStr),
-                ("⚙", "Engine",      cc),
-                ("👥", "Seats",       seats + " seats"),
-                ("🔧", "Transmission", trans),
-                ("₱", "Rate/Day",    "₱" + ratePD.ToString("N0")),
-                ("🚗", "With Driver", "₱" + rateWD.ToString("N0")),
-                ("🏠", "In Garage",  inGarage ? "Yes" : "No"),
-                ("📡", "Last GPS",   lastGPS)
+                ("🚗","Type",         typeStr),
+                ("⚙", "Engine",       cc),
+                ("👥","Seats",        seats + " seats"),
+                ("🔧","Transmission", trans),
+                ("₱", "Rate / Day",   "₱" + ratePD.ToString("N0")),
+                ("🚘","With Driver",  "₱" + rateWD.ToString("N0")),
+                ("🏠","In Garage",    inGarage ? "Yes" : "No"),
+                ("📍","Distance",     $"{dist:F1} km from HQ"),
+                ("⚡","Speed",        curSpd > 0 ? $"{curSpd:F0} km/h" : "Parked"),
+                ("📡","Last GPS",     lastGPS)
             };
 
             int specCols = 2;
@@ -927,48 +1156,49 @@ namespace DriveAndGo_Admin.Panels
                     var sp = specs[i + j];
                     var specCard = new Panel
                     {
-                        Size = new Size(specW, 52),
+                        Size = new Size(specW, 56),
                         Location = new Point(14 + j * (specW + 6), y),
                         BackColor = cardBg
                     };
-                    specCard.Paint += (s, e) => {
+                    specCard.Paint += (s, e) =>
+                    {
                         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                        using var path = RoundRect(new Rectangle(0, 0, specCard.Width - 1, specCard.Height - 1), 6);
+                        using var path = RoundRect(new Rectangle(0, 0, specCard.Width - 1, specCard.Height - 1), 7);
                         using var pen = new Pen(border, 1);
                         e.Graphics.DrawPath(pen, path);
                         specCard.Region = new Region(path);
                     };
-
                     specCard.Controls.Add(new Label
                     {
                         Text = sp.label,
-                        Font = new Font("Segoe UI", 7F),
+                        Font = new Font("Segoe UI", 6.5F),
                         ForeColor = ColSub,
                         AutoSize = true,
-                        Location = new Point(10, 6)
+                        Location = new Point(10, 7)
                     });
                     specCard.Controls.Add(new Label
                     {
-                        Text = sp.icon + " " + sp.value,
-                        Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
+                        Text = sp.icon + " " + sp.val,
+                        Font = new Font("Segoe UI", 9F, FontStyle.Bold),
                         ForeColor = ColText,
                         AutoSize = false,
-                        Size = new Size(specW - 12, 22),
-                        Location = new Point(10, 22),
+                        Size = new Size(specW - 14, 22),
+                        Location = new Point(10, 24),
                         TextAlign = ContentAlignment.MiddleLeft
                     });
                     scrollBody.Controls.Add(specCard);
                 }
-                y += 58;
+                y += 62;
             }
 
-            // ── DESCRIPTION ───────────────────────────────────────────────
-            y += 6;
-            SectionLabel(scrollBody, "DESCRIPTION", 14, ref y);
-
+            // DESCRIPTION
+            y += 4;
+            OverlaySectionLabel(scrollBody, "DESCRIPTION", 14, ref y);
+            string descText = row["description"]?.ToString();
+            if (string.IsNullOrWhiteSpace(descText)) descText = "No description available.";
             var descBox = new RichTextBox
             {
-                Text = row["description"]?.ToString() ?? "No description available.",
+                Text = descText,
                 Font = new Font("Segoe UI", 9F),
                 ForeColor = ColSub,
                 BackColor = bg,
@@ -981,14 +1211,14 @@ namespace DriveAndGo_Admin.Panels
                 Height = 60
             };
             descBox.ContentsResized += (s, e) =>
-                descBox.Height = Math.Max(50, e.NewRectangle.Height + 8);
+                descBox.Height = Math.Max(48, e.NewRectangle.Height + 6);
             scrollBody.Controls.Add(descBox);
-            y += descBox.Height + 20;
+            y += descBox.Height + 22;
 
-            // ── CUSTOMER REVIEWS ──────────────────────────────────────────
-            SectionLabel(scrollBody, "CUSTOMER REVIEWS", 14, ref y);
-
+            // CUSTOMER REVIEWS
+            OverlaySectionLabel(scrollBody, "CUSTOMER REVIEWS", 14, ref y);
             var reviewsData = LoadReviewsFromDB(vid);
+
             if (reviewsData.Rows.Count == 0)
             {
                 scrollBody.Controls.Add(new Label
@@ -999,29 +1229,27 @@ namespace DriveAndGo_Admin.Panels
                     AutoSize = true,
                     Location = new Point(14, y)
                 });
-                y += 30;
+                y += 32;
             }
             else
             {
                 double avg = 0;
                 foreach (DataRow r in reviewsData.Rows)
-                    if (r["vehicle_score"] != DBNull.Value)
-                        avg += Convert.ToDouble(r["vehicle_score"]);
+                    if (r["vehicle_score"] != DBNull.Value) avg += Convert.ToDouble(r["vehicle_score"]);
                 avg /= reviewsData.Rows.Count;
 
-                // Star rating summary
                 var ratingCard = new Panel
                 {
                     Location = new Point(14, y),
-                    Size = new Size(pw - 28, 64),
+                    Size = new Size(pw - 28, 66),
                     BackColor = cardBg
                 };
-                ratingCard.Paint += (s, e) => {
+                ratingCard.Paint += (s, e) =>
+                {
                     e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
                     using var path = RoundRect(new Rectangle(0, 0, ratingCard.Width - 1, ratingCard.Height - 1), 8);
                     using var pen = new Pen(border, 1);
-                    e.Graphics.DrawPath(pen, path);
-                    ratingCard.Region = new Region(path);
+                    e.Graphics.DrawPath(pen, path); ratingCard.Region = new Region(path);
                 };
                 ratingCard.Controls.Add(new Label
                 {
@@ -1029,15 +1257,15 @@ namespace DriveAndGo_Admin.Panels
                     Font = new Font("Segoe UI", 26F, FontStyle.Bold),
                     ForeColor = ColYellow,
                     AutoSize = true,
-                    Location = new Point(14, 8)
+                    Location = new Point(14, 10)
                 });
                 ratingCard.Controls.Add(new Label
                 {
                     Text = new string('★', (int)Math.Round(avg)) + new string('☆', 5 - (int)Math.Round(avg)),
-                    Font = new Font("Segoe UI", 12F),
+                    Font = new Font("Segoe UI", 13F),
                     ForeColor = ColYellow,
                     AutoSize = true,
-                    Location = new Point(72, 10)
+                    Location = new Point(72, 12)
                 });
                 ratingCard.Controls.Add(new Label
                 {
@@ -1045,10 +1273,10 @@ namespace DriveAndGo_Admin.Panels
                     Font = new Font("Segoe UI", 8.5F),
                     ForeColor = ColSub,
                     AutoSize = true,
-                    Location = new Point(73, 38)
+                    Location = new Point(74, 40)
                 });
                 scrollBody.Controls.Add(ratingCard);
-                y += 72;
+                y += 74;
 
                 foreach (DataRow r in reviewsData.Rows)
                 {
@@ -1057,21 +1285,24 @@ namespace DriveAndGo_Admin.Panels
                     y += rc.Height + 8;
                 }
             }
-            y += 20; // bottom padding
+            y += 24;
 
-            // ── Action bar ────────────────────────────────────────────────
+            // Action bar
             var actionBar = new Panel
             {
                 Location = new Point(0, ph - actionBarH),
                 Size = new Size(pw, actionBarH),
-                BackColor = dk ? Color.FromArgb(5, 5, 13) : Color.FromArgb(238, 238, 250)
+                BackColor = dk ? Color.FromArgb(4, 4, 12) : Color.FromArgb(238, 238, 250)
             };
             actionBar.Paint += (s, e) =>
+            {
                 e.Graphics.DrawLine(new Pen(border, 1), 0, 0, actionBar.Width, 0);
+                e.Graphics.DrawLine(new Pen(Color.FromArgb(40, ColAccent), 1), 0, 1, actionBar.Width, 1);
+            };
 
-            var btnEdit2 = MakeBtn("✎  Edit", ColBlue, 14, 12, 100, 36);
-            var btnDel2 = MakeBtn("⊗  Delete", ColRed, 122, 12, 94, 36);
-            var btnTrack2 = MakeBtn("📍  Track", ColGreen, 224, 12, 100, 36);
+            var btnEdit2 = MakeBtn("✎  Edit", ColBlue, 14, 13, 100, 36);
+            var btnDel2 = MakeBtn("⊗  Delete", ColRed, 122, 13, 94, 36);
+            var btnTrack2 = MakeBtn("📍  Track", ColGreen, 224, 13, 100, 36);
 
             btnEdit2.Click += (s, e) => { HideDetailOverlay(); OnEditByRow(row); };
             btnDel2.Click += (s, e) => { HideDetailOverlay(); OnDeleteById(vid); };
@@ -1080,7 +1311,7 @@ namespace DriveAndGo_Admin.Panels
             actionBar.Controls.AddRange(new Control[] { btnEdit2, btnDel2, btnTrack2 });
             _overlay.Controls.Add(actionBar);
 
-            // ── Slide in ──────────────────────────────────────────────────
+            // Slide in
             _overlay.Visible = true;
             _overlay.BringToFront();
             _overlayOpen = true;
@@ -1090,30 +1321,57 @@ namespace DriveAndGo_Admin.Panels
             _slideTimer.Tick += (s, e) =>
             {
                 int cur = _overlay.Left;
-                int step = Math.Max(1, Math.Abs(cur) / 4);
+                int step = Math.Max(1, Math.Abs(cur) / 4 + 2);
                 if (cur - step <= 0) { _overlay.Left = 0; _slideTimer.Stop(); }
                 else _overlay.Left = cur - step;
             };
             _slideTimer.Start();
         }
 
+        private Button MakeCarouselBtn(string text, int x, int h)
+        {
+            var b = new Button
+            {
+                Text = text,
+                Size = new Size(42, h),
+                Location = new Point(x, 0),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 22F, FontStyle.Bold),
+                ForeColor = Color.White,
+                BackColor = Color.FromArgb(70, 0, 0, 0),
+                Cursor = Cursors.Hand
+            };
+            b.FlatAppearance.BorderSize = 0;
+            return b;
+        }
+
+        private void UpdateDots(Panel carousel, int active, int total)
+        {
+            foreach (Control c in carousel.Controls)
+                if (c is FlowLayoutPanel fp)
+                    foreach (Control d in fp.Controls)
+                        if (d is Label dl && dl.Name.StartsWith("dot_"))
+                            dl.BackColor = ((int)dl.Tag == active)
+                                ? ColAccent : Color.FromArgb(70, 255, 255, 255);
+        }
+
         private void HideDetailOverlay()
         {
             if (!_overlayOpen) return;
             int pw = splitContainer.Panel2.Width;
-
+            _carouselAutoTimer?.Stop();
+            _carouselAutoTimer?.Dispose();
+            _carouselAutoTimer = null;
             _slideTimer?.Stop();
             _slideTimer = new System.Windows.Forms.Timer { Interval = 8 };
             _slideTimer.Tick += (s, e) =>
             {
                 int cur = _overlay.Left;
-                int step = Math.Max(1, (pw - cur) / 4 + 1);
+                int step = Math.Max(1, (pw - cur) / 4 + 2);
                 if (cur + step >= pw)
                 {
-                    _overlay.Left = pw;
-                    _overlay.Visible = false;
-                    _overlayOpen = false;
-                    _slideTimer.Stop();
+                    _overlay.Left = pw; _overlay.Visible = false;
+                    _overlayOpen = false; _slideTimer.Stop();
                 }
                 else _overlay.Left = cur + step;
             };
@@ -1130,21 +1388,14 @@ namespace DriveAndGo_Admin.Panels
                 ? Convert.ToDateTime(r["rated_at"]).ToString("MMM dd, yyyy") : "";
             string customer = r["customer_name"]?.ToString() ?? "Anonymous";
 
-            var card = new Panel
-            {
-                Size = new Size(w, 84),
-                Location = new Point(14, y),
-                BackColor = bg
-            };
+            var card = new Panel { Size = new Size(w, 88), Location = new Point(14, y), BackColor = bg };
             card.Paint += (s, e) =>
             {
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
                 using var path = RoundRect(new Rectangle(0, 0, w - 1, card.Height - 1), 7);
                 using var pen = new Pen(border, 1);
-                e.Graphics.DrawPath(pen, path);
-                card.Region = new Region(path);
+                e.Graphics.DrawPath(pen, path); card.Region = new Region(path);
             };
-
             card.Controls.Add(new Label
             {
                 Text = new string('★', score) + new string('☆', 5 - score),
@@ -1159,7 +1410,7 @@ namespace DriveAndGo_Admin.Panels
                 Font = new Font("Segoe UI", 7.5F),
                 ForeColor = sub,
                 AutoSize = true,
-                Location = new Point(10, 32)
+                Location = new Point(10, 34)
             });
             card.Controls.Add(new Label
             {
@@ -1167,31 +1418,31 @@ namespace DriveAndGo_Admin.Panels
                 Font = new Font("Segoe UI", 8.5F),
                 ForeColor = text,
                 AutoSize = false,
-                Size = new Size(w - 20, 26),
+                Size = new Size(w - 20, 30),
                 Location = new Point(10, 52),
                 TextAlign = ContentAlignment.TopLeft
             });
             return card;
         }
 
-        private static void SectionLabel(Panel p, string text, int x, ref int y)
+        private static void OverlaySectionLabel(Panel p, string text, int x, ref int y)
         {
             p.Controls.Add(new Label
             {
                 Text = text,
-                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
-                ForeColor = Color.FromArgb(90, 90, 160),
+                Font = new Font("Segoe UI", 7F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(80, 80, 150),
                 AutoSize = true,
                 Location = new Point(x, y)
             });
-            y += 20;
+            y += 18;
             p.Controls.Add(new Panel
             {
                 Location = new Point(x, y),
                 Size = new Size(p.Width - x * 2, 1),
-                BackColor = Color.FromArgb(28, 28, 58)
+                BackColor = Color.FromArgb(24, 24, 54)
             });
-            y += 10;
+            y += 9;
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -1237,7 +1488,6 @@ namespace DriveAndGo_Admin.Panels
                     || row["plate_no"].ToString().ToLower().Contains(search);
                 if (ms && mq) filtered.ImportRow(row);
             }
-
             BuildVehicleCards(filtered);
             UpdateCountLabel(filtered);
         }
@@ -1249,8 +1499,7 @@ namespace DriveAndGo_Admin.Panels
             foreach (DataRow r in src.Rows)
                 if (r["status"]?.ToString().ToLower() == "available") avail++;
             string txt = $"{avail} available  ·  {src.Rows.Count} total";
-            if (lblCount.InvokeRequired)
-                lblCount.Invoke(new Action(() => lblCount.Text = txt));
+            if (lblCount.InvokeRequired) lblCount.Invoke(new Action(() => lblCount.Text = txt));
             else lblCount.Text = txt;
         }
 
@@ -1261,7 +1510,16 @@ namespace DriveAndGo_Admin.Panels
         {
             if (!_mapReady || browser?.CoreWebView2 == null) return;
             await browser.CoreWebView2.ExecuteScriptAsync("clearMarkers();");
-            await browser.CoreWebView2.ExecuteScriptAsync($"setHQ({HQ_LAT},{HQ_LNG},'{HQ_NAME}');");
+
+            string assetsFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets");
+            string garageImgSrc = "https://appassets/garage_3D.png";
+            if (string.IsNullOrEmpty(_garage3DBase64)) garageImgSrc = "";
+            else if (!File.Exists(Path.Combine(assetsFolder, "garage_3D.png")))
+                garageImgSrc = "data:image/png;base64," + _garage3DBase64;
+
+            await browser.CoreWebView2.ExecuteScriptAsync(
+                $"setHQ({HQ_LAT},{HQ_LNG},'{HQ_NAME}','{garageImgSrc}');");
+
             foreach (DataRow row in _vehicleData.Rows)
                 await PushVehicleMarker(row);
         }
@@ -1273,22 +1531,20 @@ namespace DriveAndGo_Admin.Panels
             double lng = row["longitude"] != DBNull.Value ? Convert.ToDouble(row["longitude"]) : HQ_LNG;
             bool isLost = row["is_lost"] != DBNull.Value && Convert.ToInt32(row["is_lost"]) == 1;
             int id = Convert.ToInt32(row["vehicle_id"]);
+            double spd = row["current_speed"] != DBNull.Value ? Convert.ToDouble(row["current_speed"]) : 0;
             string name = Esc(row["vehicle_name"]);
             string plate = Esc(row["plate_no"]);
             string type = Esc(row["type"]);
             string status = Esc(row["status"]);
-            double spd = row["current_speed"] != DBNull.Value ? Convert.ToDouble(row["current_speed"]) : 0;
             string lastU = row["last_update"] != DBNull.Value
                 ? Convert.ToDateTime(row["last_update"]).ToString("MMM dd, HH:mm") : "No data";
 
-            // Prefer model_3d_url (top-down), fallback to first photo
-            string mapIcon = row["model_3d_url"]?.ToString() ?? "";
-            if (string.IsNullOrEmpty(mapIcon) || mapIcon == "null")
-                mapIcon = GetFirstPhoto(row["photo_url"]?.ToString() ?? "");
+            string mapIcon = GetMarkerIconSource(row);
+            string desc = Esc(row["description"]);
 
             string js = $"updateVehicle({id},'{name}','{plate}','{type}','{status}'," +
                         $"{lat},{lng},{spd},'{lastU}','{Esc(mapIcon)}'," +
-                        $"{(isLost ? "true" : "false")});";
+                        $"{(isLost ? "true" : "false")},'{desc}');";
             await browser.CoreWebView2.ExecuteScriptAsync(js);
         }
 
@@ -1347,25 +1603,22 @@ namespace DriveAndGo_Admin.Panels
             if (card.InvokeRequired)
             { card.Invoke(new Action(() => UpdateCardLive(vid, lat, lng, speed))); return; }
 
-            foreach (Control c in card.Controls)
-                if (c is Panel imgPanel)
-                    foreach (Control ch in imgPanel.Controls)
-                        if (ch is Label sl && ch.Name == "spd_" + vid)
-                        {
-                            sl.Text = speed > 0 ? $"⚡ {speed:F0} km/h" : "";
-                            sl.Visible = speed > 0;
-                            sl.ForeColor = speed > 80 ? ColRed : speed > 40 ? ColYellow : ColGreen;
-                        }
-
             double dist = CalculateDistance(HQ_LAT, HQ_LNG, lat, lng);
-            foreach (Control c in card.Controls)
-                if (c is Panel info)
-                    foreach (Control ch in info.Controls)
-                        if (ch is Label dl && ch.Name == "dist_" + vid)
-                        {
-                            dl.Text = $"📍 {dist:F1} km";
-                            dl.ForeColor = ColBlue;
-                        }
+
+            foreach (Control c in FlattenControls(card))
+            {
+                if (c.Name == "spd_" + vid && c is Label sl)
+                {
+                    sl.Text = speed > 0 ? $"⚡ {speed:F0} km/h" : "";
+                    sl.Visible = speed > 0;
+                    sl.ForeColor = speed > 80 ? ColRed : speed > 40 ? ColYellow : ColNeon;
+                }
+                if (c.Name == "dist_" + vid && c is Label dl)
+                {
+                    dl.Text = $"📍 {dist:F1} km";
+                    dl.ForeColor = ColBlue;
+                }
+            }
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -1429,12 +1682,12 @@ namespace DriveAndGo_Admin.Panels
         {
             bool dk = ThemeManager.IsDarkMode;
             this.BackColor = ColBg;
-            topBar.BackColor = dk ? Color.FromArgb(6, 6, 16) : Color.FromArgb(248, 248, 255);
-            bottomBar.BackColor = dk ? Color.FromArgb(5, 5, 13) : Color.FromArgb(238, 238, 250);
+            topBar.BackColor = dk ? Color.FromArgb(4, 4, 14) : Color.FromArgb(248, 248, 255);
+            bottomBar.BackColor = dk ? Color.FromArgb(4, 4, 12) : Color.FromArgb(238, 238, 250);
             cardScrollPanel.BackColor = ColBg;
-            txtSearch.BackColor = dk ? Color.FromArgb(12, 12, 24) : Color.White;
+            txtSearch.BackColor = dk ? Color.FromArgb(10, 10, 22) : Color.White;
             txtSearch.ForeColor = ColText;
-            cboFilterStatus.BackColor = dk ? Color.FromArgb(12, 12, 24) : Color.White;
+            cboFilterStatus.BackColor = dk ? Color.FromArgb(10, 10, 22) : Color.White;
             cboFilterStatus.ForeColor = ColText;
             _imgCache.Clear();
             BuildVehicleCards(_vehicleData);
@@ -1455,7 +1708,7 @@ namespace DriveAndGo_Admin.Panels
                 Location = new Point(x, y),
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
-                BackColor = Color.FromArgb(22, color),
+                BackColor = Color.FromArgb(20, color),
                 ForeColor = color,
                 Cursor = Cursors.Hand
             };
@@ -1474,31 +1727,179 @@ namespace DriveAndGo_Admin.Panels
             _ => ColSub
         };
 
-        private static string GetFirstPhoto(string json)
+        private static string NormalizeMediaSource(string source)
         {
-            if (string.IsNullOrEmpty(json)) return "";
-            try
-            {
-                if (json.TrimStart().StartsWith("["))
-                {
-                    var list = JsonSerializer.Deserialize<List<string>>(json);
-                    return list?.Count > 0 ? list[0] : "";
-                }
-            }
-            catch { }
-            return json;
+            if (string.IsNullOrWhiteSpace(source)) return "";
+            string value = source.Trim();
+            return string.Equals(value, "null", StringComparison.OrdinalIgnoreCase) ? "" : value;
         }
 
-        private static List<string> GetAllPhotos(string json)
+        private static bool IsRemoteMediaUrl(string source) =>
+            Uri.TryCreate(source, UriKind.Absolute, out var uri) &&
+            (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+
+        private static string GetMediaExtension(string source)
         {
-            if (string.IsNullOrEmpty(json)) return new List<string>();
+            source = NormalizeMediaSource(source);
+            if (string.IsNullOrWhiteSpace(source)) return "";
+
             try
             {
-                if (json.TrimStart().StartsWith("["))
-                    return JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
+                if (Uri.TryCreate(source, UriKind.Absolute, out var uri) &&
+                    !string.IsNullOrWhiteSpace(uri.AbsolutePath))
+                    return Path.GetExtension(uri.AbsolutePath);
             }
             catch { }
-            return string.IsNullOrEmpty(json) ? new List<string>() : new List<string> { json };
+
+            return Path.GetExtension(source);
+        }
+
+        private static VehicleMediaKind DetectMediaKind(string source)
+        {
+            string ext = GetMediaExtension(source);
+            if (SupportedImageExtensions.Contains(ext)) return VehicleMediaKind.Image;
+            if (SupportedVideoExtensions.Contains(ext)) return VehicleMediaKind.Video;
+            return VehicleMediaKind.Unknown;
+        }
+
+        private static List<string> DeserializeMediaSources(string json)
+        {
+            var items = new List<string>();
+            string raw = NormalizeMediaSource(json);
+            if (string.IsNullOrWhiteSpace(raw)) return items;
+
+            try
+            {
+                if (raw.TrimStart().StartsWith("["))
+                    return JsonSerializer.Deserialize<List<string>>(raw) ?? new List<string>();
+            }
+            catch { }
+
+            items.Add(raw);
+            return items;
+        }
+
+        private static List<VehicleMediaItem> ParseMediaItems(string json)
+        {
+            var items = new List<VehicleMediaItem>();
+            foreach (var source in DeserializeMediaSources(json))
+            {
+                var item = new VehicleMediaItem(source);
+                if (!string.IsNullOrWhiteSpace(item.Source))
+                    items.Add(item);
+            }
+            return items;
+        }
+
+        private static string GetPrimaryMediaPreviewSource(string json)
+        {
+            var items = ParseMediaItems(json);
+            return items.FirstOrDefault(m => m.IsImage)?.Source
+                ?? items.FirstOrDefault()?.Source
+                ?? "";
+        }
+
+        private static string GetFirstPhoto(string json) =>
+            ParseMediaItems(json).FirstOrDefault(m => m.IsImage)?.Source ?? "";
+
+        private static List<string> GetAllPhotos(string json) =>
+            ParseMediaItems(json).Select(m => m.Source).ToList();
+
+        private string GetMarkerIconSource(DataRow row)
+        {
+            string mapIcon = NormalizeMediaSource(row["model_3d_url"]?.ToString() ?? "");
+            if (DetectMediaKind(mapIcon) == VehicleMediaKind.Image)
+                return mapIcon;
+
+            return GetFirstPhoto(row["photo_url"]?.ToString() ?? "");
+        }
+
+        private static string SerializeMediaSources(IReadOnlyList<string> sources)
+        {
+            var items = sources
+                .Select(NormalizeMediaSource)
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .ToList();
+
+            if (items.Count == 0) return "";
+            if (items.Count == 1) return items[0];
+            return JsonSerializer.Serialize(items);
+        }
+
+        private static async Task<Image> LoadImageFromSourceAsync(HttpClient client, string source)
+        {
+            source = NormalizeMediaSource(source);
+            if (string.IsNullOrWhiteSpace(source)) return null;
+            if (DetectMediaKind(source) == VehicleMediaKind.Video) return null;
+
+            try
+            {
+                byte[] bytes = null;
+
+                if (IsRemoteMediaUrl(source))
+                    bytes = await client.GetByteArrayAsync(source);
+                else if (File.Exists(source))
+                    bytes = await File.ReadAllBytesAsync(source);
+
+                if (bytes == null || bytes.Length == 0) return null;
+                return Image.FromStream(new MemoryStream(bytes));
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string BuildVideoPreviewHtml(string source)
+        {
+            string encodedUrl = System.Net.WebUtility.HtmlEncode(source);
+            return "<html><body style='margin:0;background:#030308;display:flex;align-items:center;justify-content:center;height:100vh'>" +
+                   $"<video src='{encodedUrl}' controls autoplay playsinline style='width:100%;height:100%;object-fit:contain;background:#000'></video>" +
+                   "</body></html>";
+        }
+
+        private void ShowFleetMediaPreview(string source, string title)
+        {
+            string mediaSource = NormalizeMediaSource(source);
+            if (string.IsNullOrWhiteSpace(mediaSource))
+                return;
+
+            using var dlg = new Form
+            {
+                Text = title,
+                Size = new Size(980, 620),
+                StartPosition = FormStartPosition.CenterParent,
+                BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(4, 4, 12) : Color.White
+            };
+
+            if (DetectMediaKind(mediaSource) == VehicleMediaKind.Video)
+            {
+                var web = new WebView2 { Dock = DockStyle.Fill };
+                dlg.Controls.Add(web);
+                dlg.Shown += async (s, e) =>
+                {
+                    await web.EnsureCoreWebView2Async(null);
+                    web.NavigateToString(BuildVideoPreviewHtml(mediaSource));
+                };
+            }
+            else
+            {
+                var pic = new PictureBox
+                {
+                    Dock = DockStyle.Fill,
+                    BackColor = Color.Black,
+                    SizeMode = PictureBoxSizeMode.Zoom
+                };
+                dlg.Controls.Add(pic);
+                dlg.Shown += async (s, e) =>
+                {
+                    var img = await LoadImageFromSourceAsync(_http, mediaSource);
+                    if (img != null)
+                        pic.Image = img;
+                };
+            }
+
+            dlg.ShowDialog(this);
         }
 
         private double CalculateDistance(double la1, double lo1, double la2, double lo2)
@@ -1532,327 +1933,14 @@ namespace DriveAndGo_Admin.Panels
         {
             _liveTimer?.Stop(); _liveTimer?.Dispose();
             _slideTimer?.Stop(); _slideTimer?.Dispose();
+            _carouselAutoTimer?.Stop(); _carouselAutoTimer?.Dispose(); _carouselAutoTimer = null;
             ThemeManager.ThemeChanged -= OnThemeChanged;
             browser?.Dispose();
             base.Dispose(disposing);
         }
 
         // ════════════════════════════════════════════════════════════════════
-        //  MAP HTML — Futuristic with rotating top-down vehicle icons
-        // ════════════════════════════════════════════════════════════════════
-        private string GetMapHtml() => """
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset='utf-8'/>
-<title>DriveAndGo Fleet</title>
-<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'/>
-<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
-<style>
-*{margin:0;padding:0;box-sizing:border-box;}
-html,body{height:100%;font-family:'Segoe UI',sans-serif;display:flex;flex-direction:column;overflow:hidden;background:#050510;color:#dde0f0;}
-
-#topbar{height:46px;background:rgba(6,6,18,.97);border-bottom:1px solid rgba(230,81,0,.25);display:flex;align-items:center;gap:5px;padding:0 14px;flex-shrink:0;}
-#topbar::after{content:'';position:absolute;top:46px;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(230,81,0,.4),transparent);}
-.title{font-weight:900;color:#e6510d;font-size:10px;letter-spacing:2px;text-transform:uppercase;margin-right:8px;}
-.btn{padding:5px 13px;border-radius:20px;cursor:pointer;font-size:9px;font-weight:700;border:1px solid rgba(255,255,255,.1);background:transparent;color:#7070a8;transition:all .2s;}
-.btn.active,.btn:hover{background:rgba(230,81,0,.18);color:#e6510d;border-color:rgba(230,81,0,.5);}
-.spacer{flex:1;}
-
-#map{flex:1;position:relative;min-height:0;}
-
-/* Speed badge */
-#spdbadge{position:absolute;bottom:86px;right:14px;width:76px;height:76px;background:rgba(5,5,15,.94);border:2px solid #e6510d;border-radius:50%;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:900;box-shadow:0 0 28px rgba(230,81,13,.5);}
-#spdval{font-size:24px;font-weight:900;color:#fff;line-height:1;}
-#spdunit{font-size:7px;color:#5050a0;letter-spacing:2px;margin-top:2px;}
-
-/* Info bar */
-#infobar{height:68px;background:rgba(5,5,15,.97);border-top:1px solid rgba(230,81,0,.2);display:flex;align-items:center;flex-shrink:0;overflow:hidden;}
-.ib-cell{display:flex;flex-direction:column;justify-content:center;padding:0 16px;border-right:1px solid rgba(255,255,255,.06);height:100%;}
-.ib-cell:last-child{border-right:none;flex:1;}
-.ib-lbl{font-size:7px;color:#353575;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;}
-.ib-val{font-size:12px;font-weight:700;color:#dde0f0;}
-.ib-desc{font-size:9px;color:#606090;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
-
-/* Vehicle marker */
-.v-wrap{display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;filter:drop-shadow(0 4px 12px rgba(0,0,0,.7));}
-.v-ring{width:58px;height:58px;border-radius:12px;border:2.5px solid var(--rc,#22c55e);background:rgba(4,4,14,.9);overflow:hidden;box-shadow:0 0 20px color-mix(in srgb,var(--rc) 50%,transparent),inset 0 0 12px rgba(0,0,0,.5);transition:transform .5s cubic-bezier(.25,.8,.25,1);position:relative;}
-.v-ring.selected{box-shadow:0 0 30px var(--rc),0 0 60px color-mix(in srgb,var(--rc) 30%,transparent);border-width:3px;}
-.v-img{width:100%;height:100%;object-fit:cover;object-position:center;}
-.v-sym{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:26px;}
-.v-name{font-size:8.5px;font-weight:800;padding:2px 8px;border-radius:10px;background:rgba(4,4,14,.92);border:1px solid rgba(255,255,255,.12);color:#fff;white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis;}
-.v-spd{font-size:8.5px;font-weight:800;padding:1px 7px;border-radius:8px;background:rgba(4,4,14,.9);border:1px solid rgba(255,255,255,.1);color:#22c55e;display:none;}
-.v-spd.on{display:block;}
-
-/* Pulse ring on movement */
-.v-pulse{position:absolute;inset:-8px;border-radius:18px;border:2px solid var(--rc,#22c55e);opacity:0;animation:none;}
-.v-pulse.moving{animation:pulse 1.5s infinite;}
-@keyframes pulse{0%{opacity:.7;transform:scale(.9)}100%{opacity:0;transform:scale(1.4)}}
-
-/* Lost marker */
-.v-lost{width:22px;height:22px;border-radius:50%;background:#ef4444;border:3px solid rgba(255,255,255,.9);animation:blink 1.1s infinite;box-shadow:0 0 12px rgba(239,68,68,.7);}
-@keyframes blink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(239,68,68,.6)}50%{opacity:.7;box-shadow:0 0 0 12px rgba(239,68,68,0)}}
-
-/* HQ */
-.hq-wrap{display:flex;flex-direction:column;align-items:center;gap:3px;filter:drop-shadow(0 4px 14px rgba(0,0,0,.8));}
-.hq-ring{width:64px;height:64px;border-radius:14px;border:2.5px solid #e6510d;background:rgba(4,4,14,.92);display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 0 24px rgba(230,81,13,.55);}
-.hq-lbl{background:linear-gradient(135deg,#e6510d,#ff8c42);color:#fff;padding:2px 10px;border-radius:10px;font-size:8.5px;font-weight:800;white-space:nowrap;box-shadow:0 2px 10px rgba(0,0,0,.6);}
-
-/* Popups */
-.leaflet-popup-content-wrapper{background:#0c0c22!important;border:1px solid rgba(230,81,0,.35)!important;border-radius:14px!important;color:#dde0f0!important;box-shadow:0 8px 36px rgba(0,0,0,.9)!important;backdrop-filter:blur(8px)!important;}
-.leaflet-popup-tip{background:#0c0c22!important;}
-.pp-name{font-size:13px;font-weight:800;color:#e6510d;margin-bottom:5px;}
-.pp-plate{display:inline-block;background:#1a1a3a;padding:2px 9px;border-radius:5px;font-size:10px;margin-bottom:7px;border:1px solid rgba(255,255,255,.1);}
-.pp-row{font-size:10.5px;color:#8080b0;margin-top:3px;}
-
-/* Light theme */
-body.lt{background:#f0f0f8;color:#1a1a2e;}
-body.lt #topbar{background:rgba(255,255,255,.98);border-bottom-color:rgba(230,81,0,.2);}
-body.lt .btn{color:#505080;}
-body.lt #infobar{background:rgba(250,250,255,.98);border-top-color:#dcdcf0;}
-body.lt .ib-val{color:#1a1a2e;}
-body.lt .ib-desc{color:#606090;}
-body.lt .ib-cell{border-right-color:#e4e4f0;}
-body.lt .ib-lbl{color:#9090b0;}
-body.lt .leaflet-popup-content-wrapper{background:#fff!important;border-color:#d0d0e8!important;color:#1a1a2e!important;}
-body.lt .leaflet-popup-tip{background:#fff!important;}
-body.lt .v-ring{background:rgba(248,248,255,.95);}
-</style>
-</head>
-<body>
-<div id='topbar'>
-  <span class='title'>⬡ DriveAndGo Fleet</span>
-  <button class='btn active' id='bStreet'  onclick='setLayer("street")'>Street</button>
-  <button class='btn'        id='bSat'     onclick='setLayer("satellite")'>Satellite</button>
-  <button class='btn'        id='bTraffic' onclick='toggleTraffic()'>Traffic</button>
-  <button class='btn'                     onclick='fitAll()'>Fit All</button>
-  <button class='btn active' id='bRoutes'  onclick='toggleRoutes()'>Routes</button>
-  <span class='spacer'></span>
-  <span id='liveCount' style='font-size:9px;color:#404080;font-weight:700;'></span>
-</div>
-<div id='map'>
-  <div id='spdbadge'>
-    <div id='spdval'>0</div>
-    <div id='spdunit'>KM/H</div>
-  </div>
-</div>
-<div id='infobar'>
-  <div class='ib-cell'><div class='ib-lbl'>Vehicle</div><div class='ib-val' id='iName'>Select a vehicle</div></div>
-  <div class='ib-cell'><div class='ib-lbl'>Plate</div><div class='ib-val' id='iPlate'>—</div></div>
-  <div class='ib-cell'><div class='ib-lbl'>Status</div><div class='ib-val' id='iStatus'>—</div></div>
-  <div class='ib-cell'><div class='ib-lbl'>Speed</div><div class='ib-val' id='iSpd'>—</div></div>
-  <div class='ib-cell'><div class='ib-lbl'>Last Update</div><div class='ib-val' id='iLast' style='font-size:10px;font-weight:500;'>—</div></div>
-  <div class='ib-cell'><div class='ib-lbl'>Description</div><div class='ib-desc' id='iDesc'>—</div></div>
-</div>
-<script>
-var map = L.map('map',{zoomControl:true,attributionControl:false}).setView([14.8169,121.0453],13);
-var layerDark    = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:20});
-var layerLight   = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{maxZoom:20});
-var layerSat     = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:20});
-var layerTraffic = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{opacity:.22});
-layerDark.addTo(map);
-
-var dark=true,mapType='street',trafficOn=false,routesOn=true;
-var markers={},polylines={},distLabels={},vdata={};
-var hqMarker=null,hqLat=14.8169,hqLng=121.0453;
-var selectedVid=-1;
-
-function setTheme(d){
-  dark=d;
-  document.body.classList.toggle('lt',!d);
-  rebuildBase();
-}
-function rebuildBase(){
-  [layerDark,layerLight,layerSat].forEach(l=>{try{map.removeLayer(l);}catch(e){}});
-  (mapType==='satellite'?layerSat:dark?layerDark:layerLight).addTo(map);
-  if(trafficOn)layerTraffic.bringToFront();
-}
-function setLayer(t){
-  mapType=t;
-  document.getElementById('bStreet').classList.toggle('active',t==='street');
-  document.getElementById('bSat').classList.toggle('active',t==='satellite');
-  rebuildBase();
-}
-function toggleTraffic(){
-  trafficOn=!trafficOn;
-  var b=document.getElementById('bTraffic');
-  trafficOn?(layerTraffic.addTo(map),b.classList.add('active'),layerTraffic.bringToFront())
-           :(map.removeLayer(layerTraffic),b.classList.remove('active'));
-}
-function toggleRoutes(){
-  routesOn=!routesOn;
-  document.getElementById('bRoutes').classList.toggle('active',routesOn);
-  for(var id in polylines)polylines[id].forEach(p=>routesOn?map.addLayer(p):map.removeLayer(p));
-  for(var id in distLabels)distLabels[id].forEach(m=>routesOn?map.addLayer(m):map.removeLayer(m));
-}
-
-function setHQ(lat,lng,name){
-  hqLat=lat;hqLng=lng;
-  if(hqMarker)map.removeLayer(hqMarker);
-  var ic=L.divIcon({className:'',
-    html:`<div class='hq-wrap'><div class='hq-ring'>🏢</div><div class='hq-lbl'>${name}</div></div>`,
-    iconSize:[64,82],iconAnchor:[32,42]});
-  hqMarker=L.marker([lat,lng],{icon:ic,zIndexOffset:2000}).addTo(map);
-  hqMarker.bindPopup(`<div class='pp-name'>🏢 ${name}</div><div class='pp-row'>Main Garage & Operations Base</div>`);
-}
-
-function statusColor(s){
-  s=(s||'').toLowerCase();
-  if(s==='available')return'#22c55e';
-  if(s==='in-use'||s==='rented')return'#eab308';
-  if(s==='maintenance')return'#a855f7';
-  return'#3b82f6';
-}
-function typeEmoji(t){
-  t=(t||'').toLowerCase();
-  if(t.includes('motor'))return'🏍';
-  if(t.includes('van'))return'🚐';
-  if(t.includes('truck'))return'🚛';
-  if(t.includes('bicy'))return'🚲';
-  return'🚗';
-}
-
-function markerHtml(vid,iconUrl,type,status,speed,isLost,name){
-  var c=statusColor(status);
-  var moving=speed>0;
-  if(isLost)return`<div class='v-wrap'><div class='v-lost'></div><div class='v-name' style='color:#ef4444'>No GPS</div></div>`;
-  var inner=iconUrl&&iconUrl.trim()&&iconUrl!=='null'&&(iconUrl.startsWith('http')||iconUrl.startsWith('https'))
-    ?`<div class='v-pulse' id='vpulse${vid}' ${moving?'class="v-pulse moving"':''}></div><img src='${iconUrl}' class='v-img' id='vimg${vid}' onerror='this.style.display="none";document.getElementById("vsym${vid}").style.display="flex"'/><div class='v-sym' id='vsym${vid}' style='display:none'>${typeEmoji(type)}</div>`
-    :`<div class='v-pulse' id='vpulse${vid}'></div><div class='v-sym' id='vsym${vid}'>${typeEmoji(type)}</div>`;
-  var spdHtml=`<div class='v-spd${moving?" on":""}' id='vspd${vid}' style='color:${speed>80?'#ef4444':speed>40?'#eab308':'#22c55e'}'>${speed>0?speed+' km/h':''}</div>`;
-  return`<div class='v-wrap'>${spdHtml}<div class='v-ring${vid===selectedVid?" selected":""}' id='vring${vid}' style='--rc:${c}'>${inner}</div><div class='v-name'>${name}</div></div>`;
-}
-
-function clearMarkers(){
-  for(var id in markers){try{map.removeLayer(markers[id]);}catch(e){}}
-  for(var id in polylines){try{polylines[id].forEach(p=>map.removeLayer(p));}catch(e){}}
-  for(var id in distLabels){try{distLabels[id].forEach(m=>map.removeLayer(m));}catch(e){}}
-  markers={};polylines={};distLabels={};vdata={};
-}
-
-async function drawRoute(vid,la1,lo1,la2,lo2,color){
-  try{
-    var url=`https://router.project-osrm.org/route/v1/driving/${lo1},${la1};${lo2},${la2}?overview=full&geometries=geojson`;
-    var r=await(await fetch(url)).json();
-    var pls=polylines[vid]||[],dls=distLabels[vid]||[];
-    if(r.routes&&r.routes.length){
-      var coords=r.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]);
-      var dkm=(r.routes[0].distance/1000).toFixed(1)+' km';
-      var poly=L.polyline(coords,{color,weight:3,opacity:.6,dashArray:'6,4'});
-      if(routesOn)poly.addTo(map);pls.push(poly);
-      var mid=coords[Math.floor(coords.length/2)];
-      var m=L.marker(mid,{icon:L.divIcon({className:'',
-        html:`<div style='background:rgba(4,4,14,.9);color:${color};border:1px solid ${color};border-radius:6px;padding:2px 8px;font-size:9px;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.5)'>${dkm}</div>`,
-        iconSize:[64,20]})});
-      if(routesOn)m.addTo(map);dls.push(m);
-    }
-    polylines[vid]=pls;distLabels[vid]=dls;
-  }catch(e){}
-}
-
-function updateVehicle(vid,name,plate,type,status,lat,lng,speed,lastU,iconUrl,isLost){
-  vdata[vid]={name,plate,type,status,lat,lng,speed,lastU,iconUrl,isLost};
-  if(markers[vid])map.removeLayer(markers[vid]);
-  if(polylines[vid]){polylines[vid].forEach(p=>map.removeLayer(p));polylines[vid]=[];}
-  if(distLabels[vid]){distLabels[vid].forEach(m=>map.removeLayer(m));distLabels[vid]=[];}
-
-  if(!isLost)drawRoute(vid,hqLat,hqLng,lat,lng,statusColor(status));
-
-  var sz=isLost?[22,22]:[58,96];
-  var an=isLost?[11,11]:[29,88];
-  var ic=L.divIcon({className:'',
-    html:markerHtml(vid,iconUrl,type,status,speed||0,isLost,name),
-    iconSize:sz,iconAnchor:an});
-
-  var pop=`<div class='pp-name'>${name}</div><span class='pp-plate'>${plate}</span>`+
-    `<div class='pp-row'><span style='color:${statusColor(status)}'>●</span> ${status.toUpperCase()}</div>`+
-    `<div class='pp-row'>⏱ Last update: ${lastU}</div>`;
-
-  var mk=L.marker([lat,lng],{icon:ic});
-  mk.bindPopup(pop);
-  mk.addTo(map);
-  mk.on('click',()=>focusVehicle(vid,name,plate,status,lat,lng,speed||0,lastU,'',5));
-  markers[vid]=mk;
-  document.getElementById('liveCount').textContent=Object.keys(markers).length+' vehicles tracked';
-}
-
-function liveUpdateGPS(vid,lat,lng,speed){
-  if(!markers[vid])return;
-  var old=markers[vid].getLatLng();
-  markers[vid].setLatLng([lat,lng]);
-  if(vdata[vid]){vdata[vid].lat=lat;vdata[vid].lng=lng;vdata[vid].speed=speed;}
-
-  // Speed label
-  var spdEl=document.getElementById('vspd'+vid);
-  if(spdEl){
-    spdEl.textContent=speed>0?speed+' km/h':'';
-    spdEl.className=speed>0?'v-spd on':'v-spd';
-    spdEl.style.color=speed>80?'#ef4444':speed>40?'#eab308':'#22c55e';
-  }
-
-  // Pulse ring
-  var pulse=document.getElementById('vpulse'+vid);
-  if(pulse)pulse.className=speed>0?'v-pulse moving':'v-pulse';
-
-  // Speed badge (selected vehicle)
-  if(vid===selectedVid){
-    var badge=document.getElementById('spdbadge');
-    if(speed>0){
-      badge.style.display='flex';
-      document.getElementById('spdval').textContent=Math.round(speed);
-      document.getElementById('iSpd').textContent=speed+' km/h';
-      badge.style.borderColor=speed>80?'#ef4444':speed>40?'#eab308':'#22c55e';
-      badge.style.boxShadow='0 0 28px '+(speed>80?'rgba(239,68,68,.6)':speed>40?'rgba(234,179,8,.6)':'rgba(34,197,94,.6)');
-    }else{
-      badge.style.display='none';
-      document.getElementById('iSpd').textContent='Parked';
-    }
-  }
-
-  // Auto-rotate marker icon based on bearing
-  if(Math.abs(lat-old.lat)>0.000001||Math.abs(lng-old.lng)>0.000001){
-    var dy=lat-old.lat;
-    var dx=Math.cos(Math.PI/180*old.lat)*(lng-old.lng);
-    var bearing=(90-Math.atan2(dy,dx)*180/Math.PI+360)%360;
-    var ring=document.getElementById('vring'+vid);
-    if(ring)ring.style.transform='rotate('+bearing+'deg)';
-  }
-}
-
-function focusVehicle(vid,name,plate,status,lat,lng,speed,lastU,desc,seats){
-  // Deselect old
-  if(selectedVid>=0){
-    var old=document.getElementById('vring'+selectedVid);
-    if(old)old.classList.remove('selected');
-  }
-  selectedVid=vid;
-  var ring=document.getElementById('vring'+vid);
-  if(ring)ring.classList.add('selected');
-
-  document.getElementById('iName').textContent=name;
-  document.getElementById('iPlate').textContent=plate;
-  document.getElementById('iStatus').textContent=status.toUpperCase();
-  document.getElementById('iSpd').textContent=speed>0?speed+' km/h':'Parked';
-  document.getElementById('iLast').textContent=lastU;
-  document.getElementById('iDesc').textContent=desc||'—';
-
-  map.flyTo([lat,lng],16,{animate:true,duration:1.2});
-  if(markers[vid])markers[vid].openPopup();
-}
-
-function fitAll(){
-  var b=[];
-  for(var id in markers)b.push(markers[id].getLatLng());
-  if(hqMarker)b.push(hqMarker.getLatLng());
-  if(b.length)map.fitBounds(b,{padding:[60,60],animate:true});
-}
-</script>
-</body>
-</html>
-""";
-
-        // ════════════════════════════════════════════════════════════════════
-        //  VEHICLE FORM DIALOG — multiple images, Cloudinary upload, auto-scroll
+        //  VEHICLE FORM DIALOG
         // ════════════════════════════════════════════════════════════════════
         public class VehicleFormDialog : Form
         {
@@ -1860,18 +1948,16 @@ function fitAll(){
             private readonly DataRow _existing;
 
             private TextBox txtBrand, txtModel, txtPlate, txtCC, txtRate,
-                               txtRateDriver, txtSeats, txtTrans, txtMapIcon;
+                            txtRateDriver, txtSeats, txtTrans, txtMapIcon;
             private RichTextBox txtDesc;
             private ComboBox cboType, cboStatus;
             private FlowLayoutPanel thumbFlow;
-            private Button btnAddPhoto, btnSave;
+            private Button btnAddPhoto, btnBrowseMapIcon, btnSave;
             private Label lblUpload;
-            private Panel scrollContent;
-            private Panel scrollWrapper;
+            private Panel scrollContent, scrollWrapper;
+            private PictureBox _mapIconPreview;
 
-            private const string CloudName2 = "dducouuy5";
-            private const string ApiKey2 = "818381663113767";
-            private const string ApiSecret2 = "FVHDbX63zD5hD0xYAYCyNeJhAxM";
+
             private static readonly HttpClient _http2 = new HttpClient();
 
             private readonly List<string> _photoUrls = new List<string>();
@@ -1890,30 +1976,30 @@ function fitAll(){
                 Color bg = ThemeManager.CurrentBackground;
                 Color card = ThemeManager.CurrentCard;
                 Color text = ThemeManager.CurrentText;
-                Color sub = ThemeManager.CurrentSubText;
                 Color accent = ThemeManager.CurrentPrimary;
 
-                this.Text = isEdit ? "✎  Edit Vehicle" : "✚  Add New Vehicle";
-                this.Size = new Size(540, 740);
-                this.StartPosition = FormStartPosition.CenterParent;
-                this.FormBorderStyle = FormBorderStyle.FixedDialog;
-                this.MaximizeBox = false;
-                this.BackColor = bg;
-                this.Font = new Font("Segoe UI", 9.5F);
+                Text = isEdit ? "✎  Edit Vehicle" : "✚  Add New Vehicle";
+                Size = new Size(560, 800);
+                StartPosition = FormStartPosition.CenterParent;
+                FormBorderStyle = FormBorderStyle.FixedDialog;
+                MaximizeBox = false;
+                BackColor = bg;
+                Font = new Font("Segoe UI", 9.5F);
 
-                // Header
                 var hdr = new Panel
                 {
                     Dock = DockStyle.Top,
-                    Height = 54,
-                    BackColor = dk ? Color.FromArgb(6, 6, 16) : Color.FromArgb(248, 248, 255)
+                    Height = 56,
+                    BackColor = dk ? Color.FromArgb(4, 4, 14) : Color.FromArgb(248, 248, 255)
                 };
                 hdr.Paint += (s, e) =>
                 {
-                    using var br = new LinearGradientBrush(
-                        new Point(0, 52), new Point(hdr.Width, 52),
-                        accent, Color.Transparent);
-                    e.Graphics.FillRectangle(br, 0, 52, hdr.Width, 2);
+                    e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                    using var br = new LinearGradientBrush(new Point(0, 54), new Point(hdr.Width, 54), accent, Color.Transparent);
+                    e.Graphics.FillRectangle(br, 0, 54, hdr.Width, 2);
+                    using var sp = new Pen(Color.FromArgb(dk ? 6 : 3, accent), 1);
+                    for (int sy = 0; sy < 56; sy += 4)
+                        e.Graphics.DrawLine(sp, 0, sy, hdr.Width, sy);
                 };
                 hdr.Controls.Add(new Label
                 {
@@ -1921,28 +2007,29 @@ function fitAll(){
                     Font = new Font("Segoe UI", 12F, FontStyle.Bold),
                     ForeColor = accent,
                     AutoSize = true,
-                    Location = new Point(16, 16)
+                    Location = new Point(16, 18)
                 });
-                this.Controls.Add(hdr);
+                Controls.Add(hdr);
 
-                // Save button (footer)
                 var footer = new Panel
                 {
                     Dock = DockStyle.Bottom,
-                    Height = 60,
-                    BackColor = dk ? Color.FromArgb(5, 5, 13) : Color.FromArgb(238, 238, 252)
+                    Height = 64,
+                    BackColor = dk ? Color.FromArgb(4, 4, 12) : Color.FromArgb(238, 238, 252)
                 };
                 footer.Paint += (s, e) =>
                 {
                     using var p = new Pen(ThemeManager.CurrentBorder, 1);
                     e.Graphics.DrawLine(p, 0, 0, footer.Width, 0);
+                    using var glow = new Pen(Color.FromArgb(30, accent), 1);
+                    e.Graphics.DrawLine(glow, 0, 1, footer.Width, 1);
                 };
 
                 btnSave = new Button
                 {
                     Text = isEdit ? "💾  Save Changes" : "✚  Add Vehicle",
-                    Size = new Size(200, 40),
-                    Location = new Point((this.ClientSize.Width - 200) / 2, 10),
+                    Size = new Size(210, 40),
+                    Location = new Point((560 - 210) / 2 - 8, 12),
                     FlatStyle = FlatStyle.Flat,
                     Font = new Font("Segoe UI", 10F, FontStyle.Bold),
                     BackColor = accent,
@@ -1952,16 +2039,15 @@ function fitAll(){
                 btnSave.FlatAppearance.BorderSize = 0;
                 btnSave.Click += OnSave;
                 footer.Controls.Add(btnSave);
-                this.Controls.Add(footer);
+                Controls.Add(footer);
 
-                // Scrollable content
                 scrollWrapper = new Panel
                 {
                     Dock = DockStyle.Fill,
                     AutoScroll = true,
                     BackColor = bg
                 };
-                this.Controls.Add(scrollWrapper);
+                Controls.Add(scrollWrapper);
 
                 scrollContent = new Panel
                 {
@@ -1974,32 +2060,28 @@ function fitAll(){
                 scrollWrapper.Resize += (s, e) =>
                     scrollContent.Width = scrollWrapper.ClientSize.Width - SystemInformation.VerticalScrollBarWidth;
 
-                int y = 14;
-                int lx = 16;
-                int vx = 160;
-                int vw = scrollWrapper.ClientSize.Width - vx - 24;
+                int y = 16, lx = 16, vx = 170;
+                int vw = 540 - vx - 28;
 
-                // ── Fields ──────────────────────────────────────────────
                 txtBrand = AddField("Brand / Make:", lx, vx, ref y, vw);
                 txtModel = AddField("Model:", lx, vx, ref y, vw);
                 txtPlate = AddField("Plate No.:", lx, vx, ref y, vw);
-                cboType = AddCombo("Vehicle Type:", lx, vx, ref y, vw,
-                    new[] { "Car", "Motorcycle", "Van", "Truck", "Bicycle" });
+                cboType = AddCombo("Vehicle Type:", lx, vx, ref y, vw, new[] { "Car", "Motorcycle", "Van", "Truck", "Bicycle" });
                 txtCC = AddField("Engine CC:", lx, vx, ref y, vw);
                 txtRate = AddField("Rate / Day (₱):", lx, vx, ref y, vw);
                 txtRateDriver = AddField("Rate + Driver (₱):", lx, vx, ref y, vw);
                 txtSeats = AddField("Seat Capacity:", lx, vx, ref y, vw);
                 txtTrans = AddField("Transmission:", lx, vx, ref y, vw);
-                cboStatus = AddCombo("Status:", lx, vx, ref y, vw,
-                    new[] { "available", "in-use", "maintenance" });
+                cboStatus = AddCombo("Status:", lx, vx, ref y, vw, new[] { "available", "in-use", "maintenance" });
 
-                // Description
-                AddLabel("Description:", lx, y + 5);
+                AddSectionDivider(lx, ref y);
+                AddFormLabel("Description:", lx, y + 5);
+
                 txtDesc = new RichTextBox
                 {
                     Location = new Point(lx, y + 24),
                     Width = scrollContent.Width - lx * 2,
-                    Height = 72,
+                    Height = 76,
                     Font = new Font("Segoe UI", 9F),
                     BackColor = card,
                     ForeColor = text,
@@ -2009,101 +2091,161 @@ function fitAll(){
                 };
                 txtDesc.ContentsResized += (s, e) =>
                 {
-                    int nh = Math.Min(200, Math.Max(72, e.NewRectangle.Height + 10));
-                    txtDesc.Height = nh;
-                    // Reflow everything below
-                    ReflowBelow(txtDesc, scrollContent);
+                    int nh = Math.Min(200, Math.Max(76, e.NewRectangle.Height + 10));
+                    if (txtDesc.Height != nh) txtDesc.Height = nh;
                 };
                 scrollContent.Controls.Add(txtDesc);
-                y += 24 + txtDesc.Height + 14;
+                y += 24 + txtDesc.Height + 16;
 
-                // Divider
-                scrollContent.Controls.Add(new Panel
+                AddSectionDivider(lx, ref y);
+                scrollContent.Controls.Add(new Label
                 {
-                    Location = new Point(lx, y),
-                    Size = new Size(scrollContent.Width - lx * 2, 1),
-                    BackColor = ThemeManager.CurrentBorder
+                    Text = "Vehicle Media",
+                    Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                    ForeColor = ThemeManager.CurrentText,
+                    AutoSize = true,
+                    Location = new Point(lx, y + 4)
                 });
-                y += 10;
-
-                // ── Photos section ───────────────────────────────────────
-                AddLabel("Vehicle Photos (max 5):", lx, y + 4);
-                y += 24;
+                scrollContent.Controls.Add(new Label
+                {
+                    Text = $"(max {FleetPanel.MaxVehicleMediaItems} — images/videos — first image becomes the main preview)",
+                    Font = new Font("Segoe UI", 7.5F),
+                    ForeColor = ThemeManager.CurrentSubText,
+                    AutoSize = true,
+                    Location = new Point(lx + 120, y + 7)
+                });
+                y += 28;
 
                 btnAddPhoto = new Button
                 {
-                    Text = "✚  Add Photo",
-                    Size = new Size(136, 34),
+                    Text = "✚  Add Media",
+                    Size = new Size(132, 34),
                     Location = new Point(lx, y),
                     FlatStyle = FlatStyle.Flat,
                     Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
-                    BackColor = Color.FromArgb(22, accent),
-                    ForeColor = accent,
+                    BackColor = Color.FromArgb(20, ThemeManager.CurrentPrimary),
+                    ForeColor = ThemeManager.CurrentPrimary,
                     Cursor = Cursors.Hand
                 };
-                btnAddPhoto.FlatAppearance.BorderColor = accent;
+                btnAddPhoto.FlatAppearance.BorderColor = ThemeManager.CurrentPrimary;
                 btnAddPhoto.FlatAppearance.BorderSize = 1;
                 btnAddPhoto.Click += OnAddPhoto;
                 scrollContent.Controls.Add(btnAddPhoto);
 
                 lblUpload = new Label
                 {
-                    Text = "⬆  Uploading to Cloudinary…",
-                    Font = new Font("Segoe UI", 8F, FontStyle.Italic),
-                    ForeColor = accent,
+                    Text = "",
+                    Font = new Font("Segoe UI", 7.5F, FontStyle.Italic),
+                    ForeColor = ThemeManager.CurrentPrimary,
                     AutoSize = true,
-                    Location = new Point(lx + 144, y + 7),
+                    Location = new Point(lx + 136, y + 9),
                     Visible = false
                 };
                 scrollContent.Controls.Add(lblUpload);
-                y += 42;
+                y += 44;
 
                 thumbFlow = new FlowLayoutPanel
                 {
                     Location = new Point(lx, y),
-                    Size = new Size(scrollContent.Width - lx * 2, 84),
-                    BackColor = dk ? Color.FromArgb(10, 10, 20) : Color.FromArgb(238, 238, 252),
+                    Size = new Size(scrollContent.Width - lx * 2, 96),
+                    BackColor = dk ? Color.FromArgb(8, 8, 18) : Color.FromArgb(234, 234, 252),
                     FlowDirection = FlowDirection.LeftToRight,
                     WrapContents = false,
-                    AutoScroll = false
+                    AutoScroll = true,
+                    Padding = new Padding(4)
+                };
+                thumbFlow.Paint += (s, e) =>
+                {
+                    e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                    using var path = RoundRect2(new Rectangle(0, 0, thumbFlow.Width - 1, thumbFlow.Height - 1), 8);
+                    using var pen = new Pen(ThemeManager.CurrentBorder, 1);
+                    e.Graphics.DrawPath(pen, path);
+                    thumbFlow.Region = new Region(path);
                 };
                 scrollContent.Controls.Add(thumbFlow);
-                y += 92;
+                y += 106;
 
-                // Map icon URL
-                scrollContent.Controls.Add(new Panel
-                {
-                    Location = new Point(lx, y),
-                    Size = new Size(scrollContent.Width - lx * 2, 1),
-                    BackColor = ThemeManager.CurrentBorder
-                });
-                y += 10;
+                AddSectionDivider(lx, ref y);
+                AddFormLabel("Map / 3D Icon URL\n(image used for marker preview in app/map):", lx, y + 4);
 
-                AddLabel("Top-Down / 3D Icon URL\n(shown on map):", lx, y + 4);
+                int iconFieldW = scrollContent.Width - lx * 2 - 110;
                 txtMapIcon = new TextBox
                 {
-                    Size = new Size(scrollContent.Width - lx * 2, 30),
-                    Location = new Point(lx, y + 44),
+                    Size = new Size(iconFieldW, 30),
+                    Location = new Point(lx, y + 46),
                     Font = new Font("Segoe UI", 8.5F),
                     BackColor = card,
                     ForeColor = text,
                     BorderStyle = BorderStyle.FixedSingle,
-                    PlaceholderText = "https://… (optional – auto-filled from first photo)"
+                    PlaceholderText = "https://… (auto-filled from first photo)"
                 };
                 scrollContent.Controls.Add(txtMapIcon);
-                y += 86;
 
-                // Spacer
+                btnBrowseMapIcon = new Button
+                {
+                    Text = "📁 Browse",
+                    Size = new Size(100, 30),
+                    Location = new Point(lx + iconFieldW + 6, y + 46),
+                    FlatStyle = FlatStyle.Flat,
+                    Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                    BackColor = Color.FromArgb(20, ThemeManager.CurrentPrimary),
+                    ForeColor = ThemeManager.CurrentPrimary,
+                    Cursor = Cursors.Hand
+                };
+                btnBrowseMapIcon.FlatAppearance.BorderColor = ThemeManager.CurrentPrimary;
+                btnBrowseMapIcon.FlatAppearance.BorderSize = 1;
+                btnBrowseMapIcon.Click += OnBrowseMapIcon;
+                scrollContent.Controls.Add(btnBrowseMapIcon);
+
+                _mapIconPreview = new PictureBox
+                {
+                    Size = new Size(60, 60),
+                    Location = new Point(lx, y + 82),
+                    SizeMode = PictureBoxSizeMode.Zoom,
+                    BackColor = dk ? Color.FromArgb(10, 10, 22) : Color.FromArgb(228, 228, 248),
+                    BorderStyle = BorderStyle.FixedSingle,
+                    Visible = false,
+                    Cursor = Cursors.Hand
+                };
+                _mapIconPreview.Click += (s, e) =>
+                {
+                    if (!string.IsNullOrWhiteSpace(txtMapIcon.Text))
+                        ShowMediaPreview(txtMapIcon.Text.Trim(), "Map Icon Preview");
+                };
+                scrollContent.Controls.Add(_mapIconPreview);
+
+                txtMapIcon.TextChanged += async (s, e) =>
+                {
+                    string v = txtMapIcon.Text.Trim();
+                    if (string.IsNullOrWhiteSpace(v) ||
+                        FleetPanel.DetectMediaKind(v) != FleetPanel.VehicleMediaKind.Image)
+                    {
+                        _mapIconPreview.Visible = false;
+                        return;
+                    }
+
+                    var img = await FleetPanel.LoadImageFromSourceAsync(_http2, v);
+                    if (img != null)
+                    {
+                        _mapIconPreview.Image = img;
+                        _mapIconPreview.Visible = true;
+                    }
+                    else
+                    {
+                        _mapIconPreview.Visible = false;
+                    }
+                };
+
+                y += 96 + 66;
                 scrollContent.Controls.Add(new Panel
                 {
                     Location = new Point(0, y),
-                    Size = new Size(1, 20),
+                    Size = new Size(1, 24),
                     BackColor = Color.Transparent
                 });
-                y += 20;
+                y += 24;
                 scrollContent.Height = y;
 
-                // ── Populate existing ────────────────────────────────────
                 if (isEdit)
                 {
                     txtBrand.Text = _existing["brand"]?.ToString() ?? "";
@@ -2111,9 +2253,11 @@ function fitAll(){
                     txtPlate.Text = _existing["plate_no"]?.ToString() ?? "";
                     txtCC.Text = _existing["cc"] != DBNull.Value ? _existing["cc"].ToString() : "";
                     txtRate.Text = _existing["rate_per_day"] != DBNull.Value
-                        ? Convert.ToDecimal(_existing["rate_per_day"]).ToString("0.00") : "";
+                        ? Convert.ToDecimal(_existing["rate_per_day"]).ToString("0.00")
+                        : "";
                     txtRateDriver.Text = _existing["rate_with_driver"] != DBNull.Value
-                        ? Convert.ToDecimal(_existing["rate_with_driver"]).ToString("0.00") : "";
+                        ? Convert.ToDecimal(_existing["rate_with_driver"]).ToString("0.00")
+                        : "";
                     txtSeats.Text = _existing["seat_capacity"]?.ToString() ?? "5";
                     txtTrans.Text = _existing["transmission"]?.ToString() ?? "Automatic";
                     txtDesc.Text = _existing["description"]?.ToString() ?? "";
@@ -2122,7 +2266,7 @@ function fitAll(){
                     SelectCombo(cboType, _existing["type"]?.ToString() ?? "");
                     SelectCombo(cboStatus, _existing["status"]?.ToString() ?? "");
 
-                    foreach (var url in GetAllPhotos2(_existing["photo_url"]?.ToString() ?? ""))
+                    foreach (var url in FleetPanel.DeserializeMediaSources(_existing["photo_url"]?.ToString() ?? ""))
                     {
                         _photoUrls.Add(url);
                         AddThumbnail(url);
@@ -2130,186 +2274,327 @@ function fitAll(){
                 }
             }
 
-            // Reflow all controls below a given control (for auto-resize desc)
-            private void ReflowBelow(Control anchor, Panel parent)
+            private void AddSectionDivider(int lx, ref int y)
             {
-                int bottom = anchor.Bottom + 14;
-                bool found = false;
-                foreach (Control c in parent.Controls)
+                scrollContent.Controls.Add(new Panel
                 {
-                    if (c == anchor) { found = true; continue; }
-                    if (!found) continue;
-                    c.Top = bottom;
-                    bottom += c.Height + (c is Panel p && p.Height == 1 ? 10 : 8);
+                    Location = new Point(lx, y),
+                    Size = new Size(scrollContent.Width - lx * 2, 1),
+                    BackColor = ThemeManager.CurrentBorder
+                });
+                y += 12;
+            }
+
+            private async void OnBrowseMapIcon(object s, EventArgs e)
+            {
+                using var ofd = new OpenFileDialog
+                {
+                    Filter = "Image Files|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.jfif",
+                    Title = "Select Map / Top-Down Icon"
+                };
+
+                if (ofd.ShowDialog() != DialogResult.OK)
+                    return;
+
+                btnBrowseMapIcon.Enabled = false;
+                lblUpload.Text = "⬆ Uploading map icon…";
+                lblUpload.ForeColor = ThemeManager.CurrentPrimary;
+                lblUpload.Visible = true;
+
+                string url = await UploadImageToApiAsync(ofd.FileName, true);
+
+                if (!string.IsNullOrWhiteSpace(url))
+                {
+                    txtMapIcon.Text = url;
+                    lblUpload.Text = "✅ Map icon uploaded";
+                    lblUpload.ForeColor = Color.FromArgb(34, 197, 94);
                 }
-                parent.Height = bottom + 20;
+                else
+                {
+                    txtMapIcon.Text = ofd.FileName;
+                    lblUpload.Text = "⚠ Local preview only — will retry upload on save";
+                    lblUpload.ForeColor = Color.FromArgb(245, 158, 11);
+                }
+
+                btnBrowseMapIcon.Enabled = true;
+                await Task.Delay(2500);
+                if (!lblUpload.IsDisposed) lblUpload.Visible = false;
             }
 
             private async void OnAddPhoto(object s, EventArgs e)
             {
-                if (_photoUrls.Count >= 5)
-                { MessageBox.Show("Max 5 photos per vehicle.", "Limit", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+                if (_photoUrls.Count >= FleetPanel.MaxVehicleMediaItems)
+                {
+                    MessageBox.Show($"Maximum {FleetPanel.MaxVehicleMediaItems} media files per vehicle.", "Limit", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
 
                 using var ofd = new OpenFileDialog
                 {
-                    Filter = "Image Files|*.png;*.jpg;*.jpeg;*.webp;*.gif",
-                    Title = "Select Vehicle Photo"
+                    Filter = "Supported Media|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.jfif;*.mp4;*.webm;*.mov;*.m4v",
+                    Title = "Select Vehicle Media",
+                    Multiselect = true
                 };
-                if (ofd.ShowDialog() != DialogResult.OK) return;
+
+                if (ofd.ShowDialog() != DialogResult.OK)
+                    return;
 
                 btnAddPhoto.Enabled = false;
                 btnSave.Enabled = false;
-                lblUpload.Text = $"⬆  Uploading photo {_photoUrls.Count + 1} / 5…";
-                lblUpload.ForeColor = ThemeManager.CurrentPrimary;
-                lblUpload.Visible = true;
 
-                string uploadedUrl = null;
-                try { uploadedUrl = await UploadToCloudinaryAsync(ofd.FileName); }
-                catch { }
+                try
+                {
+                    foreach (string filePath in ofd.FileNames)
+                    {
+                        if (_photoUrls.Count >= FleetPanel.MaxVehicleMediaItems)
+                            break;
 
-                string finalUrl = uploadedUrl ?? ofd.FileName;
-                _photoUrls.Add(finalUrl);
-                AddThumbnail(finalUrl);
+                        lblUpload.Text = $"⬆ Uploading {Path.GetFileName(filePath)}…";
+                        lblUpload.ForeColor = ThemeManager.CurrentPrimary;
+                        lblUpload.Visible = true;
 
-                lblUpload.Text = uploadedUrl != null
-                    ? $"✅  Uploaded: {finalUrl}"
-                    : "⚠  Cloudinary failed – using local path";
-                lblUpload.ForeColor = uploadedUrl != null
-                    ? Color.FromArgb(34, 197, 94) : Color.FromArgb(245, 158, 11);
+                        string uploadedUrl = await UploadImageToApiAsync(filePath, false);
 
-                // Auto-fill map icon URL if first photo
-                if (_photoUrls.Count == 1 && string.IsNullOrEmpty(txtMapIcon.Text.Trim()) && uploadedUrl != null)
-                    txtMapIcon.Text = uploadedUrl;
+                        string finalUrl = uploadedUrl ?? filePath;
+                        _photoUrls.Add(finalUrl);
+                        AddThumbnail(finalUrl);
 
-                btnAddPhoto.Enabled = _photoUrls.Count < 5;
-                btnSave.Enabled = true;
+                        if (!string.IsNullOrWhiteSpace(uploadedUrl))
+                        {
+                            lblUpload.Text = $"✅ Uploaded ({_photoUrls.Count}/{FleetPanel.MaxVehicleMediaItems})";
+                            lblUpload.ForeColor = Color.FromArgb(34, 197, 94);
 
-                await Task.Delay(3000);
-                lblUpload.Visible = false;
+                            if (FleetPanel.DetectMediaKind(uploadedUrl) == FleetPanel.VehicleMediaKind.Image &&
+                                string.IsNullOrWhiteSpace(txtMapIcon.Text))
+                                txtMapIcon.Text = uploadedUrl;
+                        }
+                        else
+                        {
+                            lblUpload.Text = "⚠ Upload failed — queued locally, will retry on save";
+                            lblUpload.ForeColor = Color.FromArgb(245, 158, 11);
+
+                            if (FleetPanel.DetectMediaKind(filePath) == FleetPanel.VehicleMediaKind.Image &&
+                                string.IsNullOrWhiteSpace(txtMapIcon.Text))
+                                txtMapIcon.Text = filePath;
+                        }
+                    }
+                }
+                finally
+                {
+                    btnAddPhoto.Enabled = _photoUrls.Count < FleetPanel.MaxVehicleMediaItems;
+                    btnSave.Enabled = true;
+
+                    await Task.Delay(2500);
+                    if (!lblUpload.IsDisposed) lblUpload.Visible = false;
+                }
             }
 
             private void AddThumbnail(string url)
             {
-                int idx = _photoUrls.IndexOf(url);
                 bool dk = ThemeManager.IsDarkMode;
+                int idx = _photoUrls.IndexOf(url);
+                var kind = FleetPanel.DetectMediaKind(url);
 
                 var wrap = new Panel
                 {
-                    Size = new Size(78, 78),
-                    Margin = new Padding(3),
-                    BackColor = Color.Transparent
+                    Size = new Size(82, 82),
+                    Margin = new Padding(4),
+                    BackColor = Color.Transparent,
+                    Cursor = Cursors.Hand
                 };
 
                 var pic = new PictureBox
                 {
-                    Size = new Size(78, 78),
+                    Size = new Size(82, 82),
                     SizeMode = PictureBoxSizeMode.Zoom,
-                    BackColor = dk ? Color.FromArgb(14, 14, 28) : Color.FromArgb(230, 230, 252),
-                    Cursor = Cursors.Default
+                    BackColor = dk ? Color.FromArgb(10, 10, 22) : Color.FromArgb(226, 226, 248),
+                    Cursor = Cursors.Hand
                 };
+
                 pic.Paint += (s, e) =>
                 {
                     e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                    using var path = RoundRect2(new Rectangle(0, 0, pic.Width - 1, pic.Height - 1), 6);
+                    using var path = RoundRect2(new Rectangle(0, 0, pic.Width - 1, pic.Height - 1), 8);
                     using var pen = new Pen(ThemeManager.CurrentBorder, 1);
                     e.Graphics.DrawPath(pen, path);
                     pic.Region = new Region(path);
                 };
 
-                // Primary badge
-                if (idx == 0)
-                    wrap.Controls.Add(new Label
+                Label star = null;
+                if (idx == GetPrimaryThumbnailIndex())
+                {
+                    star = new Label
                     {
                         Text = "★",
                         Font = new Font("Segoe UI", 7F, FontStyle.Bold),
                         ForeColor = Color.White,
-                        BackColor = Color.FromArgb(200, 230, 81, 0),
+                        BackColor = Color.FromArgb(210, 230, 81, 0),
                         AutoSize = true,
                         Location = new Point(3, 3),
                         Padding = new Padding(2)
-                    });
+                    };
+                    wrap.Controls.Add(star);
+                }
 
-                // Remove
+                if (kind == FleetPanel.VehicleMediaKind.Video)
+                {
+                    var videoBadge = new Label
+                    {
+                        Text = "VIDEO",
+                        Font = new Font("Segoe UI", 6.5F, FontStyle.Bold),
+                        ForeColor = Color.White,
+                        BackColor = Color.FromArgb(190, 0, 0, 0),
+                        AutoSize = false,
+                        Size = new Size(48, 16),
+                        Location = new Point(17, 60),
+                        TextAlign = ContentAlignment.MiddleCenter
+                    };
+                    wrap.Controls.Add(videoBadge);
+                    videoBadge.BringToFront();
+                }
+
                 var btnX = new Label
                 {
                     Text = "✕",
                     Font = new Font("Segoe UI", 7F, FontStyle.Bold),
                     ForeColor = Color.White,
-                    BackColor = Color.FromArgb(185, 239, 68, 68),
-                    Size = new Size(17, 17),
-                    Location = new Point(58, 3),
+                    BackColor = Color.FromArgb(180, 239, 68, 68),
+                    Size = new Size(18, 18),
+                    Location = new Point(61, 3),
                     TextAlign = ContentAlignment.MiddleCenter,
                     Cursor = Cursors.Hand
                 };
+
                 btnX.Click += (s, e) =>
                 {
                     _photoUrls.Remove(url);
                     thumbFlow.Controls.Remove(wrap);
+                    RefreshPrimaryPhotoStar();
                 };
+
+                EventHandler openPreview = (s, e) => ShowMediaPreview(url, "Vehicle Media Preview");
+                wrap.Click += openPreview;
+                pic.Click += openPreview;
 
                 _ = Task.Run(async () =>
                 {
-                    Image img = null;
-                    try
-                    {
-                        if (url.StartsWith("http"))
-                        {
-                            var b = await _http2.GetByteArrayAsync(url);
-                            img = Image.FromStream(new MemoryStream(b));
-                        }
-                        else if (File.Exists(url))
-                            img = Image.FromFile(url);
-                    }
-                    catch { }
+                    Image img = kind == FleetPanel.VehicleMediaKind.Image
+                        ? await FleetPanel.LoadImageFromSourceAsync(_http2, url)
+                        : CreateMediaPlaceholderBitmap(pic.Size, kind);
+
                     if (img != null && !pic.IsDisposed)
-                        pic.Invoke(new Action(() => { if (!pic.IsDisposed) pic.Image = img; }));
+                    {
+                        pic.Invoke(new Action(() =>
+                        {
+                            if (!pic.IsDisposed) pic.Image = img;
+                        }));
+                    }
                 });
 
                 wrap.Controls.Add(pic);
                 wrap.Controls.Add(btnX);
                 btnX.BringToFront();
+                if (star != null) star.BringToFront();
+
                 thumbFlow.Controls.Add(wrap);
             }
 
-            private void OnSave(object s, EventArgs e)
+            private void RefreshPrimaryPhotoStar()
+            {
+                int primaryIndex = GetPrimaryThumbnailIndex();
+
+                for (int i = 0; i < thumbFlow.Controls.Count; i++)
+                {
+                    if (thumbFlow.Controls[i] is not Panel panel)
+                        continue;
+
+                    Label existingStar = null;
+                    foreach (Control c in panel.Controls)
+                    {
+                        if (c is Label lbl && lbl.Text == "★")
+                        {
+                            existingStar = lbl;
+                            break;
+                        }
+                    }
+
+                    if (i == primaryIndex)
+                    {
+                        if (existingStar == null)
+                        {
+                            existingStar = new Label
+                            {
+                                Text = "★",
+                                Font = new Font("Segoe UI", 7F, FontStyle.Bold),
+                                ForeColor = Color.White,
+                                BackColor = Color.FromArgb(210, 230, 81, 0),
+                                AutoSize = true,
+                                Location = new Point(3, 3),
+                                Padding = new Padding(2)
+                            };
+                            panel.Controls.Add(existingStar);
+                        }
+                        existingStar.Visible = true;
+                        existingStar.BringToFront();
+                    }
+                    else if (existingStar != null)
+                    {
+                        existingStar.Visible = false;
+                    }
+                }
+            }
+
+            private async void OnSave(object s, EventArgs e)
             {
                 if (string.IsNullOrWhiteSpace(txtBrand.Text) || string.IsNullOrWhiteSpace(txtPlate.Text))
-                { MessageBox.Show("Brand and Plate are required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+                {
+                    MessageBox.Show("Brand and Plate No. are required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
 
                 if (!decimal.TryParse(txtRate.Text, out decimal rate))
-                { MessageBox.Show("Invalid daily rate.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+                {
+                    MessageBox.Show("Invalid daily rate — enter a number.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
 
                 if (!decimal.TryParse(txtRateDriver.Text, out decimal rateDriver)) rateDriver = 0;
                 if (!int.TryParse(txtSeats.Text, out int seats)) seats = 5;
                 if (!int.TryParse(txtCC.Text, out int cc)) cc = 0;
 
-                // Build photo JSON
-                string photoJson = _photoUrls.Count == 0 ? ""
-                    : _photoUrls.Count == 1 ? _photoUrls[0]
-                    : JsonSerializer.Serialize(_photoUrls);
-
-                string mapIcon = txtMapIcon.Text.Trim();
-                if (string.IsNullOrEmpty(mapIcon) && _photoUrls.Count > 0)
-                    mapIcon = _photoUrls[0];
+                btnSave.Enabled = false;
+                btnAddPhoto.Enabled = false;
+                btnBrowseMapIcon.Enabled = false;
 
                 try
                 {
+                    var resolvedMedia = await EnsurePersistableVehicleMediaAsync();
+                    if (resolvedMedia == null)
+                        return;
+
+                    var mapIconResult = await ResolveMapIconForSaveAsync(resolvedMedia);
+                    if (!mapIconResult.ok)
+                        return;
+
+                    string photoJson = FleetPanel.SerializeMediaSources(resolvedMedia);
+                    string mapIcon = mapIconResult.value;
+
                     using var conn = new MySqlConnection(_connStr);
                     conn.Open();
 
                     string sql = _existing == null
                         ? @"INSERT INTO vehicles
-                              (brand,model,plate_no,type,cc,rate_per_day,rate_with_driver,
-                               status,photo_url,description,seat_capacity,transmission,model_3d_url)
-                            VALUES
-                              (@brand,@model,@plate,@type,@cc,@rate,@rateD,
-                               @status,@photo,@desc,@seats,@trans,@mapicon)"
+                    (brand,model,plate_no,type,cc,rate_per_day,rate_with_driver,
+                     status,photo_url,description,seat_capacity,transmission,model_3d_url)
+                   VALUES
+                    (@brand,@model,@plate,@type,@cc,@rate,@rateD,
+                     @status,@photo,@desc,@seats,@trans,@mapicon)"
                         : @"UPDATE vehicles SET
-                              brand=@brand,model=@model,plate_no=@plate,type=@type,cc=@cc,
-                              rate_per_day=@rate,rate_with_driver=@rateD,status=@status,
-                              photo_url=@photo,description=@desc,
-                              seat_capacity=@seats,transmission=@trans,model_3d_url=@mapicon
-                            WHERE vehicle_id=@id";
+                    brand=@brand,model=@model,plate_no=@plate,type=@type,cc=@cc,
+                    rate_per_day=@rate,rate_with_driver=@rateD,status=@status,
+                    photo_url=@photo,description=@desc,
+                    seat_capacity=@seats,transmission=@trans,model_3d_url=@mapicon
+                   WHERE vehicle_id=@id";
 
                     using var cmd = new MySqlCommand(sql, conn);
                     cmd.Parameters.AddWithValue("@brand", txtBrand.Text.Trim());
@@ -2320,80 +2605,285 @@ function fitAll(){
                     cmd.Parameters.AddWithValue("@rate", rate);
                     cmd.Parameters.AddWithValue("@rateD", rateDriver);
                     cmd.Parameters.AddWithValue("@status", cboStatus.SelectedItem?.ToString() ?? "available");
-                    cmd.Parameters.AddWithValue("@photo", photoJson);
+                    cmd.Parameters.AddWithValue("@photo", string.IsNullOrWhiteSpace(photoJson) ? DBNull.Value : photoJson);
                     cmd.Parameters.AddWithValue("@desc", txtDesc.Text.Trim());
                     cmd.Parameters.AddWithValue("@seats", seats);
-                    cmd.Parameters.AddWithValue("@trans", txtTrans.Text.Trim());
-                    cmd.Parameters.AddWithValue("@mapicon", mapIcon);
+                    cmd.Parameters.AddWithValue("@trans", string.IsNullOrWhiteSpace(txtTrans.Text) ? "Automatic" : txtTrans.Text.Trim());
+                    cmd.Parameters.AddWithValue("@mapicon", string.IsNullOrWhiteSpace(mapIcon) ? DBNull.Value : mapIcon);
+
                     if (_existing != null)
                         cmd.Parameters.AddWithValue("@id", _existing["vehicle_id"]);
 
                     cmd.ExecuteNonQuery();
-                    this.DialogResult = DialogResult.OK;
-                    this.Close();
+                    DialogResult = DialogResult.OK;
+                    Close();
                 }
                 catch (Exception ex)
-                { MessageBox.Show("DB Error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+                {
+                    MessageBox.Show("DB Error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                finally
+                {
+                    if (!IsDisposed)
+                    {
+                        btnSave.Enabled = true;
+                        btnAddPhoto.Enabled = _photoUrls.Count < FleetPanel.MaxVehicleMediaItems;
+                        btnBrowseMapIcon.Enabled = true;
+                    }
+                }
             }
 
-            private async Task<string> UploadToCloudinaryAsync(string path)
+
+            private async Task<string> UploadImageToApiAsync(string path, bool isMapIcon = false)
             {
                 try
                 {
-                    long ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                    string fld = "driveandgo_vehicles";
-                    string sigStr = $"folder={fld}&timestamp={ts}{ApiSecret2}";
-                    string sig = SHA1Hex(sigStr);
-
                     using var form = new MultipartFormDataContent();
-                    form.Add(new StringContent(ApiKey2), "api_key");
-                    form.Add(new StringContent(ts.ToString()), "timestamp");
-                    form.Add(new StringContent(sig), "signature");
-                    form.Add(new StringContent(fld), "folder");
-                    form.Add(new ByteArrayContent(await File.ReadAllBytesAsync(path)),
-                        "file", Path.GetFileName(path));
+                    await using var fs = File.OpenRead(path);
 
-                    var res = await _http2.PostAsync(
-                        $"https://api.cloudinary.com/v1_1/{CloudName2}/image/upload", form);
-                    var json = await res.Content.ReadAsStringAsync();
+                    var fileContent = new StreamContent(fs);
+                    fileContent.Headers.ContentType =
+                        new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+
+                    form.Add(fileContent, "file", Path.GetFileName(path));
+
+                    string endpoint = isMapIcon
+                        ? ApiService.BuildUrl("upload/map-icon")
+                        : ApiService.BuildUrl("upload/vehicle-image");
+
+                    var response = await _http2.PostAsync(endpoint, form);
+                    var json = await response.Content.ReadAsStringAsync();
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        MessageBox.Show(
+                            $"Upload failed ({(int)response.StatusCode}): {json}",
+                            "Upload Error",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+                        return null;
+                    }
+
                     using var doc = JsonDocument.Parse(json);
-                    if (doc.RootElement.TryGetProperty("secure_url", out var u))
-                        return u.GetString();
-                    if (doc.RootElement.TryGetProperty("error", out var err))
-                        MessageBox.Show("Cloudinary: " + err.GetProperty("message").GetString(),
-                            "Upload Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+                    if (doc.RootElement.TryGetProperty("url", out var urlProp))
+                        return urlProp.GetString();
+
+                    MessageBox.Show(
+                        "Upload failed: URL not found in response.\n\n" + json,
+                        "Upload Error",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show("Upload error: " + ex.Message, "Cloudinary",
-                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show(
+                        "Upload error: " + ex.Message,
+                        "Upload Error",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
                 }
-                return null;
-            }
 
-            private static string SHA1Hex(string input)
-            {
-                using var sha = SHA1.Create();
-                return BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(input)))
-                    .Replace("-", "").ToLower();
+                return null;
             }
 
             private static List<string> GetAllPhotos2(string json)
             {
-                if (string.IsNullOrEmpty(json)) return new List<string>();
-                try
-                {
-                    if (json.TrimStart().StartsWith("["))
-                        return JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
-                }
-                catch { }
-                return new List<string> { json };
+                return FleetPanel.DeserializeMediaSources(json);
             }
 
-            // ── Form builder helpers ──────────────────────────────────────
+            private int GetPrimaryThumbnailIndex()
+            {
+                if (_photoUrls.Count == 0) return -1;
+
+                for (int i = 0; i < _photoUrls.Count; i++)
+                {
+                    if (FleetPanel.DetectMediaKind(_photoUrls[i]) == FleetPanel.VehicleMediaKind.Image)
+                        return i;
+                }
+
+                return 0;
+            }
+
+            private static Image CreateMediaPlaceholderBitmap(Size size, FleetPanel.VehicleMediaKind kind)
+            {
+                int width = Math.Max(size.Width, 1);
+                int height = Math.Max(size.Height, 1);
+                var bmp = new Bitmap(width, height);
+
+                using var g = Graphics.FromImage(bmp);
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.Clear(Color.FromArgb(14, 14, 24));
+
+                using var gridPen = new Pen(Color.FromArgb(30, 230, 81, 0), 1);
+                for (int gx = 0; gx < width; gx += 16)
+                    g.DrawLine(gridPen, gx, 0, gx, height);
+                for (int gy = 0; gy < height; gy += 16)
+                    g.DrawLine(gridPen, 0, gy, width, gy);
+
+                string glyph = kind == FleetPanel.VehicleMediaKind.Video ? "▶" : "⬡";
+                using var glyphBrush = new SolidBrush(Color.FromArgb(220, 255, 255, 255));
+                using var glyphFont = new Font("Segoe UI Symbol", 18F, FontStyle.Bold);
+                var centerRect = new RectangleF(0, 10, width, height - 30);
+                var centerFmt = new StringFormat
+                {
+                    Alignment = StringAlignment.Center,
+                    LineAlignment = StringAlignment.Center
+                };
+                g.DrawString(glyph, glyphFont, glyphBrush, centerRect, centerFmt);
+
+                using var badgeBrush = new SolidBrush(Color.FromArgb(200, 0, 0, 0));
+                using var badgeTextBrush = new SolidBrush(Color.White);
+                using var badgeFont = new Font("Segoe UI", 7F, FontStyle.Bold);
+                var badgeRect = new Rectangle(8, height - 24, width - 16, 16);
+                g.FillRectangle(badgeBrush, badgeRect);
+                g.DrawString(kind == FleetPanel.VehicleMediaKind.Video ? "VIDEO" : "MEDIA",
+                    badgeFont, badgeTextBrush, badgeRect, centerFmt);
+
+                return bmp;
+            }
+
+            private async Task<List<string>> EnsurePersistableVehicleMediaAsync()
+            {
+                var resolved = new List<string>();
+
+                foreach (var source in _photoUrls.Select(FleetPanel.NormalizeMediaSource).Where(s => !string.IsNullOrWhiteSpace(s)))
+                {
+                    string remote = await EnsureRemoteMediaAsync(source, false, "vehicle media");
+                    if (remote == null)
+                        return null;
+
+                    resolved.Add(remote);
+                }
+
+                _photoUrls.Clear();
+                _photoUrls.AddRange(resolved);
+                return resolved;
+            }
+
+            private async Task<(bool ok, string value)> ResolveMapIconForSaveAsync(IReadOnlyList<string> resolvedMedia)
+            {
+                string mapIcon = FleetPanel.NormalizeMediaSource(txtMapIcon.Text);
+
+                if (string.IsNullOrWhiteSpace(mapIcon))
+                {
+                    mapIcon = resolvedMedia.FirstOrDefault(m =>
+                        FleetPanel.DetectMediaKind(m) == FleetPanel.VehicleMediaKind.Image) ?? "";
+                }
+
+                if (string.IsNullOrWhiteSpace(mapIcon))
+                    return (true, "");
+
+                if (FleetPanel.DetectMediaKind(mapIcon) == FleetPanel.VehicleMediaKind.Video)
+                {
+                    MessageBox.Show(
+                        "Map / 3D icon must be an image file, not a video.",
+                        "Validation",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return (false, "");
+                }
+
+                string remote = await EnsureRemoteMediaAsync(mapIcon, true, "map icon");
+                if (remote == null)
+                    return (false, "");
+
+                txtMapIcon.Text = remote;
+                return (true, remote);
+            }
+
+            private async Task<string> EnsureRemoteMediaAsync(string source, bool isMapIcon, string label)
+            {
+                string normalized = FleetPanel.NormalizeMediaSource(source);
+                if (string.IsNullOrWhiteSpace(normalized))
+                    return "";
+
+                if (FleetPanel.IsRemoteMediaUrl(normalized))
+                    return normalized;
+
+                if (!File.Exists(normalized))
+                {
+                    MessageBox.Show(
+                        $"The {label} file was not found:\n\n{normalized}\n\nIt would not be accessible from the mobile app.",
+                        "Missing File",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return null;
+                }
+
+                if (isMapIcon && FleetPanel.DetectMediaKind(normalized) != FleetPanel.VehicleMediaKind.Image)
+                {
+                    MessageBox.Show(
+                        "Map / 3D icon must be an image file.",
+                        "Validation",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return null;
+                }
+
+                string uploaded = await UploadImageToApiAsync(normalized, isMapIcon);
+                if (string.IsNullOrWhiteSpace(uploaded))
+                {
+                    MessageBox.Show(
+                        $"The {label} could not be uploaded. The save was stopped so the app will not receive a broken local path.",
+                        "Upload Required",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return null;
+                }
+
+                return uploaded;
+            }
+
+            private void ShowMediaPreview(string source, string title)
+            {
+                string mediaSource = FleetPanel.NormalizeMediaSource(source);
+                if (string.IsNullOrWhiteSpace(mediaSource))
+                    return;
+
+                using var dlg = new Form
+                {
+                    Text = title,
+                    Size = new Size(860, 560),
+                    StartPosition = FormStartPosition.CenterParent,
+                    BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(4, 4, 12) : Color.White
+                };
+
+                if (FleetPanel.DetectMediaKind(mediaSource) == FleetPanel.VehicleMediaKind.Video)
+                {
+                    var web = new WebView2 { Dock = DockStyle.Fill };
+                    dlg.Controls.Add(web);
+                    dlg.Shown += async (s, e) =>
+                    {
+                        await web.EnsureCoreWebView2Async(null);
+                        web.NavigateToString(FleetPanel.BuildVideoPreviewHtml(mediaSource));
+                    };
+                }
+                else
+                {
+                    var pic = new PictureBox
+                    {
+                        Dock = DockStyle.Fill,
+                        BackColor = Color.Black,
+                        SizeMode = PictureBoxSizeMode.Zoom
+                    };
+                    dlg.Controls.Add(pic);
+                    dlg.Shown += async (s, e) =>
+                    {
+                        var img = await FleetPanel.LoadImageFromSourceAsync(_http2, mediaSource);
+                        if (img != null)
+                            pic.Image = img;
+                        else
+                            pic.Image = CreateMediaPlaceholderBitmap(pic.Size, FleetPanel.VehicleMediaKind.Unknown);
+                    };
+                }
+
+                dlg.ShowDialog(this);
+            }
+
             private TextBox AddField(string label, int lx, int vx, ref int y, int vw)
             {
-                AddLabel(label, lx, y + 7);
+                AddFormLabel(label, lx, y + 7);
                 var tb = new TextBox
                 {
                     Size = new Size(vw, 30),
@@ -2410,7 +2900,7 @@ function fitAll(){
 
             private ComboBox AddCombo(string label, int lx, int vx, ref int y, int vw, string[] items)
             {
-                AddLabel(label, lx, y + 7);
+                AddFormLabel(label, lx, y + 7);
                 var cb = new ComboBox
                 {
                     Size = new Size(vw, 30),
@@ -2427,7 +2917,7 @@ function fitAll(){
                 return cb;
             }
 
-            private void AddLabel(string text, int x, int y)
+            private void AddFormLabel(string text, int x, int y)
             {
                 scrollContent.Controls.Add(new Label
                 {
@@ -2442,8 +2932,13 @@ function fitAll(){
             private static void SelectCombo(ComboBox cb, string value)
             {
                 for (int i = 0; i < cb.Items.Count; i++)
-                    if (cb.Items[i].ToString().ToLower() == value.ToLower())
-                    { cb.SelectedIndex = i; return; }
+                {
+                    if (string.Equals(cb.Items[i].ToString(), value, StringComparison.OrdinalIgnoreCase))
+                    {
+                        cb.SelectedIndex = i;
+                        return;
+                    }
+                }
             }
 
             private static GraphicsPath RoundRect2(Rectangle b, int r)
@@ -2459,5 +2954,6 @@ function fitAll(){
                 return path;
             }
         }
+
     }
 }

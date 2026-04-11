@@ -1,6 +1,7 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using MySql.Data.MySqlClient;
 using DriveAndGo_API.Models;
+using Microsoft.AspNetCore.Mvc;
+using MySql.Data.MySqlClient;
+using System.Globalization;
 
 namespace DriveAndGo_API.Controllers
 {
@@ -15,8 +16,6 @@ namespace DriveAndGo_API.Controllers
             _connectionString = configuration.GetConnectionString("DefaultConnection")!;
         }
 
-        // ══ POST — Mobile App (Driver/Customer) nag-sesend ng live location ══
-        // Ise-send ito ng app every 10-30 seconds kapag on-going ang byahe
         [HttpPost("update")]
         public IActionResult UpdateLocation([FromBody] LocationLog log)
         {
@@ -27,30 +26,66 @@ namespace DriveAndGo_API.Controllers
             {
                 using var conn = new MySqlConnection(_connectionString);
                 conn.Open();
+                using var tx = conn.BeginTransaction();
 
-                // Check kung active (approved) pa ba ang rental bago i-save ang location
-                var checkCmd = new MySqlCommand(
-                    "SELECT status FROM rentals WHERE rental_id = @rental_id", conn);
+                var checkCmd = new MySqlCommand(@"
+                    SELECT LOWER(COALESCE(status, '')) AS rental_status, vehicle_id
+                    FROM rentals
+                    WHERE rental_id = @rental_id
+                    LIMIT 1", conn, tx);
                 checkCmd.Parameters.AddWithValue("@rental_id", log.RentalId);
-                var status = checkCmd.ExecuteScalar()?.ToString();
 
-                if (status != "approved")
+                using var reader = checkCmd.ExecuteReader();
+                if (!reader.Read())
+                    return NotFound(new { message = "Rental not found." });
+
+                string status = reader["rental_status"]?.ToString() ?? "";
+                int expectedVehicleId = Convert.ToInt32(reader["vehicle_id"], CultureInfo.InvariantCulture);
+                reader.Close();
+
+                if (!string.Equals(status, "approved", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(status, "in-use", StringComparison.OrdinalIgnoreCase))
+                {
                     return BadRequest(new { message = "This rental is not active. Location not saved." });
+                }
 
-                // I-save ang location sa database
+                if (expectedVehicleId != log.VehicleId)
+                {
+                    return Conflict(new { message = "VehicleId does not match the rental record." });
+                }
+
+                DateTime loggedAt = log.LoggedAt == DateTime.MinValue ? DateTime.UtcNow : log.LoggedAt;
+                decimal speed = log.SpeedKmH ?? 0;
+
                 var insertCmd = new MySqlCommand(@"
-                    INSERT INTO location_logs 
-                        (rental_id, vehicle_id, latitude, longitude, speed_kmh, logged_at) 
-                    VALUES 
-                        (@rental_id, @vehicle_id, @latitude, @longitude, @speed, NOW())", conn);
+                    INSERT INTO location_logs
+                        (rental_id, vehicle_id, latitude, longitude, speed_kmh, logged_at)
+                    VALUES
+                        (@rental_id, @vehicle_id, @latitude, @longitude, @speed, @logged_at)", conn, tx);
 
                 insertCmd.Parameters.AddWithValue("@rental_id", log.RentalId);
                 insertCmd.Parameters.AddWithValue("@vehicle_id", log.VehicleId);
                 insertCmd.Parameters.AddWithValue("@latitude", log.Latitude);
                 insertCmd.Parameters.AddWithValue("@longitude", log.Longitude);
-                insertCmd.Parameters.AddWithValue("@speed", log.SpeedKmH ?? 0);
-
+                insertCmd.Parameters.AddWithValue("@speed", speed);
+                insertCmd.Parameters.AddWithValue("@logged_at", loggedAt);
                 insertCmd.ExecuteNonQuery();
+
+                var vehicleCmd = new MySqlCommand(@"
+                    UPDATE vehicles
+                    SET latitude = @latitude,
+                        longitude = @longitude,
+                        current_speed = @speed,
+                        last_update = @logged_at
+                    WHERE vehicle_id = @vehicle_id", conn, tx);
+                vehicleCmd.Parameters.AddWithValue("@latitude", log.Latitude);
+                vehicleCmd.Parameters.AddWithValue("@longitude", log.Longitude);
+                vehicleCmd.Parameters.AddWithValue("@speed", Convert.ToInt32(Math.Round(speed)));
+                vehicleCmd.Parameters.AddWithValue("@logged_at", loggedAt);
+                vehicleCmd.Parameters.AddWithValue("@vehicle_id", log.VehicleId);
+                vehicleCmd.ExecuteNonQuery();
+
+                tx.Commit();
 
                 return Ok(new { message = "Location updated successfully." });
             }
@@ -60,7 +95,6 @@ namespace DriveAndGo_API.Controllers
             }
         }
 
-        // ══ GET LATEST LOCATIONS OF ALL ACTIVE VEHICLES — Para sa Admin Map Dashboard ══
         [HttpGet("active-vehicles")]
         public IActionResult GetActiveVehicleLocations()
         {
@@ -71,10 +105,9 @@ namespace DriveAndGo_API.Controllers
                 using var conn = new MySqlConnection(_connectionString);
                 conn.Open();
 
-                // Kukunin natin ang pinaka-latest na location ng bawat active na byahe
                 var cmd = new MySqlCommand(@"
                     SELECT l1.log_id, l1.rental_id, l1.vehicle_id, l1.latitude, l1.longitude, l1.speed_kmh, l1.logged_at,
-                           CONCAT(v.brand, ' ', v.model) AS vehicle_name, v.plate_number,
+                           CONCAT(v.brand, ' ', v.model) AS vehicle_name, v.plate_no AS plate_number,
                            IFNULL(u.full_name, 'No Driver (Self-Drive)') AS driver_name
                     FROM location_logs l1
                     JOIN (
@@ -85,23 +118,25 @@ namespace DriveAndGo_API.Controllers
                     JOIN rentals r ON l1.rental_id = r.rental_id
                     JOIN vehicles v ON l1.vehicle_id = v.vehicle_id
                     LEFT JOIN users u ON r.driver_id = u.user_id
-                    WHERE r.status = 'approved'", conn);
+                    WHERE LOWER(COALESCE(r.status, '')) IN ('approved', 'in-use')", conn);
 
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
                 {
                     locations.Add(new LocationLog
                     {
-                        LogId = Convert.ToInt32(reader["log_id"]),
-                        RentalId = Convert.ToInt32(reader["rental_id"]),
-                        VehicleId = Convert.ToInt32(reader["vehicle_id"]),
-                        Latitude = Convert.ToDecimal(reader["latitude"]),
-                        Longitude = Convert.ToDecimal(reader["longitude"]),
-                        SpeedKmH = reader["speed_kmh"] != DBNull.Value ? Convert.ToDecimal(reader["speed_kmh"]) : 0,
-                        LoggedAt = Convert.ToDateTime(reader["logged_at"]),
-                        VehicleName = reader["vehicle_name"].ToString(),
-                        PlateNumber = reader["plate_number"].ToString(),
-                        DriverName = reader["driver_name"].ToString()
+                        LogId = Convert.ToInt32(reader["log_id"], CultureInfo.InvariantCulture),
+                        RentalId = Convert.ToInt32(reader["rental_id"], CultureInfo.InvariantCulture),
+                        VehicleId = Convert.ToInt32(reader["vehicle_id"], CultureInfo.InvariantCulture),
+                        Latitude = Convert.ToDecimal(reader["latitude"], CultureInfo.InvariantCulture),
+                        Longitude = Convert.ToDecimal(reader["longitude"], CultureInfo.InvariantCulture),
+                        SpeedKmH = reader["speed_kmh"] != DBNull.Value
+                            ? Convert.ToDecimal(reader["speed_kmh"], CultureInfo.InvariantCulture)
+                            : 0,
+                        LoggedAt = Convert.ToDateTime(reader["logged_at"], CultureInfo.InvariantCulture),
+                        VehicleName = reader["vehicle_name"]?.ToString(),
+                        PlateNumber = reader["plate_number"]?.ToString(),
+                        DriverName = reader["driver_name"]?.ToString()
                     });
                 }
 
@@ -113,7 +148,6 @@ namespace DriveAndGo_API.Controllers
             }
         }
 
-        // ══ GET LOCATION HISTORY — Para iguhit yung ruta (blue line) sa mapa ══
         [HttpGet("history/{rentalId}")]
         public IActionResult GetLocationHistory(int rentalId)
         {
@@ -124,11 +158,10 @@ namespace DriveAndGo_API.Controllers
                 using var conn = new MySqlConnection(_connectionString);
                 conn.Open();
 
-                // Kukunin lahat ng logs ng isang specific na byahe para maging 'polyline' o drawing sa mapa
                 var cmd = new MySqlCommand(@"
-                    SELECT latitude, longitude, speed_kmh, logged_at 
-                    FROM location_logs 
-                    WHERE rental_id = @rental_id 
+                    SELECT latitude, longitude, speed_kmh, logged_at
+                    FROM location_logs
+                    WHERE rental_id = @rental_id
                     ORDER BY logged_at ASC", conn);
                 cmd.Parameters.AddWithValue("@rental_id", rentalId);
 
@@ -137,10 +170,12 @@ namespace DriveAndGo_API.Controllers
                 {
                     path.Add(new
                     {
-                        lat = Convert.ToDecimal(reader["latitude"]),
-                        lng = Convert.ToDecimal(reader["longitude"]),
-                        speed = reader["speed_kmh"] != DBNull.Value ? Convert.ToDecimal(reader["speed_kmh"]) : 0,
-                        time = Convert.ToDateTime(reader["logged_at"])
+                        lat = Convert.ToDecimal(reader["latitude"], CultureInfo.InvariantCulture),
+                        lng = Convert.ToDecimal(reader["longitude"], CultureInfo.InvariantCulture),
+                        speed = reader["speed_kmh"] != DBNull.Value
+                            ? Convert.ToDecimal(reader["speed_kmh"], CultureInfo.InvariantCulture)
+                            : 0,
+                        time = Convert.ToDateTime(reader["logged_at"], CultureInfo.InvariantCulture)
                     });
                 }
 

@@ -56,7 +56,7 @@ namespace DriveAndGo_Admin.Panels
         private ComboBox cboMethod, cboStatus;
         private Label lblStats;
 
-        private Button btnExportPDF;
+        private Button btnExportPDF, btnReconcile;
 
         // ── State ──
         private DataTable _data = new DataTable();
@@ -112,17 +112,19 @@ namespace DriveAndGo_Admin.Panels
             txtSearch.TextChanged += (s, e) => FilterGrid();
 
             cboMethod = new ComboBox { Size = new Size(130, 30), Location = new Point(226, 60), DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 9F), BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White, ForeColor = ColText };
-            cboMethod.Items.AddRange(new object[] { "All Methods", "cash", "gcash", "card" });
+            cboMethod.Items.AddRange(new object[] { "All Methods", "cash", "gcash", "maya", "bank", "card" });
             cboMethod.SelectedIndex = 0;
             cboMethod.SelectedIndexChanged += (s, e) => FilterGrid();
 
             cboStatus = new ComboBox { Size = new Size(130, 30), Location = new Point(366, 60), DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 9F), BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White, ForeColor = ColText };
-            cboStatus.Items.AddRange(new object[] { "All Status", "confirmed", "pending", "refunded" });
+            cboStatus.Items.AddRange(new object[] { "All Status", "confirmed", "paid", "pending", "rejected", "refunded" });
             cboStatus.SelectedIndex = 0;
             cboStatus.SelectedIndexChanged += (s, e) => FilterGrid();
 
             var btnRefresh = CreateBtn("⟳ Reload", ColSub, 506, 58, 90);
             btnRefresh.Click += (s, e) => LoadFromDB();
+            btnReconcile = CreateBtn("🛠 Repair Logs", ColAccent, 602, 58, 120);
+            btnReconcile.Click += (s, e) => ReconcilePaymentLogs();
 
             topBar.Controls.Add(lblTitle);
             topBar.Controls.Add(lblStats);
@@ -130,6 +132,7 @@ namespace DriveAndGo_Admin.Panels
             topBar.Controls.Add(cboMethod);
             topBar.Controls.Add(cboStatus);
             topBar.Controls.Add(btnRefresh);
+            topBar.Controls.Add(btnReconcile);
 
             dgvTransactions = new DataGridView { Dock = DockStyle.Fill };
             StyleGrid(dgvTransactions);
@@ -218,6 +221,8 @@ namespace DriveAndGo_Admin.Panels
         {
             try
             {
+                AdminDataHelper.ReconcilePaidRentalTransactions(_connStr);
+
                 _data = new DataTable();
                 using var conn = new MySqlConnection(_connStr);
                 conn.Open();
@@ -340,23 +345,62 @@ namespace DriveAndGo_Admin.Panels
 
             decimal totalRevenue = 0;
             int totalTxs = _data.Rows.Count;
+            int pendingCount = 0;
+            int repairedNeeded = 0;
 
             foreach (DataRow row in _data.Rows)
             {
-                string st = row["status"]?.ToString().ToLower();
+                string st = row["status"]?.ToString().ToLower() ?? "";
                 if (st == "confirmed" || st == "paid")
                 {
                     totalRevenue += row["amount"] != DBNull.Value ? Convert.ToDecimal(row["amount"]) : 0;
                 }
+                if (st == "pending") pendingCount++;
             }
+
+            try
+            {
+                using var conn = new MySqlConnection(_connStr);
+                conn.Open();
+                using var cmd = new MySqlCommand(@"
+                    SELECT COUNT(*)
+                    FROM rentals r
+                    LEFT JOIN transactions t
+                      ON t.rental_id = r.rental_id
+                     AND LOWER(COALESCE(t.status,'')) IN ('confirmed','paid')
+                    WHERE LOWER(COALESCE(r.payment_status,'')) = 'paid'
+                      AND t.transaction_id IS NULL", conn);
+                repairedNeeded = Convert.ToInt32(cmd.ExecuteScalar());
+            }
+            catch { }
 
             if (lblStats.InvokeRequired)
             {
-                lblStats.Invoke(new Action(() => lblStats.Text = $"{totalTxs} Transactions  ·  Total Revenue: ₱{totalRevenue:N2}"));
+                lblStats.Invoke(new Action(() => lblStats.Text = $"{totalTxs} transactions  ·  ₱{totalRevenue:N2} revenue  ·  {pendingCount} pending  ·  {repairedNeeded} unpaid logs need repair"));
             }
             else
             {
-                lblStats.Text = $"{totalTxs} Transactions  ·  Total Revenue: ₱{totalRevenue:N2}";
+                lblStats.Text = $"{totalTxs} transactions  ·  ₱{totalRevenue:N2} revenue  ·  {pendingCount} pending  ·  {repairedNeeded} unpaid logs need repair";
+            }
+        }
+
+        private void ReconcilePaymentLogs()
+        {
+            try
+            {
+                int repaired = AdminDataHelper.ReconcilePaidRentalTransactions(_connStr);
+                LoadFromDB();
+                MessageBox.Show(
+                    repaired > 0
+                        ? $"Rebuilt {repaired} missing payment log(s)."
+                        : "No missing payment logs were found.",
+                    "Payment Log Repair",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Could not repair payment logs.\n" + ex.Message, "Repair Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
