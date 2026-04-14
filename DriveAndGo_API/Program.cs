@@ -7,8 +7,12 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddScoped<DriveAndGo_API.Services.DbService>();
+
+// Configurations para sa Firebase
 builder.Services.Configure<FirebaseBridgeOptions>(builder.Configuration.GetSection("FirebaseBridge"));
-builder.Services.AddHostedService<MySqlFirebaseBridgeService>();
+
+// ITO ANG TAMA AT NAG-IISANG SYNC SERVICE NA DAPAT TUMAKBO:
+builder.Services.AddHostedService<FirebaseSyncService>();
 
 builder.Services.AddCors(options =>
 {
@@ -24,7 +28,6 @@ var app = builder.Build();
 
 app.UseSwagger();
 app.UseSwaggerUI();
-
 app.UseCors("AllowAll");
 
 var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "uploads");
@@ -32,7 +35,6 @@ if (!Directory.Exists(uploadsPath))
     Directory.CreateDirectory(uploadsPath);
 
 app.UseStaticFiles();
-
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(
@@ -42,5 +44,4 @@ app.UseStaticFiles(new StaticFileOptions
 
 app.UseAuthorization();
 app.MapControllers();
-
 app.Run();

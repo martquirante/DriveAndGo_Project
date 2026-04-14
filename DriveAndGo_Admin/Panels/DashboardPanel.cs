@@ -49,28 +49,25 @@ namespace DriveAndGo_Admin.Panels
 
         // ── Animation ──
         private System.Windows.Forms.Timer _entranceTimer;
-        private float[] _cardAlpha;      // 0..1 per stat card
-        private float[] _cardOffsetY;    // slide offset per card
+        private float[] _cardAlpha;
+        private float[] _cardOffsetY;
         private int _cardsDone = 0;
 
         // ── Hover lift per card ──
         private class HoverState
         {
-            public float Lift = 0f;      // 0..6
+            public float Lift = 0f;
             public bool Hovered = false;
             public System.Windows.Forms.Timer Timer;
         }
 
         public DashboardPanel()
         {
-            this.Dock = DockStyle.Fill;
-            this.DoubleBuffered = true;
+            Dock = DockStyle.Fill;
+            DoubleBuffered = true;
+            BackColor = ColBg;
 
-            // Background color ng theme para walang white borders
-            this.BackColor = ColBg;
-
-            this.Resize += (s, e) => RelayoutAll();
-            // Subscribe to theme changes so dashboard updates immediately when theme toggles
+            Resize += (s, e) => RelayoutAll();
             ThemeManager.ThemeChanged += ThemeChanged_Handler;
 
             LoadStatsFromDB();
@@ -81,18 +78,23 @@ namespace DriveAndGo_Admin.Panels
 
         private void ThemeChanged_Handler(object sender, EventArgs e)
         {
-            // Update background colors and rebuild UI so all controls pick up new theme colors
             try
             {
-                this.BackColor = ColBg;
+                BackColor = ColBg;
                 if (_scrollContainer != null)
                 {
-                    var scrollPos = new Point(Math.Abs(_scrollContainer.AutoScrollPosition.X), Math.Abs(_scrollContainer.AutoScrollPosition.Y));
+                    var scrollPos = new Point(
+                        Math.Abs(_scrollContainer.AutoScrollPosition.X),
+                        Math.Abs(_scrollContainer.AutoScrollPosition.Y));
+
                     _scrollContainer.BackColor = ColBg;
                     _scrollContainer.Controls.Clear();
                     _statCards = new Panel[8];
+
+                    LoadStatsFromDB();
                     BuildUI();
                     StartEntranceAnimation();
+
                     _scrollContainer.AutoScrollPosition = scrollPos;
                 }
             }
@@ -104,13 +106,15 @@ namespace DriveAndGo_Admin.Panels
         // ══════════════════════════════════════════════
         private void BuildScrollContainer()
         {
-            _scrollContainer = new Panel();
-            _scrollContainer.Dock = DockStyle.Fill;
-            _scrollContainer.AutoScroll = true;
-            _scrollContainer.BackColor = ColBg;
+            _scrollContainer = new Panel
+            {
+                Dock = DockStyle.Fill,
+                AutoScroll = true,
+                BackColor = ColBg
+            };
 
             SetDoubleBuffer(_scrollContainer);
-            this.Controls.Add(_scrollContainer);
+            Controls.Add(_scrollContainer);
         }
 
         // ══════════════════════════════════════════════
@@ -120,8 +124,6 @@ namespace DriveAndGo_Admin.Panels
         {
             try
             {
-                AdminDataHelper.ReconcilePaidRentalTransactions(_connStr);
-
                 using var conn = new MySqlConnection(_connStr);
                 conn.Open();
 
@@ -133,23 +135,55 @@ namespace DriveAndGo_Admin.Panels
                     return (T)Convert.ChangeType(result, typeof(T));
                 }
 
+                // Vehicles
                 _totalVehicles = Query<int>("SELECT COUNT(*) FROM vehicles");
-                _activeRentals = Query<int>("SELECT COUNT(*) FROM rentals WHERE LOWER(COALESCE(status,'')) IN ('approved','in-use','rented')");
-                _availDrivers = Query<int>("SELECT COUNT(*) FROM drivers WHERE LOWER(COALESCE(status,'')) IN ('available','active')");
-                _pendingBookings = Query<int>("SELECT COUNT(*) FROM rentals WHERE LOWER(COALESCE(status,''))='pending'");
-                _pendingPayments = Query<int>("SELECT COUNT(*) FROM transactions WHERE LOWER(COALESCE(status,''))='pending'");
+
+                // Rentals status
+                _activeRentals = Query<int>(@"
+                    SELECT COUNT(*)
+                    FROM rentals
+                    WHERE LOWER(TRIM(COALESCE(status,''))) IN ('approved','active')");
+
+                _pendingBookings = Query<int>(@"
+                    SELECT COUNT(*)
+                    FROM rentals
+                    WHERE LOWER(TRIM(COALESCE(status,''))) = 'pending'");
+
                 _overdueRentals = Query<int>(@"
-                    SELECT COUNT(*) FROM rentals
-                    WHERE LOWER(COALESCE(status,'')) IN ('approved','in-use','rented')
+                    SELECT COUNT(*)
+                    FROM rentals
+                    WHERE LOWER(TRIM(COALESCE(status,''))) IN ('approved','active')
                       AND end_date IS NOT NULL
                       AND DATE(end_date) < CURDATE()");
-                _openIssues = Query<int>("SELECT COUNT(*) FROM issues WHERE LOWER(COALESCE(status,'')) <> 'resolved'");
+
+                // Drivers
+                _availDrivers = Query<int>(@"
+                    SELECT COUNT(*)
+                    FROM drivers
+                    WHERE LOWER(TRIM(COALESCE(status,''))) IN ('active')");
+
+                // Payments from rentals table
+                _pendingPayments = Query<int>(@"
+                    SELECT COUNT(*)
+                    FROM rentals
+                    WHERE LOWER(TRIM(COALESCE(payment_status,''))) <> 'paid'");
+
                 _todayRevenue = Query<decimal>(@"
-                    SELECT COALESCE(SUM(amount),0) FROM transactions
-                    WHERE LOWER(COALESCE(status,'')) IN ('confirmed','paid')
-                      AND DATE(COALESCE(paid_at, NOW()))=CURDATE()");
+                    SELECT COALESCE(SUM(total_amount), 0)
+                    FROM rentals
+                    WHERE LOWER(TRIM(COALESCE(payment_status,''))) = 'paid'
+                      AND DATE(COALESCE(created_at, start_date)) = CURDATE()");
+
+                // Issues
+                _openIssues = Query<int>(@"
+                    SELECT COUNT(*)
+                    FROM issues
+                    WHERE LOWER(TRIM(COALESCE(status,''))) <> 'resolved'");
             }
-            catch (Exception ex) { Console.WriteLine("DB: " + ex.Message); }
+            catch (Exception ex)
+            {
+                Console.WriteLine("DB: " + ex.Message);
+            }
         }
 
         // ══════════════════════════════════════════════
@@ -186,7 +220,6 @@ namespace DriveAndGo_Admin.Panels
             int cardW = (usable - gap * (cols - 1)) / cols;
             int cardH = 118;
 
-            // FIX: In-adjust ang statTop para may space yung title at subtitle sa header
             int statTop = 110;
 
             for (int i = 0; i < _statCards.Length; i++)
@@ -211,12 +244,15 @@ namespace DriveAndGo_Admin.Panels
             {
                 _bookingsCard.Location = new Point(pad, rows2Start);
                 _bookingsCard.Size = new Size(bkW, row2H);
+
                 foreach (Control c in _bookingsCard.Controls)
+                {
                     if (c is DataGridView dgv)
                     {
                         dgv.Size = new Size(bkW - 40, row2H - 52);
                         dgv.Location = new Point(20, 52);
                     }
+                }
             }
 
             if (_quickStatsCard != null)
@@ -224,10 +260,14 @@ namespace DriveAndGo_Admin.Panels
                 _quickStatsCard.Location = wide
                     ? new Point(pad + bkW + gap, rows2Start)
                     : new Point(pad, rows2Start + row2H + gap);
+
                 _quickStatsCard.Size = new Size(qsW, row2H);
+
                 foreach (Control c in _quickStatsCard.Controls)
-                    if (c is Panel row && row != null && row.Tag?.ToString() == "qsrow")
+                {
+                    if (c is Panel row && row.Tag?.ToString() == "qsrow")
                         row.Width = qsW - 40;
+                }
             }
 
             int row3Start = rows2Start + row2H + gap + (wide ? 0 : row2H + gap);
@@ -239,11 +279,13 @@ namespace DriveAndGo_Admin.Panels
                 _fleetCard.Location = new Point(pad, row3Start);
                 _fleetCard.Size = new Size(wide ? halfW : usable, row3H);
             }
+
             if (_pendingCard != null)
             {
                 _pendingCard.Location = wide
                     ? new Point(pad + halfW + gap, row3Start)
                     : new Point(pad, row3Start + row3H + gap);
+
                 _pendingCard.Size = new Size(wide ? halfW : usable, row3H);
             }
 
@@ -257,65 +299,73 @@ namespace DriveAndGo_Admin.Panels
         // ══════════════════════════════════════════════
         private void BuildHeader()
         {
-            var pnl = new Panel();
-            pnl.Location = new Point(24, 16);
-            pnl.Size = new Size(_scrollContainer.Width - 48, 80); // Tumaas from 52 to 80
-            pnl.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            pnl.BackColor = Color.Transparent;
+            var pnl = new Panel
+            {
+                Location = new Point(24, 16),
+                Size = new Size(_scrollContainer.Width - 48, 80),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                BackColor = Color.Transparent
+            };
 
-            var lblTitle = new Label();
-            lblTitle.Text = "Dashboard Overview";
-            lblTitle.Font = new Font("Segoe UI", 20F, FontStyle.Bold);
-            lblTitle.ForeColor = ColText;
-            lblTitle.AutoSize = true;
-            lblTitle.Location = new Point(0, 2);
-            lblTitle.BackColor = Color.Transparent;
+            var lblTitle = new Label
+            {
+                Text = "Dashboard Overview",
+                Font = new Font("Segoe UI", 20F, FontStyle.Bold),
+                ForeColor = ColText,
+                AutoSize = true,
+                Location = new Point(0, 2),
+                BackColor = Color.Transparent
+            };
 
-            // FIX: Idinagdag ang Welcome Subtitle!
-            var lblSub = new Label();
-            lblSub.Text = "Welcome back! Here's your fleet and revenue summary for today.";
-            lblSub.Font = new Font("Segoe UI", 11F);
-            lblSub.ForeColor = ColSub;
-            lblSub.AutoSize = true;
-            lblSub.Location = new Point(2, 38);
-            lblSub.BackColor = Color.Transparent;
+            var lblSub = new Label
+            {
+                Text = "Welcome back! Here's your fleet and revenue summary for today.",
+                Font = new Font("Segoe UI", 11F),
+                ForeColor = ColSub,
+                AutoSize = true,
+                Location = new Point(2, 38),
+                BackColor = Color.Transparent
+            };
 
-            var lblDate = new Label();
-            lblDate.Text = DateTime.Now.ToString("dddd, MMMM dd, yyyy");
-            lblDate.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-            lblDate.ForeColor = ColAccent;
-            lblDate.AutoSize = true;
-            lblDate.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            lblDate.BackColor = Color.Transparent;
+            var lblDate = new Label
+            {
+                Text = DateTime.Now.ToString("dddd, MMMM dd, yyyy"),
+                Font = new Font("Segoe UI", 10F, FontStyle.Bold),
+                ForeColor = ColAccent,
+                AutoSize = true,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                BackColor = Color.Transparent
+            };
 
-            var btnRefresh = new Button();
-            btnRefresh.Text = "⟳  Refresh";
-            btnRefresh.Size = new Size(110, 36);
-            btnRefresh.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            btnRefresh.FlatStyle = FlatStyle.Flat;
+            var btnRefresh = new Button
+            {
+                Text = "⟳  Refresh",
+                Size = new Size(110, 36),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.Transparent,
+                ForeColor = ColAccent,
+                Font = new Font("Segoe UI", 10F),
+                Cursor = Cursors.Hand
+            };
+
             btnRefresh.FlatAppearance.BorderColor = ColAccent;
             btnRefresh.FlatAppearance.BorderSize = 1;
             btnRefresh.FlatAppearance.MouseOverBackColor = Color.FromArgb(20, ColAccent);
-            btnRefresh.BackColor = Color.Transparent;
-            btnRefresh.ForeColor = ColAccent;
-            btnRefresh.Font = new Font("Segoe UI", 10F);
-            btnRefresh.Cursor = Cursors.Hand;
 
-            // Position right-anchored controls when header panel resizes so they stay aligned
             pnl.Resize += (s, e) =>
             {
-                // place refresh at 10px from right, date to the left of it
                 btnRefresh.Location = new Point(Math.Max(8, pnl.ClientSize.Width - btnRefresh.Width - 10), 7);
                 lblDate.Location = new Point(Math.Max(8, btnRefresh.Left - lblDate.Width - 12), 15);
             };
-            // btnRefresh properties set above
+
             btnRefresh.Click += (s, e) =>
             {
                 lblDate.Text = DateTime.Now.ToString("dddd, MMMM dd, yyyy");
                 LoadStatsFromDB();
                 _scrollContainer.Controls.Clear();
                 _statCards = new Panel[8];
-                this.BackColor = ColBg;
+                BackColor = ColBg;
                 _scrollContainer.BackColor = ColBg;
                 BuildUI();
                 StartEntranceAnimation();
@@ -328,7 +378,6 @@ namespace DriveAndGo_Admin.Panels
             _scrollContainer.Controls.Add(pnl);
         }
 
-
         // ══════════════════════════════════════════════
         //  STAT CARDS
         // ══════════════════════════════════════════════
@@ -336,14 +385,14 @@ namespace DriveAndGo_Admin.Panels
         {
             var cards = new[]
             {
-                ("Total Fleet",       "🚗", _totalVehicles.ToString(),     "All vehicles",      ColBlue),
-                ("Active Rentals",    "🔑", _activeRentals.ToString(),     "Currently rented",  ColGreen),
-                ("Avail. Drivers",    "👤", _availDrivers.ToString(),      "Ready to deploy",   ColPurple),
-                ("Today's Revenue",   "₱",  "₱"+_todayRevenue.ToString("N2"), "Confirmed pays", ColAccent),
-                ("Pending Bookings",  "📋", _pendingBookings.ToString(),   "Needs approval",    ColRed),
-                ("Pending Payments",  "💳", _pendingPayments.ToString(),   "Awaiting confirm",  ColYellow),
-                ("Overdue Rentals",   "⏰", _overdueRentals.ToString(),    "Needs follow-up",   ColRed),
-                ("Open Issues",       "🛠", _openIssues.ToString(),        "Reported incidents", ColYellow),
+                ("Total Fleet",       "🚗", _totalVehicles.ToString(),          "All vehicles",       ColBlue),
+                ("Active Rentals",    "🔑", _activeRentals.ToString(),          "Currently active",   ColGreen),
+                ("Avail. Drivers",    "👤", _availDrivers.ToString(),           "Ready to deploy",    ColPurple),
+                ("Today's Revenue",   "₱",  "₱" + _todayRevenue.ToString("N2"), "Paid rentals only",  ColAccent),
+                ("Pending Bookings",  "📋", _pendingBookings.ToString(),        "Needs approval",     ColRed),
+                ("Pending Payments",  "💳", _pendingPayments.ToString(),        "Unpaid rentals",     ColYellow),
+                ("Overdue Rentals",   "⏰", _overdueRentals.ToString(),         "Needs follow-up",    ColRed),
+                ("Open Issues",       "🛠", _openIssues.ToString(),             "Reported incidents", ColYellow),
             };
 
             _cardAlpha = new float[cards.Length];
@@ -361,7 +410,12 @@ namespace DriveAndGo_Admin.Panels
 
         private Panel CreateStatCard(string title, string icon, string value, string sub, int w, int h, Color accentColor, int idx)
         {
-            var card = new Panel { Size = new Size(w, h), BackColor = Color.Transparent, Cursor = Cursors.Hand };
+            var card = new Panel
+            {
+                Size = new Size(w, h),
+                BackColor = Color.Transparent,
+                Cursor = Cursors.Hand
+            };
             SetDoubleBuffer(card);
 
             var hs = new HoverState();
@@ -428,20 +482,67 @@ namespace DriveAndGo_Admin.Panels
                 g.Restore(state);
             };
 
-            var pnlIcon = new Panel { Size = new Size(42, 42), Location = new Point(w - 58, 14), BackColor = Color.Transparent };
+            // Mas ilayo ang icon sa text
+            var pnlIcon = new Panel
+            {
+                Size = new Size(40, 40),
+                Location = new Point(w - 54, 12),
+                BackColor = Color.Transparent
+            };
             SetDoubleBuffer(pnlIcon);
             pnlIcon.Paint += (s, e) =>
             {
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(40, accentColor)), 0, 0, 41, 41);
-                e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(15, accentColor)), 5, 5, 31, 31);
+                e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(40, accentColor)), 0, 0, 40, 40);
+                e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(15, accentColor)), 5, 5, 30, 30);
             };
-            var lblIcon = new Label { Text = icon, Font = new Font("Segoe UI Emoji", 14F), ForeColor = accentColor, AutoSize = true, Location = new Point(8, 8), BackColor = Color.Transparent };
+
+            var lblIcon = new Label
+            {
+                Text = icon,
+                Font = new Font("Segoe UI Emoji", 13F),
+                ForeColor = accentColor,
+                AutoSize = true,
+                Location = new Point(8, 7),
+                BackColor = Color.Transparent
+            };
             pnlIcon.Controls.Add(lblIcon);
 
-            var lblValue = new Label { Text = value, Font = new Font("Segoe UI", 20F, FontStyle.Bold), ForeColor = ColText, AutoSize = true, Location = new Point(14, 14), BackColor = Color.Transparent };
-            var lblTitle2 = new Label { Text = title, Font = new Font("Segoe UI", 9F, FontStyle.Bold), ForeColor = ColSub, AutoSize = true, Location = new Point(15, 54), BackColor = Color.Transparent };
-            var lblSub2 = new Label { Text = sub, Font = new Font("Segoe UI", 8F), ForeColor = Color.FromArgb(ThemeManager.IsDarkMode ? 70 : 140, ColSub), AutoSize = true, Location = new Point(15, 72), BackColor = Color.Transparent };
+            // FIX: bigyan ng exact width para hindi sumapaw sa icon
+            var lblValue = new Label
+            {
+                Text = value,
+                Font = new Font("Segoe UI", 17F, FontStyle.Bold),
+                ForeColor = ColText,
+                AutoSize = false,
+                TextAlign = ContentAlignment.MiddleLeft,
+                AutoEllipsis = true,
+                Location = new Point(14, 12),
+                Size = new Size(w - 78, 34),
+                BackColor = Color.Transparent
+            };
+
+            var lblTitle2 = new Label
+            {
+                Text = title,
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                ForeColor = ColSub,
+                AutoSize = false,
+                Location = new Point(15, 54),
+                Size = new Size(w - 30, 18),
+                BackColor = Color.Transparent
+            };
+
+            var lblSub2 = new Label
+            {
+                Text = sub,
+                Font = new Font("Segoe UI", 8F),
+                ForeColor = Color.FromArgb(ThemeManager.IsDarkMode ? 70 : 140, ColSub),
+                AutoSize = false,
+                Location = new Point(15, 72),
+                Size = new Size(w - 30, 16),
+                BackColor = Color.Transparent
+            };
 
             card.Controls.Add(pnlIcon);
             card.Controls.Add(lblValue);
@@ -498,6 +599,7 @@ namespace DriveAndGo_Admin.Panels
                         "pending" => ColYellow,
                         "completed" => ColBlue,
                         "rejected" => ColRed,
+                        "active" => ColAccent,
                         _ => ColText
                     };
                     e.CellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
@@ -512,13 +614,15 @@ namespace DriveAndGo_Admin.Panels
                     SELECT r.rental_id AS '#',
                            u.full_name AS 'Customer',
                            CONCAT(v.brand,' ',v.model) AS 'Vehicle',
-                           r.start_date AS 'Start', r.end_date AS 'End',
+                           r.start_date AS 'Start',
+                           r.end_date AS 'End',
                            r.status AS 'Status',
                            CONCAT('₱',FORMAT(r.total_amount,2)) AS 'Amount'
                     FROM rentals r
-                    JOIN users u    ON r.customer_id = u.user_id
-                    JOIN vehicles v ON r.vehicle_id  = v.vehicle_id
-                    ORDER BY r.created_at DESC LIMIT 12", conn);
+                    JOIN users u ON r.customer_id = u.user_id
+                    JOIN vehicles v ON r.vehicle_id = v.vehicle_id
+                    ORDER BY COALESCE(r.created_at, r.start_date) DESC
+                    LIMIT 12", conn);
                 using var adapter = new MySqlDataAdapter(cmd);
                 var dt = new DataTable();
                 adapter.Fill(dt);
@@ -548,40 +652,70 @@ namespace DriveAndGo_Admin.Panels
 
             try
             {
-                AdminDataHelper.ReconcilePaidRentalTransactions(_connStr);
-
                 using var conn = new MySqlConnection(_connStr);
                 conn.Open();
-                T Q<T>(string sql) { using var c = new MySqlCommand(sql, conn); var res = c.ExecuteScalar(); return res == DBNull.Value || res == null ? default(T) : (T)Convert.ChangeType(res, typeof(T)); }
-                monthRevenue = Q<decimal>(@"SELECT COALESCE(SUM(amount),0) FROM transactions
-                    WHERE LOWER(COALESCE(status,'')) IN ('confirmed','paid')
-                      AND MONTH(COALESCE(paid_at, NOW()))=MONTH(CURDATE())
-                      AND YEAR(COALESCE(paid_at, NOW()))=YEAR(CURDATE())");
-                totalUsers = Q<int>("SELECT COUNT(*) FROM users WHERE role='customer'");
-                totalRatings = Q<int>("SELECT COUNT(*) FROM ratings");
-                avgRating = Q<decimal>("SELECT COALESCE(AVG(vehicle_score),0) FROM ratings");
+
+                T Q<T>(string sql)
+                {
+                    using var c = new MySqlCommand(sql, conn);
+                    var res = c.ExecuteScalar();
+                    return res == DBNull.Value || res == null ? default(T) : (T)Convert.ChangeType(res, typeof(T));
+                }
+
+                monthRevenue = Q<decimal>(@"
+                    SELECT COALESCE(SUM(total_amount), 0)
+                    FROM rentals
+                    WHERE LOWER(TRIM(COALESCE(payment_status, ''))) = 'paid'
+                      AND MONTH(COALESCE(created_at, start_date)) = MONTH(CURDATE())
+                      AND YEAR(COALESCE(created_at, start_date)) = YEAR(CURDATE())");
+
+                totalUsers = Q<int>(@"
+                    SELECT COUNT(*)
+                    FROM users
+                    WHERE LOWER(TRIM(COALESCE(role, ''))) = 'customer'");
+
+                totalRatings = Q<int>(@"
+                    SELECT COUNT(*)
+                    FROM ratings");
+
+                avgRating = Q<decimal>(@"
+                    SELECT COALESCE(AVG(vehicle_score), 0)
+                    FROM ratings");
+
                 dueToday = Q<int>(@"
-                    SELECT COUNT(*) FROM rentals
-                    WHERE LOWER(COALESCE(status,'')) IN ('approved','in-use','rented')
+                    SELECT COUNT(*)
+                    FROM rentals
+                    WHERE LOWER(TRIM(COALESCE(status, ''))) IN ('approved', 'active')
                       AND end_date IS NOT NULL
                       AND DATE(end_date) = CURDATE()");
+
                 overdue = Q<int>(@"
-                    SELECT COUNT(*) FROM rentals
-                    WHERE LOWER(COALESCE(status,'')) IN ('approved','in-use','rented')
+                    SELECT COUNT(*)
+                    FROM rentals
+                    WHERE LOWER(TRIM(COALESCE(status, ''))) IN ('approved', 'active')
                       AND end_date IS NOT NULL
                       AND DATE(end_date) < CURDATE()");
-                pendingExtensions = Q<int>("SELECT COUNT(*) FROM extensions WHERE LOWER(COALESCE(status,''))='pending'");
-                openIssues = Q<int>("SELECT COUNT(*) FROM issues WHERE LOWER(COALESCE(status,'')) <> 'resolved'");
+
+                pendingExtensions = Q<int>(@"
+                    SELECT COUNT(*)
+                    FROM extensions
+                    WHERE LOWER(TRIM(COALESCE(status, ''))) = 'pending'");
+
+                openIssues = Q<int>(@"
+                    SELECT COUNT(*)
+                    FROM issues
+                    WHERE LOWER(TRIM(COALESCE(status, ''))) <> 'resolved'");
 
                 using var topDriverCmd = new MySqlCommand(@"
                     SELECT u.full_name, ROUND(AVG(r.driver_score), 1) AS avg_rating
                     FROM ratings r
-                    JOIN drivers d ON r.driver_id = d.user_id
+                    JOIN drivers d ON r.driver_id = d.driver_id
                     JOIN users u ON d.user_id = u.user_id
                     WHERE r.driver_score IS NOT NULL
                     GROUP BY u.user_id, u.full_name
                     ORDER BY avg_rating DESC, COUNT(*) DESC
                     LIMIT 1", conn);
+
                 using var topDriverReader = topDriverCmd.ExecuteReader();
                 if (topDriverReader.Read())
                 {
@@ -589,13 +723,15 @@ namespace DriveAndGo_Admin.Panels
                     topDriverRating = topDriverReader["avg_rating"] == DBNull.Value ? 0 : Convert.ToDecimal(topDriverReader["avg_rating"]);
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             var items = new[]
             {
                 ("Monthly Revenue",   "₱" + monthRevenue.ToString("N2"), ColAccent),
-                ("Total Customers",   totalUsers.ToString(),             ColBlue),
-                ("Total Reviews",     totalRatings.ToString(),           ColPurple),
+                ("Total Customers",   totalUsers.ToString(), ColBlue),
+                ("Total Reviews",     totalRatings.ToString(), ColPurple),
                 ("Avg. Rating",       avgRating.ToString("0.0") + " / 5.0", ColGreen),
                 ("Due Today / Overdue", $"{dueToday} due  ·  {overdue} overdue", overdue > 0 ? ColRed : ColYellow),
                 ("Ops Queue",         $"{pendingExtensions} extensions  ·  {openIssues} issues", (pendingExtensions + openIssues) > 0 ? ColYellow : ColGreen),
@@ -605,7 +741,13 @@ namespace DriveAndGo_Admin.Panels
             int itemY = 56;
             foreach (var (label, val, color) in items)
             {
-                var row = new Panel { Size = new Size(280, 46), Location = new Point(20, itemY), BackColor = Color.Transparent, Tag = "qsrow" };
+                var row = new Panel
+                {
+                    Size = new Size(280, 46),
+                    Location = new Point(20, itemY),
+                    BackColor = Color.Transparent,
+                    Tag = "qsrow"
+                };
                 SetDoubleBuffer(row);
 
                 row.Paint += (s, e) =>
@@ -620,8 +762,26 @@ namespace DriveAndGo_Admin.Panels
                     g.DrawPath(new Pen(Color.FromArgb(d ? 25 : 180, ThemeManager.CurrentBorder), 0.5f), path);
                 };
 
-                var lblKey = new Label { Text = label, Font = new Font("Segoe UI", 9F), ForeColor = ColSub, AutoSize = true, Location = new Point(14, 5), BackColor = Color.Transparent };
-                var lblVal = new Label { Text = val, Font = new Font("Segoe UI", 13F, FontStyle.Bold), ForeColor = color, AutoSize = true, Location = new Point(14, 22), BackColor = Color.Transparent };
+                var lblKey = new Label
+                {
+                    Text = label,
+                    Font = new Font("Segoe UI", 9F),
+                    ForeColor = ColSub,
+                    AutoSize = true,
+                    Location = new Point(14, 5),
+                    BackColor = Color.Transparent
+                };
+
+                var lblVal = new Label
+                {
+                    Text = val,
+                    Font = new Font("Segoe UI", 13F, FontStyle.Bold),
+                    ForeColor = color,
+                    AutoSize = true,
+                    Location = new Point(14, 22),
+                    BackColor = Color.Transparent
+                };
+
                 row.Controls.Add(lblKey);
                 row.Controls.Add(lblVal);
                 _quickStatsCard.Controls.Add(row);
@@ -643,11 +803,18 @@ namespace DriveAndGo_Admin.Panels
             {
                 using var conn = new MySqlConnection(_connStr);
                 conn.Open();
-                T Q<T>(string sql) { using var c = new MySqlCommand(sql, conn); var res = c.ExecuteScalar(); return res == DBNull.Value || res == null ? default(T) : (T)Convert.ChangeType(res, typeof(T)); }
-                available = Q<int>("SELECT COUNT(*) FROM vehicles WHERE LOWER(COALESCE(status,''))='available'");
-                rented = Q<int>("SELECT COUNT(*) FROM vehicles WHERE LOWER(COALESCE(status,'')) IN ('rented','in-use')");
-                maintenance = Q<int>("SELECT COUNT(*) FROM vehicles WHERE LOWER(COALESCE(status,''))='maintenance'");
-                retired = Q<int>("SELECT COUNT(*) FROM vehicles WHERE LOWER(COALESCE(status,''))='retired'");
+
+                T Q<T>(string sql)
+                {
+                    using var c = new MySqlCommand(sql, conn);
+                    var res = c.ExecuteScalar();
+                    return res == DBNull.Value || res == null ? default(T) : (T)Convert.ChangeType(res, typeof(T));
+                }
+
+                available = Q<int>("SELECT COUNT(*) FROM vehicles WHERE LOWER(TRIM(COALESCE(status,'')))='available'");
+                rented = Q<int>("SELECT COUNT(*) FROM vehicles WHERE LOWER(TRIM(COALESCE(status,''))) IN ('rented','in-use')");
+                maintenance = Q<int>("SELECT COUNT(*) FROM vehicles WHERE LOWER(TRIM(COALESCE(status,'')))='maintenance'");
+                retired = Q<int>("SELECT COUNT(*) FROM vehicles WHERE LOWER(TRIM(COALESCE(status,'')))='retired'");
             }
             catch { }
 
@@ -716,6 +883,7 @@ namespace DriveAndGo_Admin.Panels
             {
                 using var conn = new MySqlConnection(_connStr);
                 conn.Open();
+
                 var cmd = new MySqlCommand(@"
                     SELECT *
                     FROM
@@ -723,12 +891,24 @@ namespace DriveAndGo_Admin.Panels
                         SELECT 'booking' AS action_type,
                                CONCAT(u.full_name,' → ',v.brand,' ',v.model) AS description,
                                r.total_amount AS action_amount,
-                               r.created_at AS action_time,
+                               COALESCE(r.created_at, r.start_date) AS action_time,
                                r.status AS action_status
                         FROM rentals r
                         JOIN users u ON r.customer_id = u.user_id
                         JOIN vehicles v ON r.vehicle_id = v.vehicle_id
-                        WHERE LOWER(COALESCE(r.status,'')) = 'pending'
+                        WHERE LOWER(TRIM(COALESCE(r.status,''))) = 'pending'
+
+                        UNION ALL
+
+                        SELECT 'payment' AS action_type,
+                               CONCAT(u.full_name,' unpaid for ',v.brand,' ',v.model) AS description,
+                               r.total_amount AS action_amount,
+                               COALESCE(r.created_at, r.start_date) AS action_time,
+                               r.payment_status AS action_status
+                        FROM rentals r
+                        JOIN users u ON r.customer_id = u.user_id
+                        JOIN vehicles v ON r.vehicle_id = v.vehicle_id
+                        WHERE LOWER(TRIM(COALESCE(r.payment_status,''))) <> 'paid'
 
                         UNION ALL
 
@@ -741,7 +921,7 @@ namespace DriveAndGo_Admin.Panels
                         JOIN rentals r ON e.rental_id = r.rental_id
                         JOIN users u ON r.customer_id = u.user_id
                         JOIN vehicles v ON r.vehicle_id = v.vehicle_id
-                        WHERE LOWER(COALESCE(e.status,'')) = 'pending'
+                        WHERE LOWER(TRIM(COALESCE(e.status,''))) = 'pending'
 
                         UNION ALL
 
@@ -754,7 +934,7 @@ namespace DriveAndGo_Admin.Panels
                         JOIN users u ON i.reporter_id = u.user_id
                         JOIN rentals r ON i.rental_id = r.rental_id
                         JOIN vehicles v ON r.vehicle_id = v.vehicle_id
-                        WHERE LOWER(COALESCE(i.status,'')) <> 'resolved'
+                        WHERE LOWER(TRIM(COALESCE(i.status,''))) <> 'resolved'
 
                         UNION ALL
 
@@ -766,7 +946,7 @@ namespace DriveAndGo_Admin.Panels
                         FROM rentals r
                         JOIN users u ON r.customer_id = u.user_id
                         JOIN vehicles v ON r.vehicle_id = v.vehicle_id
-                        WHERE LOWER(COALESCE(r.status,'')) IN ('approved','in-use','rented')
+                        WHERE LOWER(TRIM(COALESCE(r.status,''))) IN ('approved','active')
                           AND r.end_date IS NOT NULL
                           AND DATE(r.end_date) < CURDATE()
                     ) feed
@@ -779,21 +959,25 @@ namespace DriveAndGo_Admin.Panels
                 while (reader.Read())
                 {
                     string actionType = reader["action_type"]?.ToString()?.ToLower() ?? "booking";
-                    var desc = reader["description"].ToString()!;
+                    var desc = reader["description"].ToString() ?? "";
                     var dt2 = Convert.ToDateTime(reader["action_time"]);
                     decimal? amount = reader["action_amount"] == DBNull.Value ? null : Convert.ToDecimal(reader["action_amount"]);
+
                     Color actionColor = actionType switch
                     {
                         "issue" => ColRed,
                         "extension" => ColYellow,
                         "overdue" => ColRed,
+                        "payment" => ColYellow,
                         _ => ColAccent
                     };
+
                     string actionLabel = actionType switch
                     {
                         "issue" => "Needs attention",
                         "extension" => "Extension fee",
                         "overdue" => "Overdue amount",
+                        "payment" => "Unpaid rental",
                         _ => "Booking amount"
                     };
 
@@ -810,6 +994,7 @@ namespace DriveAndGo_Admin.Panels
 
                     var lblDesc = new Label { Text = desc, Font = new Font("Segoe UI", 9F), ForeColor = ColText, AutoSize = false, Size = new Size(340, 18), Location = new Point(16, 4), BackColor = Color.Transparent };
                     var lblTime = new Label { Text = dt2.ToString("MMM dd, hh:mm tt"), Font = new Font("Segoe UI", 8F), ForeColor = ColSub, AutoSize = true, Location = new Point(16, 20), BackColor = Color.Transparent };
+
                     var lblAmt = new Label
                     {
                         Text = amount.HasValue ? "₱" + amount.Value.ToString("N2") : actionLabel,
@@ -835,7 +1020,10 @@ namespace DriveAndGo_Admin.Panels
                     _pendingCard.Controls.Add(lbl);
                 }
             }
-            catch (Exception ex) { AddErrorLabel(_pendingCard, ex.Message); }
+            catch (Exception ex)
+            {
+                AddErrorLabel(_pendingCard, ex.Message);
+            }
 
             _scrollContainer.Controls.Add(_pendingCard);
         }
@@ -846,7 +1034,12 @@ namespace DriveAndGo_Admin.Panels
         private void StartEntranceAnimation()
         {
             if (_cardAlpha == null) return;
-            for (int i = 0; i < _cardAlpha.Length; i++) { _cardAlpha[i] = 0f; _cardOffsetY[i] = 28f; }
+
+            for (int i = 0; i < _cardAlpha.Length; i++)
+            {
+                _cardAlpha[i] = 0f;
+                _cardOffsetY[i] = 28f;
+            }
 
             _cardsDone = 0;
             _entranceTimer = new System.Windows.Forms.Timer { Interval = 14 };
@@ -855,7 +1048,6 @@ namespace DriveAndGo_Admin.Panels
                 bool allDone = true;
                 for (int i = 0; i < _cardAlpha.Length; i++)
                 {
-                    float delay = i * 0.12f;
                     if (_cardsDone < i) { allDone = false; continue; }
 
                     _cardAlpha[i] += 0.06f;
@@ -867,11 +1059,19 @@ namespace DriveAndGo_Admin.Panels
                         _cardOffsetY[i] = 0f;
                         if (_cardsDone == i) _cardsDone++;
                     }
-                    else allDone = false;
+                    else
+                    {
+                        allDone = false;
+                    }
 
                     _statCards[i]?.Invalidate();
                 }
-                if (allDone) { _entranceTimer.Stop(); _entranceTimer.Dispose(); }
+
+                if (allDone)
+                {
+                    _entranceTimer.Stop();
+                    _entranceTimer.Dispose();
+                }
             };
             _entranceTimer.Start();
         }
@@ -958,6 +1158,7 @@ namespace DriveAndGo_Admin.Panels
 
         protected override void Dispose(bool disposing)
         {
+            ThemeManager.ThemeChanged -= ThemeChanged_Handler;
             _entranceTimer?.Dispose();
             base.Dispose(disposing);
         }

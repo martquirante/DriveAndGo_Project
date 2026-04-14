@@ -37,10 +37,37 @@ C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Tech
 C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.pdb
 C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.genruntimeconfig.cache
 C:\Users\martquirante\Desktop\2bd sem__2nd yae files\Integartive Programing Technologies\Project\Codding_fille\DriveAndGo_Admin\obj\Debug\net10.0-windows\ref\DriveAndGo_Admin.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\runtimes\win-x86\native\WebView2Loader.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\runtimes\win-x64\native\WebView2Loader.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\runtimes\win-arm64\native\WebView2Loader.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\WebAssets\garage_3D.png
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\DriveAndGo_Admin.exe
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\DriveAndGo_Admin.deps.json
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\DriveAndGo_Admin.runtimeconfig.json
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\DriveAndGo_Admin.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\DriveAndGo_Admin.pdb
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\verify-admin\runtimes\win-x86\native\WebView2Loader.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\verify-admin\runtimes\win-x64\native\WebView2Loader.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\verify-admin\runtimes\win-arm64\native\WebView2Loader.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\verify-admin\WebAssets\garage_3D.png
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\verify-admin\DriveAndGo_Admin.deps.json
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\verify-admin\DriveAndGo_Admin.runtimeconfig.json
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\verify-admin\DriveAndGo_Admin.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\verify-admin\DriveAndGo_Admin.pdb
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\verify-admin-2\runtimes\win-x86\native\WebView2Loader.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\verify-admin-2\runtimes\win-x64\native\WebView2Loader.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\verify-admin-2\runtimes\win-arm64\native\WebView2Loader.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\verify-admin-2\WebAssets\garage_3D.png
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\verify-admin-2\WebAssets\logo.png
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\verify-admin-2\DriveAndGo_Admin.deps.json
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\verify-admin-2\DriveAndGo_Admin.runtimeconfig.json
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\verify-admin-2\DriveAndGo_Admin.dll
+C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\verify-admin-2\DriveAndGo_Admin.pdb
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\runtimes\win-x86\native\WebView2Loader.dll
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\runtimes\win-x64\native\WebView2Loader.dll
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\runtimes\win-arm64\native\WebView2Loader.dll
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\WebAssets\garage_3D.png
+C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\WebAssets\logo.png
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\DriveAndGo_Admin.exe
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\DriveAndGo_Admin.deps.json
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\DriveAndGo_Admin.runtimeconfig.json
@@ -111,12 +138,4 @@ C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.pdb
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.genruntimeconfig.cache
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\ref\DriveAndGo_Admin.dll
-C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\runtimes\win-x86\native\WebView2Loader.dll
-C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\runtimes\win-x64\native\WebView2Loader.dll
-C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\runtimes\win-arm64\native\WebView2Loader.dll
-C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\WebAssets\garage_3D.png
-C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\DriveAndGo_Admin.exe
-C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\DriveAndGo_Admin.deps.json
-C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\DriveAndGo_Admin.runtimeconfig.json
-C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\DriveAndGo_Admin.dll
-C:\Users\martquirante\source\repos\DriveAndGo_Project\.codex-build\DriveAndGo_Admin\DriveAndGo_Admin.pdb
+C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.Panels.ReportsPanel.resources

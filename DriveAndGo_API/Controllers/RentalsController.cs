@@ -22,7 +22,6 @@ namespace DriveAndGo_API.Controllers
             try
             {
                 List<Rental> rentals = new List<Rental>();
-
                 using var conn = new MySqlConnection(_connectionString);
                 conn.Open();
 
@@ -88,7 +87,6 @@ namespace DriveAndGo_API.Controllers
             try
             {
                 List<Rental> rentals = new List<Rental>();
-
                 using var conn = new MySqlConnection(_connectionString);
                 conn.Open();
 
@@ -121,24 +119,35 @@ namespace DriveAndGo_API.Controllers
         {
             if (rental.CustomerId == 0 || rental.VehicleId == 0)
             {
-                return BadRequest(new
-                {
-                    message = "Customer ID at Vehicle ID ay required."
-                });
+                return BadRequest(new { message = "Customer ID at Vehicle ID ay required." });
             }
 
             if (!rental.EndDate.HasValue || rental.StartDate >= rental.EndDate.Value)
             {
-                return BadRequest(new
-                {
-                    message = "End date dapat later kaysa start date."
-                });
+                return BadRequest(new { message = "End date dapat later kaysa start date." });
             }
 
             try
             {
                 using var conn = new MySqlConnection(_connectionString);
                 conn.Open();
+
+                // 🔴 [NEW] ANTI-DUPLICATE CHECKER 🔴
+                // Haharangin natin kapag mayroon nang "pending" rental ang parehong user para sa parehong sasakyan.
+                var dupCheckCmd = new MySqlCommand(@"
+                    SELECT COUNT(*) FROM rentals 
+                    WHERE customer_id = @customer_id 
+                      AND vehicle_id = @vehicle_id 
+                      AND LOWER(status) = 'pending'", conn);
+                dupCheckCmd.Parameters.AddWithValue("@customer_id", rental.CustomerId);
+                dupCheckCmd.Parameters.AddWithValue("@vehicle_id", rental.VehicleId);
+
+                int pendingCount = Convert.ToInt32(dupCheckCmd.ExecuteScalar());
+                if (pendingCount > 0)
+                {
+                    return Conflict(new { message = "Mayroon ka nang pending na booking para sa sasakyang ito. Hintayin muna ang approval ni Admin bago mag-book ulit." });
+                }
+                // 🔴 END OF CHECKER 🔴
 
                 var checkCmd = new MySqlCommand(@"
                     SELECT LOWER(COALESCE(status, ''))
@@ -152,10 +161,7 @@ namespace DriveAndGo_API.Controllers
 
                 if (!string.Equals(vehicleStatus, "available", StringComparison.OrdinalIgnoreCase))
                 {
-                    return Conflict(new
-                    {
-                        message = "Sorry, hindi na available ang sasakyang ito."
-                    });
+                    return Conflict(new { message = "Sorry, hindi na available ang sasakyang ito." });
                 }
 
                 var insertCmd = new MySqlCommand(@"
@@ -226,18 +232,12 @@ namespace DriveAndGo_API.Controllers
 
                 if (!string.Equals(currentStatus, "pending", StringComparison.OrdinalIgnoreCase))
                 {
-                    return BadRequest(new
-                    {
-                        message = $"Hindi ma-approve - status is already '{currentStatus}'."
-                    });
+                    return BadRequest(new { message = $"Hindi ma-approve - status is already '{currentStatus}'." });
                 }
 
                 if (!string.Equals(vehicleStatus, "available", StringComparison.OrdinalIgnoreCase))
                 {
-                    return Conflict(new
-                    {
-                        message = $"Hindi ma-approve - vehicle is already '{vehicleStatus}'."
-                    });
+                    return Conflict(new { message = $"Hindi ma-approve - vehicle is already '{vehicleStatus}'." });
                 }
 
                 var approveCmd = new MySqlCommand(@"
@@ -286,10 +286,7 @@ namespace DriveAndGo_API.Controllers
 
                 if (!string.Equals(status, "pending", StringComparison.OrdinalIgnoreCase))
                 {
-                    return BadRequest(new
-                    {
-                        message = $"Hindi ma-reject - status is already '{status}'."
-                    });
+                    return BadRequest(new { message = $"Hindi ma-reject - status is already '{status}'." });
                 }
 
                 var rejectCmd = new MySqlCommand(@"
@@ -299,11 +296,7 @@ namespace DriveAndGo_API.Controllers
                 rejectCmd.Parameters.AddWithValue("@id", id);
                 rejectCmd.ExecuteNonQuery();
 
-                return Ok(new
-                {
-                    message = "Rental rejected.",
-                    rental_id = id
-                });
+                return Ok(new { message = "Rental rejected.", rental_id = id });
             }
             catch (Exception ex)
             {
@@ -338,10 +331,7 @@ namespace DriveAndGo_API.Controllers
                 if (!string.Equals(currentStatus, "approved", StringComparison.OrdinalIgnoreCase) &&
                     !string.Equals(currentStatus, "in-use", StringComparison.OrdinalIgnoreCase))
                 {
-                    return BadRequest(new
-                    {
-                        message = "Approved rentals lang ang pwedeng i-complete."
-                    });
+                    return BadRequest(new { message = "Approved rentals lang ang pwedeng i-complete." });
                 }
 
                 var completeCmd = new MySqlCommand(@"
@@ -379,18 +369,12 @@ namespace DriveAndGo_API.Controllers
                 RentalId = Convert.ToInt32(reader["rental_id"], CultureInfo.InvariantCulture),
                 CustomerId = Convert.ToInt32(reader["customer_id"], CultureInfo.InvariantCulture),
                 VehicleId = Convert.ToInt32(reader["vehicle_id"], CultureInfo.InvariantCulture),
-                DriverId = reader["driver_id"] != DBNull.Value
-                    ? Convert.ToInt32(reader["driver_id"], CultureInfo.InvariantCulture)
-                    : null,
+                DriverId = reader["driver_id"] != DBNull.Value ? Convert.ToInt32(reader["driver_id"], CultureInfo.InvariantCulture) : null,
                 StartDate = Convert.ToDateTime(reader["start_date"], CultureInfo.InvariantCulture),
-                EndDate = reader["end_date"] != DBNull.Value
-                    ? Convert.ToDateTime(reader["end_date"], CultureInfo.InvariantCulture)
-                    : null,
+                EndDate = reader["end_date"] != DBNull.Value ? Convert.ToDateTime(reader["end_date"], CultureInfo.InvariantCulture) : null,
                 Destination = reader["destination"] == DBNull.Value ? null : reader["destination"].ToString(),
                 Status = reader["status"]?.ToString() ?? "pending",
-                TotalAmount = reader["total_amount"] == DBNull.Value
-                    ? 0
-                    : Convert.ToDecimal(reader["total_amount"], CultureInfo.InvariantCulture),
+                TotalAmount = reader["total_amount"] == DBNull.Value ? 0 : Convert.ToDecimal(reader["total_amount"], CultureInfo.InvariantCulture),
                 PaymentMethod = reader["payment_method"]?.ToString() ?? "cash",
                 PaymentStatus = reader["payment_status"]?.ToString() ?? "unpaid",
                 CustomerName = reader["customer_name"] == DBNull.Value ? null : reader["customer_name"].ToString(),
@@ -400,9 +384,7 @@ namespace DriveAndGo_API.Controllers
 
         private static string NormalizeLower(string? value, string fallback)
         {
-            return string.IsNullOrWhiteSpace(value)
-                ? fallback
-                : value.Trim().ToLowerInvariant();
+            return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim().ToLowerInvariant();
         }
     }
 }

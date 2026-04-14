@@ -2,15 +2,22 @@
 using DriveAndGo_Admin.Helpers;
 using MySql.Data.MySqlClient;
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Globalization;
 using System.IO;
+using System.Linq;
+using System.Text;
 using System.Windows.Forms;
 
 // iText7 PDF Libraries
+using iText.Kernel.Colors;
 using iText.Kernel.Pdf;
+using iText.Kernel.Pdf.Canvas.Draw;
 using iText.Layout;
+using iText.Layout.Borders;
 using iText.Layout.Element;
 using iText.Layout.Properties;
 using iText.Kernel.Font;
@@ -117,7 +124,7 @@ namespace DriveAndGo_Admin.Panels
             cboMethod.SelectedIndexChanged += (s, e) => FilterGrid();
 
             cboStatus = new ComboBox { Size = new Size(130, 30), Location = new Point(366, 60), DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 9F), BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White, ForeColor = ColText };
-            cboStatus.Items.AddRange(new object[] { "All Status", "confirmed", "paid", "pending", "rejected", "refunded" });
+            cboStatus.Items.AddRange(new object[] { "All Status", "confirmed", "paid", "verified", "pending", "rejected", "refunded" });
             cboStatus.SelectedIndex = 0;
             cboStatus.SelectedIndexChanged += (s, e) => FilterGrid();
 
@@ -237,16 +244,20 @@ namespace DriveAndGo_Admin.Panels
                         t.amount, 
                         t.type, 
                         t.method, 
+                        t.proof_url,
                         t.status, 
-                        t.paid_at
+                        t.paid_at,
+                        r.payment_status
                     FROM transactions t
                     LEFT JOIN rentals r ON t.rental_id = r.rental_id
                     LEFT JOIN users u ON r.customer_id = u.user_id
                     LEFT JOIN vehicles v ON r.vehicle_id = v.vehicle_id
+                    WHERE LOWER(COALESCE(t.status, '')) <> 'duplicate'
                     ORDER BY t.paid_at DESC", conn);
 
                 using var adapter = new MySqlDataAdapter(cmd);
                 adapter.Fill(_data);
+                _data = DeduplicateTransactions(_data);
 
                 RefreshGrid(_data);
                 UpdateStats();
@@ -287,8 +298,8 @@ namespace DriveAndGo_Admin.Panels
                         $"DG-{row["rental_id"]:D5}",
                         row["customer_name"]?.ToString() ?? "Unknown",
                         $"₱{amount:N2}",
-                        row["method"]?.ToString().ToUpper() ?? "UNKNOWN",
-                        row["status"]?.ToString() ?? "pending",
+                        ExportBrandingHelper.GetDisplayMethod(row["method"]?.ToString()),
+                        GetDisplayStatus(row),
                         date.ToString("MMM dd, yyyy HH:mm")
                     );
                 }
@@ -302,8 +313,8 @@ namespace DriveAndGo_Admin.Panels
                 dgvTransactions.Columns[1].Width = 80;
                 dgvTransactions.Columns[2].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
                 dgvTransactions.Columns[3].Width = 100;
-                dgvTransactions.Columns[4].Width = 80;
-                dgvTransactions.Columns[5].Width = 90;
+                dgvTransactions.Columns[4].Width = 100;
+                dgvTransactions.Columns[5].Width = 120;
                 dgvTransactions.Columns[6].Width = 130;
             }
         }
@@ -351,7 +362,7 @@ namespace DriveAndGo_Admin.Panels
             foreach (DataRow row in _data.Rows)
             {
                 string st = row["status"]?.ToString().ToLower() ?? "";
-                if (st == "confirmed" || st == "paid")
+                if (st == "confirmed" || st == "paid" || st == "verified")
                 {
                     totalRevenue += row["amount"] != DBNull.Value ? Convert.ToDecimal(row["amount"]) : 0;
                 }
@@ -367,7 +378,13 @@ namespace DriveAndGo_Admin.Panels
                     FROM rentals r
                     LEFT JOIN transactions t
                       ON t.rental_id = r.rental_id
-                     AND LOWER(COALESCE(t.status,'')) IN ('confirmed','paid')
+                     AND (
+                        CASE
+                            WHEN LOWER(COALESCE(t.type,'')) IN ('', 'rental') THEN 'payment'
+                            ELSE LOWER(COALESCE(t.type,''))
+                        END
+                     ) = 'payment'
+                     AND LOWER(COALESCE(t.status,'')) NOT IN ('rejected','refunded','duplicate')
                     WHERE LOWER(COALESCE(r.payment_status,'')) = 'paid'
                       AND t.transaction_id IS NULL", conn);
                 repairedNeeded = Convert.ToInt32(cmd.ExecuteScalar());
@@ -376,11 +393,11 @@ namespace DriveAndGo_Admin.Panels
 
             if (lblStats.InvokeRequired)
             {
-                lblStats.Invoke(new Action(() => lblStats.Text = $"{totalTxs} transactions  ·  ₱{totalRevenue:N2} revenue  ·  {pendingCount} pending  ·  {repairedNeeded} unpaid logs need repair"));
+                lblStats.Invoke(new Action(() => lblStats.Text = $"{totalTxs} transactions  ·  ₱{totalRevenue:N2} revenue  ·  {pendingCount} pending  ·  {repairedNeeded} payment logs need repair"));
             }
             else
             {
-                lblStats.Text = $"{totalTxs} transactions  ·  ₱{totalRevenue:N2} revenue  ·  {pendingCount} pending  ·  {repairedNeeded} unpaid logs need repair";
+                lblStats.Text = $"{totalTxs} transactions  ·  ₱{totalRevenue:N2} revenue  ·  {pendingCount} pending  ·  {repairedNeeded} payment logs need repair";
             }
         }
 
@@ -392,8 +409,8 @@ namespace DriveAndGo_Admin.Panels
                 LoadFromDB();
                 MessageBox.Show(
                     repaired > 0
-                        ? $"Rebuilt {repaired} missing payment log(s)."
-                        : "No missing payment logs were found.",
+                        ? $"Repaired {repaired} payment log issue(s)."
+                        : "No payment log issues were found.",
                     "Payment Log Repair",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
@@ -429,8 +446,8 @@ namespace DriveAndGo_Admin.Panels
             string rentalId = _selectedRow["rental_id"] != DBNull.Value ? $"DG-{Convert.ToInt32(_selectedRow["rental_id"]):D5}" : "N/A";
             string vehicle = _selectedRow["plate_no"]?.ToString();
             decimal amount = _selectedRow["amount"] != DBNull.Value ? Convert.ToDecimal(_selectedRow["amount"]) : 0;
-            string method = _selectedRow["method"]?.ToString().ToUpper();
-            string status = _selectedRow["status"]?.ToString().ToUpper();
+            string method = ExportBrandingHelper.GetDisplayMethod(_selectedRow["method"]?.ToString()).ToUpperInvariant();
+            string status = GetDisplayStatus(_selectedRow).ToUpperInvariant();
             DateTime date = _selectedRow["paid_at"] != DBNull.Value ? Convert.ToDateTime(_selectedRow["paid_at"]) : DateTime.Now;
 
             lblReceiptContent.Text = $@"
@@ -440,22 +457,24 @@ San Jose del Monte, Bulacan
 OFFICIAL RECEIPT
 ----------------------------------------
 
-Transaction ID : TX-{id:D5}
-Date           : {date:MMM dd, yyyy HH:mm}
+Receipt No.    : TX-{id:D5}
+Issued On      : {date:MMM dd, yyyy hh:mm tt}
 Rental Ref     : {rentalId}
+Branch         : San Jose del Monte, Bulacan
 
 Customer       : {customer}
 Vehicle Plate  : {vehicle}
 
 Payment Method : {method}
 Payment Status : {status}
+Remarks        : Auto-generated payment receipt
 
 ----------------------------------------
 TOTAL PAID     : ₱ {amount:N2}
 ----------------------------------------
 
-Thank you for choosing Drive & Go!
-Drive safely!
+Please keep this receipt for your records.
+Thank you for choosing Drive & Go.
 ";
             btnExportPDF.Enabled = true;
         }
@@ -477,63 +496,122 @@ Drive safely!
             try
             {
                 string path = dlg.FileName;
-                using var writer = new PdfWriter(path);
+                var writerProps = new WriterProperties();
+                writerProps.SetCompressionLevel(9);
+
+                using var writer = new PdfWriter(path, writerProps);
                 using var pdf = new PdfDocument(writer);
                 using var doc = new Document(pdf);
+                doc.SetMargins(28, 28, 24, 28);
 
                 PdfFont fontBold = PdfFontFactory.CreateFont(StandardFonts.HELVETICA_BOLD);
-                PdfFont fontNormal = PdfFontFactory.CreateFont(StandardFonts.COURIER); // Resibo look
+                PdfFont fontNormal = PdfFontFactory.CreateFont(StandardFonts.HELVETICA);
 
-                var orange = new iText.Kernel.Colors.DeviceRgb(230, 81, 0);
-                var dark = new iText.Kernel.Colors.DeviceRgb(20, 20, 40);
-                var gray = new iText.Kernel.Colors.DeviceRgb(100, 100, 130);
+                var orange = new DeviceRgb(230, 81, 0);
+                var dark = new DeviceRgb(20, 20, 40);
+                var gray = new DeviceRgb(100, 100, 130);
+                var softGray = new DeviceRgb(244, 245, 249);
+                var softOrange = new DeviceRgb(255, 241, 232);
+                var white = ColorConstants.WHITE;
 
-                // LOGO Header
-                var headerTable = new iText.Layout.Element.Table(new float[] { 1, 3 }).UseAllAvailableWidth();
-                Cell logoCell = new Cell().SetBorder(iText.Layout.Borders.Border.NO_BORDER).SetTextAlignment(TextAlignment.LEFT);
-                string logoPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "logo.png");
-                if (File.Exists(logoPath))
-                {
-                    var imgData = ImageDataFactory.Create(logoPath);
-                    var logo = new iText.Layout.Element.Image(imgData).SetHeight(50).SetAutoScale(true);
-                    logoCell.Add(logo);
-                }
-
-                Cell textCell = new Cell().SetBorder(iText.Layout.Borders.Border.NO_BORDER).SetTextAlignment(TextAlignment.RIGHT);
-                textCell.Add(new Paragraph("OFFICIAL RECEIPT").SetFontColor(orange).SetFontSize(20).SetFont(fontBold));
-                textCell.Add(new Paragraph("Drive & Go Vehicle Rental Services").SetFontColor(gray).SetFontSize(10));
-
-                headerTable.AddCell(logoCell);
-                headerTable.AddCell(textCell);
-                doc.Add(headerTable);
-                doc.Add(new Paragraph("\n───────────────────────────────────────────────────────────────").SetFontColor(gray));
-
-                // Receipt Content
                 string customer = _selectedRow["customer_name"]?.ToString();
                 string rentalId = _selectedRow["rental_id"] != DBNull.Value ? $"DG-{Convert.ToInt32(_selectedRow["rental_id"]):D5}" : "N/A";
                 string plate = _selectedRow["plate_no"]?.ToString();
                 decimal amount = _selectedRow["amount"] != DBNull.Value ? Convert.ToDecimal(_selectedRow["amount"]) : 0;
-                string method = _selectedRow["method"]?.ToString().ToUpper();
-                string status = _selectedRow["status"]?.ToString().ToUpper();
+                string method = ExportBrandingHelper.GetDisplayMethod(_selectedRow["method"]?.ToString());
+                string status = GetDisplayStatus(_selectedRow);
                 DateTime date = _selectedRow["paid_at"] != DBNull.Value ? Convert.ToDateTime(_selectedRow["paid_at"]) : DateTime.Now;
+                string logoPath = ExportBrandingHelper.ResolveLogoPath();
 
-                var body = new Paragraph()
+                var headerTable = new Table(new float[] { 1.1f, 3.4f }).UseAllAvailableWidth();
+
+                Cell logoCell = new Cell()
+                    .SetBorder(Border.NO_BORDER)
+                    .SetBackgroundColor(softOrange)
+                    .SetPadding(12)
+                    .SetTextAlignment(TextAlignment.LEFT)
+                    .SetVerticalAlignment(VerticalAlignment.MIDDLE);
+
+                if (!string.IsNullOrWhiteSpace(logoPath) && File.Exists(logoPath))
+                {
+                    var imgData = ImageDataFactory.Create(logoPath);
+                    logoCell.Add(new iText.Layout.Element.Image(imgData).SetHeight(42).SetAutoScale(true));
+                }
+                else
+                {
+                    logoCell.Add(new Paragraph("DG")
+                        .SetFont(fontBold)
+                        .SetFontSize(22)
+                        .SetFontColor(orange));
+                }
+
+                Cell textCell = new Cell()
+                    .SetBorder(Border.NO_BORDER)
+                    .SetPadding(12)
+                    .SetBackgroundColor(orange)
+                    .SetTextAlignment(TextAlignment.RIGHT);
+
+                textCell.Add(new Paragraph("OFFICIAL RECEIPT")
+                    .SetFont(fontBold)
+                    .SetFontSize(18)
+                    .SetFontColor(white));
+                textCell.Add(new Paragraph("Drive & Go Vehicle Rentals")
                     .SetFont(fontNormal)
-                    .SetFontSize(12)
-                    .SetFontColor(dark)
-                    .Add($"\nTransaction ID : TX-{_selectedTxId:D5}")
-                    .Add($"\nDate           : {date:MMM dd, yyyy hh:mm tt}")
-                    .Add($"\nRental Ref     : {rentalId}")
-                    .Add($"\n\nCustomer       : {customer}")
-                    .Add($"\nVehicle Plate  : {plate}")
-                    .Add($"\nPayment Method : {method}")
-                    .Add($"\nPayment Status : {status}")
-                    .Add("\n\n───────────────────────────────────────────────────────────────\n")
-                    .Add(new Text($"TOTAL PAID     : PHP {amount:N2}").SetFont(fontBold).SetFontSize(14))
-                    .Add("\n───────────────────────────────────────────────────────────────\n\n")
-                    .Add("Thank you for choosing Drive & Go!");
+                    .SetFontSize(11)
+                    .SetFontColor(new DeviceRgb(255, 220, 196)));
+                textCell.Add(new Paragraph("San Jose del Monte, Bulacan")
+                    .SetFont(fontNormal)
+                    .SetFontSize(9)
+                    .SetFontColor(new DeviceRgb(255, 220, 196)));
 
-                doc.Add(body);
+                headerTable.AddCell(logoCell);
+                headerTable.AddCell(textCell);
+                doc.Add(headerTable);
+                doc.Add(new Paragraph(" "));
+
+                var metaTable = new Table(new float[] { 1f, 1f }).UseAllAvailableWidth();
+                metaTable.AddCell(CreateReceiptMetaCell("Receipt No.", $"TX-{_selectedTxId:D5}", fontBold, fontNormal, softGray, dark, gray));
+                metaTable.AddCell(CreateReceiptMetaCell("Issued On", date.ToString("MMMM dd, yyyy hh:mm tt"), fontBold, fontNormal, softGray, dark, gray));
+                metaTable.AddCell(CreateReceiptMetaCell("Rental Ref", rentalId, fontBold, fontNormal, softGray, dark, gray));
+                metaTable.AddCell(CreateReceiptMetaCell("Payment Status", status, fontBold, fontNormal, softGray, dark, gray));
+                doc.Add(metaTable);
+                doc.Add(new Paragraph(" "));
+
+                var detailsTable = new Table(new float[] { 1.2f, 2.4f }).UseAllAvailableWidth();
+                AddReceiptDetail(detailsTable, "Customer", customer ?? "Unknown Customer", fontBold, fontNormal, softGray, dark, gray);
+                AddReceiptDetail(detailsTable, "Vehicle Plate", plate ?? "Unknown Vehicle", fontBold, fontNormal, softGray, dark, gray);
+                AddReceiptDetail(detailsTable, "Payment Method", method, fontBold, fontNormal, softGray, dark, gray);
+                AddReceiptDetail(detailsTable, "Remarks", "Auto-generated payment receipt from the Drive & Go admin portal.", fontBold, fontNormal, softGray, dark, gray);
+                doc.Add(detailsTable);
+                doc.Add(new Paragraph(" "));
+
+                var totalBox = new Table(1).UseAllAvailableWidth();
+                totalBox.AddCell(new Cell()
+                    .SetBorder(Border.NO_BORDER)
+                    .SetBackgroundColor(softOrange)
+                    .SetPadding(14)
+                    .Add(new Paragraph("TOTAL PAID")
+                        .SetFont(fontBold)
+                        .SetFontSize(10)
+                        .SetFontColor(gray))
+                    .Add(new Paragraph($"PHP {amount:N2}")
+                        .SetFont(fontBold)
+                        .SetFontSize(22)
+                        .SetFontColor(dark)));
+                doc.Add(totalBox);
+                doc.Add(new Paragraph(" "));
+
+                doc.Add(new LineSeparator(new SolidLine(1f)).SetStrokeColor(new DeviceRgb(220, 223, 232)));
+                doc.Add(new Paragraph("Please keep this receipt for your records. This document serves as proof of payment captured by the system.")
+                    .SetFont(fontNormal)
+                    .SetFontSize(9)
+                    .SetFontColor(gray)
+                    .SetMarginTop(10)
+                    .SetMarginBottom(2));
+                doc.Add(new Paragraph("Thank you for choosing Drive & Go. Drive safely.")
+                    .SetFont(fontBold)
+                    .SetFontSize(9)
+                    .SetFontColor(dark));
 
                 MessageBox.Show("Receipt saved successfully!\n" + path, "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = path, UseShellExecute = true });
@@ -542,6 +620,136 @@ Drive safely!
             {
                 MessageBox.Show("PDF Error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private DataTable DeduplicateTransactions(DataTable source)
+        {
+            if (source == null || source.Rows.Count == 0)
+                return source;
+
+            var deduped = source.Clone();
+            foreach (var group in source.AsEnumerable().GroupBy(BuildTransactionKey, StringComparer.OrdinalIgnoreCase))
+            {
+                DataRow keeper = group
+                    .OrderBy(row => GetStatusRank(NormalizeStatus(row["status"]?.ToString())))
+                    .ThenBy(row => string.IsNullOrWhiteSpace(row["type"]?.ToString()) ? 1 : 0)
+                    .ThenByDescending(row => row["paid_at"] == DBNull.Value ? DateTime.MinValue : Convert.ToDateTime(row["paid_at"], CultureInfo.InvariantCulture))
+                    .ThenByDescending(row => Convert.ToInt32(row["transaction_id"], CultureInfo.InvariantCulture))
+                    .First();
+
+                deduped.ImportRow(keeper);
+            }
+
+            return deduped;
+        }
+
+        private string BuildTransactionKey(DataRow row)
+        {
+            decimal amount = row["amount"] != DBNull.Value ? Convert.ToDecimal(row["amount"], CultureInfo.InvariantCulture) : 0;
+            return string.Join("|",
+                row["rental_id"] == DBNull.Value ? "0" : Convert.ToInt32(row["rental_id"], CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture),
+                NormalizeTransactionType(row["type"]?.ToString()),
+                amount.ToString("0.##", CultureInfo.InvariantCulture),
+                NormalizeMethod(row["method"]?.ToString()),
+                NormalizeProof(row["proof_url"]?.ToString()));
+        }
+
+        private string GetDisplayStatus(DataRow row)
+        {
+            string fallback = GetFallbackStatus(row);
+            return ExportBrandingHelper.GetDisplayStatus(row["status"]?.ToString(), fallback);
+        }
+
+        private static string GetFallbackStatus(DataRow row)
+        {
+            string paymentStatus = row.Table.Columns.Contains("payment_status")
+                ? NormalizeStatus(row["payment_status"]?.ToString())
+                : string.Empty;
+
+            return paymentStatus == "paid" ? "Confirmed" : "Pending Review";
+        }
+
+        private static string NormalizeTransactionType(string type)
+        {
+            string normalized = type?.Trim().ToLowerInvariant() ?? "payment";
+            return normalized switch
+            {
+                "" => "payment",
+                "rental" => "payment",
+                _ => normalized
+            };
+        }
+
+        private static string NormalizeMethod(string method) =>
+            string.IsNullOrWhiteSpace(method) ? "cash" : method.Trim().ToLowerInvariant();
+
+        private static string NormalizeProof(string proofUrl) =>
+            string.IsNullOrWhiteSpace(proofUrl) ? string.Empty : proofUrl.Trim();
+
+        private static string NormalizeStatus(string status) =>
+            string.IsNullOrWhiteSpace(status) ? string.Empty : status.Trim().ToLowerInvariant();
+
+        private static int GetStatusRank(string status) => status switch
+        {
+            "paid" => 0,
+            "confirmed" => 1,
+            "verified" => 2,
+            "pending" => 3,
+            "" => 4,
+            _ => 5
+        };
+
+        private static Cell CreateReceiptMetaCell(
+            string label,
+            string value,
+            PdfFont fontBold,
+            PdfFont fontNormal,
+            DeviceRgb background,
+            DeviceRgb dark,
+            DeviceRgb gray)
+        {
+            return new Cell()
+                .SetBorder(Border.NO_BORDER)
+                .SetBackgroundColor(background)
+                .SetPadding(10)
+                .Add(new Paragraph(label)
+                    .SetFont(fontNormal)
+                    .SetFontSize(8)
+                    .SetFontColor(gray)
+                    .SetMarginBottom(2))
+                .Add(new Paragraph(value)
+                    .SetFont(fontBold)
+                    .SetFontSize(11)
+                    .SetFontColor(dark)
+                    .SetMarginTop(0));
+        }
+
+        private static void AddReceiptDetail(
+            Table table,
+            string label,
+            string value,
+            PdfFont fontBold,
+            PdfFont fontNormal,
+            DeviceRgb softGray,
+            DeviceRgb dark,
+            DeviceRgb gray)
+        {
+            table.AddCell(new Cell()
+                .SetBorder(Border.NO_BORDER)
+                .SetBackgroundColor(softGray)
+                .SetPadding(10)
+                .Add(new Paragraph(label)
+                    .SetFont(fontNormal)
+                    .SetFontSize(8)
+                    .SetFontColor(gray)));
+
+            table.AddCell(new Cell()
+                .SetBorder(Border.NO_BORDER)
+                .SetPadding(10)
+                .Add(new Paragraph(value)
+                    .SetFont(fontBold)
+                    .SetFontSize(10)
+                    .SetFontColor(dark)));
         }
 
         // ══ GRID DESIGN ══
@@ -556,7 +764,12 @@ Drive safely!
                 e.PaintBackground(e.ClipBounds, true);
 
                 string val = e.Value.ToString();
-                WinColor c = val.ToLower() == "confirmed" || val.ToLower() == "paid" ? ColGreen : val.ToLower() == "refunded" ? ColRed : ColYellow;
+                string normalized = val.ToLowerInvariant();
+                WinColor c = normalized is "confirmed" or "paid" or "verified"
+                    ? ColGreen
+                    : normalized is "refunded" or "rejected"
+                        ? ColRed
+                        : ColYellow;
 
                 var rect = new Rectangle(e.CellBounds.X + 6, e.CellBounds.Y + 9, e.CellBounds.Width - 12, e.CellBounds.Height - 18);
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;

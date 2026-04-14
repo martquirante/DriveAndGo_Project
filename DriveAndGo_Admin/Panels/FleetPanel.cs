@@ -1948,18 +1948,16 @@ namespace DriveAndGo_Admin.Panels
             private readonly DataRow _existing;
 
             private TextBox txtBrand, txtModel, txtPlate, txtCC, txtRate,
-                            txtRateDriver, txtSeats, txtTrans, txtMapIcon;
+                            txtRateDriver, txtSeats, txtMapIcon;
             private RichTextBox txtDesc;
-            private ComboBox cboType, cboStatus;
+            private ComboBox cboType, cboStatus, cboTransmission;
             private FlowLayoutPanel thumbFlow;
             private Button btnAddPhoto, btnBrowseMapIcon, btnSave;
             private Label lblUpload;
             private Panel scrollContent, scrollWrapper;
             private PictureBox _mapIconPreview;
 
-
             private static readonly HttpClient _http2 = new HttpClient();
-
             private readonly List<string> _photoUrls = new List<string>();
 
             public VehicleFormDialog(DataRow existing, string connStr)
@@ -2063,37 +2061,53 @@ namespace DriveAndGo_Admin.Panels
                 int y = 16, lx = 16, vx = 170;
                 int vw = 540 - vx - 28;
 
-                txtBrand = AddField("Brand / Make:", lx, vx, ref y, vw);
+                txtBrand = AddField("Brand:", lx, vx, ref y, vw);
+                txtBrand.PlaceholderText = "e.g. Honda, Ford, Toyota";
+
                 txtModel = AddField("Model:", lx, vx, ref y, vw);
+                txtModel.PlaceholderText = "e.g. Civic, Ranger, Vios";
+
                 txtPlate = AddField("Plate No.:", lx, vx, ref y, vw);
-                cboType = AddCombo("Vehicle Type:", lx, vx, ref y, vw, new[] { "Car", "Motorcycle", "Van", "Truck", "Bicycle" });
+                txtPlate.PlaceholderText = "e.g. ABC-1234";
+
+                cboType = AddCombo("Vehicle Type:", lx, vx, ref y, vw,
+                    new[] { "Car", "Motorcycle", "Van", "Truck", "Bicycle" });
+
                 txtCC = AddField("Engine CC:", lx, vx, ref y, vw);
+                txtCC.PlaceholderText = "e.g. 1500";
+
                 txtRate = AddField("Rate / Day (₱):", lx, vx, ref y, vw);
+                txtRate.PlaceholderText = "e.g. 2500";
+
                 txtRateDriver = AddField("Rate + Driver (₱):", lx, vx, ref y, vw);
+                txtRateDriver.PlaceholderText = "e.g. 3500";
+
                 txtSeats = AddField("Seat Capacity:", lx, vx, ref y, vw);
-                txtTrans = AddField("Transmission:", lx, vx, ref y, vw);
-                cboStatus = AddCombo("Status:", lx, vx, ref y, vw, new[] { "available", "in-use", "maintenance" });
+                txtSeats.PlaceholderText = "e.g. 5";
+
+                cboTransmission = AddCombo("Transmission:", lx, vx, ref y, vw,
+                    new[] { "Automatic", "Manual" });
+
+                cboStatus = AddCombo("Status:", lx, vx, ref y, vw,
+                    new[] { "available", "in-use", "maintenance", "retired" });
 
                 AddSectionDivider(lx, ref y);
                 AddFormLabel("Description:", lx, y + 5);
 
+                // ── FIX: Fixed Height at tinanggal ang ContentsResized ──
                 txtDesc = new RichTextBox
                 {
                     Location = new Point(lx, y + 24),
                     Width = scrollContent.Width - lx * 2,
-                    Height = 76,
+                    Height = 120, // Fixed height na siya
                     Font = new Font("Segoe UI", 9F),
                     BackColor = card,
                     ForeColor = text,
                     BorderStyle = BorderStyle.FixedSingle,
-                    ScrollBars = RichTextBoxScrollBars.Vertical,
+                    ScrollBars = RichTextBoxScrollBars.Vertical, // Magkaka-scrollbar sa loob kapag humaba
                     WordWrap = true
                 };
-                txtDesc.ContentsResized += (s, e) =>
-                {
-                    int nh = Math.Min(200, Math.Max(76, e.NewRectangle.Height + 10));
-                    if (txtDesc.Height != nh) txtDesc.Height = nh;
-                };
+
                 scrollContent.Controls.Add(txtDesc);
                 y += 24 + txtDesc.Height + 16;
 
@@ -2177,7 +2191,8 @@ namespace DriveAndGo_Admin.Panels
                     BackColor = card,
                     ForeColor = text,
                     BorderStyle = BorderStyle.FixedSingle,
-                    PlaceholderText = "https://… (auto-filled from first photo)"
+                    // ── FIX: Pinalitan ang placeholder para malinaw na hindi siya auto-fill ──
+                    PlaceholderText = "https://… (Upload or paste icon URL here)"
                 };
                 scrollContent.Controls.Add(txtMapIcon);
 
@@ -2259,11 +2274,11 @@ namespace DriveAndGo_Admin.Panels
                         ? Convert.ToDecimal(_existing["rate_with_driver"]).ToString("0.00")
                         : "";
                     txtSeats.Text = _existing["seat_capacity"]?.ToString() ?? "5";
-                    txtTrans.Text = _existing["transmission"]?.ToString() ?? "Automatic";
                     txtDesc.Text = _existing["description"]?.ToString() ?? "";
                     txtMapIcon.Text = _existing["model_3d_url"]?.ToString() ?? "";
 
                     SelectCombo(cboType, _existing["type"]?.ToString() ?? "");
+                    SelectCombo(cboTransmission, _existing["transmission"]?.ToString() ?? "Automatic");
                     SelectCombo(cboStatus, _existing["status"]?.ToString() ?? "");
 
                     foreach (var url in FleetPanel.DeserializeMediaSources(_existing["photo_url"]?.ToString() ?? ""))
@@ -2363,19 +2378,11 @@ namespace DriveAndGo_Admin.Panels
                         {
                             lblUpload.Text = $"✅ Uploaded ({_photoUrls.Count}/{FleetPanel.MaxVehicleMediaItems})";
                             lblUpload.ForeColor = Color.FromArgb(34, 197, 94);
-
-                            if (FleetPanel.DetectMediaKind(uploadedUrl) == FleetPanel.VehicleMediaKind.Image &&
-                                string.IsNullOrWhiteSpace(txtMapIcon.Text))
-                                txtMapIcon.Text = uploadedUrl;
                         }
                         else
                         {
                             lblUpload.Text = "⚠ Upload failed — queued locally, will retry on save";
                             lblUpload.ForeColor = Color.FromArgb(245, 158, 11);
-
-                            if (FleetPanel.DetectMediaKind(filePath) == FleetPanel.VehicleMediaKind.Image &&
-                                string.IsNullOrWhiteSpace(txtMapIcon.Text))
-                                txtMapIcon.Text = filePath;
                         }
                     }
                 }
@@ -2546,21 +2553,42 @@ namespace DriveAndGo_Admin.Panels
 
             private async void OnSave(object s, EventArgs e)
             {
-                if (string.IsNullOrWhiteSpace(txtBrand.Text) || string.IsNullOrWhiteSpace(txtPlate.Text))
+                if (string.IsNullOrWhiteSpace(txtBrand.Text))
                 {
-                    MessageBox.Show("Brand and Plate No. are required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show("Brand is required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    txtBrand.Focus();
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(txtModel.Text))
+                {
+                    MessageBox.Show("Model is required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    txtModel.Focus();
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(txtPlate.Text))
+                {
+                    MessageBox.Show("Plate No. is required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    txtPlate.Focus();
                     return;
                 }
 
                 if (!decimal.TryParse(txtRate.Text, out decimal rate))
                 {
                     MessageBox.Show("Invalid daily rate — enter a number.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    txtRate.Focus();
                     return;
                 }
 
-                if (!decimal.TryParse(txtRateDriver.Text, out decimal rateDriver)) rateDriver = 0;
-                if (!int.TryParse(txtSeats.Text, out int seats)) seats = 5;
-                if (!int.TryParse(txtCC.Text, out int cc)) cc = 0;
+                if (!decimal.TryParse(txtRateDriver.Text, out decimal rateDriver))
+                    rateDriver = 0;
+
+                if (!int.TryParse(txtSeats.Text, out int seats))
+                    seats = 5;
+
+                if (!int.TryParse(txtCC.Text, out int cc))
+                    cc = 0;
 
                 btnSave.Enabled = false;
                 btnAddPhoto.Enabled = false;
@@ -2586,7 +2614,7 @@ namespace DriveAndGo_Admin.Panels
                         ? @"INSERT INTO vehicles
                     (brand,model,plate_no,type,cc,rate_per_day,rate_with_driver,
                      status,photo_url,description,seat_capacity,transmission,model_3d_url)
-                   VALUES
+                    VALUES
                     (@brand,@model,@plate,@type,@cc,@rate,@rateD,
                      @status,@photo,@desc,@seats,@trans,@mapicon)"
                         : @"UPDATE vehicles SET
@@ -2608,7 +2636,7 @@ namespace DriveAndGo_Admin.Panels
                     cmd.Parameters.AddWithValue("@photo", string.IsNullOrWhiteSpace(photoJson) ? DBNull.Value : photoJson);
                     cmd.Parameters.AddWithValue("@desc", txtDesc.Text.Trim());
                     cmd.Parameters.AddWithValue("@seats", seats);
-                    cmd.Parameters.AddWithValue("@trans", string.IsNullOrWhiteSpace(txtTrans.Text) ? "Automatic" : txtTrans.Text.Trim());
+                    cmd.Parameters.AddWithValue("@trans", cboTransmission.SelectedItem?.ToString() ?? "Automatic");
                     cmd.Parameters.AddWithValue("@mapicon", string.IsNullOrWhiteSpace(mapIcon) ? DBNull.Value : mapIcon);
 
                     if (_existing != null)
@@ -2632,7 +2660,6 @@ namespace DriveAndGo_Admin.Panels
                     }
                 }
             }
-
 
             private async Task<string> UploadImageToApiAsync(string path, bool isMapIcon = false)
             {
@@ -2764,12 +2791,6 @@ namespace DriveAndGo_Admin.Panels
             private async Task<(bool ok, string value)> ResolveMapIconForSaveAsync(IReadOnlyList<string> resolvedMedia)
             {
                 string mapIcon = FleetPanel.NormalizeMediaSource(txtMapIcon.Text);
-
-                if (string.IsNullOrWhiteSpace(mapIcon))
-                {
-                    mapIcon = resolvedMedia.FirstOrDefault(m =>
-                        FleetPanel.DetectMediaKind(m) == FleetPanel.VehicleMediaKind.Image) ?? "";
-                }
 
                 if (string.IsNullOrWhiteSpace(mapIcon))
                     return (true, "");

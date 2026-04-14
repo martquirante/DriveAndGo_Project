@@ -1,4 +1,4 @@
-namespace DriveAndGo_API.Services
+﻿namespace DriveAndGo_API.Services
 {
     public sealed class FirebaseBridgeOptions
     {

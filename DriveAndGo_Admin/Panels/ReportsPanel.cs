@@ -1,5 +1,4 @@
 ﻿#nullable disable
-using DriveAndGo_Admin.Helpers;
 using MySql.Data.MySqlClient;
 using System;
 using System.Data;
@@ -7,6 +6,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Windows.Forms;
 
 // iText7 PDF Libraries
@@ -22,6 +22,7 @@ using Button = System.Windows.Forms.Button;
 using ComboBox = System.Windows.Forms.ComboBox;
 using WinColor = System.Drawing.Color;
 using TextAlignment = iText.Layout.Properties.TextAlignment;
+using DriveAndGo_Admin.Helpers;
 
 namespace DriveAndGo_Admin.Panels
 {
@@ -46,7 +47,7 @@ namespace DriveAndGo_Admin.Panels
         private Panel topBar;
         private ComboBox cboPeriod;
         private Button btnExportPDF, btnExportCSV;
-        private Label lblTotalRev, lblTotalTx, lblPending;
+        private Label lblTotalRev, lblPaidRentals, lblPending;
         private Label lblInsight;
 
         private Panel pnlMainContent;
@@ -59,31 +60,65 @@ namespace DriveAndGo_Admin.Panels
 
         public ReportsPanel()
         {
-            this.Dock = DockStyle.Fill;
-            this.DoubleBuffered = true;
-            this.BackColor = ColBg;
+            Dock = DockStyle.Fill;
+            DoubleBuffered = true;
+            BackColor = ColBg;
             ThemeManager.ThemeChanged += OnThemeChanged;
 
             BuildUI();
-            this.Load += (s, e) => LoadReportData();
+            Load += (s, e) => LoadReportData();
         }
 
         // ══ BUILD UI ══
         private void BuildUI()
         {
-            // ── TOP BAR ──
-            topBar = new Panel { Dock = DockStyle.Top, Height = 100, BackColor = WinColor.Transparent, Padding = new Padding(16, 12, 16, 8) };
+            topBar = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 100,
+                BackColor = WinColor.Transparent,
+                Padding = new Padding(16, 12, 16, 8)
+            };
 
-            var lblTitle = new Label { Text = "Sales & Analytics Report", Font = new Font("Segoe UI", 18F, FontStyle.Bold), ForeColor = ColText, AutoSize = true, Location = new Point(16, 12), BackColor = WinColor.Transparent };
+            var lblTitle = new Label
+            {
+                Text = "Sales & Analytics Report",
+                Font = new Font("Segoe UI", 18F, FontStyle.Bold),
+                ForeColor = ColText,
+                AutoSize = true,
+                Location = new Point(16, 12),
+                BackColor = WinColor.Transparent
+            };
 
-            cboPeriod = new ComboBox { Size = new Size(150, 30), Location = new Point(16, 56), DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 10F), BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White, ForeColor = ColText };
+            cboPeriod = new ComboBox
+            {
+                Size = new Size(150, 30),
+                Location = new Point(16, 56),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = new Font("Segoe UI", 10F),
+                BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White,
+                ForeColor = ColText
+            };
             cboPeriod.Items.AddRange(new object[] { "Daily", "Weekly", "Monthly", "Yearly" });
-            cboPeriod.SelectedIndex = 2; // Default Monthly
-            cboPeriod.SelectedIndexChanged += (s, e) => { _currentPeriod = cboPeriod.SelectedItem.ToString(); LoadReportData(); };
+            cboPeriod.SelectedIndex = 2;
+            cboPeriod.SelectedIndexChanged += (s, e) =>
+            {
+                _currentPeriod = cboPeriod.SelectedItem?.ToString() ?? "Monthly";
+                LoadReportData();
+            };
 
             btnExportPDF = CreateBtn("📄 Export PDF", ColRed, 180, 54, 130);
-            btnExportCSV = CreateBtn("📊 Export Excel (CSV)", ColGreen, 320, 54, 160);
-            lblInsight = new Label { Text = "Loading analytics…", Font = new Font("Segoe UI", 8.5F), ForeColor = ColSub, AutoSize = true, Location = new Point(500, 60), BackColor = WinColor.Transparent };
+            btnExportCSV = CreateBtn("📊 Export Excel", ColGreen, 320, 54, 150);
+
+            lblInsight = new Label
+            {
+                Text = "Loading analytics…",
+                Font = new Font("Segoe UI", 8.5F),
+                ForeColor = ColSub,
+                AutoSize = true,
+                Location = new Point(500, 60),
+                BackColor = WinColor.Transparent
+            };
 
             btnExportPDF.Click += OnExportPDF;
             btnExportCSV.Click += OnExportCSV;
@@ -94,49 +129,86 @@ namespace DriveAndGo_Admin.Panels
             topBar.Controls.Add(btnExportCSV);
             topBar.Controls.Add(lblInsight);
 
-            // ── MAIN CONTENT (Split between Chart and Table) ──
-            pnlMainContent = new Panel { Dock = DockStyle.Fill, Padding = new Padding(16) };
+            pnlMainContent = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(16)
+            };
 
-            // ── STATS SUMMARY CARDS (Top of Main Content) ──
-            Panel pnlStats = new Panel { Dock = DockStyle.Top, Height = 100, BackColor = WinColor.Transparent };
+            Panel pnlStats = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 100,
+                BackColor = WinColor.Transparent
+            };
+
             lblTotalRev = CreateStatCard(pnlStats, "TOTAL REVENUE", "₱ 0.00", ColGreen, 0);
-            lblTotalTx = CreateStatCard(pnlStats, "SUCCESSFUL TRANSACTIONS", "0", ColBlue, 1);
-            lblPending = CreateStatCard(pnlStats, "PENDING PAYMENTS", "0", ColYellow, 2);
+            lblPaidRentals = CreateStatCard(pnlStats, "PAID RENTALS", "0", ColBlue, 1);
+            lblPending = CreateStatCard(pnlStats, "PENDING PAYMENTS", "₱ 0.00", ColYellow, 2);
 
-            // ── CHART ──
-            pnlChartContainer = new Panel { Dock = DockStyle.Top, Height = 300, BackColor = WinColor.Transparent };
+            pnlChartContainer = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 300,
+                BackColor = WinColor.Transparent
+            };
             pnlChartContainer.Paint += DrawCustomBarChart;
 
-            // ── GRID ──
-            dgvReport = new DataGridView { Dock = DockStyle.Fill, Margin = new Padding(0, 16, 0, 0) };
+            dgvReport = new DataGridView
+            {
+                Dock = DockStyle.Fill,
+                Margin = new Padding(0, 16, 0, 0)
+            };
             StyleGrid(dgvReport);
 
             pnlMainContent.Controls.Add(dgvReport);
-
-            // Add a spacer between chart and grid
-            Panel spacer = new Panel { Dock = DockStyle.Top, Height = 16 };
-            pnlMainContent.Controls.Add(spacer);
-
+            pnlMainContent.Controls.Add(new Panel { Dock = DockStyle.Top, Height = 16 });
             pnlMainContent.Controls.Add(pnlChartContainer);
             pnlMainContent.Controls.Add(pnlStats);
 
-            this.Controls.Add(pnlMainContent);
-            this.Controls.Add(topBar);
+            Controls.Add(pnlMainContent);
+            Controls.Add(topBar);
         }
 
         private Label CreateStatCard(Panel parent, string title, string value, WinColor accent, int index)
         {
-            Panel card = new Panel { Size = new Size(250, 80), Location = new Point(index * 266, 10), BackColor = WinColor.Transparent };
-            card.Paint += (s, e) => {
-                var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias;
+            Panel card = new Panel
+            {
+                Size = new Size(250, 80),
+                Location = new Point(index * 266, 10),
+                BackColor = WinColor.Transparent
+            };
+
+            card.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
                 using var path = RoundRect(new Rectangle(0, 0, card.Width - 1, card.Height - 1), 8);
                 g.FillPath(new SolidBrush(ThemeManager.IsDarkMode ? WinColor.FromArgb(22, 22, 35) : WinColor.White), path);
                 g.FillRectangle(new SolidBrush(accent), 0, card.Height - 4, card.Width, 4);
                 g.DrawPath(new Pen(ColBorder, 1), path);
             };
 
-            Label lblTitle = new Label { Text = title, Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = ColSub, AutoSize = true, Location = new Point(12, 12), BackColor = WinColor.Transparent };
-            Label lblVal = new Label { Text = value, Font = new Font("Segoe UI", 16F, FontStyle.Bold), ForeColor = ColText, AutoSize = false, Size = new Size(226, 30), Location = new Point(12, 32), BackColor = WinColor.Transparent };
+            Label lblTitle = new Label
+            {
+                Text = title,
+                Font = new Font("Segoe UI", 8F, FontStyle.Bold),
+                ForeColor = ColSub,
+                AutoSize = true,
+                Location = new Point(12, 12),
+                BackColor = WinColor.Transparent
+            };
+
+            Label lblVal = new Label
+            {
+                Text = value,
+                Font = new Font("Segoe UI", 16F, FontStyle.Bold),
+                ForeColor = ColText,
+                AutoSize = false,
+                Size = new Size(226, 30),
+                Location = new Point(12, 32),
+                BackColor = WinColor.Transparent
+            };
 
             card.Controls.Add(lblTitle);
             card.Controls.Add(lblVal);
@@ -148,128 +220,154 @@ namespace DriveAndGo_Admin.Panels
         // ══ THEME SYNC ══
         private void OnThemeChanged(object s, EventArgs e)
         {
-            this.BackColor = ColBg;
+            BackColor = ColBg;
             topBar.BackColor = ThemeManager.IsDarkMode ? ColBg : WinColor.FromArgb(250, 250, 255);
             cboPeriod.BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White;
             cboPeriod.ForeColor = ColText;
 
-            foreach (Control c in topBar.Controls) { if (c is Label l) l.ForeColor = ColText; }
+            foreach (Control c in topBar.Controls)
+            {
+                if (c is Label l)
+                    l.ForeColor = (l == lblInsight) ? ColSub : ColText;
+            }
+
             foreach (Control p in pnlMainContent.Controls)
             {
-                if (p is Panel pnl) { pnl.Invalidate(true); }
+                if (p is Panel pnl)
+                    pnl.Invalidate(true);
             }
 
             StyleGrid(dgvReport);
-            this.Invalidate(true);
+            Invalidate(true);
         }
 
         // ══ DATABASE LOGIC ══
         private void LoadReportData()
         {
             _reportData = new DataTable();
-            int repairedTransactions = 0;
 
-            // Format format date grouping based on selected period
-            string dateGroupFormat = "";
-            string displayFormat = "";
+            string groupExpr;
+            string labelExpr;
+
+            // Mas accurate kung booking/payment timeline ay based sa created_at.
+            // Fallback sa start_date kung null ang created_at.
+            string baseDateExpr = "COALESCE(created_at, start_date)";
 
             switch (_currentPeriod)
             {
                 case "Daily":
-                    dateGroupFormat = "DATE(paid_at)";
-                    displayFormat = "DATE_FORMAT(paid_at, '%b %d, %Y')";
+                    groupExpr = $"DATE({baseDateExpr})";
+                    labelExpr = $"DATE_FORMAT({baseDateExpr}, '%b %d, %Y')";
                     break;
+
                 case "Weekly":
-                    dateGroupFormat = "YEARWEEK(paid_at)";
-                    displayFormat = "CONCAT('Week ', WEEK(paid_at), ', ', YEAR(paid_at))";
+                    groupExpr = $"YEARWEEK({baseDateExpr}, 1)";
+                    labelExpr = $"CONCAT('Week ', WEEK({baseDateExpr}, 1), ', ', YEAR({baseDateExpr}))";
                     break;
+
                 case "Monthly":
-                    dateGroupFormat = "DATE_FORMAT(paid_at, '%Y-%m')";
-                    displayFormat = "DATE_FORMAT(paid_at, '%M %Y')";
+                    groupExpr = $"DATE_FORMAT({baseDateExpr}, '%Y-%m')";
+                    labelExpr = $"DATE_FORMAT({baseDateExpr}, '%M %Y')";
                     break;
-                case "Yearly":
-                    dateGroupFormat = "YEAR(paid_at)";
-                    displayFormat = "YEAR(paid_at)";
+
+                default:
+                    groupExpr = $"YEAR({baseDateExpr})";
+                    labelExpr = $"YEAR({baseDateExpr})";
                     break;
             }
 
             try
             {
-                repairedTransactions = AdminDataHelper.ReconcilePaidRentalTransactions(_connStr);
-
                 using var conn = new MySqlConnection(_connStr);
                 conn.Open();
 
                 string query = $@"
-                    SELECT 
-                        {dateGroupFormat} AS group_key,
-                        {displayFormat} AS period_label,
-                        COUNT(*) AS total_transactions,
-                        COUNT(DISTINCT CASE WHEN LOWER(COALESCE(status,'')) IN ('confirmed','paid') THEN rental_id END) AS paid_rentals,
-                        SUM(CASE WHEN LOWER(COALESCE(status,'')) IN ('confirmed','paid') THEN amount ELSE 0 END) AS total_revenue,
-                        AVG(CASE WHEN LOWER(COALESCE(status,'')) IN ('confirmed','paid') THEN amount END) AS avg_ticket,
-                        SUM(CASE WHEN LOWER(COALESCE(status,'')) = 'pending' THEN amount ELSE 0 END) AS pending_amount
-                    FROM transactions
+                    SELECT
+                        {groupExpr} AS group_key,
+                        {labelExpr} AS period_label,
+                        COUNT(*) AS total_rentals,
+                        SUM(CASE WHEN LOWER(TRIM(COALESCE(payment_status,''))) = 'paid' THEN 1 ELSE 0 END) AS paid_rentals,
+                        COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(payment_status,''))) = 'paid' THEN COALESCE(total_amount,0) ELSE 0 END), 0) AS total_revenue,
+                        COALESCE(AVG(CASE WHEN LOWER(TRIM(COALESCE(payment_status,''))) = 'paid' THEN COALESCE(total_amount,0) END), 0) AS avg_ticket,
+                        COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(payment_status,''))) <> 'paid' THEN COALESCE(total_amount,0) ELSE 0 END), 0) AS pending_amount
+                    FROM rentals
                     GROUP BY group_key, period_label
                     ORDER BY group_key DESC
-                    LIMIT 30"; // Limit to last 30 periods for performance
+                    LIMIT 30;";
 
                 using var adapter = new MySqlDataAdapter(new MySqlCommand(query, conn));
                 adapter.Fill(_reportData);
 
+                EnsureReportSchema();
                 UpdateDashboard();
-                lblInsight.Text = repairedTransactions > 0
-                    ? $"Repaired {repairedTransactions} missing payment log(s) before loading {_currentPeriod.ToLower()} analytics."
-                    : $"{_currentPeriod} analytics loaded from MySQL and synced payment records.";
+
+                int rowCount = _reportData.Rows.Count;
+                lblInsight.Text = rowCount > 0
+                    ? $"{_currentPeriod} analytics loaded from rentals table ({rowCount} period(s))."
+                    : $"No {_currentPeriod.ToLower()} analytics available yet from rentals.";
             }
             catch (Exception ex)
             {
-                _reportData.Columns.Clear();
-                _reportData.Columns.Add("period_label", typeof(string));
-                _reportData.Columns.Add("total_transactions", typeof(int));
-                _reportData.Columns.Add("paid_rentals", typeof(int));
-                _reportData.Columns.Add("total_revenue", typeof(decimal));
-                _reportData.Columns.Add("avg_ticket", typeof(decimal));
-                _reportData.Columns.Add("pending_amount", typeof(decimal));
+                BuildEmptyReportTable();
                 UpdateDashboard();
-                lblInsight.Text = "Analytics load failed. Check the database connection and payment table state.";
+                lblInsight.Text = "Analytics load failed. Check the database connection and rentals table state.";
                 MessageBox.Show("Could not load analytics.\n" + ex.Message, "Reports Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
+        private void EnsureReportSchema()
+        {
+            if (!_reportData.Columns.Contains("period_label")) _reportData.Columns.Add("period_label", typeof(string));
+            if (!_reportData.Columns.Contains("total_rentals")) _reportData.Columns.Add("total_rentals", typeof(int));
+            if (!_reportData.Columns.Contains("paid_rentals")) _reportData.Columns.Add("paid_rentals", typeof(int));
+            if (!_reportData.Columns.Contains("total_revenue")) _reportData.Columns.Add("total_revenue", typeof(decimal));
+            if (!_reportData.Columns.Contains("avg_ticket")) _reportData.Columns.Add("avg_ticket", typeof(decimal));
+            if (!_reportData.Columns.Contains("pending_amount")) _reportData.Columns.Add("pending_amount", typeof(decimal));
+        }
+
+        private void BuildEmptyReportTable()
+        {
+            _reportData = new DataTable();
+            _reportData.Columns.Add("period_label", typeof(string));
+            _reportData.Columns.Add("total_rentals", typeof(int));
+            _reportData.Columns.Add("paid_rentals", typeof(int));
+            _reportData.Columns.Add("total_revenue", typeof(decimal));
+            _reportData.Columns.Add("avg_ticket", typeof(decimal));
+            _reportData.Columns.Add("pending_amount", typeof(decimal));
+        }
+
         private void UpdateDashboard()
         {
-            // 1. Update Grid
             dgvReport.DataSource = null;
             dgvReport.Columns.Clear();
 
             var display = new DataTable();
             display.Columns.Add("Period", typeof(string));
-            display.Columns.Add("Transactions", typeof(int));
+            display.Columns.Add("Total Rentals", typeof(int));
             display.Columns.Add("Paid Rentals", typeof(int));
             display.Columns.Add("Avg Ticket", typeof(string));
             display.Columns.Add("Revenue", typeof(string));
             display.Columns.Add("Pending", typeof(string));
 
             decimal grandTotalRev = 0;
-            int grandTotalTx = 0;
+            int grandPaidRentals = 0;
             decimal grandTotalPending = 0;
 
             foreach (DataRow row in _reportData.Rows)
             {
                 decimal rev = row["total_revenue"] != DBNull.Value ? Convert.ToDecimal(row["total_revenue"]) : 0;
                 decimal pen = row["pending_amount"] != DBNull.Value ? Convert.ToDecimal(row["pending_amount"]) : 0;
-                int txs = row["total_transactions"] != DBNull.Value ? Convert.ToInt32(row["total_transactions"]) : 0;
-                int paidRentals = row.Table.Columns.Contains("paid_rentals") && row["paid_rentals"] != DBNull.Value ? Convert.ToInt32(row["paid_rentals"]) : 0;
-                decimal avgTicket = row.Table.Columns.Contains("avg_ticket") && row["avg_ticket"] != DBNull.Value ? Convert.ToDecimal(row["avg_ticket"]) : 0;
+                int totalRentals = row["total_rentals"] != DBNull.Value ? Convert.ToInt32(row["total_rentals"]) : 0;
+                int paidRentals = row["paid_rentals"] != DBNull.Value ? Convert.ToInt32(row["paid_rentals"]) : 0;
+                decimal avgTicket = row["avg_ticket"] != DBNull.Value ? Convert.ToDecimal(row["avg_ticket"]) : 0;
 
                 grandTotalRev += rev;
-                grandTotalTx += txs;
+                grandPaidRentals += paidRentals;
                 grandTotalPending += pen;
 
                 display.Rows.Add(
-                    row["period_label"].ToString(),
-                    txs,
+                    row["period_label"]?.ToString() ?? "",
+                    totalRentals,
                     paidRentals,
                     $"₱ {avgTicket:N2}",
                     $"₱ {rev:N2}",
@@ -282,29 +380,26 @@ namespace DriveAndGo_Admin.Panels
             if (dgvReport.Columns.Count >= 6)
             {
                 dgvReport.Columns[0].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
-                dgvReport.Columns[1].Width = 110;
-                dgvReport.Columns[2].Width = 110;
+                dgvReport.Columns[1].Width = 120;
+                dgvReport.Columns[2].Width = 120;
                 dgvReport.Columns[3].Width = 130;
                 dgvReport.Columns[4].Width = 160;
                 dgvReport.Columns[5].Width = 160;
             }
 
-            // 2. Update Stats Cards
             lblTotalRev.Text = $"₱ {grandTotalRev:N2}";
-            lblTotalTx.Text = grandTotalTx.ToString();
+            lblPaidRentals.Text = grandPaidRentals.ToString();
             lblPending.Text = $"₱ {grandTotalPending:N2}";
 
-            // 3. Trigger Chart Redraw
             pnlChartContainer.Invalidate();
         }
 
-        // ══ CUSTOM CHART DRAWING (Modern Bar Chart) ══
+        // ══ CUSTOM CHART DRAWING ══
         private void DrawCustomBarChart(object sender, PaintEventArgs e)
         {
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
-            // Background
             var rect = new Rectangle(0, 0, pnlChartContainer.Width - 1, pnlChartContainer.Height - 1);
             using var path = RoundRect(rect, 12);
             g.FillPath(new SolidBrush(ThemeManager.IsDarkMode ? WinColor.FromArgb(22, 22, 35) : WinColor.White), path);
@@ -312,40 +407,45 @@ namespace DriveAndGo_Admin.Panels
 
             if (_reportData.Rows.Count == 0)
             {
-                TextRenderer.DrawText(g, "No data available for the selected period.", new Font("Segoe UI", 10F), rect, ColSub, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                TextRenderer.DrawText(
+                    g,
+                    "No data available for the selected period.",
+                    new Font("Segoe UI", 10F),
+                    rect,
+                    ColSub,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                );
                 return;
             }
 
-            // Title
             g.DrawString($"Revenue Trend ({_currentPeriod})", new Font("Segoe UI", 12F, FontStyle.Bold), new SolidBrush(ColText), new PointF(20, 15));
 
-            // Setup Chart Bounds
             int paddingL = 60, paddingR = 20, paddingT = 60, paddingB = 40;
             int chartW = pnlChartContainer.Width - paddingL - paddingR;
             int chartH = pnlChartContainer.Height - paddingT - paddingB;
 
-            // Find Max Value for Y-Axis Scale
-            decimal maxVal = 0;
-            var rows = _reportData.AsEnumerable().Reverse().ToArray(); // Chronological order (old to new)
+            var rows = _reportData.AsEnumerable().Reverse().ToArray();
 
-            foreach (var row in rows)
-            {
-                decimal v = row["total_revenue"] != DBNull.Value ? Convert.ToDecimal(row["total_revenue"]) : 0;
-                if (v > maxVal) maxVal = v;
-            }
+            decimal maxVal = rows
+                .Select(r => r["total_revenue"] != DBNull.Value ? Convert.ToDecimal(r["total_revenue"]) : 0m)
+                .DefaultIfEmpty(0m)
+                .Max();
 
-            if (maxVal == 0) maxVal = 1000; // default if 0
+            if (maxVal <= 0)
+                maxVal = 1000;
 
-            // Round up maxVal to nearest beautiful number (e.g. 4300 -> 5000)
             double exponent = Math.Floor(Math.Log10((double)maxVal));
             double fraction = (double)maxVal / Math.Pow(10, exponent);
             double niceFraction = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10;
             decimal niceMax = (decimal)(niceFraction * Math.Pow(10, exponent));
 
-            // Draw Y-Axis lines (4 grid lines)
-            using Pen gridPen = new Pen(ThemeManager.IsDarkMode ? WinColor.FromArgb(40, 40, 55) : WinColor.FromArgb(230, 230, 240), 1) { DashStyle = DashStyle.Dash };
+            using Pen gridPen = new Pen(
+                ThemeManager.IsDarkMode ? WinColor.FromArgb(40, 40, 55) : WinColor.FromArgb(230, 230, 240), 1)
+            { DashStyle = DashStyle.Dash };
+
             using SolidBrush textBrush = new SolidBrush(ColSub);
-            Font labelFont = new Font("Segoe UI", 8F);
+            using SolidBrush valueBrush = new SolidBrush(ColText);
+            using Font labelFont = new Font("Segoe UI", 8F);
 
             for (int i = 0; i <= 4; i++)
             {
@@ -357,30 +457,39 @@ namespace DriveAndGo_Admin.Panels
                 g.DrawString(yStr, labelFont, textBrush, new PointF(paddingL - 40, y - 6));
             }
 
-            // Draw Bars
             int barCount = rows.Length;
+            if (barCount == 0) return;
+
             float barSpace = chartW / (float)barCount;
-            float barWidth = barSpace * 0.6f;
-            if (barWidth > 60) barWidth = 60; // Max width cap
+            float barWidth = Math.Min(barSpace * 0.6f, 60);
 
             for (int i = 0; i < barCount; i++)
             {
                 var r = rows[i];
                 decimal val = r["total_revenue"] != DBNull.Value ? Convert.ToDecimal(r["total_revenue"]) : 0;
 
-                float h = (float)(val / niceMax) * chartH;
+                float h = niceMax > 0 ? (float)(val / niceMax) * chartH : 0;
                 float x = paddingL + (i * barSpace) + (barSpace - barWidth) / 2;
                 float y = paddingT + chartH - h;
 
-                // Create Gradient Bar
                 RectangleF barRect = new RectangleF(x, y, barWidth, h);
+
                 if (h > 0)
                 {
-                    using LinearGradientBrush brush = new LinearGradientBrush(barRect, ColAccent, WinColor.FromArgb(255, ColAccent.R + 40 > 255 ? 255 : ColAccent.R + 40, ColAccent.G + 40, ColAccent.B), LinearGradientMode.Vertical);
+                    int rVal = Math.Min(255, ColAccent.R + 40);
+                    int gVal = Math.Min(255, ColAccent.G + 40);
+                    int bVal = Math.Min(255, ColAccent.B + 40);
 
-                    // Rounded top corners for bars
+                    using LinearGradientBrush brush = new LinearGradientBrush(
+                        barRect,
+                        ColAccent,
+                        WinColor.FromArgb(255, rVal, gVal, bVal),
+                        LinearGradientMode.Vertical
+                    );
+
                     using GraphicsPath barPath = new GraphicsPath();
                     int rad = 4;
+
                     if (h > rad)
                     {
                         barPath.AddArc(x, y, rad * 2, rad * 2, 180, 90);
@@ -395,27 +504,26 @@ namespace DriveAndGo_Admin.Panels
                         g.FillRectangle(brush, barRect);
                     }
 
-                    // Hover tooltip simulation (just draw value on top if space allows)
                     if (barCount <= 15)
                     {
                         string vStr = val >= 1000 ? (val / 1000).ToString("0.#") + "k" : val.ToString("0");
                         var size = g.MeasureString(vStr, labelFont);
-                        g.DrawString(vStr, labelFont, new SolidBrush(ColText), new PointF(x + (barWidth - size.Width) / 2, y - 16));
+                        g.DrawString(vStr, labelFont, valueBrush, new PointF(x + (barWidth - size.Width) / 2, y - 16));
                     }
                 }
 
-                // X-Axis Label (Show only a few if too many bars)
-                if (barCount <= 12 || i % (barCount / 6) == 0)
+                int labelStep = Math.Max(1, barCount / 6);
+                if (barCount <= 12 || i % labelStep == 0)
                 {
-                    string xLbl = r["period_label"].ToString();
-                    if (xLbl.Length > 8) xLbl = xLbl.Substring(0, 8) + "..";
+                    string xLbl = r["period_label"]?.ToString() ?? "";
+                    if (xLbl.Length > 10) xLbl = xLbl.Substring(0, 10) + "..";
                     var xSize = g.MeasureString(xLbl, labelFont);
                     g.DrawString(xLbl, labelFont, textBrush, new PointF(x + (barWidth - xSize.Width) / 2, paddingT + chartH + 8));
                 }
             }
         }
 
-        // ══ EXPORT TO CSV (EXCEL) ══
+        // ══ EXPORT TO EXCEL-FRIENDLY XLS ══
         private void OnExportCSV(object s, EventArgs e)
         {
             if (_reportData == null || _reportData.Rows.Count == 0)
@@ -424,23 +532,139 @@ namespace DriveAndGo_Admin.Panels
                 return;
             }
 
-            using SaveFileDialog sfd = new SaveFileDialog { Filter = "CSV files (*.csv)|*.csv", FileName = $"Sales_Report_{_currentPeriod}_{DateTime.Now:yyyyMMdd}.csv" };
+            using SaveFileDialog sfd = new SaveFileDialog
+            {
+                Filter = "Excel files (*.xls)|*.xls",
+                FileName = $"DriveAndGo_Sales_Report_{_currentPeriod}_{DateTime.Now:yyyyMMdd}.xls"
+            };
+
             if (sfd.ShowDialog() == DialogResult.OK)
             {
                 try
                 {
-                    using StreamWriter sw = new StreamWriter(sfd.FileName);
-                    sw.WriteLine("Period,Total Transactions,Paid Rentals,Average Ticket,Total Revenue,Pending Amount");
-
-                    foreach (DataRow row in _reportData.Rows)
-                    {
-                        sw.WriteLine($"{row["period_label"]},{row["total_transactions"]},{row["paid_rentals"]},{row["avg_ticket"]},{row["total_revenue"]},{row["pending_amount"]}");
-                    }
-
-                    MessageBox.Show("Excel/CSV export successful!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    File.WriteAllText(sfd.FileName, BuildExcelReportHtml(), Encoding.UTF8);
+                    MessageBox.Show("Excel export successful!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
-                catch (Exception ex) { MessageBox.Show("Export error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Export error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
+        }
+
+        private string BuildExcelReportHtml()
+        {
+            decimal totalRevenue = 0;
+            decimal totalPending = 0;
+            int totalPaidRentals = 0;
+
+            foreach (DataRow row in _reportData.Rows)
+            {
+                totalRevenue += row["total_revenue"] != DBNull.Value ? Convert.ToDecimal(row["total_revenue"]) : 0;
+                totalPending += row["pending_amount"] != DBNull.Value ? Convert.ToDecimal(row["pending_amount"]) : 0;
+                totalPaidRentals += row["paid_rentals"] != DBNull.Value ? Convert.ToInt32(row["paid_rentals"]) : 0;
+            }
+
+            string logoDataUri = ExportBrandingHelper.GetLogoDataUri();
+            var html = new StringBuilder();
+
+            html.AppendLine("<html xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:x=\"urn:schemas-microsoft-com:office:excel\">");
+            html.AppendLine("<head>");
+            html.AppendLine("<meta charset=\"utf-8\" />");
+            html.AppendLine("<meta name=\"ProgId\" content=\"Excel.Sheet\" />");
+            html.AppendLine("<style>");
+            html.AppendLine("body{font-family:Segoe UI,Arial,sans-serif;background:#f5f6fb;color:#1f2330;margin:24px;}");
+            html.AppendLine("table{border-collapse:collapse;width:100%;}");
+            html.AppendLine(".header td{border:none;vertical-align:middle;}");
+            html.AppendLine(".brand{background:#e65100;color:#fff;padding:16px 18px;}");
+            html.AppendLine(".brand-title{font-size:24px;font-weight:700;letter-spacing:.3px;}");
+            html.AppendLine(".brand-sub{font-size:12px;color:#ffd0b0;}");
+            html.AppendLine(".section-title{font-size:18px;font-weight:700;margin:18px 0 6px 0;}");
+            html.AppendLine(".meta{font-size:11px;color:#667085;margin-bottom:14px;}");
+            html.AppendLine(".summary{margin:10px 0 18px 0;}");
+            html.AppendLine(".summary td{padding:12px;border:1px solid #e6e8f0;background:#fff;}");
+            html.AppendLine(".summary-label{font-size:11px;color:#667085;font-weight:600;text-transform:uppercase;}");
+            html.AppendLine(".summary-value{font-size:18px;color:#1f2330;font-weight:700;}");
+            html.AppendLine(".report th{background:#1f2330;color:#fff;padding:10px;border:1px solid #d9dbe7;font-size:11px;text-transform:uppercase;}");
+            html.AppendLine(".report td{padding:9px;border:1px solid #d9dbe7;font-size:11px;background:#fff;}");
+            html.AppendLine(".report tr:nth-child(even) td{background:#fafbff;}");
+            html.AppendLine(".num{text-align:right;}");
+            html.AppendLine(".center{text-align:center;}");
+            html.AppendLine(".footer{margin-top:18px;font-size:10px;color:#667085;text-align:center;}");
+            html.AppendLine("</style>");
+            html.AppendLine("</head><body>");
+
+            html.AppendLine("<table class=\"header\">");
+            html.AppendLine("<tr>");
+            html.AppendLine("<td style=\"width:92px;padding-right:12px;\">");
+
+            if (!string.IsNullOrWhiteSpace(logoDataUri))
+            {
+                html.Append("<img src=\"")
+                    .Append(logoDataUri)
+                    .AppendLine("\" alt=\"Drive & Go Logo\" style=\"width:72px;height:auto;display:block;\" />");
+            }
+            else
+            {
+                html.AppendLine("<div style=\"width:72px;height:72px;line-height:72px;text-align:center;background:#fff3eb;border:1px solid #ffd3b6;color:#e65100;font-weight:700;font-size:22px;\">DG</div>");
+            }
+
+            html.AppendLine("</td>");
+            html.AppendLine("<td class=\"brand\">");
+            html.AppendLine("<div class=\"brand-title\">DRIVE &amp; GO</div>");
+            html.AppendLine("<div class=\"brand-sub\">Sales &amp; Analytics Report</div>");
+            html.AppendLine("<div class=\"brand-sub\">San Jose del Monte, Bulacan</div>");
+            html.AppendLine("</td>");
+            html.AppendLine("</tr>");
+            html.AppendLine("</table>");
+
+            html.Append("<div class=\"section-title\">")
+                .Append(ExportBrandingHelper.EscapeHtml(_currentPeriod))
+                .AppendLine(" Sales Report</div>");
+
+            html.Append("<div class=\"meta\">Generated on ")
+                .Append(ExportBrandingHelper.EscapeHtml(DateTime.Now.ToString("MMMM dd, yyyy hh:mm tt")))
+                .AppendLine("</div>");
+
+            html.AppendLine("<table class=\"summary\">");
+            html.AppendLine("<tr>");
+            html.AppendLine($"<td><div class=\"summary-label\">Total Revenue</div><div class=\"summary-value\">PHP {totalRevenue:N2}</div></td>");
+            html.AppendLine($"<td><div class=\"summary-label\">Paid Rentals</div><div class=\"summary-value\">{totalPaidRentals:N0}</div></td>");
+            html.AppendLine($"<td><div class=\"summary-label\">Pending Amount</div><div class=\"summary-value\">PHP {totalPending:N2}</div></td>");
+            html.AppendLine("</tr>");
+            html.AppendLine("</table>");
+
+            html.AppendLine("<table class=\"report\">");
+            html.AppendLine("<tr>");
+            html.AppendLine("<th>Period</th>");
+            html.AppendLine("<th>Total Rentals</th>");
+            html.AppendLine("<th>Paid Rentals</th>");
+            html.AppendLine("<th>Average Ticket</th>");
+            html.AppendLine("<th>Revenue (PHP)</th>");
+            html.AppendLine("<th>Pending (PHP)</th>");
+            html.AppendLine("</tr>");
+
+            foreach (DataRow row in _reportData.Rows)
+            {
+                decimal avgTicket = row["avg_ticket"] != DBNull.Value ? Convert.ToDecimal(row["avg_ticket"]) : 0;
+                decimal revenue = row["total_revenue"] != DBNull.Value ? Convert.ToDecimal(row["total_revenue"]) : 0;
+                decimal pending = row["pending_amount"] != DBNull.Value ? Convert.ToDecimal(row["pending_amount"]) : 0;
+
+                html.AppendLine("<tr>");
+                ExportBrandingHelper.AppendExcelCell(html, row["period_label"]?.ToString() ?? string.Empty, string.Empty);
+                ExportBrandingHelper.AppendExcelCell(html, row["total_rentals"]?.ToString() ?? "0", "center");
+                ExportBrandingHelper.AppendExcelCell(html, row["paid_rentals"]?.ToString() ?? "0", "center");
+                ExportBrandingHelper.AppendExcelCell(html, avgTicket.ToString("N2"), "num");
+                ExportBrandingHelper.AppendExcelCell(html, revenue.ToString("N2"), "num");
+                ExportBrandingHelper.AppendExcelCell(html, pending.ToString("N2"), "num");
+                html.AppendLine("</tr>");
+            }
+
+            html.AppendLine("</table>");
+            html.AppendLine("<div class=\"footer\">Drive &amp; Go System Report Export</div>");
+            html.AppendLine("</body></html>");
+
+            return html.ToString();
         }
 
         // ══ EXPORT TO PDF via iText7 ══
@@ -464,7 +688,10 @@ namespace DriveAndGo_Admin.Panels
             try
             {
                 string path = dlg.FileName;
-                using var writer = new PdfWriter(path);
+                var writerProps = new WriterProperties();
+                writerProps.SetCompressionLevel(9);
+
+                using var writer = new PdfWriter(path, writerProps);
                 using var pdf = new PdfDocument(writer);
                 using var doc = new Document(pdf);
 
@@ -475,9 +702,7 @@ namespace DriveAndGo_Admin.Panels
                 var dark = new iText.Kernel.Colors.DeviceRgb(20, 20, 40);
                 var gray = new iText.Kernel.Colors.DeviceRgb(100, 100, 130);
                 var white = iText.Kernel.Colors.ColorConstants.WHITE;
-                var lightBg = new iText.Kernel.Colors.DeviceRgb(248, 248, 252);
 
-                // ── HEADER MAY LOGO ──
                 var headerTable = new iText.Layout.Element.Table(new float[] { 1, 5 }).UseAllAvailableWidth();
 
                 Cell logoCell = new Cell()
@@ -486,9 +711,9 @@ namespace DriveAndGo_Admin.Panels
                     .SetTextAlignment(TextAlignment.CENTER)
                     .SetPaddingTop(10);
 
-                string logoPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "logo.png");
+                string logoPath = ExportBrandingHelper.ResolveLogoPath();
 
-                if (File.Exists(logoPath))
+                if (!string.IsNullOrWhiteSpace(logoPath) && File.Exists(logoPath))
                 {
                     var imgData = ImageDataFactory.Create(logoPath);
                     var logo = new iText.Layout.Element.Image(imgData).SetHeight(40).SetAutoScale(true);
@@ -514,52 +739,75 @@ namespace DriveAndGo_Admin.Panels
                 doc.Add(headerTable);
                 doc.Add(new Paragraph(" "));
 
-                // Title
                 doc.Add(new Paragraph($"{_currentPeriod.ToUpper()} SALES REPORT")
                     .SetFontSize(16).SetFont(fontBold).SetFontColor(dark)
                     .SetTextAlignment(TextAlignment.CENTER));
+
                 doc.Add(new Paragraph($"Generated on: {DateTime.Now:MMMM dd, yyyy hh:mm tt}")
                     .SetFontSize(9).SetFontColor(gray).SetFont(fontNormal)
                     .SetTextAlignment(TextAlignment.CENTER));
+
                 doc.Add(new Paragraph(" "));
 
-                // Data Table
                 var dataTable = new iText.Layout.Element.Table(new float[] { 3, 2, 2, 2, 3, 3 })
-                    .UseAllAvailableWidth().SetMarginBottom(12);
+                    .UseAllAvailableWidth()
+                    .SetMarginBottom(12);
 
-                // Table Headers
-                string[] headers = { "Period", "Transactions", "Paid Rentals", "Avg Ticket", "Revenue (PHP)", "Pending (PHP)" };
+                string[] headers = { "Period", "Total Rentals", "Paid Rentals", "Avg Ticket", "Revenue (PHP)", "Pending (PHP)" };
                 foreach (var h in headers)
                 {
-                    dataTable.AddHeaderCell(new Cell().SetBackgroundColor(dark).SetFontColor(white).SetPadding(6).Add(new Paragraph(h).SetFont(fontBold).SetFontSize(10)));
+                    dataTable.AddHeaderCell(
+                        new Cell()
+                            .SetBackgroundColor(dark)
+                            .SetFontColor(white)
+                            .SetPadding(6)
+                            .Add(new Paragraph(h).SetFont(fontBold).SetFontSize(10))
+                    );
                 }
 
-                // Table Rows
                 decimal totalRev = 0;
+                decimal totalPending = 0;
+                int totalPaidRentals = 0;
+
                 foreach (DataRow row in _reportData.Rows)
                 {
                     decimal rev = row["total_revenue"] != DBNull.Value ? Convert.ToDecimal(row["total_revenue"]) : 0;
-                    decimal avgTicket = row.Table.Columns.Contains("avg_ticket") && row["avg_ticket"] != DBNull.Value ? Convert.ToDecimal(row["avg_ticket"]) : 0;
+                    decimal avgTicket = row["avg_ticket"] != DBNull.Value ? Convert.ToDecimal(row["avg_ticket"]) : 0;
+                    decimal pending = row["pending_amount"] != DBNull.Value ? Convert.ToDecimal(row["pending_amount"]) : 0;
                     totalRev += rev;
+                    totalPending += pending;
+                    totalPaidRentals += row["paid_rentals"] != DBNull.Value ? Convert.ToInt32(row["paid_rentals"]) : 0;
 
-                    dataTable.AddCell(new Cell().SetPadding(5).Add(new Paragraph(row["period_label"].ToString()).SetFont(fontNormal).SetFontSize(9)));
-                    dataTable.AddCell(new Cell().SetPadding(5).SetTextAlignment(TextAlignment.CENTER).Add(new Paragraph(row["total_transactions"].ToString()).SetFont(fontNormal).SetFontSize(9)));
-                    dataTable.AddCell(new Cell().SetPadding(5).SetTextAlignment(TextAlignment.CENTER).Add(new Paragraph(row["paid_rentals"].ToString()).SetFont(fontNormal).SetFontSize(9)));
+                    dataTable.AddCell(new Cell().SetPadding(5).Add(new Paragraph(row["period_label"]?.ToString() ?? "").SetFont(fontNormal).SetFontSize(9)));
+                    dataTable.AddCell(new Cell().SetPadding(5).SetTextAlignment(TextAlignment.CENTER).Add(new Paragraph(row["total_rentals"]?.ToString() ?? "0").SetFont(fontNormal).SetFontSize(9)));
+                    dataTable.AddCell(new Cell().SetPadding(5).SetTextAlignment(TextAlignment.CENTER).Add(new Paragraph(row["paid_rentals"]?.ToString() ?? "0").SetFont(fontNormal).SetFontSize(9)));
                     dataTable.AddCell(new Cell().SetPadding(5).SetTextAlignment(TextAlignment.RIGHT).Add(new Paragraph(avgTicket.ToString("N2")).SetFont(fontNormal).SetFontSize(9)));
                     dataTable.AddCell(new Cell().SetPadding(5).SetTextAlignment(TextAlignment.RIGHT).Add(new Paragraph(rev.ToString("N2")).SetFont(fontNormal).SetFontSize(9)));
-                    dataTable.AddCell(new Cell().SetPadding(5).SetTextAlignment(TextAlignment.RIGHT).Add(new Paragraph(Convert.ToDecimal(row["pending_amount"]).ToString("N2")).SetFont(fontNormal).SetFontSize(9).SetFontColor(new iText.Kernel.Colors.DeviceRgb(200, 50, 50))));
+                    dataTable.AddCell(new Cell().SetPadding(5).SetTextAlignment(TextAlignment.RIGHT).Add(new Paragraph(pending.ToString("N2")).SetFont(fontNormal).SetFontSize(9).SetFontColor(new iText.Kernel.Colors.DeviceRgb(200, 50, 50))));
                 }
+
                 doc.Add(dataTable);
 
-                // Summary
                 doc.Add(new Paragraph($"GRAND TOTAL REVENUE: PHP {totalRev:N2}")
-                    .SetFont(fontBold).SetFontSize(14).SetFontColor(orange)
-                    .SetTextAlignment(TextAlignment.RIGHT).SetMarginTop(10));
+                    .SetFont(fontBold)
+                    .SetFontSize(14)
+                    .SetFontColor(orange)
+                    .SetTextAlignment(TextAlignment.RIGHT)
+                    .SetMarginTop(10));
 
-                // Footer
+                doc.Add(new Paragraph($"TOTAL PAID RENTALS: {totalPaidRentals:N0}    |    TOTAL PENDING AMOUNT: PHP {totalPending:N2}")
+                    .SetFont(fontNormal)
+                    .SetFontSize(10)
+                    .SetFontColor(gray)
+                    .SetTextAlignment(TextAlignment.RIGHT)
+                    .SetMarginTop(4));
+
                 doc.Add(new Paragraph("Drive & Go System - Confidential Report")
-                    .SetFontSize(8).SetFont(fontNormal).SetFontColor(gray)
-                    .SetTextAlignment(TextAlignment.CENTER).SetMarginTop(30));
+                    .SetFontSize(8)
+                    .SetFont(fontNormal)
+                    .SetFontColor(gray)
+                    .SetTextAlignment(TextAlignment.CENTER)
+                    .SetMarginTop(30));
 
                 MessageBox.Show("PDF Report saved successfully!\n" + path, "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = path, UseShellExecute = true });
@@ -574,6 +822,7 @@ namespace DriveAndGo_Admin.Panels
         private void StyleGrid(DataGridView dgv)
         {
             bool dk = ThemeManager.IsDarkMode;
+
             dgv.BackgroundColor = ColBg;
             dgv.BorderStyle = BorderStyle.None;
             dgv.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
@@ -602,15 +851,41 @@ namespace DriveAndGo_Admin.Panels
 
         private Button CreateBtn(string text, WinColor color, int x, int y, int w)
         {
-            var btn = new Button { Text = text, Size = new Size(w, 36), Location = new Point(x, y), FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 9F, FontStyle.Bold), Cursor = Cursors.Hand, BackColor = WinColor.FromArgb(20, color), ForeColor = color };
-            btn.FlatAppearance.BorderColor = color; btn.FlatAppearance.BorderSize = 1; btn.FlatAppearance.MouseOverBackColor = WinColor.FromArgb(45, color); return btn;
+            var btn = new Button
+            {
+                Text = text,
+                Size = new Size(w, 36),
+                Location = new Point(x, y),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                Cursor = Cursors.Hand,
+                BackColor = WinColor.FromArgb(20, color),
+                ForeColor = color
+            };
+
+            btn.FlatAppearance.BorderColor = color;
+            btn.FlatAppearance.BorderSize = 1;
+            btn.FlatAppearance.MouseOverBackColor = WinColor.FromArgb(45, color);
+
+            return btn;
         }
 
         private GraphicsPath RoundRect(Rectangle b, int r)
         {
-            int d = r * 2; var arc = new Rectangle(b.Location, new Size(d, d)); var path = new GraphicsPath();
-            path.AddArc(arc, 180, 90); arc.X = b.Right - d; path.AddArc(arc, 270, 90); arc.Y = b.Bottom - d;
-            path.AddArc(arc, 0, 90); arc.X = b.Left; path.AddArc(arc, 90, 90); path.CloseFigure(); return path;
+            int d = r * 2;
+            var arc = new Rectangle(b.Location, new Size(d, d));
+            var path = new GraphicsPath();
+
+            path.AddArc(arc, 180, 90);
+            arc.X = b.Right - d;
+            path.AddArc(arc, 270, 90);
+            arc.Y = b.Bottom - d;
+            path.AddArc(arc, 0, 90);
+            arc.X = b.Left;
+            path.AddArc(arc, 90, 90);
+            path.CloseFigure();
+
+            return path;
         }
 
         protected override void Dispose(bool disposing)
