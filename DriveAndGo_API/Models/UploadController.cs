@@ -1,76 +1,78 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 
-namespace DriveAndGo_API.Controllers
+namespace DriveAndGo_API.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class UploadController : ControllerBase
 {
-    [ApiController]
-    [Route("api/[controller]")]
-    public class UploadController : ControllerBase
+    private readonly IWebHostEnvironment _environment;
+
+    public UploadController(IWebHostEnvironment environment)
     {
-        private readonly IWebHostEnvironment _env;
+        _environment = environment;
+    }
 
-        public UploadController(IWebHostEnvironment env)
+    [HttpPost("vehicle-image")]
+    public Task<IActionResult> UploadVehicleImage(IFormFile file)
+    {
+        return Upload(file, "vehicles", allowVideo: true);
+    }
+
+    [HttpPost("map-icon")]
+    public Task<IActionResult> UploadMapIcon(IFormFile file)
+    {
+        return Upload(file, "mapicons");
+    }
+
+    [HttpPost("payment-proof")]
+    public Task<IActionResult> UploadPaymentProof(IFormFile file)
+    {
+        return Upload(file, "payments");
+    }
+
+    [HttpPost("issue-image")]
+    public Task<IActionResult> UploadIssueImage(IFormFile file)
+    {
+        return Upload(file, "issues");
+    }
+
+    [HttpPost("message-attachment")]
+    public Task<IActionResult> UploadMessageAttachment(IFormFile file)
+    {
+        return Upload(file, "messages", allowVideo: true);
+    }
+
+    private async Task<IActionResult> Upload(IFormFile file, string folderName, bool allowVideo = false)
+    {
+        if (file == null || file.Length == 0)
         {
-            _env = env;
+            return BadRequest(new { Message = "No file uploaded." });
         }
 
-        [HttpPost("vehicle-image")]
-        public async Task<IActionResult> UploadVehicleImage(IFormFile file)
+        var allowedExtensions = allowVideo
+            ? new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".jfif", ".mp4", ".webm", ".mov", ".m4v" }
+            : new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".jfif" };
+
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!allowedExtensions.Contains(extension))
         {
-            if (file == null || file.Length == 0)
-                return BadRequest(new { message = "No file uploaded." });
-
-            var allowedExtensions = new[]
-            {
-                ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".jfif",
-                ".mp4", ".webm", ".mov", ".m4v"
-            };
-            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-
-            if (!allowedExtensions.Contains(ext))
-                return BadRequest(new { message = "Invalid media type." });
-
-            var folder = Path.Combine(_env.ContentRootPath, "wwwroot", "uploads", "vehicles");
-            if (!Directory.Exists(folder))
-                Directory.CreateDirectory(folder);
-
-            var fileName = $"{Guid.NewGuid()}{ext}";
-            var filePath = Path.Combine(folder, fileName);
-
-            await using (var stream = new FileStream(filePath, FileMode.Create))
-            {
-                await file.CopyToAsync(stream);
-            }
-
-            var url = $"{Request.Scheme}://{Request.Host}/uploads/vehicles/{fileName}";
-            return Ok(new { url });
+            return BadRequest(new { Message = "Invalid file type." });
         }
 
-        [HttpPost("map-icon")]
-        public async Task<IActionResult> UploadMapIcon(IFormFile file)
+        var folder = Path.Combine(_environment.ContentRootPath, "wwwroot", "uploads", folderName);
+        if (!Directory.Exists(folder))
         {
-            if (file == null || file.Length == 0)
-                return BadRequest(new { message = "No file uploaded." });
-
-            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".jfif" };
-            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-
-            if (!allowedExtensions.Contains(ext))
-                return BadRequest(new { message = "Invalid file type." });
-
-            var folder = Path.Combine(_env.ContentRootPath, "wwwroot", "uploads", "mapicons");
-            if (!Directory.Exists(folder))
-                Directory.CreateDirectory(folder);
-
-            var fileName = $"{Guid.NewGuid()}{ext}";
-            var filePath = Path.Combine(folder, fileName);
-
-            await using (var stream = new FileStream(filePath, FileMode.Create))
-            {
-                await file.CopyToAsync(stream);
-            }
-
-            var url = $"{Request.Scheme}://{Request.Host}/uploads/mapicons/{fileName}";
-            return Ok(new { url });
+            Directory.CreateDirectory(folder);
         }
+
+        var fileName = $"{Guid.NewGuid():N}{extension}";
+        var filePath = Path.Combine(folder, fileName);
+
+        await using var stream = new FileStream(filePath, FileMode.Create);
+        await file.CopyToAsync(stream);
+
+        var url = $"{Request.Scheme}://{Request.Host}/uploads/{folderName}/{fileName}";
+        return Ok(new { Url = url });
     }
 }

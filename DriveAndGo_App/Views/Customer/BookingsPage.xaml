@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DriveAndGo_App.Views.Customer.BookingsPage"
+             BackgroundColor="#F8FAFC"
+             Title="Bookings">
+    <VerticalStackLayout Padding="20,22,20,20" Spacing="16">
+        <Label Text="Your bookings"
+               FontSize="28"
+               FontAttributes="Bold"
+               TextColor="#0F172A" />
+        <Picker Title="Filter status"
+                ItemsSource="{Binding Filters}"
+                SelectedItem="{Binding SelectedFilter}" />
+
+        <CollectionView ItemsSource="{Binding Rentals}"
+                        SelectionMode="Single"
+                        SelectionChanged="OnRentalSelected">
+            <CollectionView.EmptyView>
+                <Border Padding="18"
+                        BackgroundColor="White"
+                        Stroke="#E2E8F0"
+                        StrokeShape="RoundRectangle 20">
+                    <Label Text="No bookings yet."
+                           TextColor="#94A3B8"
+                           HorizontalTextAlignment="Center" />
+                </Border>
+            </CollectionView.EmptyView>
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Border Padding="16"
+                            Margin="0,0,0,12"
+                            BackgroundColor="White"
+                            Stroke="#E2E8F0"
+                            StrokeShape="RoundRectangle 24">
+                        <VerticalStackLayout Spacing="8">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <Label Text="{Binding VehicleName}"
+                                       FontSize="18"
+                                       FontAttributes="Bold"
+                                       TextColor="#0F172A" />
+                                <Border Grid.Column="1"
+                                        Padding="10,4"
+                                        BackgroundColor="#FFF7ED"
+                                        Stroke="#FDBA74"
+                                        StrokeShape="RoundRectangle 14">
+                                    <Label Text="{Binding StatusLabel}"
+                                           FontSize="12"
+                                           TextColor="#C2410C" />
+                                </Border>
+                            </Grid>
+                            <Label Text="{Binding DateRangeLabel}"
+                                   FontSize="13"
+                                   TextColor="#475569" />
+                            <Label Text="{Binding Destination}"
+                                   FontSize="12"
+                                   TextColor="#94A3B8" />
+                            <Label Text="{Binding TotalAmountLabel}"
+                                   FontSize="15"
+                                   FontAttributes="Bold"
+                                   TextColor="#EA580C" />
+                        </VerticalStackLayout>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </VerticalStackLayout>
+</ContentPage>

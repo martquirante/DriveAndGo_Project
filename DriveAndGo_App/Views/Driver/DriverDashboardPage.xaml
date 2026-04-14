@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DriveAndGo_App.Views.Driver.DriverDashboardPage"
+             BackgroundColor="#F8FAFC"
+             Title="Dashboard">
+    <VerticalStackLayout Padding="20,22,20,20" Spacing="16">
+        <Border Padding="20"
+                BackgroundColor="#102A43"
+                Stroke="#1E3A5F"
+                StrokeShape="RoundRectangle 30">
+            <VerticalStackLayout Spacing="6">
+                <Label Text="Driver dashboard"
+                       FontSize="28"
+                       FontAttributes="Bold"
+                       TextColor="White" />
+                <Label Text="Assigned rentals, customer information, and route-ready structure."
+                       FontSize="13"
+                       TextColor="#D0E2FF" />
+            </VerticalStackLayout>
+        </Border>
+
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+            <Border Grid.Column="0" Padding="16" BackgroundColor="White" Stroke="#E2E8F0" StrokeShape="RoundRectangle 22">
+                <VerticalStackLayout>
+                    <Label Text="Active trips" FontSize="12" TextColor="#94A3B8" />
+                    <Label Text="{Binding ActiveTrips}" FontSize="22" FontAttributes="Bold" TextColor="#0F172A" />
+                </VerticalStackLayout>
+            </Border>
+            <Border Grid.Column="1" Padding="16" BackgroundColor="White" Stroke="#E2E8F0" StrokeShape="RoundRectangle 22">
+                <VerticalStackLayout>
+                    <Label Text="Estimated income" FontSize="12" TextColor="#94A3B8" />
+                    <Label Text="{Binding EstimatedIncomeLabel}" FontSize="22" FontAttributes="Bold" TextColor="#EA580C" />
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+
+        <CollectionView ItemsSource="{Binding Assignments}"
+                        SelectionMode="Single"
+                        SelectionChanged="OnAssignmentSelected">
+            <CollectionView.EmptyView>
+                <Label Text="No assignments yet."
+                       TextColor="#94A3B8" />
+            </CollectionView.EmptyView>
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Border Padding="16"
+                            Margin="0,0,0,10"
+                            BackgroundColor="White"
+                            Stroke="#E2E8F0"
+                            StrokeShape="RoundRectangle 24">
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="{Binding VehicleName}"
+                                   FontAttributes="Bold"
+                                   TextColor="#0F172A" />
+                            <Label Text="{Binding CustomerName}"
+                                   FontSize="13"
+                                   TextColor="#475569" />
+                            <Label Text="{Binding Destination}"
+                                   FontSize="12"
+                                   TextColor="#94A3B8" />
+                            <Label Text="{Binding StatusLabel}"
+                                   FontSize="12"
+                                   TextColor="#0EA5E9" />
+                        </VerticalStackLayout>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </VerticalStackLayout>
+</ContentPage>

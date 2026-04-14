@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DriveAndGo_App.Views.Shared.NotificationsPage"
+             BackgroundColor="#F8FAFC"
+             Title="Alerts">
+    <VerticalStackLayout Padding="20,22,20,20" Spacing="16">
+        <Label Text="Notifications"
+               FontSize="28"
+               FontAttributes="Bold"
+               TextColor="#0F172A" />
+        <CollectionView ItemsSource="{Binding Notifications}"
+                        SelectionMode="Single"
+                        SelectionChanged="OnNotificationSelected">
+            <CollectionView.EmptyView>
+                <Label Text="No notifications yet."
+                       TextColor="#94A3B8" />
+            </CollectionView.EmptyView>
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Border Padding="16"
+                            Margin="0,0,0,10"
+                            BackgroundColor="White"
+                            Stroke="#E2E8F0"
+                            StrokeShape="RoundRectangle 24">
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="{Binding Title}"
+                                   FontAttributes="Bold"
+                                   TextColor="#0F172A" />
+                            <Label Text="{Binding Body}"
+                                   FontSize="13"
+                                   TextColor="#475569" />
+                            <Label Text="{Binding TimeAgoLabel}"
+                                   FontSize="11"
+                                   TextColor="#94A3B8" />
+                        </VerticalStackLayout>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </VerticalStackLayout>
+</ContentPage>

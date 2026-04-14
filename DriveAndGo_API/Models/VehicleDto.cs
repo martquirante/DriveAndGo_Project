@@ -16,9 +16,10 @@
         public int SeatCapacity { get; set; }
         public string Transmission { get; set; } = "Automatic";
         public string Model3DUrl { get; set; } = "";
+        public DateTime? CreatedAt { get; set; }
         public double? Latitude { get; set; }
         public double? Longitude { get; set; }
-        public double? CurrentSpeed { get; set; }
+        public int? CurrentSpeed { get; set; }
         public DateTime? LastUpdate { get; set; }
         public bool InGarage { get; set; }
     }

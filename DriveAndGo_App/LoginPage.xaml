@@ -2,499 +2,140 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="DriveAndGo_App.LoginPage"
-             BackgroundColor="{AppThemeBinding Light=#F0F2F8, Dark=#0A0A14}"
              NavigationPage.HasNavigationBar="False"
-             Shell.NavBarIsVisible="False">
+             BackgroundColor="#0B1220">
+    <Grid>
+        <Grid.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#0B1220" Offset="0.0" />
+                <GradientStop Color="#172036" Offset="0.5" />
+                <GradientStop Color="#E97416" Offset="1.0" />
+            </LinearGradientBrush>
+        </Grid.Background>
 
-    <Grid RowDefinitions="*, Auto">
-
-        <ScrollView Grid.Row="0">
-            <Grid>
-
-                <AbsoluteLayout>
-
-                    <BoxView Color="#E6510D" Opacity="0.08"
-                             WidthRequest="320" HeightRequest="320"
-                             CornerRadius="160"
-                             AbsoluteLayout.LayoutBounds="-80, -80, -1, -1"
-                             AbsoluteLayout.LayoutFlags="None"/>
-
-                    <BoxView Color="#E6510D" Opacity="0.06"
-                             WidthRequest="260" HeightRequest="260"
-                             CornerRadius="130"
-                             AbsoluteLayout.LayoutBounds="1, 1, 260, 260"
-                             AbsoluteLayout.LayoutFlags="PositionProportional"/>
-
-                    <BoxView Color="#E6510D" Opacity="0.25"
-                             WidthRequest="5" HeightRequest="5"
-                             CornerRadius="2.5"
-                             AbsoluteLayout.LayoutBounds="0.85, 0.08, -1, -1"
-                             AbsoluteLayout.LayoutFlags="PositionProportional"/>
-                    <BoxView Color="#E6510D" Opacity="0.2"
-                             WidthRequest="5" HeightRequest="5"
-                             CornerRadius="2.5"
-                             AbsoluteLayout.LayoutBounds="0.90, 0.10, -1, -1"
-                             AbsoluteLayout.LayoutFlags="PositionProportional"/>
-                    <BoxView Color="#E6510D" Opacity="0.15"
-                             WidthRequest="5" HeightRequest="5"
-                             CornerRadius="2.5"
-                             AbsoluteLayout.LayoutBounds="0.85, 0.12, -1, -1"
-                             AbsoluteLayout.LayoutFlags="PositionProportional"/>
-                    <BoxView Color="#E6510D" Opacity="0.2"
-                             WidthRequest="5" HeightRequest="5"
-                             CornerRadius="2.5"
-                             AbsoluteLayout.LayoutBounds="0.90, 0.14, -1, -1"
-                             AbsoluteLayout.LayoutFlags="PositionProportional"/>
-
-                </AbsoluteLayout>
-
-                <VerticalStackLayout Padding="28,50,28,40" Spacing="0">
-
-                    <Border x:Name="ThemeToggleContainer"
-                            HorizontalOptions="End"
-                            WidthRequest="74"
-                            HeightRequest="34"
-                            BackgroundColor="{AppThemeBinding Light=#D1D5DB, Dark=#2A2A42}"
-                            StrokeThickness="0"
-                            StrokeShape="RoundRectangle 17"
-                            Margin="0,0,0,24">
-                        <Border.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnThemeToggleTapped"/>
-                        </Border.GestureRecognizers>
-                        <Grid>
-                            <Label Text="☀️" 
-                                   FontSize="14" 
-                                   HorizontalOptions="Start" 
-                                   VerticalOptions="Center" 
-                                   Margin="8,0,0,0" 
-                                   Opacity="{AppThemeBinding Light=1, Dark=0.3}"/>
-                            <Label Text="🌙" 
-                                   FontSize="14" 
-                                   HorizontalOptions="End" 
-                                   VerticalOptions="Center" 
-                                   Margin="0,0,8,0" 
-                                   Opacity="{AppThemeBinding Light=0.3, Dark=1}"/>
-
-                            <Border x:Name="ThemeThumb"
-                                    WidthRequest="26" 
-                                    HeightRequest="26"
-                                    BackgroundColor="White"
-                                    StrokeThickness="0"
-                                    StrokeShape="RoundRectangle 13"
-                                    HorizontalOptions="Start"
-                                    VerticalOptions="Center"
-                                    Margin="4,0,4,0">
-                                <Border.Shadow>
-                                    <Shadow Brush="Black" Opacity="0.2" Offset="0,2" Radius="4" />
-                                </Border.Shadow>
-                            </Border>
-                        </Grid>
-                    </Border>
-
-                    <Image x:Name="AppLogo"
-                           Source="logo.png"
-                           HeightRequest="110"
-                           WidthRequest="180"
-                           HorizontalOptions="Center"
-                           Aspect="AspectFit"
-                           Margin="0,0,0,8"/>
-
-                    <Label x:Name="WelcomeLabel"
-                           Text="Welcome Back!"
-                           FontSize="28"
-                           FontAttributes="Bold"
-                           HorizontalOptions="Center"
-                           TextColor="{AppThemeBinding Light=#1A1A2E, Dark=#FFFFFF}"
-                           Margin="0,0,0,4"/>
-
-                    <Label Text="Sign in to continue your journey"
-                           FontSize="13"
-                           HorizontalOptions="Center"
-                           TextColor="{AppThemeBinding Light=#6B7280, Dark=#8890A0}"
-                           Margin="0,0,0,28"/>
-
-                    <Border x:Name="TabContainer"
-                            BackgroundColor="{AppThemeBinding Light=#E8EAF0, Dark=#1A1A2E}"
-                            StrokeThickness="0"
-                            StrokeShape="RoundRectangle 16"
-                            Padding="4"
-                            Margin="0,0,0,28"
-                            HeightRequest="52">
-                        <Grid ColumnDefinitions="*, *" ColumnSpacing="0">
-
-                            <Border x:Name="CustomerTabBg"
-                                    Grid.Column="0"
-                                    BackgroundColor="#E6510D"
-                                    StrokeThickness="0"
-                                    StrokeShape="RoundRectangle 12">
-                                <Label x:Name="CustomerTabLabel"
-                                       Text="👤  Customer"
-                                       FontSize="13"
-                                       FontAttributes="Bold"
-                                       TextColor="White"
-                                       HorizontalOptions="Center"
-                                       VerticalOptions="Center">
-                                    <Label.GestureRecognizers>
-                                        <TapGestureRecognizer
-                                            Tapped="OnCustomerTabClicked"/>
-                                    </Label.GestureRecognizers>
-                                </Label>
-                            </Border>
-
-                            <Border x:Name="DriverTabBg"
-                                    Grid.Column="1"
-                                    BackgroundColor="Transparent"
-                                    StrokeThickness="0"
-                                    StrokeShape="RoundRectangle 12">
-                                <Label x:Name="DriverTabLabel"
-                                       Text="🚗  Driver"
-                                       FontSize="13"
-                                       FontAttributes="Bold"
-                                       TextColor="{AppThemeBinding Light=#6B7280, Dark=#6B7A90}"
-                                       HorizontalOptions="Center"
-                                       VerticalOptions="Center">
-                                    <Label.GestureRecognizers>
-                                        <TapGestureRecognizer
-                                            Tapped="OnDriverTabClicked"/>
-                                    </Label.GestureRecognizers>
-                                </Label>
-                            </Border>
-
-                        </Grid>
-                    </Border>
-
-                    <VerticalStackLayout x:Name="CustomerForm"
-                                         Spacing="16"
-                                         IsVisible="True">
-
-                        <Border BackgroundColor="{AppThemeBinding Light=White, Dark=#141428}"
-                                StrokeThickness="1.5"
-                                Stroke="{AppThemeBinding Light=#E5E7EB, Dark=#2A2A42}"
-                                StrokeShape="RoundRectangle 14"
-                                Padding="16,4">
-                            <VerticalStackLayout Spacing="0">
-                                <Label Text="EMAIL ADDRESS"
-                                       FontSize="9"
-                                       FontAttributes="Bold"
-                                       TextColor="#E6510D"
-                                       CharacterSpacing="1"
-                                       Margin="0,8,0,0"/>
-                                <Entry x:Name="CustEmailEntry"
-                                       Placeholder="you@example.com"
-                                       Keyboard="Email"
-                                       BackgroundColor="Transparent"
-                                       TextColor="{AppThemeBinding Light=#1A1A2E, Dark=#E0E0F0}"
-                                       PlaceholderColor="{AppThemeBinding Light=#B0B8C8, Dark=#404060}"
-                                       HeightRequest="42"
-                                       FontSize="14"/>
-                            </VerticalStackLayout>
-                        </Border>
-
-                        <Border BackgroundColor="{AppThemeBinding Light=White, Dark=#141428}"
-                                StrokeThickness="1.5"
-                                Stroke="{AppThemeBinding Light=#E5E7EB, Dark=#2A2A42}"
-                                StrokeShape="RoundRectangle 14"
-                                Padding="16,4">
-                            <Grid ColumnDefinitions="*, Auto">
-                                <VerticalStackLayout Grid.Column="0" Spacing="0">
-                                    <Label Text="PASSWORD"
-                                           FontSize="9"
-                                           FontAttributes="Bold"
-                                           TextColor="#E6510D"
-                                           CharacterSpacing="1"
-                                           Margin="0,8,0,0"/>
-                                    <Entry x:Name="CustPasswordEntry"
-                                           Placeholder="Enter your password"
-                                           IsPassword="True"
-                                           BackgroundColor="Transparent"
-                                           TextColor="{AppThemeBinding Light=#1A1A2E, Dark=#E0E0F0}"
-                                           PlaceholderColor="{AppThemeBinding Light=#B0B8C8, Dark=#404060}"
-                                           HeightRequest="42"
-                                           FontSize="14"/>
-                                </VerticalStackLayout>
-                                <Label Grid.Column="1"
-                                       x:Name="CustEyeIcon"
-                                       Text="👁"
-                                       FontSize="18"
-                                       VerticalOptions="End"
-                                       Margin="0,0,0,10"
-                                       TextColor="{AppThemeBinding Light=#B0B8C8, Dark=#404060}">
-                                    <Label.GestureRecognizers>
-                                        <TapGestureRecognizer
-                                            Tapped="OnCustTogglePassword"/>
-                                    </Label.GestureRecognizers>
-                                </Label>
-                            </Grid>
-                        </Border>
-
-                        <Label Text="Forgot Password?"
-                               TextColor="#E6510D"
-                               FontSize="12"
+        <ScrollView>
+            <VerticalStackLayout Padding="24,56,24,32" Spacing="18">
+                <Grid ColumnDefinitions="*,Auto">
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Customer and Driver App"
+                               FontSize="14"
+                               TextColor="#FDBA74" />
+                        <Label Text="Welcome back"
+                               FontSize="30"
                                FontAttributes="Bold"
-                               HorizontalOptions="End"
-                               Margin="0,-4,0,4">
-                            <Label.GestureRecognizers>
-                                <TapGestureRecognizer
-                                    Tapped="OnForgotPasswordTapped"/>
-                            </Label.GestureRecognizers>
-                        </Label>
+                               TextColor="White" />
+                    </VerticalStackLayout>
+                    <Button Grid.Column="1"
+                            Text="Theme"
+                            Command="{Binding ToggleThemeCommand}"
+                            BackgroundColor="#22FFFFFF"
+                            BorderColor="#44FFFFFF"
+                            BorderWidth="1"
+                            TextColor="White"
+                            CornerRadius="18"
+                            HeightRequest="40" />
+                </Grid>
 
-                        <Border x:Name="CustLoginBtn"
-                                BackgroundColor="#E6510D"
-                                StrokeThickness="0"
-                                StrokeShape="RoundRectangle 16"
-                                HeightRequest="54"
-                                Margin="0,4,0,0">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer
-                                    Tapped="OnCustomerLoginClicked"/>
-                            </Border.GestureRecognizers>
-                            <Grid>
-                                <Label x:Name="CustLoginText"
-                                       Text="Login as Customer"
-                                       FontSize="15"
-                                       FontAttributes="Bold"
-                                       TextColor="White"
-                                       HorizontalOptions="Center"
-                                       VerticalOptions="Center"/>
-                                <ActivityIndicator x:Name="CustLoader"
-                                                   Color="White"
-                                                   IsRunning="False"
-                                                   IsVisible="False"
-                                                   HorizontalOptions="Center"
-                                                   VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
+                <Border x:Name="AuthCard"
+                        Padding="22"
+                        BackgroundColor="#F8FAFC"
+                        Stroke="#D8E0EA"
+                        StrokeShape="RoundRectangle 28">
+                    <VerticalStackLayout Spacing="18">
+                        <Image Source="logo.png"
+                               HeightRequest="72"
+                               WidthRequest="150"
+                               HorizontalOptions="Center"
+                               Aspect="AspectFit" />
 
-                        <HorizontalStackLayout HorizontalOptions="Center"
-                                               Spacing="4"
-                                               Margin="0,8,0,8">
-                            <Label Text="Don't have an account?"
-                                   TextColor="{AppThemeBinding Light=#6B7280, Dark=#6B7A90}"
-                                   FontSize="13"/>
-                            <Label Text="Sign Up"
-                                   TextColor="#E6510D"
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                            <Button Grid.Column="0"
+                                    Text="Customer"
+                                    Clicked="OnCustomerClicked"
+                                    BackgroundColor="#EA580C"
+                                    TextColor="White"
+                                    CornerRadius="18" />
+                            <Button Grid.Column="1"
+                                    Text="Driver"
+                                    Clicked="OnDriverClicked"
+                                    BackgroundColor="#E2E8F0"
+                                    TextColor="#334155"
+                                    CornerRadius="18" />
+                        </Grid>
+
+                        <VerticalStackLayout x:Name="CustomerPanel" Spacing="14">
+                            <Label Text="Book vehicles, pay rentals, and track your trip from one polished app."
                                    FontSize="13"
-                                   FontAttributes="Bold">
-                                <Label.GestureRecognizers>
-                                    <TapGestureRecognizer
-                                        Tapped="OnSignUpTapped"/>
-                                </Label.GestureRecognizers>
-                            </Label>
-                        </HorizontalStackLayout>
+                                   TextColor="#64748B" />
+                            <Entry Placeholder="Customer email"
+                                   Text="{Binding CustomerEmail}"
+                                   Keyboard="Email"
+                                   BackgroundColor="#F1F5F9" />
+                            <Entry Placeholder="Password"
+                                   Text="{Binding CustomerPassword}"
+                                   IsPassword="True"
+                                   BackgroundColor="#F1F5F9" />
+                            <Button Text="Login as Customer"
+                                    Command="{Binding CustomerLoginCommand}"
+                                    BackgroundColor="#EA580C"
+                                    TextColor="White"
+                                    CornerRadius="18"
+                                    HeightRequest="52" />
+                            <Button Text="Create customer account"
+                                    Command="{Binding OpenRegisterCommand}"
+                                    BackgroundColor="#0F172A"
+                                    TextColor="White"
+                                    CornerRadius="18"
+                                    HeightRequest="48" />
+                        </VerticalStackLayout>
 
-                        <Grid ColumnDefinitions="*, Auto, *"
-                              ColumnSpacing="12"
-                              Margin="0,4,0,4">
-                            <BoxView Grid.Column="0"
-                                     Color="{AppThemeBinding Light=#E5E7EB, Dark=#2A2A42}"
-                                     HeightRequest="1"
-                                     VerticalOptions="Center"/>
-                            <Label Grid.Column="1"
-                                   Text="or"
-                                   FontSize="12"
-                                   TextColor="{AppThemeBinding Light=#9CA3AF, Dark=#4A5060}"/>
-                            <BoxView Grid.Column="2"
-                                     Color="{AppThemeBinding Light=#E5E7EB, Dark=#2A2A42}"
-                                     HeightRequest="1"
-                                     VerticalOptions="Center"/>
-                        </Grid>
-
-                        <Grid ColumnDefinitions="*, *"
-                              ColumnSpacing="12">
-                            <Border Grid.Column="0"
-                                    BackgroundColor="{AppThemeBinding Light=White, Dark=#141428}"
-                                    StrokeThickness="1.5"
-                                    Stroke="{AppThemeBinding Light=#E5E7EB, Dark=#2A2A42}"
-                                    StrokeShape="RoundRectangle 12"
-                                    HeightRequest="46">
-                                <Border.GestureRecognizers>
-                                    <TapGestureRecognizer
-                                        Tapped="OnGoogleLoginClicked"/>
-                                </Border.GestureRecognizers>
-                                <HorizontalStackLayout HorizontalOptions="Center"
-                                                       VerticalOptions="Center"
-                                                       Spacing="8">
-                                    <Image Source="google_logo.png"
-                                           HeightRequest="20"
-                                           WidthRequest="20"/>
-                                    <Label Text="Google"
-                                           FontSize="13"
-                                           FontAttributes="Bold"
-                                           TextColor="{AppThemeBinding Light=#1A1A2E, Dark=#E0E0F0}"
-                                           VerticalOptions="Center"/>
-                                </HorizontalStackLayout>
+                        <VerticalStackLayout x:Name="DriverPanel"
+                                             Spacing="14"
+                                             IsVisible="False">
+                            <Label Text="Driver accounts use the same app but land on a dedicated operations dashboard."
+                                   FontSize="13"
+                                   TextColor="#64748B" />
+                            <Entry Placeholder="Driver email"
+                                   Text="{Binding DriverEmail}"
+                                   Keyboard="Email"
+                                   BackgroundColor="#F1F5F9" />
+                            <Entry Placeholder="Password"
+                                   Text="{Binding DriverPassword}"
+                                   IsPassword="True"
+                                   BackgroundColor="#F1F5F9" />
+                            <Button Text="Login as Driver"
+                                    Command="{Binding DriverLoginCommand}"
+                                    BackgroundColor="#0F172A"
+                                    TextColor="White"
+                                    CornerRadius="18"
+                                    HeightRequest="52" />
+                            <Border BackgroundColor="#FFF7ED"
+                                    Stroke="#FDBA74"
+                                    StrokeShape="RoundRectangle 18"
+                                    Padding="14">
+                                <Label Text="Driver account creation stays on the admin side. Use the assigned credentials from Drive &amp; Go."
+                                       FontSize="12"
+                                       TextColor="#9A3412" />
                             </Border>
+                        </VerticalStackLayout>
 
-                            <Border Grid.Column="1"
-                                    BackgroundColor="{AppThemeBinding Light=White, Dark=#141428}"
-                                    StrokeThickness="1.5"
-                                    Stroke="{AppThemeBinding Light=#E5E7EB, Dark=#2A2A42}"
-                                    StrokeShape="RoundRectangle 12"
-                                    HeightRequest="46">
-                                <Border.GestureRecognizers>
-                                    <TapGestureRecognizer
-                                        Tapped="OnFacebookLoginClicked"/>
-                                </Border.GestureRecognizers>
-                                <HorizontalStackLayout HorizontalOptions="Center"
-                                                       VerticalOptions="Center"
-                                                       Spacing="8">
-                                    <Image Source="fb_logo.png"
-                                           HeightRequest="20"
-                                           WidthRequest="20"/>
-                                    <Label Text="Facebook"
-                                           FontSize="13"
-                                           FontAttributes="Bold"
-                                           TextColor="{AppThemeBinding Light=#1A1A2E, Dark=#E0E0F0}"
-                                           VerticalOptions="Center"/>
-                                </HorizontalStackLayout>
-                            </Border>
-                        </Grid>
+                        <Border IsVisible="{Binding HasError}"
+                                BackgroundColor="#FEF2F2"
+                                Stroke="#FCA5A5"
+                                StrokeShape="RoundRectangle 18"
+                                Padding="14">
+                            <Label Text="{Binding ErrorMessage}"
+                                   TextColor="#991B1B"
+                                   FontSize="12" />
+                        </Border>
 
+                        <ActivityIndicator IsRunning="{Binding IsBusy}"
+                                           IsVisible="{Binding IsBusy}"
+                                           Color="#EA580C"
+                                           HorizontalOptions="Center" />
                     </VerticalStackLayout>
-
-                    <VerticalStackLayout x:Name="DriverForm"
-                                         Spacing="16"
-                                         IsVisible="False"
-                                         Opacity="0">
-
-                        <Border BackgroundColor="#0F1623"
-                                StrokeThickness="1"
-                                Stroke="#2A3550"
-                                StrokeShape="RoundRectangle 14"
-                                Padding="16,14">
-                            <VerticalStackLayout Spacing="4">
-                                <Label Text="🚗  Driver Portal"
-                                       FontSize="16"
-                                       FontAttributes="Bold"
-                                       TextColor="#E6510D"/>
-                                <Label Text="Access restricted to registered drivers only. Contact Admin to create an account."
-                                       FontSize="11"
-                                       TextColor="#5A6A80"
-                                       LineBreakMode="WordWrap"/>
-                            </VerticalStackLayout>
-                        </Border>
-
-                        <Border BackgroundColor="{AppThemeBinding Light=White, Dark=#141428}"
-                                StrokeThickness="1.5"
-                                Stroke="{AppThemeBinding Light=#E5E7EB, Dark=#2A2A42}"
-                                StrokeShape="RoundRectangle 14"
-                                Padding="16,4">
-                            <VerticalStackLayout Spacing="0">
-                                <Label Text="DRIVER EMAIL / ID"
-                                       FontSize="9"
-                                       FontAttributes="Bold"
-                                       TextColor="#E6510D"
-                                       CharacterSpacing="1"
-                                       Margin="0,8,0,0"/>
-                                <Entry x:Name="DriverEmailEntry"
-                                       Placeholder="driver@driveandgo.com"
-                                       Keyboard="Email"
-                                       BackgroundColor="Transparent"
-                                       TextColor="{AppThemeBinding Light=#1A1A2E, Dark=#E0E0F0}"
-                                       PlaceholderColor="{AppThemeBinding Light=#B0B8C8, Dark=#404060}"
-                                       HeightRequest="42"
-                                       FontSize="14"/>
-                            </VerticalStackLayout>
-                        </Border>
-
-                        <Border BackgroundColor="{AppThemeBinding Light=White, Dark=#141428}"
-                                StrokeThickness="1.5"
-                                Stroke="{AppThemeBinding Light=#E5E7EB, Dark=#2A2A42}"
-                                StrokeShape="RoundRectangle 14"
-                                Padding="16,4">
-                            <Grid ColumnDefinitions="*, Auto">
-                                <VerticalStackLayout Grid.Column="0" Spacing="0">
-                                    <Label Text="PASSWORD"
-                                           FontSize="9"
-                                           FontAttributes="Bold"
-                                           TextColor="#E6510D"
-                                           CharacterSpacing="1"
-                                           Margin="0,8,0,0"/>
-                                    <Entry x:Name="DriverPasswordEntry"
-                                           Placeholder="Enter your password"
-                                           IsPassword="True"
-                                           BackgroundColor="Transparent"
-                                           TextColor="{AppThemeBinding Light=#1A1A2E, Dark=#E0E0F0}"
-                                           PlaceholderColor="{AppThemeBinding Light=#B0B8C8, Dark=#404060}"
-                                           HeightRequest="42"
-                                           FontSize="14"/>
-                                </VerticalStackLayout>
-                                <Label Grid.Column="1"
-                                       x:Name="DrvEyeIcon"
-                                       Text="👁" FontSize="18"
-                                       VerticalOptions="End"
-                                       Margin="0,0,0,10"
-                                       TextColor="{AppThemeBinding Light=#B0B8C8, Dark=#404060}">
-                                    <Label.GestureRecognizers>
-                                        <TapGestureRecognizer
-                                            Tapped="OnDrvTogglePassword"/>
-                                    </Label.GestureRecognizers>
-                                </Label>
-                            </Grid>
-                        </Border>
-
-                        <Border x:Name="DrvLoginBtn"
-                                StrokeThickness="0"
-                                StrokeShape="RoundRectangle 16"
-                                HeightRequest="54"
-                                Margin="0,4,0,0">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer
-                                    Tapped="OnDriverLoginClicked"/>
-                            </Border.GestureRecognizers>
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0"
-                                                     EndPoint="1,0">
-                                    <GradientStop Color="#1A2540" Offset="0"/>
-                                    <GradientStop Color="#E6510D" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Border.Background>
-                            <Grid>
-                                <Label x:Name="DrvLoginText"
-                                       Text="Login as Driver"
-                                       FontSize="15"
-                                       FontAttributes="Bold"
-                                       TextColor="White"
-                                       HorizontalOptions="Center"
-                                       VerticalOptions="Center"/>
-                                <ActivityIndicator x:Name="DrvLoader"
-                                                   Color="White"
-                                                   IsRunning="False"
-                                                   IsVisible="False"
-                                                   HorizontalOptions="Center"
-                                                   VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
-
-                        <Border BackgroundColor="{AppThemeBinding Light=#FFF7ED, Dark=#1A1000}"
-                                StrokeThickness="1"
-                                Stroke="#E6510D"
-                                StrokeShape="RoundRectangle 10"
-                                Padding="14,10">
-                            <Label Text="⚠️  Don't have a driver account? Contact your admin to register you in the system."
-                                   FontSize="11.5"
-                                   TextColor="{AppThemeBinding Light=#92400E, Dark=#C87040}"
-                                   LineBreakMode="WordWrap"/>
-                        </Border>
-
-                    </VerticalStackLayout>
-
-                </VerticalStackLayout>
-            </Grid>
+                </Border>
+            </VerticalStackLayout>
         </ScrollView>
-
-        <VerticalStackLayout Grid.Row="1"
-                             Padding="0,12,0,16"
-                             BackgroundColor="{AppThemeBinding Light=#F0F2F8, Dark=#0A0A14}">
-            <BoxView HeightRequest="1"
-                     Color="{AppThemeBinding Light=#E5E7EB, Dark=#1A1A2E}"
-                     Margin="0,0,0,12"/>
-            <Label Text="Drive &amp; Go  •  Complete Vehicle Rental  •  v1.0"
-                   FontSize="10"
-                   TextColor="{AppThemeBinding Light=#C0C8D8, Dark=#2A2A42}"
-                   HorizontalOptions="Center"/>
-        </VerticalStackLayout>
-
     </Grid>
 </ContentPage>

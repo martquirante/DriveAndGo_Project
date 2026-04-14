@@ -1,174 +1,168 @@
-﻿using DriveAndGo_API.Models;
+using BCryptNet = BCrypt.Net.BCrypt;
+using DriveAndGo_API.Contracts;
+using DriveAndGo_API.Models;
 using Microsoft.AspNetCore.Mvc;
 using MySql.Data.MySqlClient;
 
-namespace DriveAndGo_API.Controllers
+namespace DriveAndGo_API.Controllers;
+
+[Route("api/[controller]")]
+[ApiController]
+public class AuthController : ControllerBase
 {
-    [Route("api/[controller]")]
-    [ApiController]
-    public class AuthController : ControllerBase
+    private readonly string _connectionString;
+
+    public AuthController(IConfiguration configuration)
     {
-        private readonly string _connectionString;
+        _connectionString = configuration.GetConnectionString("DefaultConnection")!;
+    }
 
-        public AuthController(IConfiguration configuration)
+    [HttpPost("register")]
+    public IActionResult Register([FromBody] RegisterRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email) ||
+            string.IsNullOrWhiteSpace(request.Password) ||
+            string.IsNullOrWhiteSpace(request.FullName))
         {
-            _connectionString =
-                configuration.GetConnectionString("DefaultConnection")!;
+            return BadRequest(new { Message = "Complete the required registration fields." });
         }
 
-        // ══ REGISTER ══
-        [HttpPost("register")]
-        public IActionResult Register([FromBody] RegisterRequest request)
+        var normalizedRole = string.Equals(request.Role, "driver", StringComparison.OrdinalIgnoreCase)
+            ? "driver"
+            : "customer";
+
+        try
         {
-            if (string.IsNullOrWhiteSpace(request.Email) ||
-                string.IsNullOrWhiteSpace(request.Password) ||
-                string.IsNullOrWhiteSpace(request.FullName))
-                return BadRequest(new
-                {
-                    message = "Kumpletuhin ang lahat ng fields."
-                });
+            using var connection = new MySqlConnection(_connectionString);
+            connection.Open();
 
-            try
+            using var existsCommand = new MySqlCommand(
+                "SELECT COUNT(*) FROM users WHERE email = @email",
+                connection);
+            existsCommand.Parameters.AddWithValue("@email", request.Email.Trim());
+
+            if (Convert.ToInt32(existsCommand.ExecuteScalar()) > 0)
             {
-                using var conn = new MySqlConnection(_connectionString);
-                conn.Open();
-
-                // Check kung naka-register na ang email
-                var checkCmd = new MySqlCommand(
-                    "SELECT COUNT(*) FROM users WHERE email = @email", conn);
-                checkCmd.Parameters.AddWithValue("@email", request.Email);
-                var count = Convert.ToInt32(checkCmd.ExecuteScalar());
-
-                if (count > 0)
-                    return Conflict(new
-                    {
-                        message = "Email already registered. Mag-login na lang!"
-                    });
-
-                // Hash ang password gamit ang BCrypt.Net-Next
-                string hashedPassword = BCrypt.Net.BCrypt
-                    .HashPassword(request.Password);
-
-                // I-save sa database
-                var insertCmd = new MySqlCommand(@"
-                    INSERT INTO users
-                        (full_name, email, password_hash,
-                         phone, role, created_at)
-                    VALUES
-                        (@full_name, @email, @password_hash,
-                         @phone, @role, NOW())", conn);
-
-                insertCmd.Parameters.AddWithValue("@full_name", request.FullName);
-                insertCmd.Parameters.AddWithValue("@email", request.Email);
-                insertCmd.Parameters.AddWithValue("@password_hash", hashedPassword);
-                insertCmd.Parameters.AddWithValue("@phone", request.Phone ?? "");
-                insertCmd.Parameters.AddWithValue("@role", request.Role ?? "customer");
-
-                insertCmd.ExecuteNonQuery();
-
-                // Kunin ang bagong user_id
-                var idCmd = new MySqlCommand("SELECT LAST_INSERT_ID()", conn);
-                int newUserId = Convert.ToInt32(idCmd.ExecuteScalar());
-
-                return Ok(new
-                {
-                    message = "Registration successful! Welcome sa DriveAndGo!",
-                    user_id = newUserId,
-                    full_name = request.FullName,
-                    email = request.Email,
-                    role = request.Role ?? "customer"
-                });
+                return Conflict(new { Message = "Email is already registered." });
             }
-            catch (Exception ex)
+
+            var hashedPassword = BCryptNet.HashPassword(request.Password);
+
+            using var insertCommand = new MySqlCommand(
+                @"INSERT INTO users
+                    (full_name, email, password_hash, phone, role, created_at)
+                  VALUES
+                    (@full_name, @email, @password_hash, @phone, @role, NOW())",
+                connection);
+
+            insertCommand.Parameters.AddWithValue("@full_name", request.FullName.Trim());
+            insertCommand.Parameters.AddWithValue("@email", request.Email.Trim());
+            insertCommand.Parameters.AddWithValue("@password_hash", hashedPassword);
+            insertCommand.Parameters.AddWithValue("@phone", string.IsNullOrWhiteSpace(request.Phone) ? string.Empty : request.Phone.Trim());
+            insertCommand.Parameters.AddWithValue("@role", normalizedRole);
+            insertCommand.ExecuteNonQuery();
+
+            var userId = Convert.ToInt32(new MySqlCommand("SELECT LAST_INSERT_ID()", connection).ExecuteScalar());
+
+            return Ok(new AuthResponse
             {
-                return StatusCode(500, new
-                {
-                    message = "Registration failed: " + ex.Message
-                });
-            }
+                Message = "Registration successful.",
+                UserId = userId,
+                FullName = request.FullName.Trim(),
+                Email = request.Email.Trim(),
+                Phone = string.IsNullOrWhiteSpace(request.Phone) ? string.Empty : request.Phone.Trim(),
+                Role = normalizedRole
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "Registration failed: " + ex.Message });
+        }
+    }
+
+    [HttpPost("login")]
+    public IActionResult Login([FromBody] LoginRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email) ||
+            string.IsNullOrWhiteSpace(request.Password))
+        {
+            return BadRequest(new { Message = "Email and password are required." });
         }
 
-        // ══ LOGIN ══
-        [HttpPost("login")]
-        public IActionResult Login([FromBody] LoginRequest request)
+        try
         {
-            if (string.IsNullOrWhiteSpace(request.Email) ||
-                string.IsNullOrWhiteSpace(request.Password))
-                return BadRequest(new
-                {
-                    message = "Email at password ay required."
-                });
+            using var connection = new MySqlConnection(_connectionString);
+            connection.Open();
 
-            try
+            using var command = new MySqlCommand(
+                @"SELECT
+                    u.user_id,
+                    u.full_name,
+                    u.email,
+                    u.password_hash,
+                    u.phone,
+                    u.role,
+                    d.driver_id
+                  FROM users u
+                  LEFT JOIN drivers d ON d.user_id = u.user_id
+                  WHERE u.email = @email
+                  LIMIT 1",
+                connection);
+
+            command.Parameters.AddWithValue("@email", request.Email.Trim());
+
+            using var reader = command.ExecuteReader();
+            if (!reader.Read())
             {
-                using var conn = new MySqlConnection(_connectionString);
-                conn.Open();
-
-                var cmd = new MySqlCommand(@"
-                    SELECT user_id, full_name, email,
-                           password_hash, phone, role
-                    FROM users
-                    WHERE email = @email
-                    LIMIT 1", conn);
-                cmd.Parameters.AddWithValue("@email", request.Email);
-
-                using var reader = cmd.ExecuteReader();
-
-                if (!reader.Read())
-                    return Unauthorized(new
-                    {
-                        message = "Email not found. Mag-register muna!"
-                    });
-
-                string storedHash = reader["password_hash"].ToString()!;
-                bool isPasswordCorrect = BCrypt.Net.BCrypt
-                    .Verify(request.Password, storedHash);
-
-                if (!isPasswordCorrect)
-                    return Unauthorized(new
-                    {
-                        message = "Mali ang password. Subukan ulit!"
-                    });
-
-                return Ok(new
-                {
-                    message = "Login successful! Welcome back!",
-                    user_id = Convert.ToInt32(reader["user_id"]),
-                    full_name = reader["full_name"].ToString(),
-                    email = reader["email"].ToString(),
-                    phone = reader["phone"].ToString(),
-                    role = reader["role"].ToString()
-                });
+                return Unauthorized(new { Message = "Account not found." });
             }
-            catch (Exception ex)
+
+            var storedHash = reader["password_hash"]?.ToString() ?? string.Empty;
+            if (!BCryptNet.Verify(request.Password, storedHash))
             {
-                return StatusCode(500, new
-                {
-                    message = "Login failed: " + ex.Message
-                });
+                return Unauthorized(new { Message = "Invalid email or password." });
             }
+
+            return Ok(new AuthResponse
+            {
+                Message = "Login successful.",
+                UserId = Convert.ToInt32(reader["user_id"]),
+                DriverId = reader["driver_id"] == DBNull.Value ? null : Convert.ToInt32(reader["driver_id"]),
+                FullName = reader["full_name"]?.ToString() ?? string.Empty,
+                Email = reader["email"]?.ToString() ?? string.Empty,
+                Phone = reader["phone"]?.ToString() ?? string.Empty,
+                Role = reader["role"]?.ToString() ?? "customer"
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "Login failed: " + ex.Message });
+        }
+    }
+
+    [HttpGet("check-email")]
+    public IActionResult CheckEmail([FromQuery] string email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return BadRequest(new { Message = "Email is required." });
         }
 
-        // ══ CHECK EMAIL — real-time validation sa mobile app ══
-        [HttpGet("check-email")]
-        public IActionResult CheckEmail([FromQuery] string email)
+        try
         {
-            try
-            {
-                using var conn = new MySqlConnection(_connectionString);
-                conn.Open();
+            using var connection = new MySqlConnection(_connectionString);
+            connection.Open();
 
-                var cmd = new MySqlCommand(
-                    "SELECT COUNT(*) FROM users WHERE email = @email", conn);
-                cmd.Parameters.AddWithValue("@email", email);
-                var count = Convert.ToInt32(cmd.ExecuteScalar());
+            using var command = new MySqlCommand(
+                "SELECT COUNT(*) FROM users WHERE email = @email",
+                connection);
+            command.Parameters.AddWithValue("@email", email.Trim());
 
-                return Ok(new { exists = count > 0 });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = ex.Message });
-            }
+            return Ok(new { Exists = Convert.ToInt32(command.ExecuteScalar()) > 0 });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = ex.Message });
         }
     }
 }

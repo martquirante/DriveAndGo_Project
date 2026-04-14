@@ -141,7 +141,7 @@ namespace DriveAndGo_API.Controllers
                            COUNT(r.rating_id) AS total_reviews,
                            d.total_trips
                     FROM ratings r
-                    JOIN drivers d ON r.driver_id = d.user_id
+                    JOIN drivers d ON r.driver_id = d.driver_id
                     JOIN users u   ON d.user_id   = u.user_id
                     WHERE r.driver_score IS NOT NULL
                     GROUP BY d.driver_id, u.full_name, d.total_trips
@@ -283,9 +283,8 @@ namespace DriveAndGo_API.Controllers
                             WHERE driver_id = @driver_id
                             AND driver_score IS NOT NULL
                         )
-                        WHERE user_id = @driver_id", conn);
-                    updateDriverCmd.Parameters.AddWithValue("@driver_id",
-                        rating.DriverId.Value);
+                        WHERE driver_id = @driver_id", conn);
+                    updateDriverCmd.Parameters.AddWithValue("@driver_id", rating.DriverId.Value);
                     updateDriverCmd.ExecuteNonQuery();
                 }
 

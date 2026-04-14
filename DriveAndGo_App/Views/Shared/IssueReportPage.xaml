@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DriveAndGo_App.Views.Shared.IssueReportPage"
+             BackgroundColor="#F8FAFC"
+             Title="Report Issue">
+    <ScrollView>
+        <VerticalStackLayout Padding="20,22,20,30" Spacing="16">
+            <Border Padding="18"
+                    BackgroundColor="White"
+                    Stroke="#E2E8F0"
+                    StrokeShape="RoundRectangle 26">
+                <VerticalStackLayout Spacing="14">
+                    <Label Text="Report an issue"
+                           FontSize="24"
+                           FontAttributes="Bold"
+                           TextColor="#0F172A" />
+                    <Picker Title="Issue type"
+                            ItemsSource="{Binding IssueTypes}"
+                            SelectedItem="{Binding SelectedIssueType}" />
+                    <Editor Placeholder="Describe the issue"
+                            Text="{Binding Description}"
+                            AutoSize="TextChanges"
+                            BackgroundColor="#F1F5F9" />
+                    <Button Text="Upload image"
+                            Command="{Binding UploadImageCommand}"
+                            BackgroundColor="#E2E8F0"
+                            TextColor="#0F172A"
+                            CornerRadius="18"
+                            HeightRequest="44" />
+                    <Label Text="{Binding ImageUrl}"
+                           FontSize="11"
+                           TextColor="#64748B" />
+                    <Button Text="Submit issue report"
+                            Command="{Binding SubmitCommand}"
+                            BackgroundColor="#EA580C"
+                            TextColor="White"
+                            CornerRadius="18"
+                            HeightRequest="48" />
+                </VerticalStackLayout>
+            </Border>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

@@ -2,121 +2,130 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="DriveAndGo_App.CustomerHomePage"
-             BackgroundColor="{AppThemeBinding Light=#f4f6f8, Dark=#0a0a12}"
-             NavigationPage.HasNavigationBar="False">
-
-    <Grid RowDefinitions="*, 70">
-
-        <ScrollView Grid.Row="0" VerticalScrollBarVisibility="Never">
-            <VerticalStackLayout Padding="20,20,20,0" Spacing="25">
-
-                <Grid ColumnDefinitions="*, Auto">
-                    <VerticalStackLayout Grid.Column="0" VerticalOptions="Center" Spacing="2">
-                        <Label Text="Current Location" FontSize="12" TextColor="#a0a0c0" />
-                        <HorizontalStackLayout Spacing="5">
-                            <Label Text="📍" FontSize="14" VerticalOptions="Center" />
-                            <Label Text="San Jose del Monte, Bulacan" FontSize="15" FontAttributes="Bold" TextColor="{AppThemeBinding Light=#1a1a2e, Dark=White}" VerticalOptions="Center"/>
-                        </HorizontalStackLayout>
+             BackgroundColor="#F8FAFC"
+             Title="Explore">
+    <ScrollView>
+        <VerticalStackLayout Padding="20,22,20,30" Spacing="18">
+            <Border Padding="24"
+                    BackgroundColor="#0F172A"
+                    Stroke="#1E293B"
+                    StrokeShape="RoundRectangle 30">
+                <Grid ColumnDefinitions="*,Auto">
+                    <VerticalStackLayout Spacing="6">
+                        <Label Text="Available today"
+                               FontSize="13"
+                               TextColor="#FDBA74" />
+                        <Label Text="Find the right ride"
+                               FontSize="28"
+                               FontAttributes="Bold"
+                               TextColor="White" />
+                        <Label Text="Search admin-managed inventory and request your next rental in a few taps."
+                               FontSize="13"
+                               TextColor="#CBD5E1" />
                     </VerticalStackLayout>
-
-                    <Frame Grid.Column="1" WidthRequest="45" HeightRequest="45" CornerRadius="22.5" Padding="0" IsClippedToBounds="True" BorderColor="#e6510d" BackgroundColor="#14142a">
-                        <Label Text="👤" FontSize="24" HorizontalOptions="Center" VerticalOptions="Center"/>
-                    </Frame>
+                    <Image Grid.Column="1"
+                           Source="logo.png"
+                           HeightRequest="64"
+                           WidthRequest="84"
+                           VerticalOptions="Center"
+                           Aspect="AspectFit" />
                 </Grid>
+            </Border>
 
-                <Frame BackgroundColor="{AppThemeBinding Light=#1a1a2e, Dark=#14142a}" BorderColor="Transparent" CornerRadius="20" Padding="20" HasShadow="True">
-                    <Grid ColumnDefinitions="*, 120">
-                        <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
-                            <Label Text="Looking for the" FontSize="20" FontAttributes="Bold" TextColor="White" />
-                            <Label Text="best ride?" FontSize="22" FontAttributes="Bold" TextColor="#e6510d" />
-                            <Label Text="Find the perfect vehicle for your journey." FontSize="12" TextColor="#a0a0c0" Margin="0,8,0,0"/>
-                        </VerticalStackLayout>
-
-                        <Image Grid.Column="1" Source="car_logo.png" Aspect="AspectFit" VerticalOptions="Center" HeightRequest="80"/>
+            <Border Padding="16"
+                    BackgroundColor="White"
+                    Stroke="#E2E8F0"
+                    StrokeShape="RoundRectangle 24">
+                <VerticalStackLayout Spacing="14">
+                    <Entry Placeholder="Search brand, model, plate number"
+                           Text="{Binding SearchText}"
+                           BackgroundColor="#F1F5F9" />
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                        <Picker Grid.Column="0"
+                                Title="Category"
+                                ItemsSource="{Binding Categories}"
+                                SelectedItem="{Binding SelectedCategory}" />
+                        <Picker Grid.Column="1"
+                                Title="Sort"
+                                ItemsSource="{Binding SortOptions}"
+                                SelectedItem="{Binding SelectedSort}" />
                     </Grid>
-                </Frame>
-
-                <Frame BackgroundColor="{AppThemeBinding Light=White, Dark=#1a1a35}" BorderColor="{AppThemeBinding Light=#e0e0e0, Dark=#2a2a42}" CornerRadius="15" Padding="15,2" HasShadow="False">
-                    <Grid ColumnDefinitions="Auto, *">
-                        <Label Grid.Column="0" Text="🔍" FontSize="18" VerticalOptions="Center" TextColor="#a0a0c0" Margin="0,0,10,0"/>
-                        <Entry Grid.Column="1" Placeholder="Search Civic, NMAX, etc..." TextColor="{AppThemeBinding Light=#1a1a2e, Dark=White}" PlaceholderColor="#a0a0c0" ClearButtonVisibility="WhileEditing" BackgroundColor="Transparent"/>
-                    </Grid>
-                </Frame>
-
-                <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
-                    <HorizontalStackLayout Spacing="10">
-                        <Frame BackgroundColor="#e6510d" CornerRadius="12" Padding="20,10" HasShadow="False" BorderColor="Transparent">
-                            <Label Text="All" TextColor="White" FontAttributes="Bold" FontSize="13"/>
-                        </Frame>
-                        <Frame BackgroundColor="{AppThemeBinding Light=White, Dark=#1a1a35}" BorderColor="{AppThemeBinding Light=#e0e0e0, Dark=#2a2a42}" CornerRadius="12" Padding="20,10" HasShadow="False">
-                            <Label Text="Cars" TextColor="{AppThemeBinding Light=#404060, Dark=#a0a0c0}" FontAttributes="Bold" FontSize="13"/>
-                        </Frame>
-                        <Frame BackgroundColor="{AppThemeBinding Light=White, Dark=#1a1a35}" BorderColor="{AppThemeBinding Light=#e0e0e0, Dark=#2a2a42}" CornerRadius="12" Padding="20,10" HasShadow="False">
-                            <Label Text="Vans" TextColor="{AppThemeBinding Light=#404060, Dark=#a0a0c0}" FontAttributes="Bold" FontSize="13"/>
-                        </Frame>
-                        <Frame BackgroundColor="{AppThemeBinding Light=White, Dark=#1a1a35}" BorderColor="{AppThemeBinding Light=#e0e0e0, Dark=#2a2a42}" CornerRadius="12" Padding="20,10" HasShadow="False">
-                            <Label Text="Motorcycles" TextColor="{AppThemeBinding Light=#404060, Dark=#a0a0c0}" FontAttributes="Bold" FontSize="13"/>
-                        </Frame>
-                    </HorizontalStackLayout>
-                </ScrollView>
-
-                <Grid ColumnDefinitions="*, Auto" Margin="0,5,0,0">
-                    <Label Grid.Column="0" Text="Top Vehicles" FontSize="18" FontAttributes="Bold" TextColor="{AppThemeBinding Light=#1a1a2e, Dark=White}" VerticalOptions="Center"/>
-                    <Label Grid.Column="1" Text="See All" FontSize="13" TextColor="#e6510d" FontAttributes="Bold" VerticalOptions="Center" />
-                </Grid>
-
-                <CollectionView x:Name="cvVehicles" SelectionMode="Single" SelectionChanged="OnVehicleSelected">
-                    <CollectionView.ItemsLayout>
-                        <LinearItemsLayout Orientation="Vertical" ItemSpacing="15" />
-                    </CollectionView.ItemsLayout>
-                    <CollectionView.ItemTemplate>
-                        <DataTemplate>
-                            <Frame BackgroundColor="{AppThemeBinding Light=White, Dark=#14142a}" BorderColor="{AppThemeBinding Light=#e0e0e0, Dark=#2a2a42}" CornerRadius="18" Padding="15" HasShadow="True">
-                                <Grid RowDefinitions="140, Auto, Auto" ColumnDefinitions="*, Auto">
-
-                                    <Image Grid.Row="0" Grid.ColumnSpan="2" Source="{Binding PhotoUrl}" Aspect="AspectFit" Margin="0,0,0,15" HeightRequest="130" BackgroundColor="Transparent"/>
-
-                                    <VerticalStackLayout Grid.Row="1" Grid.Column="0" VerticalOptions="Center">
-                                        <Label Text="{Binding Name}" FontSize="16" FontAttributes="Bold" TextColor="{AppThemeBinding Light=#1a1a2e, Dark=White}" />
-                                        <Label Text="{Binding PlateNo}" FontSize="12" TextColor="#a0a0c0" Margin="0,2,0,0"/>
-                                    </VerticalStackLayout>
-
-                                    <VerticalStackLayout Grid.Row="1" Grid.Column="1" HorizontalOptions="End" VerticalOptions="Center">
-                                        <Label Text="{Binding PriceString}" FontSize="16" FontAttributes="Bold" TextColor="#e6510d" HorizontalOptions="End" />
-                                        <Label Text="Automatic • 4 Seats" FontSize="11" TextColor="#a0a0c0" HorizontalOptions="End" Margin="0,2,0,0"/>
-                                    </VerticalStackLayout>
-
-                                </Grid>
-                            </Frame>
-                        </DataTemplate>
-                    </CollectionView.ItemTemplate>
-                </CollectionView>
-
-                <BoxView HeightRequest="80" Color="Transparent" />
-
-            </VerticalStackLayout>
-        </ScrollView>
-
-        <Frame Grid.Row="1" BackgroundColor="{AppThemeBinding Light=White, Dark=#0e0e1c}" BorderColor="{AppThemeBinding Light=#e0e0e0, Dark=#1e1e32}" CornerRadius="25" Margin="20,0,20,15" Padding="10,0" HasShadow="True">
-            <Grid ColumnDefinitions="*, *, *, *">
-                <VerticalStackLayout Grid.Column="0" VerticalOptions="Center" HorizontalOptions="Center">
-                    <Label Text="🏠" FontSize="22" HorizontalOptions="Center" />
-                    <Label Text="Home" FontSize="10" TextColor="#e6510d" FontAttributes="Bold" HorizontalOptions="Center" />
                 </VerticalStackLayout>
-                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" HorizontalOptions="Center" Opacity="0.5">
-                    <Label Text="📅" FontSize="22" HorizontalOptions="Center" />
-                    <Label Text="Bookings" FontSize="10" TextColor="{AppThemeBinding Light=#404060, Dark=#a0a0c0}" HorizontalOptions="Center" />
-                </VerticalStackLayout>
-                <VerticalStackLayout Grid.Column="2" VerticalOptions="Center" HorizontalOptions="Center" Opacity="0.5">
-                    <Label Text="🗺" FontSize="22" HorizontalOptions="Center" />
-                    <Label Text="Map" FontSize="10" TextColor="{AppThemeBinding Light=#404060, Dark=#a0a0c0}" HorizontalOptions="Center" />
-                </VerticalStackLayout>
-                <VerticalStackLayout Grid.Column="3" VerticalOptions="Center" HorizontalOptions="Center" Opacity="0.5">
-                    <Label Text="👤" FontSize="22" HorizontalOptions="Center" />
-                    <Label Text="Profile" FontSize="10" TextColor="{AppThemeBinding Light=#404060, Dark=#a0a0c0}" HorizontalOptions="Center" />
-                </VerticalStackLayout>
-            </Grid>
-        </Frame>
+            </Border>
 
-    </Grid>
+            <CollectionView ItemsSource="{Binding Vehicles}"
+                            SelectionMode="Single"
+                            SelectionChanged="OnVehicleSelected">
+                <CollectionView.ItemsLayout>
+                    <LinearItemsLayout Orientation="Vertical" ItemSpacing="14" />
+                </CollectionView.ItemsLayout>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Border Padding="16"
+                                BackgroundColor="White"
+                                Stroke="#E2E8F0"
+                                StrokeShape="RoundRectangle 24">
+                            <Grid RowDefinitions="150,Auto,Auto" ColumnDefinitions="*,Auto">
+                                <Border Grid.Row="0"
+                                        Grid.ColumnSpan="2"
+                                        BackgroundColor="#FFF7ED"
+                                        StrokeThickness="0"
+                                        StrokeShape="RoundRectangle 20"
+                                        Padding="16">
+                                    <Image Source="{Binding ImageSource}"
+                                           Aspect="AspectFit" />
+                                </Border>
+
+                                <Label Grid.Row="1"
+                                       Grid.Column="0"
+                                       Text="{Binding DisplayName}"
+                                       FontSize="18"
+                                       FontAttributes="Bold"
+                                       TextColor="#0F172A"
+                                       Margin="0,14,0,0" />
+
+                                <Border Grid.Row="1"
+                                        Grid.Column="1"
+                                        Margin="0,14,0,0"
+                                        Padding="10,4"
+                                        BackgroundColor="#ECFDF5"
+                                        Stroke="#A7F3D0"
+                                        StrokeShape="RoundRectangle 14">
+                                    <Label Text="{Binding CategoryLabel}"
+                                           FontSize="12"
+                                           TextColor="#047857" />
+                                </Border>
+
+                                <VerticalStackLayout Grid.Row="2"
+                                                     Grid.ColumnSpan="2"
+                                                     Spacing="6"
+                                                     Margin="0,8,0,0">
+                                    <Label Text="{Binding PricePerDayLabel}"
+                                           FontSize="15"
+                                           FontAttributes="Bold"
+                                           TextColor="#EA580C" />
+                                    <Label Text="{Binding WithDriverLabel}"
+                                           FontSize="12"
+                                           TextColor="#475569" />
+                                    <Label Text="{Binding PlateNo}"
+                                           FontSize="12"
+                                           TextColor="#94A3B8" />
+                                </VerticalStackLayout>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+            <Border IsVisible="{Binding HasError}"
+                    BackgroundColor="#FEF2F2"
+                    Stroke="#FCA5A5"
+                    StrokeShape="RoundRectangle 18"
+                    Padding="14">
+                <Label Text="{Binding ErrorMessage}"
+                       TextColor="#991B1B"
+                       FontSize="12" />
+            </Border>
+        </VerticalStackLayout>
+    </ScrollView>
 </ContentPage>

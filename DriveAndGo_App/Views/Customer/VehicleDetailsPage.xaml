@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DriveAndGo_App.Views.Customer.VehicleDetailsPage"
+             BackgroundColor="#F8FAFC"
+             Title="Vehicle">
+    <ScrollView>
+        <VerticalStackLayout Padding="20,22,20,30" Spacing="16">
+            <Border Padding="20"
+                    BackgroundColor="#0F172A"
+                    Stroke="#1E293B"
+                    StrokeShape="RoundRectangle 30">
+                <VerticalStackLayout Spacing="12">
+                    <Image Source="{Binding Vehicle.ImageSource}"
+                           HeightRequest="180"
+                           Aspect="AspectFit" />
+                    <Label Text="{Binding Vehicle.DisplayName}"
+                           FontSize="28"
+                           FontAttributes="Bold"
+                           TextColor="White" />
+                    <Label Text="{Binding Vehicle.Description}"
+                           FontSize="13"
+                           TextColor="#CBD5E1" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                <Border Grid.Column="0" Padding="14" BackgroundColor="White" Stroke="#E2E8F0" StrokeShape="RoundRectangle 22">
+                    <VerticalStackLayout>
+                        <Label Text="Seats" FontSize="12" TextColor="#94A3B8" />
+                        <Label Text="{Binding Vehicle.SeatCapacity}" FontSize="18" FontAttributes="Bold" TextColor="#0F172A" />
+                    </VerticalStackLayout>
+                </Border>
+                <Border Grid.Column="1" Padding="14" BackgroundColor="White" Stroke="#E2E8F0" StrokeShape="RoundRectangle 22">
+                    <VerticalStackLayout>
+                        <Label Text="Transmission" FontSize="12" TextColor="#94A3B8" />
+                        <Label Text="{Binding Vehicle.Transmission}" FontSize="18" FontAttributes="Bold" TextColor="#0F172A" />
+                    </VerticalStackLayout>
+                </Border>
+            </Grid>
+
+            <Border Padding="18"
+                    BackgroundColor="White"
+                    Stroke="#E2E8F0"
+                    StrokeShape="RoundRectangle 26">
+                <VerticalStackLayout Spacing="14">
+                    <Label Text="Booking request"
+                           FontSize="22"
+                           FontAttributes="Bold"
+                           TextColor="#0F172A" />
+                    <DatePicker Date="{Binding StartDate}" />
+                    <DatePicker Date="{Binding EndDate}" />
+                    <Entry Placeholder="Destination"
+                           Text="{Binding Destination}"
+                           BackgroundColor="#F1F5F9" />
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                        <Switch IsToggled="{Binding WithDriver}" />
+                        <Label Grid.Column="1"
+                               Text="Include an assigned driver"
+                               VerticalTextAlignment="Center"
+                               TextColor="#475569" />
+                    </Grid>
+                    <Picker IsVisible="{Binding IsDriverPickerVisible}"
+                            Title="Choose a driver"
+                            ItemsSource="{Binding AvailableDrivers}"
+                            ItemDisplayBinding="{Binding FullName}"
+                            SelectedItem="{Binding SelectedDriver}" />
+                    <Picker Title="Preferred payment method"
+                            ItemsSource="{Binding PaymentMethods}"
+                            SelectedItem="{Binding SelectedPaymentMethod}" />
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                        <CheckBox IsChecked="{Binding AcceptedTerms}" />
+                        <Label Grid.Column="1"
+                               Text="I agree to the rental terms and the admin review process."
+                               FontSize="12"
+                               TextColor="#475569"
+                               VerticalTextAlignment="Center" />
+                    </Grid>
+                    <Border Padding="14"
+                            BackgroundColor="#FFF7ED"
+                            Stroke="#FDBA74"
+                            StrokeShape="RoundRectangle 18">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label Text="Estimated total"
+                                   FontSize="14"
+                                   FontAttributes="Bold"
+                                   TextColor="#9A3412" />
+                            <Label Grid.Column="1"
+                                   Text="{Binding BookingTotalLabel}"
+                                   FontSize="16"
+                                   FontAttributes="Bold"
+                                   TextColor="#EA580C" />
+                        </Grid>
+                    </Border>
+                    <Button Text="Submit booking request"
+                            Command="{Binding BookCommand}"
+                            BackgroundColor="#EA580C"
+                            TextColor="White"
+                            CornerRadius="18"
+                            HeightRequest="52" />
+                    <Border IsVisible="{Binding HasError}"
+                            BackgroundColor="#FEF2F2"
+                            Stroke="#FCA5A5"
+                            StrokeShape="RoundRectangle 18"
+                            Padding="14">
+                        <Label Text="{Binding ErrorMessage}"
+                               TextColor="#991B1B"
+                               FontSize="12" />
+                    </Border>
+                </VerticalStackLayout>
+            </Border>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

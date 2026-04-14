@@ -3,12 +3,6 @@
     x:Class="DriveAndGo_App.AppShell"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-    xmlns:local="clr-namespace:DriveAndGo_App"
-    Title="DriveAndGo_App">
-
-    <ShellContent
-        Title="Home"
-        ContentTemplate="{DataTemplate local:MainPage}"
-        Route="MainPage" />
-
-</Shell>
+    FlyoutBehavior="Disabled"
+    Shell.NavBarIsVisible="False"
+    Title="Drive &amp; Go" />

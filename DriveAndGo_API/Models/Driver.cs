@@ -4,7 +4,7 @@
     {
         public int DriverId { get; set; }
         public int UserId { get; set; }
-        public string LicenseNo { get; set; }
+        public string LicenseNo { get; set; } = string.Empty;
         public string? LicensePhotoUrl { get; set; }
         public string Status { get; set; } = "inactive";
         public decimal? RatingAvg { get; set; }

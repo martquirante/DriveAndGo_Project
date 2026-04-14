@@ -1,18 +1,13 @@
-using Microsoft.Extensions.FileProviders;
 using DriveAndGo_API.Services;
+using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.Services.AddScoped<DriveAndGo_API.Services.DbService>();
-
-// Configurations para sa Firebase
-builder.Services.Configure<FirebaseBridgeOptions>(builder.Configuration.GetSection("FirebaseBridge"));
-
-// ITO ANG TAMA AT NAG-IISANG SYNC SERVICE NA DAPAT TUMAKBO:
-builder.Services.AddHostedService<FirebaseSyncService>();
+builder.Services.AddScoped<DbService>();
+builder.Services.AddScoped<NotificationWriter>();
 
 builder.Services.AddCors(options =>
 {
@@ -32,13 +27,14 @@ app.UseCors("AllowAll");
 
 var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "uploads");
 if (!Directory.Exists(uploadsPath))
+{
     Directory.CreateDirectory(uploadsPath);
+}
 
 app.UseStaticFiles();
 app.UseStaticFiles(new StaticFileOptions
 {
-    FileProvider = new PhysicalFileProvider(
-        Path.Combine(builder.Environment.ContentRootPath, "wwwroot")),
+    FileProvider = new PhysicalFileProvider(Path.Combine(builder.Environment.ContentRootPath, "wwwroot")),
     RequestPath = ""
 });
 

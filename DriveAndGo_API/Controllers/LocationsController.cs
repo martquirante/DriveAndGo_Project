@@ -20,7 +20,7 @@ namespace DriveAndGo_API.Controllers
         public IActionResult UpdateLocation([FromBody] LocationLog log)
         {
             if (log.RentalId == 0 || log.VehicleId == 0 || log.Latitude == 0 || log.Longitude == 0)
-                return BadRequest(new { message = "RentalId, VehicleId, Latitude, and Longitude are required." });
+                return BadRequest(new { Message = "RentalId, VehicleId, Latitude, and Longitude are required." });
 
             try
             {
@@ -37,21 +37,22 @@ namespace DriveAndGo_API.Controllers
 
                 using var reader = checkCmd.ExecuteReader();
                 if (!reader.Read())
-                    return NotFound(new { message = "Rental not found." });
+                    return NotFound(new { Message = "Rental not found." });
 
                 string status = reader["rental_status"]?.ToString() ?? "";
                 int expectedVehicleId = Convert.ToInt32(reader["vehicle_id"], CultureInfo.InvariantCulture);
                 reader.Close();
 
                 if (!string.Equals(status, "approved", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(status, "in-use", StringComparison.OrdinalIgnoreCase))
+                    !string.Equals(status, "in-use", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(status, "active", StringComparison.OrdinalIgnoreCase))
                 {
-                    return BadRequest(new { message = "This rental is not active. Location not saved." });
+                    return BadRequest(new { Message = "This rental is not active. Location not saved." });
                 }
 
                 if (expectedVehicleId != log.VehicleId)
                 {
-                    return Conflict(new { message = "VehicleId does not match the rental record." });
+                    return Conflict(new { Message = "VehicleId does not match the rental record." });
                 }
 
                 DateTime loggedAt = log.LoggedAt == DateTime.MinValue ? DateTime.UtcNow : log.LoggedAt;
@@ -87,11 +88,11 @@ namespace DriveAndGo_API.Controllers
 
                 tx.Commit();
 
-                return Ok(new { message = "Location updated successfully." });
+                return Ok(new { Message = "Location updated successfully." });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "DB Error: " + ex.Message });
+                return StatusCode(500, new { Message = "DB Error: " + ex.Message });
             }
         }
 
@@ -117,8 +118,9 @@ namespace DriveAndGo_API.Controllers
                     ) l2 ON l1.rental_id = l2.rental_id AND l1.logged_at = l2.latest_time
                     JOIN rentals r ON l1.rental_id = r.rental_id
                     JOIN vehicles v ON l1.vehicle_id = v.vehicle_id
-                    LEFT JOIN users u ON r.driver_id = u.user_id
-                    WHERE LOWER(COALESCE(r.status, '')) IN ('approved', 'in-use')", conn);
+                    LEFT JOIN drivers d ON r.driver_id = d.driver_id
+                    LEFT JOIN users u ON d.user_id = u.user_id
+                    WHERE LOWER(COALESCE(r.status, '')) IN ('approved', 'in-use', 'active')", conn);
 
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
@@ -144,7 +146,7 @@ namespace DriveAndGo_API.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "DB Error: " + ex.Message });
+                return StatusCode(500, new { Message = "DB Error: " + ex.Message });
             }
         }
 
@@ -180,13 +182,13 @@ namespace DriveAndGo_API.Controllers
                 }
 
                 if (path.Count == 0)
-                    return NotFound(new { message = "No location history recorded for this rental." });
+                    return NotFound(new { Message = "No location history recorded for this rental." });
 
                 return Ok(path);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "DB Error: " + ex.Message });
+                return StatusCode(500, new { Message = "DB Error: " + ex.Message });
             }
         }
     }

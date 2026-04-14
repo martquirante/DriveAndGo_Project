@@ -124,6 +124,7 @@ C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.Panels.DriversPanel.resources
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.Panels.FleetPanel.resources
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.Panels.RentalsPanel.resources
+C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.Panels.ReportsPanel.resources
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.Panels.TransactionsPanel.resources
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.Properties.Resources.resources
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.csproj.GenerateResource.cache
@@ -138,4 +139,3 @@ C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.pdb
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.genruntimeconfig.cache
 C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\ref\DriveAndGo_Admin.dll
-C:\Users\martquirante\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.Panels.ReportsPanel.resources

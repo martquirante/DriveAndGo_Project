@@ -1,322 +1,497 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
-using MySql.Data.MySqlClient;
 using DriveAndGo_API.Models;
-using System;
-using System.Collections.Generic;
+using DriveAndGo_API.Services;
+using Microsoft.AspNetCore.Mvc;
+using MySql.Data.MySqlClient;
 using System.Globalization;
-using System.Linq;
 
-namespace DriveAndGo_API.Controllers
+namespace DriveAndGo_API.Controllers;
+
+[Route("api/[controller]")]
+[ApiController]
+public class TransactionsController : ControllerBase
 {
-    [Route("api/[controller]")]
-    [ApiController]
-    public class TransactionsController : ControllerBase
+    private readonly string _connectionString;
+    private readonly NotificationWriter _notificationWriter;
+
+    public TransactionsController(IConfiguration configuration, NotificationWriter notificationWriter)
     {
-        private readonly string _connectionString;
+        _connectionString = configuration.GetConnectionString("DefaultConnection")!;
+        _notificationWriter = notificationWriter;
+    }
 
-        public TransactionsController(IConfiguration configuration)
+    [HttpGet]
+    public IActionResult GetTransactions()
+    {
+        try
         {
-            _connectionString = configuration.GetConnectionString("DefaultConnection")!;
+            return Ok(ReadTransactions());
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+        }
+    }
+
+    [HttpGet("rental/{rentalId:int}")]
+    public IActionResult GetByRental(int rentalId)
+    {
+        try
+        {
+            return Ok(ReadTransactions(rentalId));
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+        }
+    }
+
+    [HttpPost]
+    public IActionResult AddTransaction([FromBody] Transaction transaction)
+    {
+        if (transaction.RentalId <= 0 || transaction.Amount <= 0)
+        {
+            return BadRequest(new { Message = "RentalId and amount are required." });
         }
 
-        [HttpGet]
-        public IActionResult GetTransactions()
+        var normalizedMethod = NormalizeMethod(transaction.Method);
+        var validMethods = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "cash", "gcash", "maya", "bank" };
+        if (!validMethods.Contains(normalizedMethod))
         {
-            try
+            return BadRequest(new { Message = "Valid methods: cash, gcash, maya, bank" });
+        }
+
+        try
+        {
+            using var connection = new MySqlConnection(_connectionString);
+            connection.Open();
+
+            using var pendingCommand = new MySqlCommand(
+                @"SELECT COUNT(*) FROM transactions
+                  WHERE rental_id = @rental_id
+                    AND LOWER(COALESCE(status, '')) = 'pending'",
+                connection);
+            pendingCommand.Parameters.AddWithValue("@rental_id", transaction.RentalId);
+
+            if (Convert.ToInt32(pendingCommand.ExecuteScalar()) > 0)
             {
-                List<Transaction> transactions = new List<Transaction>();
-                using var conn = new MySqlConnection(_connectionString);
-                conn.Open();
-
-                var cmd = new MySqlCommand(@"
-                    SELECT t.transaction_id, t.rental_id, t.amount,
-                           t.type, t.method, t.proof_url,
-                           t.status, t.paid_at,
-                           u.full_name AS customer_name,
-                           CONCAT(v.brand, ' ', v.model) AS vehicle_name
-                    FROM transactions t
-                    JOIN rentals r ON t.rental_id = r.rental_id
-                    JOIN users u   ON r.customer_id = u.user_id
-                    JOIN vehicles v ON r.vehicle_id = v.vehicle_id
-                    WHERE LOWER(COALESCE(t.status, '')) <> 'duplicate'
-                    ORDER BY t.paid_at DESC", conn);
-
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    transactions.Add(new Transaction
-                    {
-                        TransactionId = Convert.ToInt32(reader["transaction_id"]),
-                        RentalId = Convert.ToInt32(reader["rental_id"]),
-                        Amount = Convert.ToDecimal(reader["amount"]),
-                        Type = reader["type"].ToString(),
-                        Method = reader["method"].ToString(),
-                        ProofUrl = reader["proof_url"].ToString(),
-                        Status = reader["status"].ToString(),
-                        PaidAt = reader["paid_at"] != DBNull.Value ? Convert.ToDateTime(reader["paid_at"]) : null,
-                        CustomerName = reader["customer_name"].ToString(),
-                        VehicleName = reader["vehicle_name"].ToString()
-                    });
-                }
-                return Ok(DeduplicateTransactions(transactions));
+                return Conflict(new { Message = "A pending payment already exists for this rental." });
             }
-            catch (Exception ex) { return StatusCode(500, new { message = "DB Error: " + ex.Message }); }
-        }
 
-        [HttpGet("rental/{rentalId}")]
-        public IActionResult GetByRental(int rentalId)
-        {
-            try
+            using var rentalCommand = new MySqlCommand(
+                @"SELECT rental_id, customer_id, payment_status
+                  FROM rentals
+                  WHERE rental_id = @rental_id
+                  LIMIT 1",
+                connection);
+            rentalCommand.Parameters.AddWithValue("@rental_id", transaction.RentalId);
+
+            using var rentalReader = rentalCommand.ExecuteReader();
+            if (!rentalReader.Read())
             {
-                List<Transaction> transactions = new List<Transaction>();
-                using var conn = new MySqlConnection(_connectionString);
-                conn.Open();
-
-                var cmd = new MySqlCommand(@"
-                    SELECT t.transaction_id, t.rental_id, t.amount,
-                           t.type, t.method, t.proof_url,
-                           t.status, t.paid_at,
-                           u.full_name AS customer_name,
-                           CONCAT(v.brand, ' ', v.model) AS vehicle_name
-                    FROM transactions t
-                    JOIN rentals r  ON t.rental_id = r.rental_id
-                    JOIN users u    ON r.customer_id = u.user_id
-                    JOIN vehicles v ON r.vehicle_id = v.vehicle_id
-                    WHERE t.rental_id = @rental_id
-                      AND LOWER(COALESCE(t.status, '')) <> 'duplicate'
-                    ORDER BY t.paid_at DESC", conn);
-                cmd.Parameters.AddWithValue("@rental_id", rentalId);
-
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
-                {
-                    transactions.Add(new Transaction
-                    {
-                        TransactionId = Convert.ToInt32(reader["transaction_id"]),
-                        RentalId = Convert.ToInt32(reader["rental_id"]),
-                        Amount = Convert.ToDecimal(reader["amount"]),
-                        Type = reader["type"].ToString(),
-                        Method = reader["method"].ToString(),
-                        ProofUrl = reader["proof_url"].ToString(),
-                        Status = reader["status"].ToString(),
-                        PaidAt = reader["paid_at"] != DBNull.Value ? Convert.ToDateTime(reader["paid_at"]) : null,
-                        CustomerName = reader["customer_name"].ToString(),
-                        VehicleName = reader["vehicle_name"].ToString()
-                    });
-                }
-                return Ok(DeduplicateTransactions(transactions));
+                return NotFound(new { Message = "Rental not found." });
             }
-            catch (Exception ex) { return StatusCode(500, new { message = "DB Error: " + ex.Message }); }
-        }
 
-        [HttpPost]
-        public IActionResult AddTransaction([FromBody] Transaction transaction)
-        {
-            if (transaction.RentalId == 0 || transaction.Amount <= 0)
-                return BadRequest(new { message = "RentalId at Amount ay required." });
+            var customerId = Convert.ToInt32(rentalReader["customer_id"], CultureInfo.InvariantCulture);
+            var paymentStatus = rentalReader["payment_status"]?.ToString() ?? string.Empty;
+            rentalReader.Close();
 
-            string requestedMethod = NormalizeMethod(transaction.Method);
-            var validMethods = new[] { "cash", "gcash", "maya", "bank" };
-            if (!validMethods.Contains(requestedMethod))
-                return BadRequest(new { message = "Valid methods: cash, gcash, maya, bank" });
+            var normalizedType = NormalizeTransactionType(transaction.Type);
+            var normalizedProof = NormalizeProofUrl(transaction.ProofUrl);
+            var existingTransaction = FindExistingTransaction(connection, transaction.RentalId, transaction.Amount, normalizedType, normalizedMethod, normalizedProof);
 
-            try
+            if (existingTransaction.HasValue)
             {
-                using var conn = new MySqlConnection(_connectionString);
-                conn.Open();
-
-                // 🔴 ANTI-SPAM BLOCKER 🔴
-                var pendingCmd = new MySqlCommand(@"
-                    SELECT COUNT(*) FROM transactions 
-                    WHERE rental_id = @rental_id 
-                      AND LOWER(status) = 'pending'", conn);
-                pendingCmd.Parameters.AddWithValue("@rental_id", transaction.RentalId);
-
-                if (Convert.ToInt32(pendingCmd.ExecuteScalar()) > 0)
+                var alreadyFinalized = existingTransaction.Value.Status is "confirmed" or "paid" or "verified";
+                return Ok(new
                 {
-                    return Conflict(new { message = "May nakabinbin (pending) na payment ka na para sa rental na ito. Hintayin muna ang confirmation ni Admin bago mag-submit ulit." });
-                }
-
-                string normalizedType = NormalizeTransactionType(transaction.Type);
-                string normalizedMethod = requestedMethod;
-                string normalizedProof = NormalizeProofUrl(transaction.ProofUrl);
-
-                var rentalCmd = new MySqlCommand("SELECT payment_status FROM rentals WHERE rental_id = @id LIMIT 1", conn);
-                rentalCmd.Parameters.AddWithValue("@id", transaction.RentalId);
-                string? paymentStatus = rentalCmd.ExecuteScalar()?.ToString();
-
-                if (paymentStatus == null) return NotFound(new { message = "Rental not found." });
-
-                var existingTx = FindExistingTransaction(conn, transaction.RentalId, transaction.Amount, normalizedType, normalizedMethod, normalizedProof);
-
-                if (existingTx.HasValue)
-                {
-                    bool alreadyFinalized = existingTx.Value.Status is "confirmed" or "paid" or "verified";
-                    return Ok(new
-                    {
-                        message = alreadyFinalized ? "Payment already exists for this rental." : "Payment was already submitted earlier.",
-                        transaction_id = existingTx.Value.TransactionId,
-                        duplicate_prevented = true
-                    });
-                }
-
-                if (normalizedType == "payment" && string.Equals(paymentStatus, "paid", StringComparison.OrdinalIgnoreCase))
-                {
-                    return Conflict(new { message = "This rental is already marked as paid." });
-                }
-
-                var insertCmd = new MySqlCommand(@"
-                    INSERT INTO transactions (rental_id, amount, type, method, proof_url, status, paid_at)
-                    VALUES (@rental_id, @amount, @type, @method, @proof_url, 'pending', NOW())", conn);
-
-                insertCmd.Parameters.AddWithValue("@rental_id", transaction.RentalId);
-                insertCmd.Parameters.AddWithValue("@amount", transaction.Amount);
-                insertCmd.Parameters.AddWithValue("@type", normalizedType);
-                insertCmd.Parameters.AddWithValue("@method", normalizedMethod);
-                insertCmd.Parameters.AddWithValue("@proof_url", normalizedProof);
-                insertCmd.ExecuteNonQuery();
-
-                int newId = Convert.ToInt32(new MySqlCommand("SELECT LAST_INSERT_ID()", conn).ExecuteScalar());
-
-                return Ok(new { message = "Payment submitted! Hintayin ang confirmation ni Admin.", transaction_id = newId });
+                    Message = alreadyFinalized ? "Payment already exists for this rental." : "Payment was already submitted earlier.",
+                    TransactionId = existingTransaction.Value.TransactionId,
+                    DuplicatePrevented = true
+                });
             }
-            catch (Exception ex) { return StatusCode(500, new { message = "DB Error: " + ex.Message }); }
-        }
 
-        [HttpPatch("{id}/confirm")]
-        public IActionResult ConfirmPayment(int id)
-        {
-            try
+            if (normalizedType == "payment" && string.Equals(paymentStatus, "paid", StringComparison.OrdinalIgnoreCase))
             {
-                using var conn = new MySqlConnection(_connectionString);
-                conn.Open();
-
-                var checkCmd = new MySqlCommand("SELECT t.status, t.rental_id FROM transactions t WHERE t.transaction_id = @id", conn);
-                checkCmd.Parameters.AddWithValue("@id", id);
-                using var reader = checkCmd.ExecuteReader();
-
-                if (!reader.Read()) return NotFound(new { message = "Transaction not found." });
-
-                string currentStatus = reader["status"].ToString()!;
-                int rentalId = Convert.ToInt32(reader["rental_id"]);
-                reader.Close();
-
-                if (!IsConfirmableStatus(currentStatus))
-                    return BadRequest(new { message = $"Hindi ma-confirm — status is '{currentStatus}'." });
-
-                var confirmCmd = new MySqlCommand("UPDATE transactions SET status = 'confirmed' WHERE transaction_id = @id", conn);
-                confirmCmd.Parameters.AddWithValue("@id", id);
-                confirmCmd.ExecuteNonQuery();
-
-                var rentalCmd = new MySqlCommand("UPDATE rentals SET payment_status = 'paid' WHERE rental_id = @rental_id", conn);
-                rentalCmd.Parameters.AddWithValue("@rental_id", rentalId);
-                rentalCmd.ExecuteNonQuery();
-
-                return Ok(new { message = "Payment confirmed! Rental payment status updated to paid.", transaction_id = id, rental_id = rentalId });
+                return Conflict(new { Message = "This rental is already marked as paid." });
             }
-            catch (Exception ex) { return StatusCode(500, new { message = "DB Error: " + ex.Message }); }
-        }
 
-        [HttpPatch("{id}/reject")]
-        public IActionResult RejectPayment(int id)
-        {
-            try
+            using var insertCommand = new MySqlCommand(
+                @"INSERT INTO transactions
+                    (rental_id, amount, type, method, proof_url, status, paid_at)
+                  VALUES
+                    (@rental_id, @amount, @type, @method, @proof_url, 'pending', NOW())",
+                connection);
+            insertCommand.Parameters.AddWithValue("@rental_id", transaction.RentalId);
+            insertCommand.Parameters.AddWithValue("@amount", transaction.Amount);
+            insertCommand.Parameters.AddWithValue("@type", normalizedType);
+            insertCommand.Parameters.AddWithValue("@method", normalizedMethod);
+            insertCommand.Parameters.AddWithValue("@proof_url", normalizedProof);
+            insertCommand.ExecuteNonQuery();
+
+            var transactionId = Convert.ToInt32(new MySqlCommand("SELECT LAST_INSERT_ID()", connection).ExecuteScalar(), CultureInfo.InvariantCulture);
+
+            _notificationWriter.Create(
+                connection,
+                customerId,
+                "Payment submitted",
+                "Your payment proof was submitted and is waiting for admin review.",
+                "payment");
+
+            return Ok(new
             {
-                using var conn = new MySqlConnection(_connectionString);
-                conn.Open();
+                Message = "Payment submitted successfully.",
+                TransactionId = transactionId
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+        }
+    }
 
-                var checkCmd = new MySqlCommand("SELECT status FROM transactions WHERE transaction_id = @id", conn);
-                checkCmd.Parameters.AddWithValue("@id", id);
-                var status = checkCmd.ExecuteScalar()?.ToString();
+    [HttpPatch("{id:int}/confirm")]
+    public IActionResult ConfirmPayment(int id)
+    {
+        try
+        {
+            using var connection = new MySqlConnection(_connectionString);
+            connection.Open();
 
-                if (status == null) return NotFound(new { message = "Transaction not found." });
-                if (!IsConfirmableStatus(status)) return BadRequest(new { message = $"Hindi ma-reject — status is '{status}'." });
+            using var command = new MySqlCommand(
+                @"SELECT t.status, t.rental_id, r.customer_id
+                  FROM transactions t
+                  JOIN rentals r ON r.rental_id = t.rental_id
+                  WHERE t.transaction_id = @id
+                  LIMIT 1",
+                connection);
+            command.Parameters.AddWithValue("@id", id);
 
-                var rejectCmd = new MySqlCommand("UPDATE transactions SET status = 'rejected' WHERE transaction_id = @id", conn);
-                rejectCmd.Parameters.AddWithValue("@id", id);
-                rejectCmd.ExecuteNonQuery();
-
-                return Ok(new { message = "Payment rejected. Pakiulit ang payment ng customer.", transaction_id = id });
+            using var reader = command.ExecuteReader();
+            if (!reader.Read())
+            {
+                return NotFound(new { Message = "Transaction not found." });
             }
-            catch (Exception ex) { return StatusCode(500, new { message = "DB Error: " + ex.Message }); }
-        }
 
-        [HttpGet("summary")]
-        public IActionResult GetSummary([FromQuery] string period = "monthly")
-        {
-            try
+            var status = reader["status"]?.ToString() ?? string.Empty;
+            var rentalId = Convert.ToInt32(reader["rental_id"], CultureInfo.InvariantCulture);
+            var customerId = Convert.ToInt32(reader["customer_id"], CultureInfo.InvariantCulture);
+            reader.Close();
+
+            if (!IsConfirmableStatus(status))
             {
-                using var conn = new MySqlConnection(_connectionString);
-                conn.Open();
+                return BadRequest(new { Message = $"Payment cannot be confirmed because it is already '{status}'." });
+            }
 
-                string groupBy = period == "daily" ? "DATE(paid_at)" : period == "yearly" ? "YEAR(paid_at)" : "DATE_FORMAT(paid_at, '%Y-%m')";
-                string label = period == "daily" ? "DATE(paid_at)" : period == "yearly" ? "YEAR(paid_at)" : "DATE_FORMAT(paid_at, '%Y-%m')";
+            using var updateTransactionCommand = new MySqlCommand(
+                "UPDATE transactions SET status = 'confirmed' WHERE transaction_id = @id",
+                connection);
+            updateTransactionCommand.Parameters.AddWithValue("@id", id);
+            updateTransactionCommand.ExecuteNonQuery();
 
-                var cmd = new MySqlCommand($@"
-                    SELECT {label} AS period, COUNT(*) AS total_transactions, SUM(amount) AS total_amount
-                    FROM transactions
-                    WHERE LOWER(COALESCE(status, '')) IN ('confirmed', 'paid', 'verified')
-                    GROUP BY {groupBy} ORDER BY period DESC LIMIT 12", conn);
+            using var updateRentalCommand = new MySqlCommand(
+                "UPDATE rentals SET payment_status = 'paid' WHERE rental_id = @rental_id",
+                connection);
+            updateRentalCommand.Parameters.AddWithValue("@rental_id", rentalId);
+            updateRentalCommand.ExecuteNonQuery();
 
-                var results = new List<object>();
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
+            _notificationWriter.Create(
+                connection,
+                customerId,
+                "Payment confirmed",
+                "Your payment has been confirmed. Your rental record is now marked as paid.",
+                "payment");
+
+            return Ok(new { Message = "Payment confirmed successfully.", TransactionId = id, RentalId = rentalId });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+        }
+    }
+
+    [HttpPatch("{id:int}/reject")]
+    public IActionResult RejectPayment(int id)
+    {
+        try
+        {
+            using var connection = new MySqlConnection(_connectionString);
+            connection.Open();
+
+            using var command = new MySqlCommand(
+                @"SELECT t.status, r.customer_id
+                  FROM transactions t
+                  JOIN rentals r ON r.rental_id = t.rental_id
+                  WHERE t.transaction_id = @id
+                  LIMIT 1",
+                connection);
+            command.Parameters.AddWithValue("@id", id);
+
+            using var reader = command.ExecuteReader();
+            if (!reader.Read())
+            {
+                return NotFound(new { Message = "Transaction not found." });
+            }
+
+            var status = reader["status"]?.ToString() ?? string.Empty;
+            var customerId = Convert.ToInt32(reader["customer_id"], CultureInfo.InvariantCulture);
+            reader.Close();
+
+            if (!IsConfirmableStatus(status))
+            {
+                return BadRequest(new { Message = $"Payment cannot be rejected because it is already '{status}'." });
+            }
+
+            using var updateCommand = new MySqlCommand(
+                "UPDATE transactions SET status = 'rejected' WHERE transaction_id = @id",
+                connection);
+            updateCommand.Parameters.AddWithValue("@id", id);
+            updateCommand.ExecuteNonQuery();
+
+            _notificationWriter.Create(
+                connection,
+                customerId,
+                "Payment rejected",
+                "Your submitted payment was rejected. Please upload a new proof of payment.",
+                "payment");
+
+            return Ok(new { Message = "Payment rejected successfully.", TransactionId = id });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+        }
+    }
+
+    [HttpGet("summary")]
+    public IActionResult GetSummary([FromQuery] string period = "monthly")
+    {
+        try
+        {
+            using var connection = new MySqlConnection(_connectionString);
+            connection.Open();
+
+            var groupBy = period == "daily"
+                ? "DATE(paid_at)"
+                : period == "yearly"
+                    ? "YEAR(paid_at)"
+                    : "DATE_FORMAT(paid_at, '%Y-%m')";
+
+            var label = period == "daily"
+                ? "DATE(paid_at)"
+                : period == "yearly"
+                    ? "YEAR(paid_at)"
+                    : "DATE_FORMAT(paid_at, '%Y-%m')";
+
+            using var command = new MySqlCommand(
+                $@"SELECT {label} AS period, COUNT(*) AS total_transactions, SUM(amount) AS total_amount
+                   FROM transactions
+                   WHERE LOWER(COALESCE(status, '')) IN ('confirmed', 'paid', 'verified')
+                   GROUP BY {groupBy}
+                   ORDER BY period DESC
+                   LIMIT 12",
+                connection);
+
+            var summary = new List<object>();
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                summary.Add(new
                 {
-                    results.Add(new
-                    {
-                        period = reader["period"].ToString(),
-                        total_transactions = Convert.ToInt32(reader["total_transactions"]),
-                        total_amount = Convert.ToDecimal(reader["total_amount"])
-                    });
-                }
-                return Ok(results);
+                    Period = reader["period"]?.ToString() ?? string.Empty,
+                    TotalTransactions = Convert.ToInt32(reader["total_transactions"], CultureInfo.InvariantCulture),
+                    TotalAmount = Convert.ToDecimal(reader["total_amount"], CultureInfo.InvariantCulture)
+                });
             }
-            catch (Exception ex) { return StatusCode(500, new { message = "DB Error: " + ex.Message }); }
+
+            return Ok(summary);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+        }
+    }
+
+    private List<Transaction> ReadTransactions(int? rentalId = null)
+    {
+        var transactions = new List<Transaction>();
+
+        using var connection = new MySqlConnection(_connectionString);
+        connection.Open();
+
+        var sql =
+            @"SELECT
+                t.transaction_id,
+                t.rental_id,
+                t.amount,
+                t.type,
+                t.method,
+                t.proof_url,
+                t.status,
+                t.paid_at,
+                u.full_name AS customer_name,
+                CONCAT(v.brand, ' ', v.model) AS vehicle_name
+              FROM transactions t
+              JOIN rentals r ON t.rental_id = r.rental_id
+              JOIN users u ON r.customer_id = u.user_id
+              JOIN vehicles v ON r.vehicle_id = v.vehicle_id
+              WHERE LOWER(COALESCE(t.status, '')) <> 'duplicate' ";
+
+        if (rentalId.HasValue)
+        {
+            sql += "AND t.rental_id = @rental_id ";
         }
 
-        private static string NormalizeTransactionType(string? type)
+        sql += "ORDER BY t.paid_at DESC";
+
+        using var command = new MySqlCommand(sql, connection);
+        if (rentalId.HasValue)
         {
-            string normalized = type?.Trim().ToLowerInvariant() ?? "payment";
-            return normalized switch { "" => "payment", "rental" => "payment", _ => normalized };
-        }
-        private static string NormalizeMethod(string? method) => string.IsNullOrWhiteSpace(method) ? "cash" : method.Trim().ToLowerInvariant();
-        private static string NormalizeProofUrl(string? proofUrl) => string.IsNullOrWhiteSpace(proofUrl) ? string.Empty : proofUrl.Trim();
-        private static bool IsConfirmableStatus(string? status) { string normalized = status?.Trim().ToLowerInvariant() ?? string.Empty; return normalized is "pending" or "verified" or ""; }
-
-        private static (int TransactionId, string Status)? FindExistingTransaction(MySqlConnection conn, int rentalId, decimal amount, string type, string method, string proofUrl)
-        {
-            const string sql = @"
-                SELECT transaction_id, LOWER(COALESCE(status, '')) AS normalized_status FROM transactions
-                WHERE rental_id = @rental_id AND ABS(COALESCE(amount, 0) - @amount) < 0.01
-                  AND (CASE WHEN LOWER(COALESCE(type, '')) IN ('', 'rental') THEN 'payment' ELSE LOWER(COALESCE(type, '')) END) = @type
-                  AND LOWER(COALESCE(method, '')) = @method AND COALESCE(NULLIF(TRIM(COALESCE(proof_url, '')), ''), '') = @proof_url
-                  AND LOWER(COALESCE(status, '')) NOT IN ('rejected', 'refunded', 'duplicate')
-                ORDER BY CASE LOWER(COALESCE(status, '')) WHEN 'paid' THEN 0 WHEN 'confirmed' THEN 1 WHEN 'verified' THEN 2 WHEN 'pending' THEN 3 WHEN '' THEN 4 ELSE 5 END, transaction_id DESC LIMIT 1";
-
-            using var cmd = new MySqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@rental_id", rentalId);
-            cmd.Parameters.AddWithValue("@amount", amount);
-            cmd.Parameters.AddWithValue("@type", type);
-            cmd.Parameters.AddWithValue("@method", method);
-            cmd.Parameters.AddWithValue("@proof_url", proofUrl);
-
-            using var reader = cmd.ExecuteReader();
-            if (!reader.Read()) return null;
-            return (Convert.ToInt32(reader["transaction_id"]), reader["normalized_status"]?.ToString() ?? string.Empty);
+            command.Parameters.AddWithValue("@rental_id", rentalId.Value);
         }
 
-        private static List<Transaction> DeduplicateTransactions(IEnumerable<Transaction> transactions)
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
         {
-            return transactions.GroupBy(BuildTransactionKey, StringComparer.OrdinalIgnoreCase).Select(group => group
+            transactions.Add(new Transaction
+            {
+                TransactionId = Convert.ToInt32(reader["transaction_id"], CultureInfo.InvariantCulture),
+                RentalId = Convert.ToInt32(reader["rental_id"], CultureInfo.InvariantCulture),
+                Amount = Convert.ToDecimal(reader["amount"], CultureInfo.InvariantCulture),
+                Type = reader["type"]?.ToString(),
+                Method = reader["method"]?.ToString(),
+                ProofUrl = reader["proof_url"] == DBNull.Value ? null : reader["proof_url"].ToString(),
+                Status = reader["status"]?.ToString(),
+                PaidAt = reader["paid_at"] == DBNull.Value ? null : Convert.ToDateTime(reader["paid_at"], CultureInfo.InvariantCulture),
+                CustomerName = reader["customer_name"]?.ToString(),
+                VehicleName = reader["vehicle_name"]?.ToString()
+            });
+        }
+
+        return DeduplicateTransactions(transactions);
+    }
+
+    private static string NormalizeTransactionType(string? type)
+    {
+        var normalized = type?.Trim().ToLowerInvariant() ?? "payment";
+        return normalized switch
+        {
+            "" => "payment",
+            "rental" => "payment",
+            _ => normalized
+        };
+    }
+
+    private static string NormalizeMethod(string? method)
+    {
+        return string.IsNullOrWhiteSpace(method)
+            ? "cash"
+            : method.Trim().ToLowerInvariant();
+    }
+
+    private static string NormalizeProofUrl(string? proofUrl)
+    {
+        return string.IsNullOrWhiteSpace(proofUrl)
+            ? string.Empty
+            : proofUrl.Trim();
+    }
+
+    private static bool IsConfirmableStatus(string? status)
+    {
+        var normalized = status?.Trim().ToLowerInvariant() ?? string.Empty;
+        return normalized is "pending" or "verified" or "";
+    }
+
+    private static (int TransactionId, string Status)? FindExistingTransaction(
+        MySqlConnection connection,
+        int rentalId,
+        decimal amount,
+        string type,
+        string method,
+        string proofUrl)
+    {
+        const string sql =
+            @"SELECT
+                transaction_id,
+                LOWER(COALESCE(status, '')) AS normalized_status
+              FROM transactions
+              WHERE rental_id = @rental_id
+                AND ABS(COALESCE(amount, 0) - @amount) < 0.01
+                AND (CASE WHEN LOWER(COALESCE(type, '')) IN ('', 'rental') THEN 'payment' ELSE LOWER(COALESCE(type, '')) END) = @type
+                AND LOWER(COALESCE(method, '')) = @method
+                AND COALESCE(NULLIF(TRIM(COALESCE(proof_url, '')), ''), '') = @proof_url
+                AND LOWER(COALESCE(status, '')) NOT IN ('rejected', 'refunded', 'duplicate')
+              ORDER BY CASE LOWER(COALESCE(status, ''))
+                    WHEN 'paid' THEN 0
+                    WHEN 'confirmed' THEN 1
+                    WHEN 'verified' THEN 2
+                    WHEN 'pending' THEN 3
+                    WHEN '' THEN 4
+                    ELSE 5
+                END,
+                transaction_id DESC
+              LIMIT 1";
+
+        using var command = new MySqlCommand(sql, connection);
+        command.Parameters.AddWithValue("@rental_id", rentalId);
+        command.Parameters.AddWithValue("@amount", amount);
+        command.Parameters.AddWithValue("@type", type);
+        command.Parameters.AddWithValue("@method", method);
+        command.Parameters.AddWithValue("@proof_url", proofUrl);
+
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return null;
+        }
+
+        return (
+            Convert.ToInt32(reader["transaction_id"], CultureInfo.InvariantCulture),
+            reader["normalized_status"]?.ToString() ?? string.Empty);
+    }
+
+    private static List<Transaction> DeduplicateTransactions(IEnumerable<Transaction> transactions)
+    {
+        return transactions
+            .GroupBy(BuildTransactionKey, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
                 .OrderBy(tx => GetStatusRank(NormalizeStatus(tx.Status)))
                 .ThenBy(tx => string.IsNullOrWhiteSpace(tx.Type) ? 1 : 0)
-                .ThenByDescending(tx => tx.PaidAt ?? DateTime.MinValue).ThenByDescending(tx => tx.TransactionId).First())
-                .OrderByDescending(tx => tx.PaidAt ?? DateTime.MinValue).ThenByDescending(tx => tx.TransactionId).ToList();
-        }
+                .ThenByDescending(tx => tx.PaidAt ?? DateTime.MinValue)
+                .ThenByDescending(tx => tx.TransactionId)
+                .First())
+            .OrderByDescending(tx => tx.PaidAt ?? DateTime.MinValue)
+            .ThenByDescending(tx => tx.TransactionId)
+            .ToList();
+    }
 
-        private static string BuildTransactionKey(Transaction tx) => string.Join("|", tx.RentalId.ToString(), NormalizeTransactionType(tx.Type), tx.Amount.ToString("0.##", CultureInfo.InvariantCulture), NormalizeMethod(tx.Method), NormalizeProofUrl(tx.ProofUrl));
-        private static string NormalizeStatus(string? status) => string.IsNullOrWhiteSpace(status) ? string.Empty : status.Trim().ToLowerInvariant();
-        private static int GetStatusRank(string status) => status switch { "paid" => 0, "confirmed" => 1, "verified" => 2, "pending" => 3, "" => 4, _ => 5 };
+    private static string BuildTransactionKey(Transaction tx)
+    {
+        return string.Join(
+            "|",
+            tx.RentalId.ToString(CultureInfo.InvariantCulture),
+            NormalizeTransactionType(tx.Type),
+            tx.Amount.ToString("0.##", CultureInfo.InvariantCulture),
+            NormalizeMethod(tx.Method),
+            NormalizeProofUrl(tx.ProofUrl));
+    }
+
+    private static string NormalizeStatus(string? status)
+    {
+        return string.IsNullOrWhiteSpace(status)
+            ? string.Empty
+            : status.Trim().ToLowerInvariant();
+    }
+
+    private static int GetStatusRank(string status)
+    {
+        return status switch
+        {
+            "paid" => 0,
+            "confirmed" => 1,
+            "verified" => 2,
+            "pending" => 3,
+            "" => 4,
+            _ => 5
+        };
     }
 }

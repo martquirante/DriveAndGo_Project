@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DriveAndGo_App.Views.Shared.RatingPage"
+             BackgroundColor="#F8FAFC"
+             Title="Rating">
+    <ScrollView>
+        <VerticalStackLayout Padding="20,22,20,30" Spacing="16">
+            <Border Padding="18"
+                    BackgroundColor="White"
+                    Stroke="#E2E8F0"
+                    StrokeShape="RoundRectangle 26">
+                <VerticalStackLayout Spacing="14">
+                    <Label Text="Rate your rental"
+                           FontSize="24"
+                           FontAttributes="Bold"
+                           TextColor="#0F172A" />
+                    <Label Text="Vehicle score"
+                           TextColor="#64748B" />
+                    <Stepper Minimum="1" Maximum="5" Increment="1" Value="{Binding VehicleScore}" />
+                    <Label Text="{Binding VehicleScore}"
+                           FontAttributes="Bold"
+                           TextColor="#EA580C" />
+                    <Label IsVisible="{Binding HasDriverRating}"
+                           Text="Driver score"
+                           TextColor="#64748B" />
+                    <Stepper IsVisible="{Binding HasDriverRating}"
+                             Minimum="1"
+                             Maximum="5"
+                             Increment="1"
+                             Value="{Binding DriverScore}" />
+                    <Label IsVisible="{Binding HasDriverRating}"
+                           Text="{Binding DriverScore}"
+                           FontAttributes="Bold"
+                           TextColor="#EA580C" />
+                    <Editor Placeholder="Leave a short review"
+                            Text="{Binding Comment}"
+                            AutoSize="TextChanges"
+                            BackgroundColor="#F1F5F9" />
+                    <Button Text="Submit rating"
+                            Command="{Binding SubmitCommand}"
+                            BackgroundColor="#EA580C"
+                            TextColor="White"
+                            CornerRadius="18"
+                            HeightRequest="48" />
+                </VerticalStackLayout>
+            </Border>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

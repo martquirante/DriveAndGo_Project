@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DriveAndGo_App.Views.Shared.ProfilePage"
+             BackgroundColor="#F8FAFC"
+             Title="Profile">
+    <ScrollView>
+        <VerticalStackLayout Padding="20,22,20,30" Spacing="16">
+            <Border Padding="20"
+                    BackgroundColor="#0F172A"
+                    Stroke="#1E293B"
+                    StrokeShape="RoundRectangle 30">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Profile"
+                           FontSize="28"
+                           FontAttributes="Bold"
+                           TextColor="White" />
+                    <Label Text="{Binding RoleLabel}"
+                           FontSize="13"
+                           TextColor="#FDBA74" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Padding="18"
+                    BackgroundColor="White"
+                    Stroke="#E2E8F0"
+                    StrokeShape="RoundRectangle 26">
+                <VerticalStackLayout Spacing="14">
+                    <Entry Placeholder="Full name"
+                           Text="{Binding FullName}"
+                           BackgroundColor="#F1F5F9" />
+                    <Entry Placeholder="Email"
+                           Text="{Binding Email}"
+                           Keyboard="Email"
+                           BackgroundColor="#F1F5F9" />
+                    <Entry Placeholder="Phone"
+                           Text="{Binding Phone}"
+                           Keyboard="Telephone"
+                           BackgroundColor="#F1F5F9" />
+                    <Button Text="Save profile"
+                            Command="{Binding SaveCommand}"
+                            BackgroundColor="#EA580C"
+                            TextColor="White"
+                            CornerRadius="18"
+                            HeightRequest="48" />
+                    <Button Text="Toggle theme"
+                            Command="{Binding ToggleThemeCommand}"
+                            BackgroundColor="#E2E8F0"
+                            TextColor="#0F172A"
+                            CornerRadius="18"
+                            HeightRequest="44" />
+                    <Label Text="{Binding ThemeHint}"
+                           FontSize="12"
+                           TextColor="#64748B" />
+                    <Button Text="Logout"
+                            Command="{Binding LogoutCommand}"
+                            BackgroundColor="#7F1D1D"
+                            TextColor="White"
+                            CornerRadius="18"
+                            HeightRequest="44" />
+                    <Border IsVisible="{Binding HasError}"
+                            BackgroundColor="#FEF2F2"
+                            Stroke="#FCA5A5"
+                            StrokeShape="RoundRectangle 18"
+                            Padding="14">
+                        <Label Text="{Binding ErrorMessage}"
+                               TextColor="#991B1B"
+                               FontSize="12" />
+                    </Border>
+                </VerticalStackLayout>
+            </Border>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

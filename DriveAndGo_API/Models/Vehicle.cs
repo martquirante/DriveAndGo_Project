@@ -7,7 +7,6 @@
         public string Brand { get; set; } = "";
         public string Model { get; set; } = "";
 
-        // matches FirebaseSyncService + DB schema
         public string PlateNo { get; set; } = "";
         public string Type { get; set; } = "Car";
         public int? CC { get; set; }

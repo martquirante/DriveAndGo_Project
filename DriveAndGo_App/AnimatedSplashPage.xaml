@@ -3,179 +3,53 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="DriveAndGo_App.AnimatedSplashPage"
              NavigationPage.HasNavigationBar="False"
-             BackgroundColor="#0A0A14">
+             BackgroundColor="#0F172A">
+    <Grid>
+        <Grid.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#08111F" Offset="0.0" />
+                <GradientStop Color="#14213D" Offset="0.45" />
+                <GradientStop Color="#F97316" Offset="1.0" />
+            </LinearGradientBrush>
+        </Grid.Background>
 
-    <AbsoluteLayout x:Name="RootLayout" BackgroundColor="Transparent">
+        <VerticalStackLayout Padding="32,80,32,48"
+                             Spacing="18"
+                             VerticalOptions="Center">
+            <Border x:Name="LogoFrame"
+                    Padding="28"
+                    BackgroundColor="#22FFFFFF"
+                    Stroke="#40FFFFFF"
+                    StrokeShape="RoundRectangle 36"
+                    HorizontalOptions="Center">
+                <Image x:Name="LogoImage"
+                       Source="logo.png"
+                       HeightRequest="120"
+                       WidthRequest="180"
+                       Aspect="AspectFit"
+                       Opacity="0" />
+            </Border>
 
-        <!-- ── BACKGROUND GRADIENT OVERLAY ── -->
-        <BoxView x:Name="BgGradient"
-                 AbsoluteLayout.LayoutBounds="0, 0, 1, 1"
-                 AbsoluteLayout.LayoutFlags="All"
-                 Opacity="0"
-                 Color="#0A0A14"/>
+            <Label x:Name="TitleLabel"
+                   Text="Drive &amp; Go"
+                   FontSize="34"
+                   FontAttributes="Bold"
+                   HorizontalTextAlignment="Center"
+                   TextColor="White"
+                   Opacity="0" />
 
-        <!-- ── ROAD STRIP (bottom) ── -->
-        <BoxView x:Name="RoadStrip"
-                 HeightRequest="90"
-                 AbsoluteLayout.LayoutBounds="0, 1, 1, 90"
-                 AbsoluteLayout.LayoutFlags="PositionProportional, WidthProportional"
-                 Color="#111120"/>
+            <Label x:Name="SubtitleLabel"
+                   Text="Premium vehicle rentals for customers and drivers"
+                   FontSize="14"
+                   HorizontalTextAlignment="Center"
+                   TextColor="#E2E8F0"
+                   Opacity="0" />
 
-        <!-- ── ROAD CENTER LINE (dashed effect via multiple boxes) ── -->
-        <BoxView HeightRequest="6" WidthRequest="60"
-                 Color="#E6510D" Opacity="0.7"
-                 AbsoluteLayout.LayoutBounds="0.1, 0.95, -1, -1"
-                 AbsoluteLayout.LayoutFlags="PositionProportional"/>
-        <BoxView HeightRequest="6" WidthRequest="60"
-                 Color="#E6510D" Opacity="0.7"
-                 AbsoluteLayout.LayoutBounds="0.3, 0.95, -1, -1"
-                 AbsoluteLayout.LayoutFlags="PositionProportional"/>
-        <BoxView HeightRequest="6" WidthRequest="60"
-                 Color="#E6510D" Opacity="0.7"
-                 AbsoluteLayout.LayoutBounds="0.5, 0.95, -1, -1"
-                 AbsoluteLayout.LayoutFlags="PositionProportional"/>
-        <BoxView HeightRequest="6" WidthRequest="60"
-                 Color="#E6510D" Opacity="0.7"
-                 AbsoluteLayout.LayoutBounds="0.7, 0.95, -1, -1"
-                 AbsoluteLayout.LayoutFlags="PositionProportional"/>
-        <BoxView HeightRequest="6" WidthRequest="60"
-                 Color="#E6510D" Opacity="0.7"
-                 AbsoluteLayout.LayoutBounds="0.9, 0.95, -1, -1"
-                 AbsoluteLayout.LayoutFlags="PositionProportional"/>
-
-        <!-- ── SPEED LINES (left side) ── -->
-        <BoxView x:Name="SpeedLine1"
-                 HeightRequest="2" WidthRequest="120"
-                 Color="#E6510D" Opacity="0"
-                 AbsoluteLayout.LayoutBounds="0.02, 0.80, -1, -1"
-                 AbsoluteLayout.LayoutFlags="PositionProportional"/>
-        <BoxView x:Name="SpeedLine2"
-                 HeightRequest="2" WidthRequest="80"
-                 Color="#FFFFFF" Opacity="0"
-                 AbsoluteLayout.LayoutBounds="0.02, 0.83, -1, -1"
-                 AbsoluteLayout.LayoutFlags="PositionProportional"/>
-        <BoxView x:Name="SpeedLine3"
-                 HeightRequest="2" WidthRequest="100"
-                 Color="#E6510D" Opacity="0"
-                 AbsoluteLayout.LayoutBounds="0.02, 0.86, -1, -1"
-                 AbsoluteLayout.LayoutFlags="PositionProportional"/>
-
-        <!-- ── HEADLIGHT GLOW ── -->
-        <BoxView x:Name="HeadlightGlow"
-                 HeightRequest="40" WidthRequest="200"
-                 Color="#E6510D" Opacity="0"
-                 CornerRadius="20"
-                 AbsoluteLayout.LayoutBounds="-300, 0.875, -1, -1"
-                 AbsoluteLayout.LayoutFlags="YProportional"/>
-
-        <!-- ── VEHICLE ── -->
-        <Image x:Name="VehicleImage"
-               Source="logo.png"
-               WidthRequest="220"
-               HeightRequest="120"
-               Aspect="AspectFit"
-               AbsoluteLayout.LayoutBounds="-250, 0.855, -1, -1"
-               AbsoluteLayout.LayoutFlags="YProportional"/>
-
-        <!-- ── PARTICLE DOTS (decorative) ── -->
-        <BoxView x:Name="Dot1"
-                 WidthRequest="6" HeightRequest="6"
-                 Color="#E6510D" Opacity="0" CornerRadius="3"
-                 AbsoluteLayout.LayoutBounds="0.15, 0.2, -1, -1"
-                 AbsoluteLayout.LayoutFlags="PositionProportional"/>
-        <BoxView x:Name="Dot2"
-                 WidthRequest="4" HeightRequest="4"
-                 Color="#FFFFFF" Opacity="0" CornerRadius="2"
-                 AbsoluteLayout.LayoutBounds="0.8, 0.15, -1, -1"
-                 AbsoluteLayout.LayoutFlags="PositionProportional"/>
-        <BoxView x:Name="Dot3"
-                 WidthRequest="8" HeightRequest="8"
-                 Color="#E6510D" Opacity="0" CornerRadius="4"
-                 AbsoluteLayout.LayoutBounds="0.9, 0.3, -1, -1"
-                 AbsoluteLayout.LayoutFlags="PositionProportional"/>
-        <BoxView x:Name="Dot4"
-                 WidthRequest="5" HeightRequest="5"
-                 Color="#FFFFFF" Opacity="0" CornerRadius="2.5"
-                 AbsoluteLayout.LayoutBounds="0.1, 0.35, -1, -1"
-                 AbsoluteLayout.LayoutFlags="PositionProportional"/>
-
-        <!-- ── LOGO (center) ── -->
-        <Image x:Name="LogoImage"
-               Source="logo.png"
-               WidthRequest="200"
-               HeightRequest="110"
-               Aspect="AspectFit"
-               Opacity="0"
-               Scale="0.5"
-               AbsoluteLayout.LayoutBounds="0.5, 0.35, -1, -1"
-               AbsoluteLayout.LayoutFlags="PositionProportional"/>
-
-        <!-- ── APP NAME ── -->
-        <Label x:Name="AppNameLabel"
-               Text="Drive &amp; Go"
-               FontSize="38"
-               FontAttributes="Bold"
-               TextColor="#FFFFFF"
-               Opacity="0"
-               TranslationY="20"
-               HorizontalTextAlignment="Center"
-               AbsoluteLayout.LayoutBounds="0.5, 0.52, 320, -1"
-               AbsoluteLayout.LayoutFlags="XProportional, YProportional"/>
-
-        <!-- ── ORANGE UNDERLINE ── -->
-        <BoxView x:Name="OrangeUnderline"
-                 HeightRequest="3" WidthRequest="0"
-                 Color="#E6510D" CornerRadius="2"
-                 AbsoluteLayout.LayoutBounds="0.5, 0.575, -1, -1"
-                 AbsoluteLayout.LayoutFlags="PositionProportional"/>
-
-        <!-- ── TAGLINE ── -->
-        <Label x:Name="TaglineLabel"
-               Text="DRIVE SAFE, RENT EASY"
-               FontSize="13"
-               FontAttributes="Bold"
-               TextColor="#E6510D"
-               Opacity="0"
-               CharacterSpacing="3" HorizontalTextAlignment="Center"
-               AbsoluteLayout.LayoutBounds="0.5, 0.62, 340, -1"
-               AbsoluteLayout.LayoutFlags="XProportional, YProportional"/>
-
-        <!-- ── SUBTITLE ── -->
-        <Label x:Name="SubtitleLabel"
-               Text="Complete Vehicle Rental System"
-               FontSize="11"
-               TextColor="#888899"
-               Opacity="0"
-               HorizontalTextAlignment="Center"
-               AbsoluteLayout.LayoutBounds="0.5, 0.67, 300, -1"
-               AbsoluteLayout.LayoutFlags="XProportional, YProportional"/>
-
-        <!-- ── LOADING DOTS ── -->
-        <HorizontalStackLayout x:Name="LoadingDots"
-                               Spacing="8"
-                               Opacity="0"
-                               AbsoluteLayout.LayoutBounds="0.5, 0.82, -1, -1"
-                               AbsoluteLayout.LayoutFlags="PositionProportional">
-            <BoxView x:Name="LoadDot1"
-                     WidthRequest="8" HeightRequest="8"
-                     Color="#E6510D" CornerRadius="4"/>
-            <BoxView x:Name="LoadDot2"
-                     WidthRequest="8" HeightRequest="8"
-                     Color="#444455" CornerRadius="4"/>
-            <BoxView x:Name="LoadDot3"
-                     WidthRequest="8" HeightRequest="8"
-                     Color="#444455" CornerRadius="4"/>
-        </HorizontalStackLayout>
-
-        <!-- ── VERSION ── -->
-        <Label x:Name="VersionLabel"
-               Text="v1.0.0"
-               FontSize="10"
-               TextColor="#444455"
-               Opacity="0"
-               HorizontalTextAlignment="Center"
-               AbsoluteLayout.LayoutBounds="0.5, 0.96, -1, -1"
-               AbsoluteLayout.LayoutFlags="PositionProportional"/>
-
-    </AbsoluteLayout>
+            <ActivityIndicator IsRunning="True"
+                               Color="White"
+                               HeightRequest="42"
+                               WidthRequest="42"
+                               HorizontalOptions="Center" />
+        </VerticalStackLayout>
+    </Grid>
 </ContentPage>
