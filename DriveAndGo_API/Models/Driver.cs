@@ -1,4 +1,4 @@
-﻿namespace DriveAndGo_API.Models
+namespace DriveAndGo_API.Models
 {
     public class Driver
     {
@@ -12,6 +12,7 @@
 
         // 🟢 MGA DAGDAG PARA SA UI BINDING:
         public string? FullName { get; set; }
+        public string? DriverName { get => FullName; set => FullName = value; }
         public string? Email { get; set; }
         public string? Phone { get; set; }
     }

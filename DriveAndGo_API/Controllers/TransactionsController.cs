@@ -1,7 +1,7 @@
 using DriveAndGo_API.Models;
 using DriveAndGo_API.Services;
 using Microsoft.AspNetCore.Mvc;
-using MySql.Data.MySqlClient;
+using Npgsql;
 using System.Globalization;
 
 namespace DriveAndGo_API.Controllers;
@@ -62,10 +62,10 @@ public class TransactionsController : ControllerBase
 
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var pendingCommand = new MySqlCommand(
+            using var pendingCommand = new NpgsqlCommand(
                 @"SELECT COUNT(*) FROM transactions
                   WHERE rental_id = @rental_id
                     AND LOWER(COALESCE(status, '')) = 'pending'",
@@ -77,7 +77,7 @@ public class TransactionsController : ControllerBase
                 return Conflict(new { Message = "A pending payment already exists for this rental." });
             }
 
-            using var rentalCommand = new MySqlCommand(
+            using var rentalCommand = new NpgsqlCommand(
                 @"SELECT rental_id, customer_id, payment_status
                   FROM rentals
                   WHERE rental_id = @rental_id
@@ -115,20 +115,21 @@ public class TransactionsController : ControllerBase
                 return Conflict(new { Message = "This rental is already marked as paid." });
             }
 
-            using var insertCommand = new MySqlCommand(
+            // PostgreSQL: use RETURNING to get new ID in one round-trip
+            using var insertCommand = new NpgsqlCommand(
                 @"INSERT INTO transactions
                     (rental_id, amount, type, method, proof_url, status, paid_at)
                   VALUES
-                    (@rental_id, @amount, @type, @method, @proof_url, 'pending', NOW())",
+                    (@rental_id, @amount, @type, @method, @proof_url, 'pending', NOW())
+                  RETURNING transaction_id",
                 connection);
             insertCommand.Parameters.AddWithValue("@rental_id", transaction.RentalId);
             insertCommand.Parameters.AddWithValue("@amount", transaction.Amount);
             insertCommand.Parameters.AddWithValue("@type", normalizedType);
             insertCommand.Parameters.AddWithValue("@method", normalizedMethod);
             insertCommand.Parameters.AddWithValue("@proof_url", normalizedProof);
-            insertCommand.ExecuteNonQuery();
 
-            var transactionId = Convert.ToInt32(new MySqlCommand("SELECT LAST_INSERT_ID()", connection).ExecuteScalar(), CultureInfo.InvariantCulture);
+            var transactionId = Convert.ToInt32(insertCommand.ExecuteScalar(), CultureInfo.InvariantCulture);
 
             _notificationWriter.Create(
                 connection,
@@ -154,10 +155,10 @@ public class TransactionsController : ControllerBase
     {
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var command = new MySqlCommand(
+            using var command = new NpgsqlCommand(
                 @"SELECT t.status, t.rental_id, r.customer_id
                   FROM transactions t
                   JOIN rentals r ON r.rental_id = t.rental_id
@@ -182,13 +183,13 @@ public class TransactionsController : ControllerBase
                 return BadRequest(new { Message = $"Payment cannot be confirmed because it is already '{status}'." });
             }
 
-            using var updateTransactionCommand = new MySqlCommand(
+            using var updateTransactionCommand = new NpgsqlCommand(
                 "UPDATE transactions SET status = 'confirmed' WHERE transaction_id = @id",
                 connection);
             updateTransactionCommand.Parameters.AddWithValue("@id", id);
             updateTransactionCommand.ExecuteNonQuery();
 
-            using var updateRentalCommand = new MySqlCommand(
+            using var updateRentalCommand = new NpgsqlCommand(
                 "UPDATE rentals SET payment_status = 'paid' WHERE rental_id = @rental_id",
                 connection);
             updateRentalCommand.Parameters.AddWithValue("@rental_id", rentalId);
@@ -214,10 +215,10 @@ public class TransactionsController : ControllerBase
     {
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var command = new MySqlCommand(
+            using var command = new NpgsqlCommand(
                 @"SELECT t.status, r.customer_id
                   FROM transactions t
                   JOIN rentals r ON r.rental_id = t.rental_id
@@ -241,7 +242,7 @@ public class TransactionsController : ControllerBase
                 return BadRequest(new { Message = $"Payment cannot be rejected because it is already '{status}'." });
             }
 
-            using var updateCommand = new MySqlCommand(
+            using var updateCommand = new NpgsqlCommand(
                 "UPDATE transactions SET status = 'rejected' WHERE transaction_id = @id",
                 connection);
             updateCommand.Parameters.AddWithValue("@id", id);
@@ -267,27 +268,31 @@ public class TransactionsController : ControllerBase
     {
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
+            // PostgreSQL equivalents:
+            //   DATE(col)                    → DATE_TRUNC('day', col)::date
+            //   YEAR(col)                    → EXTRACT(YEAR FROM col)::int
+            //   DATE_FORMAT(col, '%Y-%m')    → TO_CHAR(col, 'YYYY-MM')
             var groupBy = period == "daily"
-                ? "DATE(paid_at)"
+                ? "DATE_TRUNC('day', paid_at)::date"
                 : period == "yearly"
-                    ? "YEAR(paid_at)"
-                    : "DATE_FORMAT(paid_at, '%Y-%m')";
+                    ? "EXTRACT(YEAR FROM paid_at)::int"
+                    : "TO_CHAR(paid_at, 'YYYY-MM')";
 
             var label = period == "daily"
-                ? "DATE(paid_at)"
+                ? "DATE_TRUNC('day', paid_at)::date"
                 : period == "yearly"
-                    ? "YEAR(paid_at)"
-                    : "DATE_FORMAT(paid_at, '%Y-%m')";
+                    ? "EXTRACT(YEAR FROM paid_at)::int"
+                    : "TO_CHAR(paid_at, 'YYYY-MM')";
 
-            using var command = new MySqlCommand(
+            using var command = new NpgsqlCommand(
                 $@"SELECT {label} AS period, COUNT(*) AS total_transactions, SUM(amount) AS total_amount
                    FROM transactions
                    WHERE LOWER(COALESCE(status, '')) IN ('confirmed', 'paid', 'verified')
                    GROUP BY {groupBy}
-                   ORDER BY period DESC
+                   ORDER BY {groupBy} DESC
                    LIMIT 12",
                 connection);
 
@@ -315,7 +320,7 @@ public class TransactionsController : ControllerBase
     {
         var transactions = new List<Transaction>();
 
-        using var connection = new MySqlConnection(_connectionString);
+        using var connection = new NpgsqlConnection(_connectionString);
         connection.Open();
 
         var sql =
@@ -343,7 +348,7 @@ public class TransactionsController : ControllerBase
 
         sql += "ORDER BY t.paid_at DESC";
 
-        using var command = new MySqlCommand(sql, connection);
+        using var command = new NpgsqlCommand(sql, connection);
         if (rentalId.HasValue)
         {
             command.Parameters.AddWithValue("@rental_id", rentalId.Value);
@@ -355,15 +360,15 @@ public class TransactionsController : ControllerBase
             transactions.Add(new Transaction
             {
                 TransactionId = Convert.ToInt32(reader["transaction_id"], CultureInfo.InvariantCulture),
-                RentalId = Convert.ToInt32(reader["rental_id"], CultureInfo.InvariantCulture),
-                Amount = Convert.ToDecimal(reader["amount"], CultureInfo.InvariantCulture),
-                Type = reader["type"]?.ToString(),
-                Method = reader["method"]?.ToString(),
-                ProofUrl = reader["proof_url"] == DBNull.Value ? null : reader["proof_url"].ToString(),
-                Status = reader["status"]?.ToString(),
-                PaidAt = reader["paid_at"] == DBNull.Value ? null : Convert.ToDateTime(reader["paid_at"], CultureInfo.InvariantCulture),
-                CustomerName = reader["customer_name"]?.ToString(),
-                VehicleName = reader["vehicle_name"]?.ToString()
+                RentalId      = Convert.ToInt32(reader["rental_id"], CultureInfo.InvariantCulture),
+                Amount        = Convert.ToDecimal(reader["amount"], CultureInfo.InvariantCulture),
+                Type          = reader["type"]?.ToString(),
+                Method        = reader["method"]?.ToString(),
+                ProofUrl      = reader["proof_url"] == DBNull.Value ? null : reader["proof_url"].ToString(),
+                Status        = reader["status"]?.ToString(),
+                PaidAt        = reader["paid_at"] == DBNull.Value ? null : Convert.ToDateTime(reader["paid_at"], CultureInfo.InvariantCulture),
+                CustomerName  = reader["customer_name"]?.ToString(),
+                VehicleName   = reader["vehicle_name"]?.ToString()
             });
         }
 
@@ -402,7 +407,7 @@ public class TransactionsController : ControllerBase
     }
 
     private static (int TransactionId, string Status)? FindExistingTransaction(
-        MySqlConnection connection,
+        NpgsqlConnection connection,
         int rentalId,
         decimal amount,
         string type,
@@ -431,7 +436,7 @@ public class TransactionsController : ControllerBase
                 transaction_id DESC
               LIMIT 1";
 
-        using var command = new MySqlCommand(sql, connection);
+        using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("@rental_id", rentalId);
         command.Parameters.AddWithValue("@amount", amount);
         command.Parameters.AddWithValue("@type", type);
@@ -486,12 +491,12 @@ public class TransactionsController : ControllerBase
     {
         return status switch
         {
-            "paid" => 0,
+            "paid"      => 0,
             "confirmed" => 1,
-            "verified" => 2,
-            "pending" => 3,
-            "" => 4,
-            _ => 5
+            "verified"  => 2,
+            "pending"   => 3,
+            ""          => 4,
+            _           => 5
         };
     }
 }

@@ -1,9 +1,6 @@
 using DriveAndGo_API.Models;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
-using MySql.Data.MySqlClient;
-using System;
-using System.Collections.Generic;
+using Npgsql;
 
 namespace DriveAndGo_API.Controllers
 {
@@ -28,7 +25,7 @@ namespace DriveAndGo_API.Controllers
 
             try
             {
-                using var conn = new MySqlConnection(_connectionString);
+                using var conn = new NpgsqlConnection(_connectionString);
                 conn.Open();
 
                 // Direct SQL based on your schema
@@ -36,7 +33,7 @@ namespace DriveAndGo_API.Controllers
                     INSERT INTO messages (rental_id, sender_id, message_text, media_url, sent_at)
                     VALUES (@rental_id, @sender, @content, @media, NOW())";
 
-                using var insertCmd = new MySqlCommand(sql, conn);
+                using var insertCmd = new NpgsqlCommand(sql, conn);
                 insertCmd.Parameters.AddWithValue("@rental_id", msg.RentalId);
                 insertCmd.Parameters.AddWithValue("@sender", msg.SenderId);
                 insertCmd.Parameters.AddWithValue("@content", msg.Content);
@@ -59,7 +56,7 @@ namespace DriveAndGo_API.Controllers
             {
                 var messages = new List<Message>();
 
-                using var conn = new MySqlConnection(_connectionString);
+                using var conn = new NpgsqlConnection(_connectionString);
                 conn.Open();
 
                 string sql = @"
@@ -76,7 +73,7 @@ namespace DriveAndGo_API.Controllers
                     WHERE m.rental_id = @rental_id
                     ORDER BY m.sent_at ASC, m.message_id ASC";
 
-                using var cmd = new MySqlCommand(sql, conn);
+                using var cmd = new NpgsqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@rental_id", rentalId);
 
                 using var reader = cmd.ExecuteReader();

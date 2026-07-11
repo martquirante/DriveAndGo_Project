@@ -1,0 +1,18 @@
+#! nginx_lb-expose.yaml
+# Generated code, do not edit
+apiVersion: v1
+kind: Service
+metadata:
+    name: nginx-lb
+    namespace: driveandgo-project
+    labels:
+        com.docker.compose.project: driveandgo_project
+        com.docker.compose.service: nginx_lb
+spec:
+    selector:
+        com.docker.compose.project: driveandgo_project
+        com.docker.compose.service: nginx_lb
+    ports:
+        - name: nginx-lb-80
+          port: 80
+          targetPort: nginx-lb-80

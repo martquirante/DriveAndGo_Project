@@ -1,7 +1,7 @@
 using DriveAndGo_API.Models;
 using DriveAndGo_API.Services;
 using Microsoft.AspNetCore.Mvc;
-using MySql.Data.MySqlClient;
+using Npgsql;
 
 namespace DriveAndGo_API.Controllers;
 
@@ -28,24 +28,24 @@ public class IssuesController : ControllerBase
 
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var insertCommand = new MySqlCommand(
+            using var insertCommand = new NpgsqlCommand(
                 @"INSERT INTO issues
                     (rental_id, reporter_id, issue_type, description, image_url, status, reported_at)
                   VALUES
-                    (@rental_id, @reporter_id, @issue_type, @description, @image_url, 'Pending', NOW())",
+                    (@rental_id, @reporter_id, @issue_type, @description, @image_url, 'Pending', NOW())
+                  RETURNING issue_id",
                 connection);
 
             insertCommand.Parameters.AddWithValue("@rental_id", issue.RentalId);
             insertCommand.Parameters.AddWithValue("@reporter_id", issue.ReporterId);
             insertCommand.Parameters.AddWithValue("@issue_type", string.IsNullOrWhiteSpace(issue.IssueType) ? "General" : issue.IssueType.Trim());
             insertCommand.Parameters.AddWithValue("@description", issue.Description.Trim());
-            insertCommand.Parameters.AddWithValue("@image_url", string.IsNullOrWhiteSpace(issue.ImageUrl) ? DBNull.Value : issue.ImageUrl.Trim());
-            insertCommand.ExecuteNonQuery();
+            insertCommand.Parameters.AddWithValue("@image_url", string.IsNullOrWhiteSpace(issue.ImageUrl) ? DBNull.Value : (object)issue.ImageUrl.Trim());
 
-            var issueId = Convert.ToInt32(new MySqlCommand("SELECT LAST_INSERT_ID()", connection).ExecuteScalar());
+            var issueId = Convert.ToInt32(insertCommand.ExecuteScalar());
 
             _notificationWriter.Create(
                 connection,
@@ -69,10 +69,10 @@ public class IssuesController : ControllerBase
         {
             var issues = new List<Issue>();
 
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var command = new MySqlCommand(
+            using var command = new NpgsqlCommand(
                 @"SELECT
                     i.issue_id,
                     i.rental_id,
@@ -134,10 +134,10 @@ public class IssuesController : ControllerBase
 
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var command = new MySqlCommand(
+            using var command = new NpgsqlCommand(
                 "UPDATE issues SET status = @status WHERE issue_id = @id",
                 connection);
             command.Parameters.AddWithValue("@status", newStatus);

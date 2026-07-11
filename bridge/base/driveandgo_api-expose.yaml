@@ -1,0 +1,21 @@
+#! driveandgo_api-expose.yaml
+# Generated code, do not edit
+apiVersion: v1
+kind: Service
+metadata:
+    name: driveandgo-api
+    namespace: driveandgo-project
+    labels:
+        com.docker.compose.project: driveandgo_project
+        com.docker.compose.service: driveandgo_api
+spec:
+    selector:
+        com.docker.compose.project: driveandgo_project
+        com.docker.compose.service: driveandgo_api
+    ports:
+        - name: driveandgo-8080
+          port: 8080
+          targetPort: driveandgo-8080
+        - name: driveandgo-8081
+          port: 8081
+          targetPort: driveandgo-8081

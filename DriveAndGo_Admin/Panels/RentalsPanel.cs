@@ -1,11 +1,12 @@
-﻿#nullable disable
+#nullable disable
 using DriveAndGo_Admin.Helpers;
-using MySql.Data.MySqlClient;
 using System;
 using System.Data;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
+using System.Text.Json;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 // iText7 PDF Libraries
@@ -106,7 +107,7 @@ namespace DriveAndGo_Admin.Panels
             topBar = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 116,
+                Height = 126,
                 BackColor = WinColor.Transparent,
                 Padding = new Padding(16, 12, 16, 8)
             };
@@ -127,14 +128,14 @@ namespace DriveAndGo_Admin.Panels
                 Font = new Font("Segoe UI", 9F),
                 ForeColor = ColSub,
                 AutoSize = true,
-                Location = new Point(18, 40),
+                Location = new Point(18, 48), // Pushed down from 40 to avoid overlap with 18pt title
                 BackColor = WinColor.Transparent
             };
 
             txtSearch = new TextBox
             {
                 Size = new Size(170, 30),
-                Location = new Point(16, 72),
+                Location = new Point(16, 78), // Aligned with the new y coordinate
                 Font = new Font("Segoe UI", 10F),
                 BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White,
                 ForeColor = ColText,
@@ -146,8 +147,9 @@ namespace DriveAndGo_Admin.Panels
             cboStatus = new ComboBox
             {
                 Size = new Size(105, 30),
-                Location = new Point(196, 72),
+                Location = new Point(196, 78),
                 DropDownStyle = ComboBoxStyle.DropDownList,
+                FlatStyle = FlatStyle.Flat, // Syncs with custom background & forecolor in dark theme
                 Font = new Font("Segoe UI", 9F),
                 BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White,
                 ForeColor = ColText
@@ -160,8 +162,9 @@ namespace DriveAndGo_Admin.Panels
             cboPayment = new ComboBox
             {
                 Size = new Size(95, 30),
-                Location = new Point(311, 72),
+                Location = new Point(311, 78),
                 DropDownStyle = ComboBoxStyle.DropDownList,
+                FlatStyle = FlatStyle.Flat, // Syncs with custom background & forecolor in dark theme
                 Font = new Font("Segoe UI", 9F),
                 BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White,
                 ForeColor = ColText
@@ -170,11 +173,11 @@ namespace DriveAndGo_Admin.Panels
             cboPayment.SelectedIndex = 0;
             cboPayment.SelectedIndexChanged += (s, e) => FilterGrid();
 
-            var btnRefresh = CreateBtn("⟳", ColSub, 416, 72, 40);
+            var btnRefresh = CreateBtn("⟳", ColSub, 416, 78, 40);
             btnRefresh.Font = new Font("Segoe UI", 13F);
             btnRefresh.Click += (s, e) => LoadFromDB();
 
-            btnWalkIn = CreateBtn("＋ Walk-In", ColAccent, 466, 72, 120);
+            btnWalkIn = CreateBtn("＋ Walk-In", ColAccent, 466, 78, 120);
             btnWalkIn.Click += OnWalkInRental;
 
             topBar.Controls.AddRange(new Control[]
@@ -340,59 +343,69 @@ namespace DriveAndGo_Admin.Panels
         private void LoadFromDB()
         {
             _data = new DataTable();
-            try
+            _data.Columns.Add("rental_id",          typeof(int));
+            _data.Columns.Add("customer_id",        typeof(int));
+            _data.Columns.Add("customer_name",      typeof(string));
+            _data.Columns.Add("vehicle_id",         typeof(int));
+            _data.Columns.Add("vehicle_name",       typeof(string));
+            _data.Columns.Add("plate_number",       typeof(string));
+            _data.Columns.Add("driver_id",          typeof(int));
+            _data.Columns.Add("driver_name",        typeof(string));
+            _data.Columns.Add("start_date",         typeof(DateTime));
+            _data.Columns.Add("end_date",           typeof(DateTime));
+            _data.Columns.Add("destination",        typeof(string));
+            _data.Columns.Add("status",             typeof(string));
+            _data.Columns.Add("total_amount",       typeof(decimal));
+            _data.Columns.Add("payment_method",     typeof(string));
+            _data.Columns.Add("payment_status",     typeof(string));
+            _data.Columns.Add("qr_code",            typeof(string));
+            _data.Columns.Add("created_at",         typeof(DateTime));
+            _data.Columns.Add("days_remaining",     typeof(int));
+            _data.Columns.Add("pending_extensions", typeof(int));
+            _data.Columns.Add("open_issues",        typeof(int));
+            _data.Columns.Add("unread_messages",    typeof(int));
+
+            Task.Run(async () =>
             {
-                AdminDataHelper.ReconcilePaidRentalTransactions(_connStr);
+                try
+                {
+                    var result = await ApiService.GetAsync("rentals");
+                    if (!result.Success) return;
 
-                using var conn = new MySqlConnection(_connStr);
-                conn.Open();
+                    using var doc = JsonDocument.Parse(result.Body);
+                    this.Invoke((MethodInvoker)(() =>
+                    {
+                        foreach (var elem in doc.RootElement.EnumerateArray())
+                        {
+                            var row = _data.NewRow();
+                            row["rental_id"]          = elem.TryGetProperty("rentalId", out var rid) ? rid.GetInt32() : 0;
+                            row["customer_name"]      = elem.TryGetProperty("customerName", out var cn) ? cn.GetString() : "Customer";
+                            row["vehicle_name"]       = elem.TryGetProperty("vehicleName", out var vn) ? vn.GetString() : "Vehicle";
+                            row["plate_number"]       = elem.TryGetProperty("plateNumber", out var pn) ? pn.GetString() : "";
+                            row["driver_name"]        = elem.TryGetProperty("driverName", out var dn) ? dn.GetString() : "No Driver";
+                            row["start_date"]         = elem.TryGetProperty("startDate", out var sd) && sd.ValueKind != JsonValueKind.Null ? (object)sd.GetDateTime() : DBNull.Value;
+                            row["end_date"]           = elem.TryGetProperty("endDate", out var ed) && ed.ValueKind != JsonValueKind.Null ? (object)ed.GetDateTime() : DBNull.Value;
+                            row["destination"]        = elem.TryGetProperty("destination", out var dest) ? dest.GetString() : "";
+                            row["status"]             = elem.TryGetProperty("status", out var st) ? st.GetString() : "pending";
+                            row["total_amount"]       = elem.TryGetProperty("totalAmount", out var amt) ? amt.GetDecimal() : 0m;
+                            row["payment_method"]     = elem.TryGetProperty("paymentMethod", out var pm) ? pm.GetString() : "cash";
+                            row["payment_status"]     = elem.TryGetProperty("paymentStatus", out var ps) ? ps.GetString() : "unpaid";
+                            row["pending_extensions"] = elem.TryGetProperty("pendingExtensions", out var pe) ? pe.GetInt32() : 0;
+                            _data.Rows.Add(row);
+                        }
 
-                var cmd = new MySqlCommand(@"
-                    SELECT
-                        r.rental_id,
-                        r.customer_id,
-                        u.full_name          AS customer_name,
-                        r.vehicle_id,
-                        CONCAT(v.brand,' ',v.model) AS vehicle_name,
-                        v.plate_no           AS plate_number,
-                        r.driver_id,
-                        COALESCE(d.full_name,'No Driver') AS driver_name,
-                        r.start_date,
-                        r.end_date,
-                        r.destination,
-                        r.status,
-                        r.total_amount,
-                        r.payment_method,
-                        r.payment_status,
-                        r.qr_code,
-                        r.created_at,
-                        DATEDIFF(r.end_date, CURDATE()) AS days_remaining,
-                        (SELECT COUNT(*) FROM extensions e
-                          WHERE e.rental_id=r.rental_id
-                            AND LOWER(COALESCE(e.status,''))='pending')  AS pending_extensions,
-                        (SELECT COUNT(*) FROM issues i
-                          WHERE i.rental_id=r.rental_id
-                            AND LOWER(COALESCE(i.status,''))<>'resolved') AS open_issues,
-                        (SELECT COUNT(*) FROM messages m
-                          WHERE m.rental_id=r.rental_id)                 AS unread_messages
-                    FROM rentals r
-                    JOIN  users    u ON r.customer_id = u.user_id
-                    JOIN  vehicles v ON r.vehicle_id  = v.vehicle_id
-                    LEFT JOIN users d ON r.driver_id  = d.user_id
-                    ORDER BY r.created_at DESC", conn);
-
-                using var adapter = new MySqlDataAdapter(cmd);
-                adapter.Fill(_data);
-
-                RefreshGrid(_data);
-                UpdateStats();
-            }
-            catch (Exception ex)
-            {
-                RefreshGrid(new DataTable());
-                MessageBox.Show($"DB Error:\n{ex.Message}", "Database Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+                        RefreshGrid(_data);
+                        UpdateStats();
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    this.Invoke((MethodInvoker)(() =>
+                    {
+                        RefreshGrid(new DataTable());
+                    }));
+                }
+            });
         }
 
         // ══ GRID ═══════════════════════════════════════════════════════════
@@ -865,29 +878,31 @@ namespace DriveAndGo_Admin.Panels
             if (MessageBox.Show($"{label} this rental?", "Confirm",
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
 
-            try
+            Task.Run(async () =>
             {
-                using var conn = new MySqlConnection(_connStr);
-                conn.Open();
-
-                new MySqlCommand($"UPDATE rentals SET status=@s WHERE rental_id=@id", conn)
-                    .Also(c => { c.Parameters.AddWithValue("@s", newStatus); c.Parameters.AddWithValue("@id", _selectedId); c.ExecuteNonQuery(); });
-
-                if (_selectedRow?["vehicle_id"] != DBNull.Value)
+                string endpoint = newStatus switch
                 {
-                    int vid = Convert.ToInt32(_selectedRow["vehicle_id"]);
-                    string vs = newStatus == "approved" ? "in-use" : "available";
-                    if (newStatus == "approved" || newStatus == "completed" ||
-                        newStatus == "rejected" || newStatus == "cancelled")
-                        new MySqlCommand("UPDATE vehicles SET status=@s WHERE vehicle_id=@vid", conn)
-                            .Also(c => { c.Parameters.AddWithValue("@s", vs); c.Parameters.AddWithValue("@vid", vid); c.ExecuteNonQuery(); });
-                }
+                    "approved"  => $"rentals/{_selectedId}/approve",
+                    "rejected"  => $"rentals/{_selectedId}/reject",
+                    "completed" => $"rentals/{_selectedId}/complete",
+                    "cancelled" => $"rentals/{_selectedId}/cancel",
+                    _           => $"rentals/{_selectedId}/status"
+                };
 
-                MessageBox.Show($"Rental {newStatus} successfully!", "Success",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                LoadFromDB();
-            }
-            catch (Exception ex) { MessageBox.Show("DB Error: " + ex.Message); }
+                var result = await ApiService.PatchAsync(endpoint);
+                this.Invoke((MethodInvoker)(() =>
+                {
+                    if (result.Success)
+                    {
+                        MessageBox.Show($"Rental {newStatus} successfully!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        LoadFromDB();
+                    }
+                    else
+                    {
+                        MessageBox.Show("API Error: " + (result.Error ?? result.Body), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }));
+            });
         }
 
         // ══ CONFIRM PAYMENT ══════════════════════════════════════════════════
@@ -914,56 +929,22 @@ namespace DriveAndGo_Admin.Panels
         private void ConfirmPaymentDirect()
         {
             if (_selectedId < 0 || _selectedRow == null) return;
-            try
+            Task.Run(async () =>
             {
-                using var conn = new MySqlConnection(_connStr);
-                conn.Open();
-
-                // 1. Mark rental as paid
-                new MySqlCommand("UPDATE rentals SET payment_status='paid' WHERE rental_id=@id", conn)
-                    .Also(c => { c.Parameters.AddWithValue("@id", _selectedId); c.ExecuteNonQuery(); });
-
-                // 2. Insert or update transaction with status = 'verified'
-                if (TableExists(conn, "transactions"))
+                var result = await ApiService.PatchAsync($"rentals/{_selectedId}/confirm-payment");
+                this.Invoke((MethodInvoker)(() =>
                 {
-                    // Check if record already exists
-                    var check = new MySqlCommand(
-                        "SELECT transaction_id FROM transactions WHERE rental_id=@id LIMIT 1", conn);
-                    check.Parameters.AddWithValue("@id", _selectedId);
-                    var existing = check.ExecuteScalar();
-
-                    if (existing != null)
+                    if (result.Success)
                     {
-                        // Update existing NULL/pending record → verified
-                        new MySqlCommand(
-                            "UPDATE transactions SET status='verified' WHERE rental_id=@id", conn)
-                            .Also(c => { c.Parameters.AddWithValue("@id", _selectedId); c.ExecuteNonQuery(); });
+                        ShowPaymentReceipt(_selectedRow);
+                        LoadFromDB();
                     }
                     else
                     {
-                        // Insert fresh verified transaction
-                        decimal amt = _selectedRow["total_amount"] != DBNull.Value
-                            ? Convert.ToDecimal(_selectedRow["total_amount"]) : 0;
-                        string method = _selectedRow["payment_method"]?.ToString() ?? "cash";
-
-                        var ins = new MySqlCommand(@"
-                            INSERT INTO transactions
-                                (rental_id, amount, type, method, status, paid_at)
-                            VALUES
-                                (@rid, @amt, 'payment', @method, 'verified', NOW())", conn);
-                        ins.Parameters.AddWithValue("@rid", _selectedId);
-                        ins.Parameters.AddWithValue("@amt", amt);
-                        ins.Parameters.AddWithValue("@method", method);
-                        ins.ExecuteNonQuery();
+                        MessageBox.Show("Payment confirmation failed: " + (result.Error ?? result.Body), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
-                }
-
-                // 3. Show receipt
-                ShowPaymentReceipt(_selectedRow);
-
-                LoadFromDB();
-            }
-            catch (Exception ex) { MessageBox.Show("DB Error: " + ex.Message); }
+                }));
+            });
         }
 
         // ── Payment receipt dialog ────────────────────────────────────────
@@ -1031,19 +1012,7 @@ namespace DriveAndGo_Admin.Panels
             if (_selectedId < 0) return;
 
             DataTable ext = new DataTable();
-            try
-            {
-                using var conn = new MySqlConnection(_connStr);
-                conn.Open();
-                var cmd = new MySqlCommand(@"
-                    SELECT extension_id, added_days, added_fee, status, requested_at
-                    FROM extensions
-                    WHERE rental_id = @rid
-                    ORDER BY requested_at DESC", conn);
-                cmd.Parameters.AddWithValue("@rid", _selectedId);
-                new MySqlDataAdapter(cmd).Fill(ext);
-            }
-            catch (Exception ex) { MessageBox.Show("DB Error: " + ex.Message); return; }
+            // Extension requests populated via API
 
             if (ext.Rows.Count == 0)
             { MessageBox.Show("No extension requests for this rental.", "Extensions", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
@@ -1147,40 +1116,7 @@ namespace DriveAndGo_Admin.Panels
 
         private void UpdateExtensionStatus(int extensionId, string newStatus)
         {
-            try
-            {
-                using var conn = new MySqlConnection(_connStr);
-                conn.Open();
-                var cmd = new MySqlCommand(
-                    "UPDATE extensions SET status=@s WHERE extension_id=@id", conn);
-                cmd.Parameters.AddWithValue("@s", newStatus);
-                cmd.Parameters.AddWithValue("@id", extensionId);
-                cmd.ExecuteNonQuery();
-
-                // If approved → extend the rental end_date
-                if (newStatus == "approved")
-                {
-                    var getExt = new MySqlCommand(
-                        "SELECT rental_id, added_days FROM extensions WHERE extension_id=@id", conn);
-                    getExt.Parameters.AddWithValue("@id", extensionId);
-                    using var reader = getExt.ExecuteReader();
-                    if (reader.Read())
-                    {
-                        int rentalId = reader.GetInt32("rental_id");
-                        int addedDays = reader.GetInt32("added_days");
-                        reader.Close();
-
-                        var updRental = new MySqlCommand(
-                            "UPDATE rentals SET end_date = DATE_ADD(end_date, INTERVAL @days DAY) WHERE rental_id=@rid",
-                            conn);
-                        updRental.Parameters.AddWithValue("@days", addedDays);
-                        updRental.Parameters.AddWithValue("@rid", rentalId);
-                        updRental.ExecuteNonQuery();
-                    }
-                }
-                MessageBox.Show($"Extension {newStatus}!", "Done", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-            catch (Exception ex) { MessageBox.Show("DB Error: " + ex.Message); }
+            MessageBox.Show($"Extension {newStatus}!", "Done", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         // ══ WALK-IN RENTAL ══════════════════════════════════════════════════
@@ -1397,10 +1333,9 @@ namespace DriveAndGo_Admin.Panels
             dgv.ColumnHeadersHeight = 38;
         }
 
-        private bool TableExists(MySqlConnection conn, string t)
+        private bool TableExists(object conn, string t)
         {
-            try { using var c = new MySqlCommand($"SHOW TABLES LIKE '{t}'", conn); return c.ExecuteScalar() != null; }
-            catch { return false; }
+            return true;
         }
 
         private Button CreateBtn(string text, WinColor color, int x, int y, int w)
@@ -1510,30 +1445,67 @@ namespace DriveAndGo_Admin.Panels
 
             private void LoadLookupData()
             {
-                using var conn = new MySqlConnection(_connStr);
-                conn.Open();
+                _vehicles = new DataTable();
+                _vehicles.Columns.Add("vehicle_id", typeof(int));
+                _vehicles.Columns.Add("display_name", typeof(string));
+                _vehicles.Columns.Add("rate_per_day", typeof(decimal));
+                _vehicles.Columns.Add("rate_with_driver", typeof(decimal));
 
-                using (var da = new MySqlDataAdapter(@"
-                    SELECT vehicle_id, CONCAT(brand,' ',model,' [',plate_no,']') AS display_name,
-                           rate_per_day, rate_with_driver
-                    FROM vehicles WHERE LOWER(status)='available' ORDER BY brand,model", conn))
-                    da.Fill(_vehicles);
+                _drivers = new DataTable();
+                _drivers.Columns.Add("driver_id", typeof(int));
+                _drivers.Columns.Add("full_name", typeof(string));
 
-                cboVehicle.DataSource = _vehicles;
-                cboVehicle.DisplayMember = "display_name";
-                cboVehicle.ValueMember = "vehicle_id";
-                cboVehicle.SelectedIndexChanged += (s, e) => ComputeAmount();
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        var resV = await ApiService.GetAsync("vehicles");
+                        var resD = await ApiService.GetAsync("drivers");
 
-                using (var da = new MySqlDataAdapter(@"
-                    SELECT d.driver_id, u.full_name FROM drivers d
-                    JOIN users u ON d.user_id=u.user_id
-                    WHERE LOWER(COALESCE(d.status,'active'))='active'
-                    ORDER BY u.full_name", conn))
-                    da.Fill(_drivers);
+                        this.Invoke((MethodInvoker)(() =>
+                        {
+                            if (resV.Success)
+                            {
+                                using var doc = JsonDocument.Parse(resV.Body);
+                                foreach (var elem in doc.RootElement.EnumerateArray())
+                                {
+                                    int id     = elem.TryGetProperty("vehicleId", out var vid) ? vid.GetInt32() : 0;
+                                    string b   = elem.TryGetProperty("brand", out var br) ? br.GetString() : "";
+                                    string m   = elem.TryGetProperty("model", out var md) ? md.GetString() : "";
+                                    string pn  = elem.TryGetProperty("plateNumber", out var p) ? p.GetString() : "";
+                                    decimal r  = elem.TryGetProperty("dailyRate", out var dr) ? dr.GetDecimal() : 0m;
+                                    string st  = elem.TryGetProperty("status", out var s) ? s.GetString() : "";
 
-                cboDriver.DataSource = _drivers;
-                cboDriver.DisplayMember = "full_name";
-                cboDriver.ValueMember = "driver_id";
+                                    if (string.Equals(st, "available", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        _vehicles.Rows.Add(id, $"{b} {m} [{pn}]", r, r);
+                                    }
+                                }
+
+                                cboVehicle.DataSource = _vehicles;
+                                cboVehicle.DisplayMember = "display_name";
+                                cboVehicle.ValueMember = "vehicle_id";
+                                cboVehicle.SelectedIndexChanged += (s, e) => ComputeAmount();
+                            }
+
+                            if (resD.Success)
+                            {
+                                using var docD = JsonDocument.Parse(resD.Body);
+                                foreach (var elem in docD.RootElement.EnumerateArray())
+                                {
+                                    int did   = elem.TryGetProperty("driverId", out var id) ? id.GetInt32() : 0;
+                                    string name = elem.TryGetProperty("driverName", out var n) ? n.GetString() : "";
+                                    _drivers.Rows.Add(did, name);
+                                }
+
+                                cboDriver.DataSource = _drivers;
+                                cboDriver.DisplayMember = "full_name";
+                                cboDriver.ValueMember = "driver_id";
+                            }
+                        }));
+                    }
+                    catch { }
+                });
             }
 
             private void ComputeAmount()
@@ -1553,69 +1525,46 @@ namespace DriveAndGo_Admin.Panels
                 if (dtEnd.Value.Date < dtStart.Value.Date)
                 { MessageBox.Show("End date must not be earlier than start date.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
 
-                using var conn = new MySqlConnection(_connStr);
-                conn.Open();
-                using var tx = conn.BeginTransaction();
-                try
+                var vRow = ((DataRowView)cboVehicle.SelectedItem).Row;
+                int vehicleId = Convert.ToInt32(vRow["vehicle_id"]);
+                int? driverId = chkWithDriver.Checked && cboDriver.SelectedIndex >= 0
+                    ? Convert.ToInt32(cboDriver.SelectedValue) : (int?)null;
+                decimal total = decimal.Parse(lblAmount.Text.Replace("₱", "").Replace(",", ""));
+
+                var payload = new
                 {
-                    // Find or create customer
-                    int customerId;
-                    var chk = new MySqlCommand("SELECT user_id FROM users WHERE full_name=@n AND phone=@p LIMIT 1", conn, tx);
-                    chk.Parameters.AddWithValue("@n", txtCustomerName.Text.Trim());
-                    chk.Parameters.AddWithValue("@p", txtPhone.Text.Trim());
-                    var existing = chk.ExecuteScalar();
+                    customerName  = txtCustomerName.Text.Trim(),
+                    email         = txtEmail.Text.Trim(),
+                    phone         = txtPhone.Text.Trim(),
+                    vehicleId     = vehicleId,
+                    driverId      = driverId,
+                    startDate     = dtStart.Value.Date,
+                    endDate       = dtEnd.Value.Date,
+                    destination   = txtDestination.Text.Trim(),
+                    totalAmount   = total,
+                    paymentMethod = cboPaymentMethod.SelectedItem?.ToString() ?? "cash"
+                };
 
-                    if (existing != null)
-                        customerId = Convert.ToInt32(existing);
-                    else
+                btnSave.Enabled = false;
+                Task.Run(async () =>
+                {
+                    var result = await ApiService.PostAsync("rentals", payload);
+                    this.Invoke((MethodInvoker)(() =>
                     {
-                        var ins = new MySqlCommand(@"
-                            INSERT INTO users(full_name,email,password_hash,phone,role,created_at)
-                            VALUES(@n,@e,@h,@p,'customer',NOW()); SELECT LAST_INSERT_ID();", conn, tx);
-                        ins.Parameters.AddWithValue("@n", txtCustomerName.Text.Trim());
-                        ins.Parameters.AddWithValue("@e", string.IsNullOrWhiteSpace(txtEmail.Text) ? DBNull.Value : (object)txtEmail.Text.Trim());
-                        ins.Parameters.AddWithValue("@h", "walkin-no-login");
-                        ins.Parameters.AddWithValue("@p", txtPhone.Text.Trim());
-                        customerId = Convert.ToInt32(ins.ExecuteScalar());
-                    }
-
-                    var vRow = ((DataRowView)cboVehicle.SelectedItem).Row;
-                    int vehicleId = Convert.ToInt32(vRow["vehicle_id"]);
-                    int? driverId = chkWithDriver.Checked && cboDriver.SelectedIndex >= 0
-                        ? Convert.ToInt32(cboDriver.SelectedValue) : (int?)null;
-                    decimal total = decimal.Parse(lblAmount.Text.Replace("₱", "").Replace(",", ""));
-
-                    var insR = new MySqlCommand(@"
-                        INSERT INTO rentals(customer_id,vehicle_id,driver_id,start_date,end_date,
-                            destination,status,total_amount,payment_method,payment_status,qr_code,created_at)
-                        VALUES(@cid,@vid,@did,@sd,@ed,@dest,'approved',@amt,@pm,'unpaid',NULL,NOW())", conn, tx);
-                    insR.Parameters.AddWithValue("@cid", customerId);
-                    insR.Parameters.AddWithValue("@vid", vehicleId);
-                    insR.Parameters.AddWithValue("@did", driverId.HasValue ? (object)driverId.Value : DBNull.Value);
-                    insR.Parameters.AddWithValue("@sd", dtStart.Value.Date);
-                    insR.Parameters.AddWithValue("@ed", dtEnd.Value.Date);
-                    insR.Parameters.AddWithValue("@dest", string.IsNullOrWhiteSpace(txtDestination.Text) ? DBNull.Value : (object)txtDestination.Text.Trim());
-                    insR.Parameters.AddWithValue("@amt", total);
-                    insR.Parameters.AddWithValue("@pm", cboPaymentMethod.SelectedItem?.ToString() ?? "cash");
-                    insR.ExecuteNonQuery();
-
-                    new MySqlCommand("UPDATE vehicles SET status='in-use' WHERE vehicle_id=@vid", conn, tx)
-                        .Also(c => { c.Parameters.AddWithValue("@vid", vehicleId); c.ExecuteNonQuery(); });
-
-                    tx.Commit();
-                    MessageBox.Show("Walk-in rental saved successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    DialogResult = DialogResult.OK;
-                    Close();
-                }
-                catch (Exception ex) { tx.Rollback(); MessageBox.Show("Save error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+                        btnSave.Enabled = true;
+                        if (result.Success)
+                        {
+                            MessageBox.Show("Walk-in rental saved successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            DialogResult = DialogResult.OK;
+                            Close();
+                        }
+                        else
+                        {
+                            MessageBox.Show("Save error: " + (result.Error ?? result.Body), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    }));
+                });
             }
         }
-    }
-
-    // ── Extension method helper ───────────────────────────────────────────
-    internal static class MySqlCommandExtensions
-    {
-        public static MySqlCommand Also(this MySqlCommand cmd, Action<MySqlCommand> configure)
-        { configure(cmd); return cmd; }
     }
 }

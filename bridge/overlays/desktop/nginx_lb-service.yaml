@@ -1,0 +1,13 @@
+# check if there is at least one published port
+
+#! nginx_lb-service.yaml
+# Generated code, do not edit
+apiVersion: v1
+kind: Service
+metadata:
+    name: nginx-lb-published
+    namespace: driveandgo-project
+spec:
+    type: LoadBalancer
+
+# check if there is at least one published port

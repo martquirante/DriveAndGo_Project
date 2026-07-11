@@ -1,0 +1,39 @@
+#! driveandgo_api-deployment.yaml
+# Generated code, do not edit
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: driveandgo-api
+    namespace: driveandgo-project
+    labels:
+        com.docker.compose.project: driveandgo_project
+        com.docker.compose.service: driveandgo_api
+spec:
+    replicas: 1
+    selector:
+        matchLabels:
+            com.docker.compose.project: driveandgo_project
+            com.docker.compose.service: driveandgo_api
+    strategy:
+        type: Recreate
+    template:
+        metadata:
+            labels:
+                com.docker.compose.project: driveandgo_project
+                com.docker.compose.service: driveandgo_api
+                com.docker.compose.network.default: "true"
+        spec:
+            containers:
+                - name: driveandgo-api
+                  image: driveandgo_project-driveandgo_api
+                  imagePullPolicy: IfNotPresent
+                  env:
+                    - name: ASPNETCORE_ENVIRONMENT
+                      value: "Development"
+                    - name: ConnectionStrings__DefaultConnection
+                      value: "Host=postgres_db;Database=driveandgo_test_db;Username=postgres;Password=postgres_local_password;Port=5432"
+                  ports:
+                    - name: driveandgo-8080
+                      containerPort: 8080
+                    - name: driveandgo-8081
+                      containerPort: 8081

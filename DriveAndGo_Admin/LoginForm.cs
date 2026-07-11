@@ -1,10 +1,10 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
-using System.Reflection; // Idinagdag para sa Double Buffering
-using MySql.Data.MySqlClient;
+using System.Reflection;
+using System.Threading.Tasks;
 using DriveAndGo_Admin.Helpers;
 
 namespace DriveAndGo_Admin
@@ -73,6 +73,19 @@ namespace DriveAndGo_Admin
                           ControlStyles.AllPaintingInWmPaint |
                           ControlStyles.UserPaint, true);
             this.UpdateStyles();
+
+            try
+            {
+                var iconPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "logo.png");
+                if (System.IO.File.Exists(iconPath))
+                {
+                    using (var bmp = new Bitmap(iconPath))
+                    {
+                        this.Icon = Icon.FromHandle(bmp.GetHicon());
+                    }
+                }
+            }
+            catch { }
 
             BuildUI();
             StartAnimations();
@@ -479,27 +492,25 @@ namespace DriveAndGo_Admin
             };
             _fadeTimer.Start();
 
-            _floatOffset = -3;
-            _floatUp = false;
-
-            _floatTimer = new System.Windows.Forms.Timer();
-            _floatTimer.Interval = 40;
-            _floatTimer.Tick += (s, e) => {
-                if (_floatUp)
-                {
-                    _floatOffset--;
-                    if (_floatOffset <= -6) _floatUp = false;
-                }
-                else
-                {
-                    _floatOffset++;
-                    if (_floatOffset >= 0) _floatUp = true;
-                }
-                cardPanel.Top = 75 + _floatOffset;
-                glowPanel.Top = 68 + _floatOffset;
-                glowPanel.Invalidate();
-            };
-            _floatTimer.Start();
+            _floatOffset = 0;
+            // _floatTimer = new System.Windows.Forms.Timer();
+            // _floatTimer.Interval = 40;
+            // _floatTimer.Tick += (s, e) => {
+            //     if (_floatUp)
+            //     {
+            //         _floatOffset--;
+            //         if (_floatOffset <= -6) _floatUp = false;
+            //     }
+            //     else
+            //     {
+            //         _floatOffset++;
+            //         if (_floatOffset >= 0) _floatUp = true;
+            //     }
+            //     cardPanel.Top = 75 + _floatOffset;
+            //     glowPanel.Top = 68 + _floatOffset;
+            //     glowPanel.Invalidate();
+            // };
+            // _floatTimer.Start();
 
             // Pulse glow
             _pulseTimer = new System.Windows.Forms.Timer();
@@ -539,7 +550,7 @@ namespace DriveAndGo_Admin
 
         private void OnLogin(object sender, EventArgs e)
         {
-            string email = txtEmail.Text.Trim();
+            string email    = txtEmail.Text.Trim();
             string password = txtPassword.Text;
 
             if (string.IsNullOrWhiteSpace(email) ||
@@ -549,78 +560,53 @@ namespace DriveAndGo_Admin
                 return;
             }
 
-            btnLogin.Text = "Authenticating...";
+            btnLogin.Text    = "Authenticating...";
             btnLogin.Enabled = false;
             lblError.Visible = false;
 
-            try
+            // Run async login on background thread so UI stays responsive
+            Task.Run(async () =>
             {
-                using var conn = new MySqlConnection(
-                    "Server=localhost;Database=vehicle_rental_db;" +
-                    "Uid=root;Pwd=;");
-                conn.Open();
+                var (result, apiError) = await ApiService.LoginAsync(email, password);
 
-                var cmd = new MySqlCommand(@"
-                    SELECT user_id, full_name,
-                           password_hash, role
-                    FROM   users
-                    WHERE  email = @email
-                    AND    role  = 'admin'
-                    LIMIT  1", conn);
-                cmd.Parameters.AddWithValue("@email", email);
-
-                using var reader = cmd.ExecuteReader();
-
-                if (!reader.Read())
+                this.Invoke((Action)(() =>
                 {
-                    ShowError("⚠  Admin account not found.");
-                    return;
-                }
+                    btnLogin.Text    = "LOG IN";
+                    btnLogin.Enabled = true;
+                    btnLogin.Invalidate();
 
-                string storedHash = reader["password_hash"].ToString()!;
-                bool isValid = storedHash.StartsWith("$2")
-                    ? BCrypt.Net.BCrypt.Verify(password, storedHash)
-                    : password == storedHash;
-
-                if (!isValid)
-                {
-                    ShowError("⚠  Incorrect password. Please try again.");
-                    return;
-                }
-
-                // Save session
-                SessionManager.UserId = Convert.ToInt32(reader["user_id"]);
-                SessionManager.FullName = reader["full_name"].ToString()!;
-                SessionManager.Email = email;
-                SessionManager.Role = reader["role"].ToString()!;
-                reader.Close();
-
-                // Fade out then open MainForm
-                var t = new System.Windows.Forms.Timer();
-                t.Interval = 16;
-                t.Tick += (s2, e2) => {
-                    this.Opacity -= 0.06f;
-                    if (this.Opacity <= 0)
+                    if (result == null)
                     {
-                        t.Stop();
-                        var mainForm = new MainForm();
-                        mainForm.Show();
-                        this.Hide();
+                        // Login failed — show the error from the API
+                        ShowError("⚠  " + (apiError ?? "Login failed. Check API server."));
+                        return;
                     }
-                };
-                t.Start();
-            }
-            catch (Exception ex)
-            {
-                ShowError("⚠  Database error. Check XAMPP connection.");
-                Console.WriteLine(ex.Message); // For debugging purposes
-            }
-            finally
-            {
-                btnLogin.Text = "LOG IN";
-                btnLogin.Enabled = true;
-                btnLogin.Invalidate();
-            }
+
+                    // Ensure the logged-in user is an admin
+                    if (!string.Equals(result.Role, "admin", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ShowError("⚠  Access denied. Admin accounts only.");
+                        SessionManager.Clear();
+                        return;
+                    }
+
+                    // Fade out then open MainForm
+                    var t = new System.Windows.Forms.Timer();
+                    t.Interval = 16;
+                    t.Tick += (s2, e2) =>
+                    {
+                        this.Opacity -= 0.06f;
+                        if (this.Opacity <= 0)
+                        {
+                            t.Stop();
+                            var mainForm = new MainForm();
+                            mainForm.Show();
+                            this.Hide();
+                        }
+                    };
+                    t.Start();
+                }));
+            });
         }
 
         // ══ HELPERS ══

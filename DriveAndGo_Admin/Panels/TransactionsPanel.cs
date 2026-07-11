@@ -1,6 +1,7 @@
-﻿#nullable disable
+#nullable disable
 using DriveAndGo_Admin.Helpers;
-using MySql.Data.MySqlClient;
+using System.Text.Json;
+using System.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -47,7 +48,7 @@ namespace DriveAndGo_Admin.Panels
         private readonly WinColor ColAccent = WinColor.FromArgb(230, 81, 0);
         private readonly WinColor ColPurple = WinColor.FromArgb(168, 85, 247);
 
-        private readonly string _connStr = "Server=localhost;Database=vehicle_rental_db;Uid=root;Pwd=;";
+        private readonly string _connStr = string.Empty; // Migrated to API
 
         // ── UI ──
         private SplitContainer splitContainer;
@@ -223,50 +224,77 @@ namespace DriveAndGo_Admin.Panels
             this.Invalidate(true);
         }
 
-        // ══ PURE DATABASE LOAD ══
+        // ══ LOAD VIA API ══
         private void LoadFromDB()
         {
-            try
+            Task.Run(async () =>
             {
-                AdminDataHelper.ReconcilePaidRentalTransactions(_connStr);
+                try
+                {
+                    var result = await ApiService.GetAsync("transactions");
+                    if (!result.Success)
+                    {
+                        var errMsg = result.Error ?? result.Body ?? "Unknown error";
+                        this.Invoke(new Action(() =>
+                        {
+                            RefreshGrid(new DataTable());
+                            MessageBox.Show($"Could not load transactions.\n{errMsg}",
+                                "API Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        }));
+                        return;
+                    }
 
-                _data = new DataTable();
-                using var conn = new MySqlConnection(_connStr);
-                conn.Open();
+                    // Deserialize JSON array into DataTable
+                    var dt = new DataTable();
+                    dt.Columns.Add("transaction_id", typeof(int));
+                    dt.Columns.Add("rental_id",      typeof(int));
+                    dt.Columns.Add("customer_name",  typeof(string));
+                    dt.Columns.Add("plate_no",       typeof(string));  // mapped from vehicleName
+                    dt.Columns.Add("amount",         typeof(decimal));
+                    dt.Columns.Add("type",           typeof(string));
+                    dt.Columns.Add("method",         typeof(string));
+                    dt.Columns.Add("proof_url",      typeof(string));
+                    dt.Columns.Add("status",         typeof(string));
+                    dt.Columns.Add("paid_at",        typeof(DateTime));
+                    dt.Columns.Add("payment_status", typeof(string));  // not available from API
 
-                // Ginamit natin ang LEFT JOIN para sure na may lilitaw na data kahit kulang
-                var cmd = new MySqlCommand(@"
-                    SELECT 
-                        t.transaction_id, 
-                        t.rental_id, 
-                        COALESCE(u.full_name, 'Unknown Customer') AS customer_name,
-                        COALESCE(v.plate_no, 'Unknown Vehicle') AS plate_no,
-                        t.amount, 
-                        t.type, 
-                        t.method, 
-                        t.proof_url,
-                        t.status, 
-                        t.paid_at,
-                        r.payment_status
-                    FROM transactions t
-                    LEFT JOIN rentals r ON t.rental_id = r.rental_id
-                    LEFT JOIN users u ON r.customer_id = u.user_id
-                    LEFT JOIN vehicles v ON r.vehicle_id = v.vehicle_id
-                    WHERE LOWER(COALESCE(t.status, '')) <> 'duplicate'
-                    ORDER BY t.paid_at DESC", conn);
+                    using var doc = JsonDocument.Parse(result.Body);
+                    foreach (var elem in doc.RootElement.EnumerateArray())
+                    {
+                        var row = dt.NewRow();
+                        row["transaction_id"] = elem.TryGetProperty("transactionId", out var txId)   ? (object)txId.GetInt32()  : DBNull.Value;
+                        row["rental_id"]      = elem.TryGetProperty("rentalId",      out var rId)    ? (object)rId.GetInt32()   : DBNull.Value;
+                        row["customer_name"]  = elem.TryGetProperty("customerName",  out var cName)  ? cName.GetString() ?? "Unknown Customer" : "Unknown Customer";
+                        row["plate_no"]       = elem.TryGetProperty("vehicleName",   out var vName)  ? vName.GetString() ?? "Unknown Vehicle"  : "Unknown Vehicle";
+                        row["amount"]         = elem.TryGetProperty("amount",        out var amt)    ? (object)amt.GetDecimal() : DBNull.Value;
+                        row["type"]           = elem.TryGetProperty("type",          out var tp)     ? tp.GetString()   : (object)DBNull.Value;
+                        row["method"]         = elem.TryGetProperty("method",        out var mth)    ? mth.GetString()  : (object)DBNull.Value;
+                        row["proof_url"]      = elem.TryGetProperty("proofUrl",      out var prf)    ? prf.GetString()  : (object)DBNull.Value;
+                        row["status"]         = elem.TryGetProperty("status",        out var st)     ? st.GetString()   : (object)DBNull.Value;
+                        row["paid_at"]        = elem.TryGetProperty("paidAt",        out var pa) && pa.ValueKind != JsonValueKind.Null
+                                                    ? (object)pa.GetDateTime() : DBNull.Value;
+                        row["payment_status"] = DBNull.Value; // not returned by API
+                        dt.Rows.Add(row);
+                    }
 
-                using var adapter = new MySqlDataAdapter(cmd);
-                adapter.Fill(_data);
-                _data = DeduplicateTransactions(_data);
+                    _data = dt;
 
-                RefreshGrid(_data);
-                UpdateStats();
-            }
-            catch (Exception ex)
-            {
-                RefreshGrid(new DataTable());
-                MessageBox.Show($"Could not load transactions.\n{ex.Message}", "Database Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
+                    this.Invoke(new Action(() =>
+                    {
+                        RefreshGrid(_data);
+                        UpdateStats();
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    this.Invoke(new Action(() =>
+                    {
+                        RefreshGrid(new DataTable());
+                        MessageBox.Show($"Could not load transactions.\n{ex.Message}",
+                            "API Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }));
+                }
+            });
         }
 
         private void RefreshGrid(DataTable dt)
@@ -369,27 +397,7 @@ namespace DriveAndGo_Admin.Panels
                 if (st == "pending") pendingCount++;
             }
 
-            try
-            {
-                using var conn = new MySqlConnection(_connStr);
-                conn.Open();
-                using var cmd = new MySqlCommand(@"
-                    SELECT COUNT(*)
-                    FROM rentals r
-                    LEFT JOIN transactions t
-                      ON t.rental_id = r.rental_id
-                     AND (
-                        CASE
-                            WHEN LOWER(COALESCE(t.type,'')) IN ('', 'rental') THEN 'payment'
-                            ELSE LOWER(COALESCE(t.type,''))
-                        END
-                     ) = 'payment'
-                     AND LOWER(COALESCE(t.status,'')) NOT IN ('rejected','refunded','duplicate')
-                    WHERE LOWER(COALESCE(r.payment_status,'')) = 'paid'
-                      AND t.transaction_id IS NULL", conn);
-                repairedNeeded = Convert.ToInt32(cmd.ExecuteScalar());
-            }
-            catch { }
+            // Reconciliation handled server-side — not available from API
 
             if (lblStats.InvokeRequired)
             {
@@ -403,22 +411,13 @@ namespace DriveAndGo_Admin.Panels
 
         private void ReconcilePaymentLogs()
         {
-            try
-            {
-                int repaired = AdminDataHelper.ReconcilePaidRentalTransactions(_connStr);
-                LoadFromDB();
-                MessageBox.Show(
-                    repaired > 0
-                        ? $"Repaired {repaired} payment log issue(s)."
-                        : "No payment log issues were found.",
-                    "Payment Log Repair",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Could not repair payment logs.\n" + ex.Message, "Repair Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
+            // Reconciliation handled server-side
+            MessageBox.Show(
+                "Payment log reconciliation is now handled server-side.\nRefreshing transactions...",
+                "Reconciliation",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            LoadFromDB();
         }
 
         // ══ ROW SELECTED → Generate Receipt ══

@@ -1,0 +1,60 @@
+#! postgres_db-deployment.yaml
+# Generated code, do not edit
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: postgres-db
+    namespace: driveandgo-project
+    labels:
+        com.docker.compose.project: driveandgo_project
+        com.docker.compose.service: postgres_db
+spec:
+    replicas: 1
+    selector:
+        matchLabels:
+            com.docker.compose.project: driveandgo_project
+            com.docker.compose.service: postgres_db
+    strategy:
+        type: Recreate
+    template:
+        metadata:
+            labels:
+                com.docker.compose.project: driveandgo_project
+                com.docker.compose.service: postgres_db
+                com.docker.compose.network.default: "true"
+        spec:
+            containers:
+                - name: driveandgo-postgres-local
+                  image: postgres:16-alpine
+                  imagePullPolicy: IfNotPresent
+                  env:
+                    - name: POSTGRES_DB
+                      value: "driveandgo_test_db"
+                    - name: POSTGRES_PASSWORD
+                      value: "postgres_local_password"
+                    - name: POSTGRES_USER
+                      value: "postgres"
+                  livenessProbe:
+                    exec:
+                        command:
+                            - /bin/sh
+                            - -c
+                            - pg_isready -U postgres -d driveandgo_test_db
+                    periodSeconds: 5
+                    timeoutSeconds: 5
+                    failureThreshold: 5
+                  ports:
+                    - name: postgres-d-5432
+                      containerPort: 5432
+                  volumeMounts:
+                    - name: docker-entrypoint-initdb-d-init-sql
+                      mountPath: /docker-entrypoint-initdb.d/init.sql
+                    - name: var-lib-postgresql-data
+                      mountPath: /var/lib/postgresql/data
+            volumes:
+                - name: docker-entrypoint-initdb-d-init-sql
+                  hostPath:
+                    path: C:\Users\martq\source\repos\DriveAndGo_Project\docker\init.sql
+                - name: var-lib-postgresql-data
+                  persistentVolumeClaim:
+                    claimName: postgres-db-pgdata-test

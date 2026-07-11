@@ -11,4 +11,5 @@
   </Project>
   <Project Path="../DriveAndGo_SuperAdmin/DriveAndGo_SuperAdmin.csproj" Id="bae77922-7fdb-42ff-ac2a-4f3a1f8ad1e0" />
   <Project Path="DriveAndGo_API.csproj" />
+  <Project Path="../DriveAndGo_API.Tests/DriveAndGo_API.Tests.csproj" />
 </Solution>

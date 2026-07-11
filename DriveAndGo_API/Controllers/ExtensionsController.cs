@@ -1,7 +1,7 @@
 using DriveAndGo_API.Models;
 using DriveAndGo_API.Services;
 using Microsoft.AspNetCore.Mvc;
-using MySql.Data.MySqlClient;
+using Npgsql;
 
 namespace DriveAndGo_API.Controllers;
 
@@ -54,10 +54,10 @@ public class ExtensionsController : ControllerBase
 
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var rentalCommand = new MySqlCommand(
+            using var rentalCommand = new NpgsqlCommand(
                 @"SELECT
                     r.customer_id,
                     r.status,
@@ -91,25 +91,25 @@ public class ExtensionsController : ControllerBase
                 return BadRequest(new { Message = "Only approved or active rentals can request an extension." });
             }
 
-            using var vehicleCommand = new MySqlCommand(
+            using var vehicleCommand = new NpgsqlCommand(
                 "SELECT rate_per_day FROM vehicles WHERE vehicle_id = @vehicle_id",
                 connection);
             vehicleCommand.Parameters.AddWithValue("@vehicle_id", vehicleId);
             var dailyRate = Convert.ToDecimal(vehicleCommand.ExecuteScalar());
             var addedFee = dailyRate * extension.AddedDays;
 
-            using var insertCommand = new MySqlCommand(
+            using var insertCommand = new NpgsqlCommand(
                 @"INSERT INTO extensions
                     (rental_id, added_days, added_fee, status, requested_at)
                   VALUES
-                    (@rental_id, @added_days, @added_fee, 'pending', NOW())",
+                    (@rental_id, @added_days, @added_fee, 'pending', NOW())
+                  RETURNING extension_id",
                 connection);
             insertCommand.Parameters.AddWithValue("@rental_id", extension.RentalId);
             insertCommand.Parameters.AddWithValue("@added_days", extension.AddedDays);
             insertCommand.Parameters.AddWithValue("@added_fee", addedFee);
-            insertCommand.ExecuteNonQuery();
 
-            var extensionId = Convert.ToInt32(new MySqlCommand("SELECT LAST_INSERT_ID()", connection).ExecuteScalar());
+            var extensionId = Convert.ToInt32(insertCommand.ExecuteScalar());
 
             _notificationWriter.Create(
                 connection,
@@ -137,10 +137,10 @@ public class ExtensionsController : ControllerBase
     {
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var command = new MySqlCommand(
+            using var command = new NpgsqlCommand(
                 @"SELECT
                     e.status,
                     e.rental_id,
@@ -172,15 +172,15 @@ public class ExtensionsController : ControllerBase
                 return BadRequest(new { Message = $"Extension cannot be approved because it is already '{status}'." });
             }
 
-            using var updateExtensionCommand = new MySqlCommand(
+            using var updateExtensionCommand = new NpgsqlCommand(
                 "UPDATE extensions SET status = 'approved' WHERE extension_id = @id",
                 connection);
             updateExtensionCommand.Parameters.AddWithValue("@id", id);
             updateExtensionCommand.ExecuteNonQuery();
 
-            using var updateRentalCommand = new MySqlCommand(
+            using var updateRentalCommand = new NpgsqlCommand(
                 @"UPDATE rentals
-                  SET end_date = DATE_ADD(end_date, INTERVAL @days DAY),
+                  SET end_date = end_date + (@days * INTERVAL '1 day'),
                       total_amount = total_amount + @fee
                   WHERE rental_id = @rental_id",
                 connection);
@@ -209,10 +209,10 @@ public class ExtensionsController : ControllerBase
     {
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var command = new MySqlCommand(
+            using var command = new NpgsqlCommand(
                 @"SELECT e.status, r.customer_id
                   FROM extensions e
                   JOIN rentals r ON r.rental_id = e.rental_id
@@ -236,7 +236,7 @@ public class ExtensionsController : ControllerBase
                 return BadRequest(new { Message = $"Extension cannot be rejected because it is already '{status}'." });
             }
 
-            using var updateCommand = new MySqlCommand(
+            using var updateCommand = new NpgsqlCommand(
                 "UPDATE extensions SET status = 'rejected' WHERE extension_id = @id",
                 connection);
             updateCommand.Parameters.AddWithValue("@id", id);
@@ -261,7 +261,7 @@ public class ExtensionsController : ControllerBase
     {
         var extensions = new List<Extension>();
 
-        using var connection = new MySqlConnection(_connectionString);
+        using var connection = new NpgsqlConnection(_connectionString);
         connection.Open();
 
         var sql =
@@ -286,7 +286,7 @@ public class ExtensionsController : ControllerBase
 
         sql += "ORDER BY e.requested_at DESC";
 
-        using var command = new MySqlCommand(sql, connection);
+        using var command = new NpgsqlCommand(sql, connection);
         if (rentalId.HasValue)
         {
             command.Parameters.AddWithValue("@rental_id", rentalId.Value);

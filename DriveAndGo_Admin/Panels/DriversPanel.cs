@@ -1,10 +1,12 @@
-﻿#nullable disable
+#nullable disable
 using DriveAndGo_Admin.Helpers;
-using MySql.Data.MySqlClient;
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Text.Json.Serialization;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 using Button = System.Windows.Forms.Button;
@@ -29,7 +31,7 @@ namespace DriveAndGo_Admin.Panels
         private readonly WinColor ColYellow = WinColor.FromArgb(245, 158, 11);
         private readonly WinColor ColAccent = WinColor.FromArgb(230, 81, 0);
 
-        private readonly string _connStr = "Server=localhost;Database=vehicle_rental_db;Uid=root;Pwd=;";
+        private readonly string _connStr = string.Empty; // Migrated to API
 
         // ── UI ──
         private SplitContainer splitContainer;
@@ -322,66 +324,75 @@ namespace DriveAndGo_Admin.Panels
             Invalidate(true);
         }
 
-        // ══ DATABASE LOAD ══
+        // ══ API LOAD ══
         private void LoadFromDB()
         {
-            try
+            Task.Run(async () =>
             {
-                _data = new DataTable();
-                using var conn = new MySqlConnection(_connStr);
-                conn.Open();
+                try
+                {
+                    var result = await ApiService.GetAsync("drivers");
+                    if (!result.Success)
+                    {
+                        string err = result.Error ?? result.Body ?? "Unknown error";
+                        this.Invoke(new Action(() =>
+                        {
+                            RefreshGrid(new DataTable());
+                            MessageBox.Show($"API Error:\n{err}", "Load Drivers", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }));
+                        return;
+                    }
 
-                var cmd = new MySqlCommand(@"
-                    SELECT 
-                        d.driver_id,
-                        d.user_id,
-                        COALESCE(u.full_name, 'Unknown User') AS driver_name,
-                        COALESCE(u.email, '') AS email,
-                        COALESCE(u.phone, '') AS phone,
-                        d.license_no,
-                        d.license_photo_url,
-                        d.status,
-                        COALESCE(d.rating_avg, 0) AS rating_avg,
-                        COALESCE(d.total_trips, 0) AS total_trips,
-                        COALESCE(active_summary.active_rentals, 0) AS active_rentals,
-                        COALESCE(revenue_summary.revenue_handled, 0) AS revenue_handled,
-                        active_summary.last_assignment
-                    FROM drivers d
-                    LEFT JOIN users u ON d.user_id = u.user_id
-                    LEFT JOIN
-                    (
-                        SELECT driver_id,
-                               COUNT(*) AS active_rentals,
-                               MAX(start_date) AS last_assignment
-                        FROM rentals
-                        WHERE driver_id IS NOT NULL
-                          AND LOWER(COALESCE(status, '')) IN ('approved', 'active')
-                        GROUP BY driver_id
-                    ) active_summary ON active_summary.driver_id = d.driver_id
-                    LEFT JOIN
-                    (
-                        SELECT driver_id,
-                               SUM(CASE 
-                                       WHEN LOWER(COALESCE(payment_status,'')) = 'paid'
-                                       THEN COALESCE(total_amount,0)
-                                       ELSE 0
-                                   END) AS revenue_handled
-                        FROM rentals
-                        WHERE driver_id IS NOT NULL
-                        GROUP BY driver_id
-                    ) revenue_summary ON revenue_summary.driver_id = d.driver_id
-                    ORDER BY d.driver_id DESC", conn);
+                    var drivers = ApiService.Deserialize<List<DriverApiDto>>(result.Body)
+                                  ?? new List<DriverApiDto>();
 
-                using var adapter = new MySqlDataAdapter(cmd);
-                adapter.Fill(_data);
+                    var dt = new DataTable();
+                    dt.Columns.Add("driver_id",       typeof(int));
+                    dt.Columns.Add("user_id",         typeof(int));
+                    dt.Columns.Add("driver_name",     typeof(string));
+                    dt.Columns.Add("email",           typeof(string));
+                    dt.Columns.Add("phone",           typeof(string));
+                    dt.Columns.Add("license_no",      typeof(string));
+                    dt.Columns.Add("status",          typeof(string));
+                    dt.Columns.Add("rating_avg",      typeof(decimal));
+                    dt.Columns.Add("total_trips",     typeof(int));
+                    dt.Columns.Add("active_rentals",  typeof(int));
+                    dt.Columns.Add("revenue_handled", typeof(decimal));
+                    dt.Columns.Add("last_assignment", typeof(string));
 
-                RefreshGrid(_data);
-            }
-            catch (Exception ex)
-            {
-                RefreshGrid(new DataTable());
-                MessageBox.Show($"DB Error Details:\n{ex.Message}", "Database Connection Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+                    foreach (var d in drivers)
+                    {
+                        dt.Rows.Add(
+                            d.DriverId,
+                            d.UserId,
+                            d.DriverName   ?? "Unknown",
+                            d.Email        ?? "",
+                            d.Phone        ?? "",
+                            d.LicenseNo    ?? "",
+                            d.Status       ?? "inactive",
+                            (decimal)(d.RatingAvg ?? 0),
+                            d.TotalTrips   ?? 0,
+                            d.ActiveRentals ?? 0,
+                            (decimal)(d.RevenueHandled ?? 0),
+                            d.LastAssignment
+                        );
+                    }
+
+                    this.Invoke(new Action(() =>
+                    {
+                        _data = dt;
+                        RefreshGrid(_data);
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    this.Invoke(new Action(() =>
+                    {
+                        RefreshGrid(new DataTable());
+                        MessageBox.Show($"Error loading drivers:\n{ex.Message}", "Load Drivers", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }));
+                }
+            });
         }
 
         // ══ SAFE GRID REFRESH ══
@@ -551,22 +562,35 @@ namespace DriveAndGo_Admin.Panels
             string actionName = newStatus == "available" ? "Mark ready" : newStatus == "off-duty" ? "Set off duty" : "Suspend";
             if (MessageBox.Show($"Are you sure you want to {actionName.ToLower()} this driver?", "Confirm Action", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
 
-            try
+            int idToUpdate = _selectedDriverId;
+            Task.Run(async () =>
             {
-                using var conn = new MySqlConnection(_connStr);
-                conn.Open();
-                var cmd = new MySqlCommand("UPDATE drivers SET status = @s WHERE driver_id = @id", conn);
-                cmd.Parameters.AddWithValue("@s", newStatus);
-                cmd.Parameters.AddWithValue("@id", _selectedDriverId);
-                cmd.ExecuteNonQuery();
+                try
+                {
+                    var result = await ApiService.PatchAsync(
+                        $"drivers/{idToUpdate}/status",
+                        new { status = newStatus });
 
-                MessageBox.Show($"Driver status updated to {newStatus}.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                LoadFromDB();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("DB Error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+                    this.Invoke(new Action(() =>
+                    {
+                        if (result.Success)
+                        {
+                            MessageBox.Show($"Driver status updated to {newStatus}.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            LoadFromDB();
+                        }
+                        else
+                        {
+                            string err = result.Error ?? result.Body ?? "Unknown error";
+                            MessageBox.Show($"API Error: {err}", "Update Status", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    this.Invoke(new Action(() =>
+                        MessageBox.Show("Error: " + ex.Message, "Update Status", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                }
+            });
         }
 
         private void OnDeleteDriver(object s, EventArgs e)
@@ -574,38 +598,50 @@ namespace DriveAndGo_Admin.Panels
             if (_selectedDriverId < 0) return;
             if (MessageBox.Show("Warning: Deleting a driver cannot be undone. Proceed?", "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
 
-            try
+            int idToDelete = _selectedDriverId;
+            Task.Run(async () =>
             {
-                using var conn = new MySqlConnection(_connStr);
-                conn.Open();
-                var cmd = new MySqlCommand("DELETE FROM drivers WHERE driver_id = @id", conn);
-                cmd.Parameters.AddWithValue("@id", _selectedDriverId);
-                cmd.ExecuteNonQuery();
+                try
+                {
+                    var result = await ApiService.DeleteAsync($"drivers/{idToDelete}");
 
-                LoadFromDB();
+                    this.Invoke(new Action(() =>
+                    {
+                        if (result.Success)
+                        {
+                            LoadFromDB();
 
-                _selectedDriverId = -1;
-                lblDriverName.Text = "Select a driver";
-                lblStatus.Text = "STATUS";
-                lblLicense.Text = "—";
-                lblEmail.Text = "—";
-                lblPhone.Text = "—";
-                lblTrips.Text = "0";
-                lblRating.Text = "0.0";
-                lblActiveRentals.Text = "0";
-                lblRevenueHandled.Text = "₱0.00";
-                lblLastAssigned.Text = "No active booking";
-                btnActivate.Enabled = false;
-                btnOffDuty.Enabled = false;
-                btnSuspend.Enabled = false;
-                btnDelete.Enabled = false;
-                btnEdit.Enabled = false;
-                pnlProfileCard.Invalidate(true);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("DB Error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+                            _selectedDriverId = -1;
+                            lblDriverName.Text = "Select a driver";
+                            lblStatus.Text = "STATUS";
+                            lblLicense.Text = "—";
+                            lblEmail.Text = "—";
+                            lblPhone.Text = "—";
+                            lblTrips.Text = "0";
+                            lblRating.Text = "0.0";
+                            lblActiveRentals.Text = "0";
+                            lblRevenueHandled.Text = "₱0.00";
+                            lblLastAssigned.Text = "No active booking";
+                            btnActivate.Enabled = false;
+                            btnOffDuty.Enabled = false;
+                            btnSuspend.Enabled = false;
+                            btnDelete.Enabled = false;
+                            btnEdit.Enabled = false;
+                            pnlProfileCard.Invalidate(true);
+                        }
+                        else
+                        {
+                            string err = result.Error ?? result.Body ?? "Unknown error";
+                            MessageBox.Show($"API Error: {err}", "Delete Driver", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    this.Invoke(new Action(() =>
+                        MessageBox.Show("Error: " + ex.Message, "Delete Driver", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                }
+            });
         }
 
         // ══ GRID DESIGN ══
@@ -715,12 +751,31 @@ namespace DriveAndGo_Admin.Panels
         }
 
         // ══════════════════════════════════════════════
+        //  API DTO — matches GET /api/drivers response
+        // ══════════════════════════════════════════════
+        private class DriverApiDto
+        {
+            [JsonPropertyName("driverId")]      public int     DriverId       { get; set; }
+            [JsonPropertyName("userId")]        public int     UserId         { get; set; }
+            [JsonPropertyName("driverName")]    public string  DriverName     { get; set; }
+            [JsonPropertyName("fullName")]      public string  FullName       { get; set; }
+            [JsonPropertyName("email")]         public string  Email          { get; set; }
+            [JsonPropertyName("phone")]         public string  Phone          { get; set; }
+            [JsonPropertyName("licenseNo")]     public string  LicenseNo      { get; set; }
+            [JsonPropertyName("status")]        public string  Status         { get; set; }
+            [JsonPropertyName("ratingAvg")]     public double? RatingAvg      { get; set; }
+            [JsonPropertyName("totalTrips")]    public int?    TotalTrips     { get; set; }
+            [JsonPropertyName("activeRentals")] public int?    ActiveRentals  { get; set; }
+            [JsonPropertyName("revenueHandled")]public double? RevenueHandled { get; set; }
+            [JsonPropertyName("lastAssignment")]public string  LastAssignment { get; set; }
+        }
+
+        // ══════════════════════════════════════════════
         //  DRIVER FORM DIALOG
         // ══════════════════════════════════════════════
         public class DriverFormDialog : Form
         {
             private readonly DataRow _existing;
-            private readonly string _connStr;
 
             private TextBox txtFullName;
             private TextBox txtEmail;
@@ -729,10 +784,9 @@ namespace DriveAndGo_Admin.Panels
             private ComboBox cboStatus;
             private Button btnSave;
 
-            public DriverFormDialog(DataRow existing, string connStr)
+            public DriverFormDialog(DataRow existing, string connStr = null)
             {
                 _existing = existing;
-                _connStr = connStr;
                 BuildUI();
             }
 
@@ -849,7 +903,7 @@ namespace DriveAndGo_Admin.Panels
                 return cb;
             }
 
-            private void OnSave(object sender, EventArgs e)
+            private async void OnSave(object sender, EventArgs e)
             {
                 string fullName = txtFullName.Text.Trim();
                 string email = txtEmail.Text.Trim();
@@ -878,94 +932,56 @@ namespace DriveAndGo_Admin.Panels
                     return;
                 }
 
+                btnSave.Enabled = false;
+
                 try
                 {
-                    using var conn = new MySqlConnection(_connStr);
-                    conn.Open();
-
-                    using var tx = conn.BeginTransaction();
+                    ApiResult result;
 
                     if (_existing == null)
                     {
-                        using var checkEmail = new MySqlCommand("SELECT COUNT(*) FROM users WHERE email = @email", conn, tx);
-                        checkEmail.Parameters.AddWithValue("@email", email);
-                        int exists = Convert.ToInt32(checkEmail.ExecuteScalar());
-                        if (exists > 0)
+                        // POST /api/drivers — create new driver
+                        var payload = new
                         {
-                            MessageBox.Show("That email is already in use.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                            tx.Rollback();
-                            return;
-                        }
-
-                        using var cmdUser = new MySqlCommand(@"
-                            INSERT INTO users (full_name, email, password_hash, phone, role)
-                            VALUES (@name, @email, @pass, @phone, 'driver');
-                            SELECT LAST_INSERT_ID();", conn, tx);
-
-                        cmdUser.Parameters.AddWithValue("@name", fullName);
-                        cmdUser.Parameters.AddWithValue("@email", email);
-                        cmdUser.Parameters.AddWithValue("@pass", "TEMP_DRIVER_ACCOUNT");
-                        cmdUser.Parameters.AddWithValue("@phone", string.IsNullOrWhiteSpace(phone) ? DBNull.Value : phone);
-
-                        int userId = Convert.ToInt32(cmdUser.ExecuteScalar());
-
-                        using var cmdDriver = new MySqlCommand(@"
-                            INSERT INTO drivers (user_id, license_no, status, rating_avg, total_trips)
-                            VALUES (@uid, @license, @status, 0, 0)", conn, tx);
-
-                        cmdDriver.Parameters.AddWithValue("@uid", userId);
-                        cmdDriver.Parameters.AddWithValue("@license", licenseNo);
-                        cmdDriver.Parameters.AddWithValue("@status", status);
-                        cmdDriver.ExecuteNonQuery();
+                            fullName,
+                            email,
+                            phone    = string.IsNullOrWhiteSpace(phone) ? null : phone,
+                            licenseNo,
+                            status
+                        };
+                        result = await ApiService.PostAsync("drivers", payload);
                     }
                     else
                     {
+                        // PUT /api/drivers/{id} — update existing driver
                         int driverId = Convert.ToInt32(_existing["driver_id"]);
-                        int userId = Convert.ToInt32(_existing["user_id"]);
-
-                        using var checkEmail = new MySqlCommand("SELECT COUNT(*) FROM users WHERE email = @email AND user_id <> @uid", conn, tx);
-                        checkEmail.Parameters.AddWithValue("@email", email);
-                        checkEmail.Parameters.AddWithValue("@uid", userId);
-                        int exists = Convert.ToInt32(checkEmail.ExecuteScalar());
-                        if (exists > 0)
+                        var payload = new
                         {
-                            MessageBox.Show("That email is already in use by another user.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                            tx.Rollback();
-                            return;
-                        }
-
-                        using var cmdUser = new MySqlCommand(@"
-                            UPDATE users
-                            SET full_name = @name,
-                                email = @email,
-                                phone = @phone
-                            WHERE user_id = @uid", conn, tx);
-
-                        cmdUser.Parameters.AddWithValue("@name", fullName);
-                        cmdUser.Parameters.AddWithValue("@email", email);
-                        cmdUser.Parameters.AddWithValue("@phone", string.IsNullOrWhiteSpace(phone) ? DBNull.Value : phone);
-                        cmdUser.Parameters.AddWithValue("@uid", userId);
-                        cmdUser.ExecuteNonQuery();
-
-                        using var cmdDriver = new MySqlCommand(@"
-                            UPDATE drivers
-                            SET license_no = @license,
-                                status = @status
-                            WHERE driver_id = @did", conn, tx);
-
-                        cmdDriver.Parameters.AddWithValue("@license", licenseNo);
-                        cmdDriver.Parameters.AddWithValue("@status", status);
-                        cmdDriver.Parameters.AddWithValue("@did", driverId);
-                        cmdDriver.ExecuteNonQuery();
+                            fullName,
+                            email,
+                            phone    = string.IsNullOrWhiteSpace(phone) ? null : phone,
+                            licenseNo,
+                            status
+                        };
+                        result = await ApiService.PutAsync($"drivers/{driverId}", payload);
                     }
 
-                    tx.Commit();
-                    DialogResult = DialogResult.OK;
-                    Close();
+                    if (result.Success)
+                    {
+                        DialogResult = DialogResult.OK;
+                        Close();
+                    }
+                    else
+                    {
+                        string err = result.Error ?? result.Body ?? "Unknown error";
+                        MessageBox.Show($"Save failed: {err}", "Driver Form", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        btnSave.Enabled = true;
+                    }
                 }
                 catch (Exception ex)
                 {
                     MessageBox.Show("Save failed: " + ex.Message, "Driver Form", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    btnSave.Enabled = true;
                 }
             }
 

@@ -1,0 +1,10 @@
+#! kustomization.yaml
+# Generated code, do not edit
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+    - ../../base
+patches:
+    - path: nginx_lb-service.yaml
+    - path: postgres_db-pgdata-test-persistentVolumeClaim.yaml
+    - path: postgres_db-service.yaml

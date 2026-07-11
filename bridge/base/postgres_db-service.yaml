@@ -1,0 +1,19 @@
+#! postgres_db-service.yaml
+# Generated code, do not edit
+apiVersion: v1
+kind: Service
+metadata:
+    name: postgres-db-published
+    namespace: driveandgo-project
+    labels:
+        com.docker.compose.project: driveandgo_project
+        com.docker.compose.service: postgres_db
+spec:
+    selector:
+        com.docker.compose.project: driveandgo_project
+        com.docker.compose.service: postgres_db
+    ports:
+        - name: postgres-d-5432
+          port: 5432
+          protocol: TCP
+          targetPort: postgres-d-5432

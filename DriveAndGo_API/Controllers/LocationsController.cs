@@ -1,6 +1,6 @@
 using DriveAndGo_API.Models;
 using Microsoft.AspNetCore.Mvc;
-using MySql.Data.MySqlClient;
+using Npgsql;
 using System.Globalization;
 
 namespace DriveAndGo_API.Controllers
@@ -24,11 +24,11 @@ namespace DriveAndGo_API.Controllers
 
             try
             {
-                using var conn = new MySqlConnection(_connectionString);
+                using var conn = new NpgsqlConnection(_connectionString);
                 conn.Open();
                 using var tx = conn.BeginTransaction();
 
-                var checkCmd = new MySqlCommand(@"
+                var checkCmd = new NpgsqlCommand(@"
                     SELECT LOWER(COALESCE(status, '')) AS rental_status, vehicle_id
                     FROM rentals
                     WHERE rental_id = @rental_id
@@ -58,7 +58,7 @@ namespace DriveAndGo_API.Controllers
                 DateTime loggedAt = log.LoggedAt == DateTime.MinValue ? DateTime.UtcNow : log.LoggedAt;
                 decimal speed = log.SpeedKmH ?? 0;
 
-                var insertCmd = new MySqlCommand(@"
+                var insertCmd = new NpgsqlCommand(@"
                     INSERT INTO location_logs
                         (rental_id, vehicle_id, latitude, longitude, speed_kmh, logged_at)
                     VALUES
@@ -72,7 +72,7 @@ namespace DriveAndGo_API.Controllers
                 insertCmd.Parameters.AddWithValue("@logged_at", loggedAt);
                 insertCmd.ExecuteNonQuery();
 
-                var vehicleCmd = new MySqlCommand(@"
+                var vehicleCmd = new NpgsqlCommand(@"
                     UPDATE vehicles
                     SET latitude = @latitude,
                         longitude = @longitude,
@@ -103,13 +103,13 @@ namespace DriveAndGo_API.Controllers
             {
                 List<LocationLog> locations = new List<LocationLog>();
 
-                using var conn = new MySqlConnection(_connectionString);
+                using var conn = new NpgsqlConnection(_connectionString);
                 conn.Open();
 
-                var cmd = new MySqlCommand(@"
+                var cmd = new NpgsqlCommand(@"
                     SELECT l1.log_id, l1.rental_id, l1.vehicle_id, l1.latitude, l1.longitude, l1.speed_kmh, l1.logged_at,
                            CONCAT(v.brand, ' ', v.model) AS vehicle_name, v.plate_no AS plate_number,
-                           IFNULL(u.full_name, 'No Driver (Self-Drive)') AS driver_name
+                           COALESCE(u.full_name, 'No Driver (Self-Drive)') AS driver_name
                     FROM location_logs l1
                     JOIN (
                         SELECT rental_id, MAX(logged_at) AS latest_time
@@ -157,10 +157,10 @@ namespace DriveAndGo_API.Controllers
             {
                 List<object> path = new List<object>();
 
-                using var conn = new MySqlConnection(_connectionString);
+                using var conn = new NpgsqlConnection(_connectionString);
                 conn.Open();
 
-                var cmd = new MySqlCommand(@"
+                var cmd = new NpgsqlCommand(@"
                     SELECT latitude, longitude, speed_kmh, logged_at
                     FROM location_logs
                     WHERE rental_id = @rental_id

@@ -1,0 +1,110 @@
+# ============================================================
+#  DriveAndGo — Docker Compose
+#  Usage:
+#    Local PostgreSQL only (recommended for dev):
+#      docker compose --profile simple up -d
+#
+#    Full Supabase stack (optional, ~8 containers):
+#      docker compose --profile supabase up -d
+# ============================================================
+
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────
+#  PROFILE: simple — Just PostgreSQL + pgAdmin
+# ─────────────────────────────────────────────────────────────
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["simple", "supabase"]
+    container_name: driveandgo_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: driveandgo_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/01_init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d driveandgo_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    profiles: ["simple"]
+    container_name: driveandgo_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@driveandgo.local
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+# ─────────────────────────────────────────────────────────────
+#  PROFILE: supabase — Full Supabase local stack
+#  Reference: https://github.com/supabase/supabase/tree/master/docker
+# ─────────────────────────────────────────────────────────────
+
+  supabase-studio:
+    image: supabase/studio:latest
+    profiles: ["supabase"]
+    container_name: supabase_studio
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      SUPABASE_URL: http://localhost:8000
+      STUDIO_PG_META_URL: http://meta:8080
+      POSTGRES_PASSWORD: postgres_dev_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  kong:
+    image: kong:2.8.1
+    profiles: ["supabase"]
+    container_name: supabase_kong
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+      - "8443:8443"
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
+    volumes:
+      - ./docker/kong.yml:/var/lib/kong/kong.yml:ro
+
+  meta:
+    image: supabase/postgres-meta:v0.83.0
+    profiles: ["supabase"]
+    container_name: supabase_meta
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: postgres
+      PG_META_DB_PORT: 5432
+      PG_META_DB_NAME: driveandgo_db
+      PG_META_DB_USER: postgres
+      PG_META_DB_PASSWORD: postgres_dev_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  pgadmin_data:

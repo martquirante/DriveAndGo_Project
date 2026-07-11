@@ -1,0 +1,9 @@
+#! postgres_db-pgdata-test-persistentVolumeClaim.yaml
+# Generated code, do not edit
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+    name: postgres-db-pgdata-test
+    namespace: driveandgo-project
+spec:
+    storageClassName: "hostpath" # see docker/desktop-storage-provisioner

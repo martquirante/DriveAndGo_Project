@@ -2,7 +2,7 @@ using BCryptNet = BCrypt.Net.BCrypt;
 using DriveAndGo_API.Contracts;
 using DriveAndGo_API.Models;
 using Microsoft.AspNetCore.Mvc;
-using MySql.Data.MySqlClient;
+using Npgsql;
 
 namespace DriveAndGo_API.Controllers;
 
@@ -33,10 +33,10 @@ public class AuthController : ControllerBase
 
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var existsCommand = new MySqlCommand(
+            using var existsCommand = new NpgsqlCommand(
                 "SELECT COUNT(*) FROM users WHERE email = @email",
                 connection);
             existsCommand.Parameters.AddWithValue("@email", request.Email.Trim());
@@ -48,11 +48,13 @@ public class AuthController : ControllerBase
 
             var hashedPassword = BCryptNet.HashPassword(request.Password);
 
-            using var insertCommand = new MySqlCommand(
+            // PostgreSQL: use RETURNING to get the new ID in one round-trip
+            using var insertCommand = new NpgsqlCommand(
                 @"INSERT INTO users
                     (full_name, email, password_hash, phone, role, created_at)
                   VALUES
-                    (@full_name, @email, @password_hash, @phone, @role, NOW())",
+                    (@full_name, @email, @password_hash, @phone, @role, NOW())
+                  RETURNING user_id",
                 connection);
 
             insertCommand.Parameters.AddWithValue("@full_name", request.FullName.Trim());
@@ -60,18 +62,17 @@ public class AuthController : ControllerBase
             insertCommand.Parameters.AddWithValue("@password_hash", hashedPassword);
             insertCommand.Parameters.AddWithValue("@phone", string.IsNullOrWhiteSpace(request.Phone) ? string.Empty : request.Phone.Trim());
             insertCommand.Parameters.AddWithValue("@role", normalizedRole);
-            insertCommand.ExecuteNonQuery();
 
-            var userId = Convert.ToInt32(new MySqlCommand("SELECT LAST_INSERT_ID()", connection).ExecuteScalar());
+            var userId = Convert.ToInt32(insertCommand.ExecuteScalar());
 
             return Ok(new AuthResponse
             {
-                Message = "Registration successful.",
-                UserId = userId,
+                Message  = "Registration successful.",
+                UserId   = userId,
                 FullName = request.FullName.Trim(),
-                Email = request.Email.Trim(),
-                Phone = string.IsNullOrWhiteSpace(request.Phone) ? string.Empty : request.Phone.Trim(),
-                Role = normalizedRole
+                Email    = request.Email.Trim(),
+                Phone    = string.IsNullOrWhiteSpace(request.Phone) ? string.Empty : request.Phone.Trim(),
+                Role     = normalizedRole
             });
         }
         catch (Exception ex)
@@ -91,10 +92,10 @@ public class AuthController : ControllerBase
 
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var command = new MySqlCommand(
+            using var command = new NpgsqlCommand(
                 @"SELECT
                     u.user_id,
                     u.full_name,
@@ -118,20 +119,31 @@ public class AuthController : ControllerBase
             }
 
             var storedHash = reader["password_hash"]?.ToString() ?? string.Empty;
-            if (!BCryptNet.Verify(request.Password, storedHash))
+            bool isValid = false;
+            try
+            {
+                isValid = BCryptNet.Verify(request.Password, storedHash);
+            }
+            catch
+            {
+                // Fallback for unhashed legacy passwords from existing database
+                isValid = string.Equals(request.Password, storedHash, StringComparison.Ordinal);
+            }
+
+            if (!isValid && !string.Equals(request.Password, storedHash, StringComparison.Ordinal))
             {
                 return Unauthorized(new { Message = "Invalid email or password." });
             }
 
             return Ok(new AuthResponse
             {
-                Message = "Login successful.",
-                UserId = Convert.ToInt32(reader["user_id"]),
+                Message  = "Login successful.",
+                UserId   = Convert.ToInt32(reader["user_id"]),
                 DriverId = reader["driver_id"] == DBNull.Value ? null : Convert.ToInt32(reader["driver_id"]),
                 FullName = reader["full_name"]?.ToString() ?? string.Empty,
-                Email = reader["email"]?.ToString() ?? string.Empty,
-                Phone = reader["phone"]?.ToString() ?? string.Empty,
-                Role = reader["role"]?.ToString() ?? "customer"
+                Email    = reader["email"]?.ToString() ?? string.Empty,
+                Phone    = reader["phone"]?.ToString() ?? string.Empty,
+                Role     = reader["role"]?.ToString() ?? "customer"
             });
         }
         catch (Exception ex)
@@ -150,10 +162,10 @@ public class AuthController : ControllerBase
 
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var command = new MySqlCommand(
+            using var command = new NpgsqlCommand(
                 "SELECT COUNT(*) FROM users WHERE email = @email",
                 connection);
             command.Parameters.AddWithValue("@email", email.Trim());

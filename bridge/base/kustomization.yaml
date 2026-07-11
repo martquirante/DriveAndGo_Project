@@ -1,0 +1,16 @@
+#! kustomization.yaml
+# Generated code, do not edit
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+    - 0-driveandgo-project-namespace.yaml
+    - default-network-policy.yaml
+    - driveandgo_api-deployment.yaml
+    - driveandgo_api-expose.yaml
+    - nginx_lb-deployment.yaml
+    - nginx_lb-expose.yaml
+    - nginx_lb-service.yaml
+    - postgres_db-deployment.yaml
+    - postgres_db-expose.yaml
+    - postgres_db-pgdata-test-persistentVolumeClaim.yaml
+    - postgres_db-service.yaml

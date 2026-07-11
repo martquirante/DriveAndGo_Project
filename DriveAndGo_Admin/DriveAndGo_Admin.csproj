@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
@@ -10,12 +10,24 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<!-- Auth & Security -->
 		<PackageReference Include="BCrypt.Net-Next" Version="4.1.0" />
-		<PackageReference Include="CloudinaryDotNet" Version="1.28.0" />
-		<PackageReference Include="FirebaseDatabase.net" Version="5.0.0" />
+
+		<!-- PDF Generation -->
 		<PackageReference Include="itext7" Version="9.6.0" />
-		<PackageReference Include="MySql.Data" Version="9.6.0" />
+		<PackageReference Include="itext7.bouncy-castle-adapter" Version="9.6.0" />
+
+		<!-- Image Upload (Cloudinary) -->
+		<PackageReference Include="CloudinaryDotNet" Version="1.28.0" />
+
+		<!-- Firebase Real-time (kept for future use) -->
+		<PackageReference Include="FirebaseDatabase.net" Version="5.0.0" />
+
+		<!-- Web browser panel in WinForms -->
 		<PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3856.49" />
+
+		<!-- SignalR Client for Real-time WebSockets -->
+		<PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="9.0.0" />
 	</ItemGroup>
 
 	<ItemGroup>

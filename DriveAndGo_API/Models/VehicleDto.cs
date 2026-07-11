@@ -1,4 +1,4 @@
-﻿namespace DriveAndGo_API.Models
+namespace DriveAndGo_API.Models
 {
     public class VehicleDto
     {
@@ -22,5 +22,19 @@
         public int? CurrentSpeed { get; set; }
         public DateTime? LastUpdate { get; set; }
         public bool InGarage { get; set; }
+    }
+
+    public class VehicleFleetDto
+    {
+        public int VehicleId { get; set; }
+        public string Brand { get; set; } = "";
+        public string Model { get; set; } = "";
+        public string PlateNo { get; set; } = "";
+        public string Type { get; set; } = "";
+        public decimal RatePerDay { get; set; }
+        public string Status { get; set; } = "available";
+        public string PhotoUrl { get; set; } = "";
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
     }
 }

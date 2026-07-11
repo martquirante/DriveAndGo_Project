@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  # Local PostgreSQL Database for Testing
+  postgres_db:
+    image: postgres:16-alpine
+    container_name: driveandgo_postgres_local
+    environment:
+      POSTGRES_DB: driveandgo_test_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_local_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - pgdata_test:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d driveandgo_test_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ASP.NET Core Central Backend Server (Scaled Replicas)
+  driveandgo_api:
+    build:
+      context: ./DriveAndGo_API
+      dockerfile: Dockerfile
+    deploy:
+      replicas: 2 # Spins up 2 load-balanced instances of the API
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=postgres_db;Database=driveandgo_test_db;Username=postgres;Password=postgres_local_password;Port=5432
+    expose:
+      - "8080"
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+
+  # Nginx Load Balancer (Listens on port 5233)
+  nginx_lb:
+    image: nginx:alpine
+    container_name: driveandgo_nginx_lb
+    ports:
+      - "5233:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - driveandgo_api
+
+volumes:
+  pgdata_test:

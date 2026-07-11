@@ -1,0 +1,23 @@
+# check if there is at least one published port
+
+#! nginx_lb-service.yaml
+# Generated code, do not edit
+apiVersion: v1
+kind: Service
+metadata:
+    name: nginx-lb-published
+    namespace: driveandgo-project
+    labels:
+        com.docker.compose.project: driveandgo_project
+        com.docker.compose.service: nginx_lb
+spec:
+    selector:
+        com.docker.compose.project: driveandgo_project
+        com.docker.compose.service: nginx_lb
+    ports:
+        - name: nginx-lb-5233
+          port: 5233
+          protocol: TCP
+          targetPort: nginx-lb-80
+
+# check if there is at least one published port

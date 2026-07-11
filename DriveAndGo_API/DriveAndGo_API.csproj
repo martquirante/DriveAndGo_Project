@@ -11,9 +11,31 @@
 	  <None Remove="DriveAndGo_Admin\**" />
 	</ItemGroup>
 	<ItemGroup>
+		<!-- Core & Swagger (Swashbuckle 6.x is compatible with Microsoft.OpenApi 1.x) -->
 		<PackageReference Include="BCrypt.Net-Next" Version="4.1.0" />
-		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.5" />
-		<PackageReference Include="MySql.Data" Version="9.6.0" />
-		<PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.7" />
+		<PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
+
+		<!-- PostgreSQL / Supabase -->
+		<PackageReference Include="Npgsql" Version="9.0.4" />
+		<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.4" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.4">
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+			<PrivateAssets>all</PrivateAssets>
+		</PackageReference>
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.4">
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+			<PrivateAssets>all</PrivateAssets>
+		</PackageReference>
+
+		<!-- JWT Authentication -->
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.4" />
+		<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.12.0" />
+
+		<!-- Firebase Admin SDK -->
+		<PackageReference Include="FirebaseAdmin" Version="3.1.0" />
+
+		<!-- .env file loader -->
+		<PackageReference Include="DotNetEnv" Version="3.1.1" />
 	</ItemGroup>
 </Project>

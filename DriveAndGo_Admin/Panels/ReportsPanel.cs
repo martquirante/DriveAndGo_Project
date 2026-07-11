@@ -1,5 +1,6 @@
-﻿#nullable disable
-using MySql.Data.MySqlClient;
+#nullable disable
+using System.Text.Json;
+using System.Threading.Tasks;
 using System;
 using System.Data;
 using System.Drawing;
@@ -41,7 +42,7 @@ namespace DriveAndGo_Admin.Panels
         private readonly WinColor ColYellow = WinColor.FromArgb(245, 158, 11);
         private readonly WinColor ColAccent = WinColor.FromArgb(230, 81, 0);
 
-        private readonly string _connStr = "Server=localhost;Database=vehicle_rental_db;Uid=root;Pwd=;";
+        private readonly string _connStr = string.Empty; // Migrated to API
 
         // ── UI ──
         private Panel topBar;
@@ -66,7 +67,7 @@ namespace DriveAndGo_Admin.Panels
             ThemeManager.ThemeChanged += OnThemeChanged;
 
             BuildUI();
-            Load += (s, e) => LoadReportData();
+            Load += async (s, e) => await LoadReportDataAsync();
         }
 
         // ══ BUILD UI ══
@@ -101,10 +102,10 @@ namespace DriveAndGo_Admin.Panels
             };
             cboPeriod.Items.AddRange(new object[] { "Daily", "Weekly", "Monthly", "Yearly" });
             cboPeriod.SelectedIndex = 2;
-            cboPeriod.SelectedIndexChanged += (s, e) =>
+            cboPeriod.SelectedIndexChanged += async (s, e) =>
             {
                 _currentPeriod = cboPeriod.SelectedItem?.ToString() ?? "Monthly";
-                LoadReportData();
+                await LoadReportDataAsync();
             };
 
             btnExportPDF = CreateBtn("📄 Export PDF", ColRed, 180, 54, 130);
@@ -241,78 +242,159 @@ namespace DriveAndGo_Admin.Panels
             Invalidate(true);
         }
 
-        // ══ DATABASE LOGIC ══
-        private void LoadReportData()
+        // ══ API LOGIC ══
+        private async Task LoadReportDataAsync()
         {
-            _reportData = new DataTable();
-
-            string groupExpr;
-            string labelExpr;
-
-            // Mas accurate kung booking/payment timeline ay based sa created_at.
-            // Fallback sa start_date kung null ang created_at.
-            string baseDateExpr = "COALESCE(created_at, start_date)";
-
-            switch (_currentPeriod)
-            {
-                case "Daily":
-                    groupExpr = $"DATE({baseDateExpr})";
-                    labelExpr = $"DATE_FORMAT({baseDateExpr}, '%b %d, %Y')";
-                    break;
-
-                case "Weekly":
-                    groupExpr = $"YEARWEEK({baseDateExpr}, 1)";
-                    labelExpr = $"CONCAT('Week ', WEEK({baseDateExpr}, 1), ', ', YEAR({baseDateExpr}))";
-                    break;
-
-                case "Monthly":
-                    groupExpr = $"DATE_FORMAT({baseDateExpr}, '%Y-%m')";
-                    labelExpr = $"DATE_FORMAT({baseDateExpr}, '%M %Y')";
-                    break;
-
-                default:
-                    groupExpr = $"YEAR({baseDateExpr})";
-                    labelExpr = $"YEAR({baseDateExpr})";
-                    break;
-            }
+            lblInsight.Text = "Loading analytics…";
 
             try
             {
-                using var conn = new MySqlConnection(_connStr);
-                conn.Open();
+                // Fetch all rentals from the API
+                var result = await ApiService.GetAsync("rentals");
 
-                string query = $@"
-                    SELECT
-                        {groupExpr} AS group_key,
-                        {labelExpr} AS period_label,
-                        COUNT(*) AS total_rentals,
-                        SUM(CASE WHEN LOWER(TRIM(COALESCE(payment_status,''))) = 'paid' THEN 1 ELSE 0 END) AS paid_rentals,
-                        COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(payment_status,''))) = 'paid' THEN COALESCE(total_amount,0) ELSE 0 END), 0) AS total_revenue,
-                        COALESCE(AVG(CASE WHEN LOWER(TRIM(COALESCE(payment_status,''))) = 'paid' THEN COALESCE(total_amount,0) END), 0) AS avg_ticket,
-                        COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(payment_status,''))) <> 'paid' THEN COALESCE(total_amount,0) ELSE 0 END), 0) AS pending_amount
-                    FROM rentals
-                    GROUP BY group_key, period_label
-                    ORDER BY group_key DESC
-                    LIMIT 30;";
+                if (!result.Success)
+                {
+                    BuildEmptyReportTable();
+                    UpdateDashboard();
+                    lblInsight.Text = "Analytics load failed. Could not reach the API.";
+                    MessageBox.Show(
+                        "Could not load analytics.\n" + (result.Error ?? $"HTTP {result.StatusCode}"),
+                        "Reports Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
 
-                using var adapter = new MySqlDataAdapter(new MySqlCommand(query, conn));
-                adapter.Fill(_reportData);
+                // Parse the JSON array of rentals
+                var rentals = JsonSerializer.Deserialize<JsonElement[]>(result.Body,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                    ?? Array.Empty<JsonElement>();
+
+                // Build aggregated DataTable grouped by the selected period
+                _reportData = AggregateRentalsByPeriod(rentals);
 
                 EnsureReportSchema();
                 UpdateDashboard();
 
                 int rowCount = _reportData.Rows.Count;
                 lblInsight.Text = rowCount > 0
-                    ? $"{_currentPeriod} analytics loaded from rentals table ({rowCount} period(s))."
-                    : $"No {_currentPeriod.ToLower()} analytics available yet from rentals.";
+                    ? $"{_currentPeriod} analytics loaded via API ({rowCount} period(s))."
+                    : $"No {_currentPeriod.ToLower()} analytics available yet.";
             }
             catch (Exception ex)
             {
                 BuildEmptyReportTable();
                 UpdateDashboard();
-                lblInsight.Text = "Analytics load failed. Check the database connection and rentals table state.";
-                MessageBox.Show("Could not load analytics.\n" + ex.Message, "Reports Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                lblInsight.Text = "Analytics load failed.";
+                MessageBox.Show("Could not load analytics.\n" + ex.Message,
+                    "Reports Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
+        }
+
+        // Groups the JSON rental array client-side, mirroring the old MySQL GROUP BY query.
+        private DataTable AggregateRentalsByPeriod(JsonElement[] rentals)
+        {
+            // key → (period_label, total, paid_count, paid_revenue, pending_amount)
+            var groups = new System.Collections.Generic.Dictionary<string,
+                (string Label, int Total, int Paid, decimal Revenue, decimal Pending)>();
+
+            foreach (var r in rentals)
+            {
+                // Resolve date: prefer created_at, fall back to start_date
+                DateTime date = DateTime.MinValue;
+                foreach (var prop in new[] { "created_at", "createdAt", "start_date", "startDate" })
+                {
+                    if (r.TryGetProperty(prop, out var dv) && dv.ValueKind != JsonValueKind.Null)
+                    {
+                        if (DateTime.TryParse(dv.GetString(), out var parsed))
+                        {
+                            date = parsed;
+                            break;
+                        }
+                    }
+                }
+
+                if (date == DateTime.MinValue) continue; // skip rows with no date
+
+                string key, label;
+                switch (_currentPeriod)
+                {
+                    case "Daily":
+                        key   = date.ToString("yyyy-MM-dd");
+                        label = date.ToString("MMM dd, yyyy");
+                        break;
+                    case "Weekly":
+                        // ISO week: get Monday of the week
+                        int dayOfWeek = (int)date.DayOfWeek == 0 ? 7 : (int)date.DayOfWeek;
+                        var monday = date.AddDays(-(dayOfWeek - 1));
+                        int weekNum = System.Globalization.ISOWeek.GetWeekOfYear(date);
+                        key   = $"{date.Year}-W{weekNum:D2}";
+                        label = $"Week {weekNum}, {date.Year}";
+                        break;
+                    case "Yearly":
+                        key   = date.Year.ToString();
+                        label = date.Year.ToString();
+                        break;
+                    default: // Monthly
+                        key   = date.ToString("yyyy-MM");
+                        label = date.ToString("MMMM yyyy");
+                        break;
+                }
+
+                // Resolve payment status
+                string payStatus = string.Empty;
+                foreach (var prop in new[] { "payment_status", "paymentStatus" })
+                {
+                    if (r.TryGetProperty(prop, out var sv) && sv.ValueKind == JsonValueKind.String)
+                    {
+                        payStatus = sv.GetString()?.Trim().ToLower() ?? string.Empty;
+                        break;
+                    }
+                }
+
+                // Resolve total_amount
+                decimal amount = 0;
+                foreach (var prop in new[] { "total_amount", "totalAmount", "amount" })
+                {
+                    if (r.TryGetProperty(prop, out var av) && av.ValueKind != JsonValueKind.Null)
+                    {
+                        if (av.TryGetDecimal(out var d)) { amount = d; break; }
+                    }
+                }
+
+                bool isPaid = payStatus == "paid";
+
+                if (!groups.TryGetValue(key, out var grp))
+                    grp = (label, 0, 0, 0m, 0m);
+
+                groups[key] = (
+                    grp.Label,
+                    grp.Total + 1,
+                    grp.Paid + (isPaid ? 1 : 0),
+                    grp.Revenue + (isPaid ? amount : 0),
+                    grp.Pending + (!isPaid ? amount : 0)
+                );
+            }
+
+            // Build DataTable in descending order (newest first), max 30 rows
+            var dt = new DataTable();
+            dt.Columns.Add("period_label",  typeof(string));
+            dt.Columns.Add("total_rentals", typeof(int));
+            dt.Columns.Add("paid_rentals",  typeof(int));
+            dt.Columns.Add("total_revenue", typeof(decimal));
+            dt.Columns.Add("avg_ticket",    typeof(decimal));
+            dt.Columns.Add("pending_amount",typeof(decimal));
+
+            var sorted = new System.Collections.Generic.List<string>(groups.Keys);
+            sorted.Sort((a, b) => string.Compare(b, a, StringComparison.Ordinal)); // descending
+            if (sorted.Count > 30) sorted = sorted.GetRange(0, 30);
+
+            foreach (var k in sorted)
+            {
+                var g = groups[k];
+                decimal avgTicket = g.Paid > 0 ? g.Revenue / g.Paid : 0;
+                dt.Rows.Add(g.Label, g.Total, g.Paid, g.Revenue, avgTicket, g.Pending);
+            }
+
+            return dt;
         }
 
         private void EnsureReportSchema()

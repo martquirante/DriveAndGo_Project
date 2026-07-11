@@ -1,7 +1,7 @@
 using DriveAndGo_API.Contracts;
 using DriveAndGo_API.Models;
 using Microsoft.AspNetCore.Mvc;
-using MySql.Data.MySqlClient;
+using Npgsql;
 
 namespace DriveAndGo_API.Controllers;
 
@@ -23,10 +23,10 @@ public class UsersController : ControllerBase
         {
             var users = new List<User>();
 
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var command = new MySqlCommand(
+            using var command = new NpgsqlCommand(
                 "SELECT user_id, full_name, email, phone, role FROM users ORDER BY full_name ASC",
                 connection);
 
@@ -56,10 +56,10 @@ public class UsersController : ControllerBase
     {
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var command = new MySqlCommand(
+            using var command = new NpgsqlCommand(
                 @"SELECT
                     u.user_id,
                     u.full_name,
@@ -108,10 +108,10 @@ public class UsersController : ControllerBase
 
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var duplicateCommand = new MySqlCommand(
+            using var duplicateCommand = new NpgsqlCommand(
                 @"SELECT COUNT(*) FROM users
                   WHERE email = @email AND user_id <> @id",
                 connection);
@@ -123,7 +123,7 @@ public class UsersController : ControllerBase
                 return Conflict(new { Message = "Email is already in use by another account." });
             }
 
-            using var updateCommand = new MySqlCommand(
+            using var updateCommand = new NpgsqlCommand(
                 @"UPDATE users
                   SET full_name = @full_name,
                       email = @email,

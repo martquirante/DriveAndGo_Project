@@ -1,7 +1,8 @@
 using DriveAndGo_API.Models;
 using Microsoft.AspNetCore.Mvc;
-using MySql.Data.MySqlClient;
+using Npgsql;
 using System.Globalization;
+using BCryptNet = BCrypt.Net.BCrypt;
 
 namespace DriveAndGo_API.Controllers;
 
@@ -10,10 +11,12 @@ namespace DriveAndGo_API.Controllers;
 public class DriversController : ControllerBase
 {
     private readonly string _connectionString;
+    private readonly NpgsqlDataSource _ds;
 
-    public DriversController(IConfiguration configuration)
+    public DriversController(IConfiguration configuration, NpgsqlDataSource ds)
     {
         _connectionString = configuration.GetConnectionString("DefaultConnection")!;
+        _ds = ds;
     }
 
     [HttpGet]
@@ -81,10 +84,10 @@ public class DriversController : ControllerBase
         {
             var rentals = new List<Rental>();
 
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var command = new MySqlCommand(
+            using var command = new NpgsqlCommand(
                 @"SELECT
                     r.rental_id,
                     r.customer_id,
@@ -159,52 +162,89 @@ public class DriversController : ControllerBase
     [HttpPost]
     public IActionResult AddDriver([FromBody] Driver driver)
     {
-        if (driver.UserId <= 0 || string.IsNullOrWhiteSpace(driver.LicenseNo))
+        if (string.IsNullOrWhiteSpace(driver.LicenseNo))
         {
-            return BadRequest(new { Message = "UserId and license number are required." });
+            return BadRequest(new { Message = "License number is required." });
         }
 
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var existingDriverCommand = new MySqlCommand(
+            int userId = driver.UserId;
+
+            // If UserId is not provided but Email is, resolve or create the user
+            if (userId <= 0 && !string.IsNullOrWhiteSpace(driver.Email))
+            {
+                using var findUserCmd = new NpgsqlCommand(
+                    "SELECT user_id FROM users WHERE email = @email",
+                    connection);
+                findUserCmd.Parameters.AddWithValue("@email", driver.Email.Trim());
+                var userVal = findUserCmd.ExecuteScalar();
+
+                if (userVal != null)
+                {
+                    userId = Convert.ToInt32(userVal);
+                }
+                else
+                {
+                    // Create new user profile with a default password
+                    using var createUserCmd = new NpgsqlCommand(
+                        @"INSERT INTO users (full_name, email, password_hash, phone, role, created_at)
+                          VALUES (@full_name, @email, @password_hash, @phone, 'driver', NOW())
+                          RETURNING user_id",
+                        connection);
+                    createUserCmd.Parameters.AddWithValue("@full_name", driver.FullName?.Trim() ?? "Unknown Driver");
+                    createUserCmd.Parameters.AddWithValue("@email", driver.Email.Trim());
+                    createUserCmd.Parameters.AddWithValue("@password_hash", BCryptNet.HashPassword("Admin@123"));
+                    createUserCmd.Parameters.AddWithValue("@phone", driver.Phone?.Trim() ?? string.Empty);
+                    userId = Convert.ToInt32(createUserCmd.ExecuteScalar());
+                }
+            }
+
+            if (userId <= 0)
+            {
+                return BadRequest(new { Message = "UserId or Email is required to add a driver." });
+            }
+
+            using var existingDriverCommand = new NpgsqlCommand(
                 "SELECT COUNT(*) FROM drivers WHERE user_id = @user_id",
                 connection);
-            existingDriverCommand.Parameters.AddWithValue("@user_id", driver.UserId);
+            existingDriverCommand.Parameters.AddWithValue("@user_id", userId);
 
             if (Convert.ToInt32(existingDriverCommand.ExecuteScalar()) > 0)
             {
                 return Conflict(new { Message = "Driver profile already exists for this user." });
             }
 
-            using var existingUserCommand = new MySqlCommand(
+            using var existingUserCommand = new NpgsqlCommand(
                 "SELECT COUNT(*) FROM users WHERE user_id = @user_id",
                 connection);
-            existingUserCommand.Parameters.AddWithValue("@user_id", driver.UserId);
+            existingUserCommand.Parameters.AddWithValue("@user_id", userId);
 
             if (Convert.ToInt32(existingUserCommand.ExecuteScalar()) == 0)
             {
                 return NotFound(new { Message = "User account not found." });
             }
 
-            using var insertCommand = new MySqlCommand(
+            using var insertCommand = new NpgsqlCommand(
                 @"INSERT INTO drivers
                     (user_id, license_no, status, rating_avg, total_trips)
                   VALUES
-                    (@user_id, @license_no, 'available', 0.0, 0)",
+                    (@user_id, @license_no, @status, 0.0, 0)
+                  RETURNING driver_id",
                 connection);
-            insertCommand.Parameters.AddWithValue("@user_id", driver.UserId);
+            insertCommand.Parameters.AddWithValue("@user_id", userId);
             insertCommand.Parameters.AddWithValue("@license_no", driver.LicenseNo.Trim());
-            insertCommand.ExecuteNonQuery();
+            insertCommand.Parameters.AddWithValue("@status", string.IsNullOrWhiteSpace(driver.Status) ? "available" : driver.Status.Trim().ToLowerInvariant());
 
-            var driverId = Convert.ToInt32(new MySqlCommand("SELECT LAST_INSERT_ID()", connection).ExecuteScalar());
+            var driverId = Convert.ToInt32(insertCommand.ExecuteScalar());
 
-            using var updateRoleCommand = new MySqlCommand(
+            using var updateRoleCommand = new NpgsqlCommand(
                 "UPDATE users SET role = 'driver' WHERE user_id = @user_id",
                 connection);
-            updateRoleCommand.Parameters.AddWithValue("@user_id", driver.UserId);
+            updateRoleCommand.Parameters.AddWithValue("@user_id", userId);
             updateRoleCommand.ExecuteNonQuery();
 
             return Ok(new { Message = "Driver added successfully.", DriverId = driverId });
@@ -238,10 +278,10 @@ public class DriversController : ControllerBase
 
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var updateCommand = new MySqlCommand(
+            using var updateCommand = new NpgsqlCommand(
                 "UPDATE drivers SET status = @status WHERE driver_id = @id",
                 connection);
             updateCommand.Parameters.AddWithValue("@status", request.Status.Trim().ToLowerInvariant());
@@ -270,23 +310,52 @@ public class DriversController : ControllerBase
 
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var updateCommand = new MySqlCommand(
-                @"UPDATE drivers
-                  SET license_no = @license_no
-                  WHERE driver_id = @id",
-                connection);
-            updateCommand.Parameters.AddWithValue("@license_no", driver.LicenseNo.Trim());
-            updateCommand.Parameters.AddWithValue("@id", id);
-
-            if (updateCommand.ExecuteNonQuery() == 0)
+            using var transaction = connection.BeginTransaction();
+            try
             {
-                return NotFound(new { Message = "Driver not found." });
-            }
+                // 1. Update status and license in drivers table
+                using var updateDriverCommand = new NpgsqlCommand(
+                    @"UPDATE drivers
+                      SET license_no = @license_no,
+                          status = @status
+                      WHERE driver_id = @id",
+                    connection, transaction);
+                updateDriverCommand.Parameters.AddWithValue("@license_no", driver.LicenseNo.Trim());
+                updateDriverCommand.Parameters.AddWithValue("@status", string.IsNullOrWhiteSpace(driver.Status) ? "available" : driver.Status.Trim().ToLowerInvariant());
+                updateDriverCommand.Parameters.AddWithValue("@id", id);
 
-            return Ok(new { Message = "Driver updated successfully.", DriverId = id });
+                if (updateDriverCommand.ExecuteNonQuery() == 0)
+                {
+                    transaction.Rollback();
+                    return NotFound(new { Message = "Driver not found." });
+                }
+
+                // 2. Update name, email, phone in users table
+                using var updateUserCommand = new NpgsqlCommand(
+                    @"UPDATE users
+                      SET full_name = @full_name,
+                          email = @email,
+                          phone = @phone
+                      WHERE user_id = (SELECT user_id FROM drivers WHERE driver_id = @id)",
+                    connection, transaction);
+                updateUserCommand.Parameters.AddWithValue("@full_name", driver.FullName?.Trim() ?? string.Empty);
+                updateUserCommand.Parameters.AddWithValue("@email", driver.Email?.Trim() ?? string.Empty);
+                updateUserCommand.Parameters.AddWithValue("@phone", driver.Phone?.Trim() ?? string.Empty);
+                updateUserCommand.Parameters.AddWithValue("@id", id);
+
+                updateUserCommand.ExecuteNonQuery();
+
+                transaction.Commit();
+                return Ok(new { Message = "Driver updated successfully.", DriverId = id });
+            }
+            catch (Exception)
+            {
+                transaction.Rollback();
+                throw;
+            }
         }
         catch (Exception ex)
         {
@@ -299,10 +368,10 @@ public class DriversController : ControllerBase
     {
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var activeRentalsCommand = new MySqlCommand(
+            using var activeRentalsCommand = new NpgsqlCommand(
                 @"SELECT COUNT(*) FROM rentals
                   WHERE driver_id = @driver_id
                     AND LOWER(COALESCE(status, '')) IN ('approved', 'active', 'in-use')",
@@ -314,7 +383,14 @@ public class DriversController : ControllerBase
                 return Conflict(new { Message = "Driver cannot be deleted while assigned to active rentals." });
             }
 
-            using var deleteCommand = new MySqlCommand(
+            // Get user_id of driver to demote role back to customer
+            using var getUserIdCommand = new NpgsqlCommand(
+                "SELECT user_id FROM drivers WHERE driver_id = @id",
+                connection);
+            getUserIdCommand.Parameters.AddWithValue("@id", id);
+            var userIdVal = getUserIdCommand.ExecuteScalar();
+
+            using var deleteCommand = new NpgsqlCommand(
                 "DELETE FROM drivers WHERE driver_id = @id",
                 connection);
             deleteCommand.Parameters.AddWithValue("@id", id);
@@ -322,6 +398,16 @@ public class DriversController : ControllerBase
             if (deleteCommand.ExecuteNonQuery() == 0)
             {
                 return NotFound(new { Message = "Driver not found." });
+            }
+
+            if (userIdVal != null)
+            {
+                int userId = Convert.ToInt32(userIdVal);
+                using var updateRoleCommand = new NpgsqlCommand(
+                    "UPDATE users SET role = 'customer' WHERE user_id = @user_id",
+                    connection);
+                updateRoleCommand.Parameters.AddWithValue("@user_id", userId);
+                updateRoleCommand.ExecuteNonQuery();
             }
 
             return Ok(new { Message = "Driver deleted successfully.", DriverId = id });
@@ -332,11 +418,129 @@ public class DriversController : ControllerBase
         }
     }
 
+
+    // GET /api/drivers/pending - Returns drivers awaiting verification
+    [HttpGet("pending")]
+    public async Task<IActionResult> GetPendingVerification()
+    {
+        try
+        {
+            var drivers = new List<object>();
+            await using var conn = await _ds.OpenConnectionAsync();
+
+            // Step 1: get pending drivers
+            var driverRows = new List<(int driverId, int userId, string licenseNo, string status,
+                string? licensePhotoUrl, string? licenseExpiry, string? rejectionReason)>();
+
+            await using (var cmd = new NpgsqlCommand(
+                @"SELECT driver_id, user_id, license_no, verification_status,
+                         license_photo_url, license_expiry, rejection_reason
+                  FROM drivers
+                  WHERE verification_status IN ('pending','rejected')
+                  ORDER BY driver_id DESC", conn))
+            {
+                cmd.CommandTimeout = 30;
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    driverRows.Add((
+                        reader.GetInt32(reader.GetOrdinal("driver_id")),
+                        reader.GetInt32(reader.GetOrdinal("user_id")),
+                        reader["license_no"]?.ToString() ?? "",
+                        reader["verification_status"]?.ToString() ?? "pending",
+                        reader.IsDBNull(reader.GetOrdinal("license_photo_url")) ? null : reader["license_photo_url"].ToString(),
+                        reader.IsDBNull(reader.GetOrdinal("license_expiry"))    ? null : reader.GetDateTime(reader.GetOrdinal("license_expiry")).ToString("yyyy-MM-dd"),
+                        reader.IsDBNull(reader.GetOrdinal("rejection_reason"))  ? null : reader["rejection_reason"].ToString()
+                    ));
+                }
+            }
+
+            // Step 2: for each pending driver, fetch user details (fresh connection per lookup)
+            foreach (var d in driverRows)
+            {
+                string? fullName = null, email = null, phone = null,
+                        selfieUrl = null, secondaryUrl = null;
+
+                await using var conn2 = await _ds.OpenConnectionAsync();
+                await using var ucmd  = new NpgsqlCommand(
+                    "SELECT full_name, email, phone, selfie_photo_url, secondary_id_url FROM users WHERE user_id = @uid",
+                    conn2);
+                ucmd.CommandTimeout = 15;
+                ucmd.Parameters.AddWithValue("@uid", d.userId);
+                await using var ur = await ucmd.ExecuteReaderAsync();
+                if (await ur.ReadAsync())
+                {
+                    fullName     = ur["full_name"]?.ToString();
+                    email        = ur["email"]?.ToString();
+                    phone        = ur["phone"]?.ToString();
+                    selfieUrl    = ur.IsDBNull(ur.GetOrdinal("selfie_photo_url"))  ? null : ur["selfie_photo_url"].ToString();
+                    secondaryUrl = ur.IsDBNull(ur.GetOrdinal("secondary_id_url"))  ? null : ur["secondary_id_url"].ToString();
+                }
+
+                drivers.Add(new {
+                    driverId           = d.driverId,
+                    userId             = d.userId,
+                    licenseNo          = d.licenseNo,
+                    verificationStatus = d.status,
+                    licensePhotoUrl    = d.licensePhotoUrl,
+                    licenseExpiry      = d.licenseExpiry,
+                    rejectionReason    = d.rejectionReason,
+                    fullName, email, phone,
+                    selfiePhotoUrl  = selfieUrl,
+                    secondaryIdUrl  = secondaryUrl
+                });
+            }
+
+            return Ok(drivers);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+        }
+    }
+
+    // PATCH /api/drivers/{id}/verify - Approve or reject a driver
+    [HttpPatch("{id:int}/verify")]
+    public IActionResult VerifyDriver(int id, [FromBody] VerifyDriverRequest req)
+    {
+        try
+        {
+            using var conn = new NpgsqlConnection(_connectionString);
+            conn.Open();
+
+            var status = req.Approve ? "verified" : "rejected";
+            using var cmd = new NpgsqlCommand(
+                "UPDATE drivers SET verification_status = @status, rejection_reason = @reason WHERE driver_id = @id",
+                conn);
+            cmd.Parameters.AddWithValue("@status", status);
+            cmd.Parameters.AddWithValue("@reason", (object?)req.Reason ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@id", id);
+            var rows = cmd.ExecuteNonQuery();
+
+            if (rows == 0)
+                return NotFound(new { Message = "Driver not found." });
+
+            // If approved, set driver status to active
+            if (req.Approve)
+            {
+                using var activateCmd = new NpgsqlCommand(
+                    "UPDATE drivers SET status = 'active' WHERE driver_id = @id", conn);
+                activateCmd.Parameters.AddWithValue("@id", id);
+                activateCmd.ExecuteNonQuery();
+            }
+
+            return Ok(new { Message = req.Approve ? "Driver approved." : "Driver rejected.", DriverId = id, Status = status });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+        }
+    }
     private List<Driver> ReadDrivers(string? whereClause = null, int? id = null)
     {
         var drivers = new List<Driver>();
 
-        using var connection = new MySqlConnection(_connectionString);
+        using var connection = new NpgsqlConnection(_connectionString);
         connection.Open();
 
         var sql =
@@ -360,7 +564,7 @@ public class DriversController : ControllerBase
 
         sql += "ORDER BY u.full_name ASC";
 
-        using var command = new MySqlCommand(sql, connection);
+        using var command = new NpgsqlCommand(sql, connection);
         if (id.HasValue)
         {
             command.Parameters.AddWithValue("@id", id.Value);
@@ -386,3 +590,4 @@ public class DriversController : ControllerBase
         return drivers;
     }
 }
+

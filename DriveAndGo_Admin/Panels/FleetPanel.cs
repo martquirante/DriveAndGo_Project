@@ -1,8 +1,7 @@
-﻿#nullable disable
+#nullable disable
 using DriveAndGo_Admin.Helpers;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
-using MySql.Data.MySqlClient;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -88,6 +87,7 @@ namespace DriveAndGo_Admin.Panels
         private int _lastCardPanelWidth = 0;
 
         private System.Windows.Forms.Timer _liveTimer;
+        private System.Windows.Forms.Timer _dbRefreshTimer;
         private static readonly HttpClient _http = new HttpClient();
 
         private string _garage3DBase64 = "";
@@ -123,8 +123,14 @@ namespace DriveAndGo_Admin.Panels
 
             LoadGarage3DImage();
             BuildUI();
-            LoadVehiclesFromDB();
             StartLiveGPSPolling();
+
+            _dbRefreshTimer = new System.Windows.Forms.Timer { Interval = 15000 };
+            _dbRefreshTimer.Tick += (s, e) => LoadVehiclesFromDB();
+            _dbRefreshTimer.Start();
+
+            // Defer the first DB fetch until the window handle is created
+            this.HandleCreated += (s, e) => LoadVehiclesFromDB();
         }
 
         // ── Load garage image ───────────────────────────────────────────────
@@ -359,7 +365,18 @@ namespace DriveAndGo_Admin.Panels
 
         private async void InitWebView()
         {
-            await browser.EnsureCoreWebView2Async(null);
+            try
+            {
+                string userDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DriveAndGo", "WebView2Data");
+                Directory.CreateDirectory(userDataFolder);
+                var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
+                await browser.EnsureCoreWebView2Async(env);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("WebView2 init exception: " + ex.Message);
+                return;
+            }
 
             string outputAssetsFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets");
             if (!Directory.Exists(outputAssetsFolder))
@@ -447,41 +464,111 @@ namespace DriveAndGo_Admin.Panels
         // ════════════════════════════════════════════════════════════════════
         //  DATA
         // ════════════════════════════════════════════════════════════════════
-        private void LoadVehiclesFromDB()
+        public void LoadVehiclesFromDB()
         {
             _vehicleData = new DataTable();
-            try
-            {
-                using var conn = new MySqlConnection(_connStr);
-                conn.Open();
-                const string sql = @"
-                    SELECT
-                        vehicle_id,
-                        CONCAT(brand,' ',model) AS vehicle_name,
-                        brand, model, plate_no, type, cc,
-                        status, rate_per_day, rate_with_driver,
-                        COALESCE(photo_url,'')              AS photo_url,
-                        COALESCE(description,'')            AS description,
-                        COALESCE(seat_capacity,5)           AS seat_capacity,
-                        COALESCE(transmission,'Automatic')  AS transmission,
-                        COALESCE(model_3d_url,'')           AS model_3d_url,
-                        latitude, longitude, current_speed, last_update, in_garage,
-                        CASE WHEN latitude IS NULL THEN 1 ELSE 0 END AS is_lost
-                    FROM vehicles
-                    ORDER BY brand, model";
+            _vehicleData.Columns.Add("vehicle_id", typeof(int));
+            _vehicleData.Columns.Add("vehicle_name", typeof(string));
+            _vehicleData.Columns.Add("brand", typeof(string));
+            _vehicleData.Columns.Add("model", typeof(string));
+            _vehicleData.Columns.Add("plate_no", typeof(string));
+            _vehicleData.Columns.Add("type", typeof(string));
+            _vehicleData.Columns.Add("cc", typeof(string));
+            _vehicleData.Columns.Add("status", typeof(string));
+            _vehicleData.Columns.Add("rate_per_day", typeof(decimal));
+            _vehicleData.Columns.Add("rate_with_driver", typeof(decimal));
+            _vehicleData.Columns.Add("photo_url", typeof(string));
+            _vehicleData.Columns.Add("description", typeof(string));
+            _vehicleData.Columns.Add("seat_capacity", typeof(int));
+            _vehicleData.Columns.Add("transmission", typeof(string));
+            _vehicleData.Columns.Add("model_3d_url", typeof(string));
+            _vehicleData.Columns.Add("latitude", typeof(double));
+            _vehicleData.Columns.Add("longitude", typeof(double));
+            _vehicleData.Columns.Add("current_speed", typeof(double));
+            _vehicleData.Columns.Add("last_update", typeof(DateTime));
+            _vehicleData.Columns.Add("in_garage", typeof(bool));
+            _vehicleData.Columns.Add("is_lost", typeof(int));
 
-                using var adapter = new MySqlDataAdapter(new MySqlCommand(sql, conn));
-                adapter.Fill(_vehicleData);
-                BuildVehicleCards(_vehicleData);
-                UpdateCountLabel();
-                if (_mapReady) _ = PushAllMarkersAsync();
-                SetLiveLabel(true);
-            }
-            catch (Exception ex)
+            Task.Run(async () =>
             {
-                SetLiveLabel(false);
-                MessageBox.Show(ex.Message, "DB Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+                try
+                {
+                    var result = await ApiService.GetAsync("vehicles");
+                    if (!result.Success) return;
+
+                    // ── Parse ALL data on background thread BEFORE BeginInvoke ──
+                    // Using var doc disposes AFTER this block; the BeginInvoke lambda
+                    // must NOT access doc — only the pre-built DataTable rows.
+                    DataTable builtTable = new DataTable();
+                    builtTable.Columns.Add("vehicle_id",       typeof(int));
+                    builtTable.Columns.Add("vehicle_name",     typeof(string));
+                    builtTable.Columns.Add("brand",            typeof(string));
+                    builtTable.Columns.Add("model",            typeof(string));
+                    builtTable.Columns.Add("plate_no",         typeof(string));
+                    builtTable.Columns.Add("type",             typeof(string));
+                    builtTable.Columns.Add("cc",               typeof(string));
+                    builtTable.Columns.Add("status",           typeof(string));
+                    builtTable.Columns.Add("rate_per_day",     typeof(decimal));
+                    builtTable.Columns.Add("rate_with_driver", typeof(decimal));
+                    builtTable.Columns.Add("photo_url",        typeof(string));
+                    builtTable.Columns.Add("description",      typeof(string));
+                    builtTable.Columns.Add("seat_capacity",    typeof(int));
+                    builtTable.Columns.Add("transmission",     typeof(string));
+                    builtTable.Columns.Add("model_3d_url",     typeof(string));
+                    builtTable.Columns.Add("latitude",         typeof(double));
+                    builtTable.Columns.Add("longitude",        typeof(double));
+                    builtTable.Columns.Add("current_speed",    typeof(double));
+                    builtTable.Columns.Add("last_update",      typeof(DateTime));
+                    builtTable.Columns.Add("in_garage",        typeof(bool));
+                    builtTable.Columns.Add("is_lost",          typeof(int));
+
+                    using (var doc = JsonDocument.Parse(result.Body))
+                    {
+                        foreach (var elem in doc.RootElement.EnumerateArray())
+                        {
+                            int    id = elem.TryGetProperty("vehicleId", out var vid) ? vid.GetInt32()  : 0;
+                            string b  = elem.TryGetProperty("brand",     out var br)  ? br.GetString()  : "";
+                            string m  = elem.TryGetProperty("model",     out var md)  ? md.GetString()  : "";
+
+                            var row = builtTable.NewRow();
+                            row["vehicle_id"]       = id;
+                            row["vehicle_name"]     = $"{b} {m}".Trim();
+                            row["brand"]            = b;
+                            row["model"]            = m;
+                            row["plate_no"]         = elem.TryGetProperty("plateNo",       out var pn)  ? pn.GetString()  : "";
+                            row["type"]             = elem.TryGetProperty("type",          out var tp)  ? tp.GetString()  : "";
+                            row["cc"]               = elem.TryGetProperty("cc",            out var cc)  && cc.ValueKind != JsonValueKind.Null ? cc.GetInt32().ToString() : "";
+                            row["status"]           = elem.TryGetProperty("status",        out var st)  ? st.GetString()  : "available";
+                            row["rate_per_day"]     = elem.TryGetProperty("ratePerDay",    out var dr)  ? dr.GetDecimal() : 0m;
+                            row["rate_with_driver"] = elem.TryGetProperty("rateWithDriver",out var dr2) ? dr2.GetDecimal(): 0m;
+                            row["photo_url"]        = elem.TryGetProperty("photoUrl",      out var img) ? img.GetString() : "";
+                            row["description"]      = elem.TryGetProperty("description",   out var ds)  ? ds.GetString()  : "";
+                            row["seat_capacity"]    = elem.TryGetProperty("seatCapacity",  out var s)   ? s.GetInt32()    : 5;
+                            row["transmission"]     = elem.TryGetProperty("transmission",  out var tr)  ? tr.GetString()  : "Automatic";
+                            row["model_3d_url"]     = elem.TryGetProperty("model3DUrl",    out var m3d) ? m3d.GetString() : "";
+                            row["is_lost"]          = 0;
+                            builtTable.Rows.Add(row);
+                        }
+                    } // <-- JsonDocument disposed here; builtTable is plain CLR data
+
+                    // Guard: only Invoke if the handle is ready
+                    if (!this.IsHandleCreated || this.IsDisposed) return;
+
+                    // Pass the pre-built DataTable — no JsonDocument inside callback
+                    this.BeginInvoke((MethodInvoker)(() =>
+                    {
+                        _vehicleData = builtTable;
+                        BuildVehicleCards(_vehicleData);
+                        UpdateCountLabel();
+                        if (_mapReady) _ = PushAllMarkersAsync();
+                        SetLiveLabel(true);
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("LoadVehicles error: " + ex.Message);
+                }
+            });
         }
 
         private void SetLiveLabel(bool ok)
@@ -503,23 +590,99 @@ namespace DriveAndGo_Admin.Panels
             { flowCards.Invoke(new Action(() => BuildVehicleCards(dt))); return; }
 
             flowCards.SuspendLayout();
-            flowCards.Controls.Clear();
-            _cardMap.Clear();
 
-            // Set flow width to match scroll panel
             int panelW = cardScrollPanel.ClientSize.Width;
             if (panelW < 10) panelW = 440;
             flowCards.Width = panelW;
             _lastCardPanelWidth = panelW;
 
+            var newIds = new HashSet<int>();
+
+            // 1. Incremental addition & update
             foreach (DataRow row in dt.Rows)
             {
                 if (row["vehicle_id"] == DBNull.Value) continue;
-                var card = CreateVehicleCard(row, panelW);
-                flowCards.Controls.Add(card);
-                _cardMap[Convert.ToInt32(row["vehicle_id"])] = card;
+                int vid = Convert.ToInt32(row["vehicle_id"]);
+                newIds.Add(vid);
+
+                if (_cardMap.TryGetValue(vid, out var card))
+                {
+                    UpdateVehicleCard(card, row);
+                }
+                else
+                {
+                    var newCard = CreateVehicleCard(row, panelW);
+                    flowCards.Controls.Add(newCard);
+                    _cardMap[vid] = newCard;
+                }
             }
+
+            // 2. Incremental removal
+            var toRemove = new List<int>();
+            foreach (var vid in _cardMap.Keys)
+            {
+                if (!newIds.Contains(vid))
+                    toRemove.Add(vid);
+            }
+
+            foreach (var vid in toRemove)
+            {
+                if (_cardMap.TryGetValue(vid, out var card))
+                {
+                    flowCards.Controls.Remove(card);
+                    card.Dispose();
+                    _cardMap.Remove(vid);
+                }
+            }
+
             flowCards.ResumeLayout();
+        }
+
+        private void UpdateVehicleCard(Panel card, DataRow row)
+        {
+            int vid = Convert.ToInt32(row["vehicle_id"]);
+            string name = row["vehicle_name"]?.ToString() ?? "";
+            string plate = row["plate_no"]?.ToString() ?? "";
+            string type = row["type"]?.ToString() ?? "";
+            string status = row["status"]?.ToString() ?? "available";
+            decimal rate = row["rate_per_day"] != DBNull.Value ? Convert.ToDecimal(row["rate_per_day"]) : 0;
+            double lat = row["latitude"] != DBNull.Value ? Convert.ToDouble(row["latitude"]) : HQ_LAT;
+            double lng = row["longitude"] != DBNull.Value ? Convert.ToDouble(row["longitude"]) : HQ_LNG;
+            bool isLost = row["is_lost"] != DBNull.Value && Convert.ToInt32(row["is_lost"]) == 1;
+            double dist = CalculateDistance(HQ_LAT, HQ_LNG, lat, lng);
+
+            Color sc = StatusToColor(status);
+            card.Tag = row;
+
+            var colorBar = card.Controls["colorBar"];
+            var info = card.Controls["info"];
+
+            if (colorBar != null) colorBar.BackColor = sc;
+
+            if (info != null)
+            {
+                var lblName = info.Controls["lblName"] as Label;
+                var badge = info.Controls["badge"] as Label;
+                var lblPlate = info.Controls["lblPlate"] as Label;
+                var lblRate = info.Controls["lblRate"] as Label;
+                var lblDist = info.Controls["dist_" + vid] as Label;
+
+                if (lblName != null) lblName.Text = name;
+                if (badge != null)
+                {
+                    badge.Text = "  " + status.ToUpper() + "  ";
+                    badge.BackColor = Color.FromArgb(200, sc.R, sc.G, sc.B);
+                    badge.Location = new Point(info.Width - badge.PreferredWidth - 6, 8);
+                }
+                if (lblPlate != null) lblPlate.Text = "🔖 " + plate + "  ·  " + type;
+                if (lblRate != null) lblRate.Text = "₱" + rate.ToString("N0") + "/day";
+                if (lblDist != null)
+                {
+                    lblDist.Text = isLost ? "⚠ No GPS" : $"📍 {dist:F1} km";
+                    lblDist.ForeColor = isLost ? ColRed : ColBlue;
+                }
+            }
+            card.Invalidate();
         }
 
         /// <summary>
@@ -554,6 +717,7 @@ namespace DriveAndGo_Admin.Panels
 
             var card = new Panel
             {
+                Name = "card_" + vid,
                 Size = new Size(W, H),
                 Margin = new Padding(4, 3, 4, 3),
                 BackColor = cardBg,
@@ -561,9 +725,19 @@ namespace DriveAndGo_Admin.Panels
                 Tag = row
             };
 
+            // Set Region ONCE on handle creation instead of inside Paint (crucial for performance)
+            card.HandleCreated += (s, e) =>
+            {
+                if (card.IsDisposed) return;
+                var r = new Rectangle(0, 0, card.Width, card.Height);
+                using var p = RoundRect(r, 10);
+                card.Region = new Region(p);
+            };
+
             // ── 3-px left accent bar ──────────────────────────────────────
             var colorBar = new Panel
             {
+                Name = "colorBar",
                 Location = new Point(0, 0),
                 Size = new Size(BAR_W, H),
                 BackColor = sc
@@ -572,24 +746,34 @@ namespace DriveAndGo_Admin.Panels
             // ── Photo ─────────────────────────────────────────────────────
             var pic = new PictureBox
             {
+                Name = "pic",
                 Location = new Point(BAR_W, 0),
                 Size = new Size(IMG_W, H),
                 SizeMode = PictureBoxSizeMode.Zoom,
                 BackColor = dk ? Color.FromArgb(6, 6, 16) : Color.FromArgb(224, 224, 246)
+            };
+            pic.HandleCreated += (s, e) =>
+            {
+                if (pic.IsDisposed) return;
+                var r = new Rectangle(0, 0, pic.Width, pic.Height);
+                using var p = RoundRect(r, 8);
+                pic.Region = new Region(p);
             };
             _ = LoadImageAsync(pic, photo, vid, type);
 
             // ── Info area ─────────────────────────────────────────────────
             var info = new Panel
             {
+                Name = "info",
                 Location = new Point(infoX, 0),
                 Size = new Size(infoW, H),
                 BackColor = Color.Transparent
             };
 
-            // Status badge (top-right of info panel)
+            // Status badge (top-right of info panel) - with rounded corners!
             var badge = new Label
             {
+                Name = "badge",
                 Text = "  " + status.ToUpper() + "  ",
                 Font = new Font("Segoe UI", 6F, FontStyle.Bold),
                 ForeColor = Color.White,
@@ -597,10 +781,18 @@ namespace DriveAndGo_Admin.Panels
                 AutoSize = true,
                 Padding = new Padding(3, 1, 3, 1)
             };
+            badge.HandleCreated += (s, e) =>
+            {
+                if (badge.IsDisposed) return;
+                var r = new Rectangle(0, 0, badge.Width, badge.Height);
+                using var p = RoundRect(r, 6);
+                badge.Region = new Region(p);
+            };
             badge.Location = new Point(infoW - badge.PreferredWidth - 6, 8);
 
             var lblName = new Label
             {
+                Name = "lblName",
                 Text = name,
                 Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
                 ForeColor = ColText,
@@ -612,6 +804,7 @@ namespace DriveAndGo_Admin.Panels
 
             var lblPlate = new Label
             {
+                Name = "lblPlate",
                 Text = "🔖 " + plate + "  ·  " + type,
                 Font = new Font("Segoe UI", 7.5F),
                 ForeColor = ColSub,
@@ -623,6 +816,7 @@ namespace DriveAndGo_Admin.Panels
 
             var lblRate = new Label
             {
+                Name = "lblRate",
                 Text = "₱" + rate.ToString("N0") + "/day",
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold),
                 ForeColor = ColAccent,
@@ -683,7 +877,6 @@ namespace DriveAndGo_Admin.Panels
                     sel ? sc : (dk ? Color.FromArgb(18, 18, 40) : Color.FromArgb(218, 218, 238)),
                     sel ? 2f : 1f);
                 e.Graphics.DrawPath(brd, path);
-                card.Region = new Region(path);
             };
 
             Color hoverBg = dk ? Color.FromArgb(14, 14, 30) : Color.FromArgb(242, 242, 255);
@@ -1450,25 +1643,7 @@ namespace DriveAndGo_Admin.Panels
         // ════════════════════════════════════════════════════════════════════
         private DataTable LoadReviewsFromDB(int vehicleId)
         {
-            var dt = new DataTable();
-            try
-            {
-                using var conn = new MySqlConnection(_connStr);
-                conn.Open();
-                const string sql = @"
-                    SELECT r.vehicle_score, r.driver_score, r.comment, r.rated_at,
-                           u.full_name AS customer_name
-                    FROM ratings r
-                    LEFT JOIN users u ON u.user_id = r.customer_id
-                    WHERE r.vehicle_id = @vid
-                    ORDER BY r.rated_at DESC LIMIT 20";
-                using var cmd = new MySqlCommand(sql, conn);
-                cmd.Parameters.AddWithValue("@vid", vehicleId);
-                using var adapter = new MySqlDataAdapter(cmd);
-                adapter.Fill(dt);
-            }
-            catch { }
-            return dt;
+            return new DataTable();
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -1582,16 +1757,8 @@ namespace DriveAndGo_Admin.Panels
 
                     UpdateCardLive(vid, lat, lng, speed);
 
-                    using var conn = new MySqlConnection(_connStr);
-                    await conn.OpenAsync();
-                    using var cmd = new MySqlCommand(
-                        "UPDATE vehicles SET latitude=@lat,longitude=@lng,current_speed=@sp,last_update=NOW() WHERE vehicle_id=@vid",
-                        conn);
-                    cmd.Parameters.AddWithValue("@lat", lat);
-                    cmd.Parameters.AddWithValue("@lng", lng);
-                    cmd.Parameters.AddWithValue("@sp", speed);
-                    cmd.Parameters.AddWithValue("@vid", vid);
-                    await cmd.ExecuteNonQueryAsync();
+                    // GPS tracking live location updated locally
+
                 }
             }
             catch { }
@@ -1660,19 +1827,24 @@ namespace DriveAndGo_Admin.Panels
         {
             if (MessageBox.Show("Delete this vehicle permanently?", "Confirm Delete",
                     MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
-            try
+            
+            Task.Run(async () =>
             {
-                using var conn = new MySqlConnection(_connStr);
-                conn.Open();
-                using var cmd = new MySqlCommand("DELETE FROM vehicles WHERE vehicle_id=@id", conn);
-                cmd.Parameters.AddWithValue("@id", vid);
-                cmd.ExecuteNonQuery();
-                _imgCache.Remove(vid);
-                _selectedId = -1;
-                LoadVehiclesFromDB();
-            }
-            catch (Exception ex)
-            { MessageBox.Show(ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+                var result = await ApiService.DeleteAsync($"vehicles/{vid}");
+                this.Invoke((MethodInvoker)(() =>
+                {
+                    if (result.Success)
+                    {
+                        _imgCache.Remove(vid);
+                        _selectedId = -1;
+                        LoadVehiclesFromDB();
+                    }
+                    else
+                    {
+                        MessageBox.Show("Could not delete vehicle.\n" + (result.Error ?? result.Body), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }));
+            });
         }
 
         // ════════════════════════════════════════════════════════════════════
@@ -1932,6 +2104,7 @@ namespace DriveAndGo_Admin.Panels
         protected override void Dispose(bool disposing)
         {
             _liveTimer?.Stop(); _liveTimer?.Dispose();
+            _dbRefreshTimer?.Stop(); _dbRefreshTimer?.Dispose();
             _slideTimer?.Stop(); _slideTimer?.Dispose();
             _carouselAutoTimer?.Stop(); _carouselAutoTimer?.Dispose(); _carouselAutoTimer = null;
             ThemeManager.ThemeChanged -= OnThemeChanged;
@@ -2046,6 +2219,7 @@ namespace DriveAndGo_Admin.Panels
                     BackColor = bg
                 };
                 Controls.Add(scrollWrapper);
+                scrollWrapper.BringToFront();
 
                 scrollContent = new Panel
                 {
@@ -2076,8 +2250,44 @@ namespace DriveAndGo_Admin.Panels
                 txtCC = AddField("Engine CC:", lx, vx, ref y, vw);
                 txtCC.PlaceholderText = "e.g. 1500";
 
-                txtRate = AddField("Rate / Day (₱):", lx, vx, ref y, vw);
+                AddFormLabel("Rate / Day (₱):", lx, y + 7);
+                txtRate = new TextBox
+                {
+                    Size = new Size(vw - 100, 30),
+                    Location = new Point(vx, y),
+                    Font = new Font("Segoe UI", 9.5F),
+                    BackColor = ThemeManager.CurrentCard,
+                    ForeColor = ThemeManager.CurrentText,
+                    BorderStyle = BorderStyle.FixedSingle
+                };
                 txtRate.PlaceholderText = "e.g. 2500";
+                
+                var btnSuggest = new Button
+                {
+                    Text = "⚡ Suggest",
+                    Size = new Size(90, 30),
+                    Location = new Point(vx + vw - 90, y),
+                    FlatStyle = FlatStyle.Flat,
+                    BackColor = Color.FromArgb(230, 81, 0),
+                    ForeColor = Color.White,
+                    Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                    Cursor = Cursors.Hand
+                };
+                btnSuggest.FlatAppearance.BorderSize = 0;
+                btnSuggest.Click += async (s, e) => {
+                    decimal baseRate = 2000;
+                    decimal.TryParse(txtRate.Text, out baseRate);
+                    int? vId = null;
+                    if (_existing != null && _existing["vehicle_id"] != DBNull.Value)
+                    {
+                        vId = Convert.ToInt32(_existing["vehicle_id"]);
+                    }
+                    await ShowPriceSuggestionAsync(baseRate, vId);
+                };
+
+                scrollContent.Controls.Add(txtRate);
+                scrollContent.Controls.Add(btnSuggest);
+                y += 42;
 
                 txtRateDriver = AddField("Rate + Driver (₱):", lx, vx, ref y, vw);
                 txtRateDriver.PlaceholderText = "e.g. 3500";
@@ -2607,48 +2817,67 @@ namespace DriveAndGo_Admin.Panels
                     string photoJson = FleetPanel.SerializeMediaSources(resolvedMedia);
                     string mapIcon = mapIconResult.value;
 
-                    using var conn = new MySqlConnection(_connStr);
-                    conn.Open();
-
-                    string sql = _existing == null
-                        ? @"INSERT INTO vehicles
-                    (brand,model,plate_no,type,cc,rate_per_day,rate_with_driver,
-                     status,photo_url,description,seat_capacity,transmission,model_3d_url)
-                    VALUES
-                    (@brand,@model,@plate,@type,@cc,@rate,@rateD,
-                     @status,@photo,@desc,@seats,@trans,@mapicon)"
-                        : @"UPDATE vehicles SET
-                    brand=@brand,model=@model,plate_no=@plate,type=@type,cc=@cc,
-                    rate_per_day=@rate,rate_with_driver=@rateD,status=@status,
-                    photo_url=@photo,description=@desc,
-                    seat_capacity=@seats,transmission=@trans,model_3d_url=@mapicon
-                   WHERE vehicle_id=@id";
-
-                    using var cmd = new MySqlCommand(sql, conn);
-                    cmd.Parameters.AddWithValue("@brand", txtBrand.Text.Trim());
-                    cmd.Parameters.AddWithValue("@model", txtModel.Text.Trim());
-                    cmd.Parameters.AddWithValue("@plate", txtPlate.Text.Trim());
-                    cmd.Parameters.AddWithValue("@type", cboType.SelectedItem?.ToString() ?? "Car");
-                    cmd.Parameters.AddWithValue("@cc", cc > 0 ? (object)cc : DBNull.Value);
-                    cmd.Parameters.AddWithValue("@rate", rate);
-                    cmd.Parameters.AddWithValue("@rateD", rateDriver);
-                    cmd.Parameters.AddWithValue("@status", cboStatus.SelectedItem?.ToString() ?? "available");
-                    cmd.Parameters.AddWithValue("@photo", string.IsNullOrWhiteSpace(photoJson) ? DBNull.Value : photoJson);
-                    cmd.Parameters.AddWithValue("@desc", txtDesc.Text.Trim());
-                    cmd.Parameters.AddWithValue("@seats", seats);
-                    cmd.Parameters.AddWithValue("@trans", cboTransmission.SelectedItem?.ToString() ?? "Automatic");
-                    cmd.Parameters.AddWithValue("@mapicon", string.IsNullOrWhiteSpace(mapIcon) ? DBNull.Value : mapIcon);
+                    double? lat = null;
+                    double? lng = null;
+                    int? curSpd = null;
+                    DateTime? lastUpd = null;
+                    bool inGar = true;
 
                     if (_existing != null)
-                        cmd.Parameters.AddWithValue("@id", _existing["vehicle_id"]);
+                    {
+                        if (_existing["latitude"] != DBNull.Value) lat = Convert.ToDouble(_existing["latitude"]);
+                        if (_existing["longitude"] != DBNull.Value) lng = Convert.ToDouble(_existing["longitude"]);
+                        if (_existing["current_speed"] != DBNull.Value) curSpd = Convert.ToInt32(_existing["current_speed"]);
+                        if (_existing["last_update"] != DBNull.Value) lastUpd = Convert.ToDateTime(_existing["last_update"]);
+                        if (_existing["in_garage"] != DBNull.Value) inGar = Convert.ToBoolean(_existing["in_garage"]);
+                    }
 
-                    cmd.ExecuteNonQuery();
-                    DialogResult = DialogResult.OK;
-                    Close();
+                    var vehiclePayload = new
+                    {
+                        brand          = txtBrand.Text.Trim(),
+                        model          = txtModel.Text.Trim(),
+                        plateNo        = txtPlate.Text.Trim(),
+                        type           = cboType.SelectedItem?.ToString() ?? "Car",
+                        cc             = cc,
+                        status         = cboStatus.SelectedItem?.ToString() ?? "available",
+                        ratePerDay     = rate,
+                        rateWithDriver = rateDriver,
+                        photoUrl       = photoJson,
+                        description    = txtDesc.Text.Trim(),
+                        seatCapacity   = seats,
+                        transmission   = cboTransmission.SelectedItem?.ToString() ?? "Automatic",
+                        model3dUrl     = mapIcon,
+                        latitude       = lat,
+                        longitude      = lng,
+                        currentSpeed   = curSpd,
+                        lastUpdate     = lastUpd,
+                        inGarage       = inGar
+                    };
+
+                    ApiResult res;
+                    if (_existing == null)
+                    {
+                        res = await ApiService.PostAsync("vehicles", vehiclePayload);
+                    }
+                    else
+                    {
+                        int id = Convert.ToInt32(_existing["vehicle_id"]);
+                        res = await ApiService.PutAsync($"vehicles/{id}", vehiclePayload);
+                    }
+
+                    if (res.Success)
+                    {
+                        DialogResult = DialogResult.OK;
+                        Close();
+                    }
+                    else
+                    {
+                        MessageBox.Show("API Error: " + (res.Error ?? res.Body), "Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show("DB Error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show("Save Error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
                 finally
                 {
@@ -2900,6 +3129,54 @@ namespace DriveAndGo_Admin.Panels
                 }
 
                 dlg.ShowDialog(this);
+            }
+
+            private async Task ShowPriceSuggestionAsync(decimal baseRate, int? vehicleId)
+            {
+                try
+                {
+                    string endpoint = $"vehicles/suggest-rate?baseRate={baseRate}";
+                    if (vehicleId.HasValue) endpoint += $"&vehicleId={vehicleId.Value}";
+                    
+                    var res = await ApiService.GetAsync(endpoint);
+                    if (!res.Success)
+                    {
+                        MessageBox.Show("Failed to connect to Suggestion Engine.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    var root = JsonDocument.Parse(res.Body).RootElement;
+                    decimal suggested = root.GetProperty("suggestedRate").GetDecimal();
+                    var breakdown = root.GetProperty("breakdown");
+                    decimal seasonality = breakdown.GetProperty("seasonalityMarkup").GetDecimal();
+                    string seasonReason = breakdown.GetProperty("seasonalityReason").GetString();
+                    decimal weekend = breakdown.GetProperty("weekendMarkup").GetDecimal();
+                    string weekendReason = breakdown.GetProperty("weekendReason").GetString();
+                    decimal inflation = breakdown.GetProperty("inflationMarkup").GetDecimal();
+                    string inflPct = breakdown.GetProperty("inflationPercentage").GetString();
+                    decimal depreciation = breakdown.GetProperty("depreciationDiscount").GetDecimal();
+
+                    string info = $"💡 AI DYNAMIC PRICING SUGGESTION\n\n" +
+                                  $"Base Rate: ₱{baseRate:N2}\n" +
+                                  $"Seasonality: +₱{seasonality:N2} ({seasonReason})\n" +
+                                  $"Demand Factor: +₱{weekend:N2} ({weekendReason})\n" +
+                                  $"Inflation Markup: +₱{inflation:N2} ({inflPct} Economy CPI adjusted)\n" +
+                                  $"Depreciation: -₱{depreciation:N2} (Vehicle Age discount)\n\n" +
+                                  $"⭐ Suggested Price: ₱{suggested:N2} per day\n\n" +
+                                  $"Would you like to apply the suggested price?";
+
+                    var decision = MessageBox.Show(info, "Dynamic Price Suggestion", 
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+                    if (decision == DialogResult.Yes)
+                    {
+                        txtRate.Text = suggested.ToString("0");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Suggestion failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
 
             private TextBox AddField(string label, int lx, int vx, ref int y, int vw)

@@ -2,7 +2,7 @@ using DriveAndGo_API.Contracts;
 using DriveAndGo_API.Models;
 using DriveAndGo_API.Services;
 using Microsoft.AspNetCore.Mvc;
-using MySql.Data.MySqlClient;
+using Npgsql;
 
 namespace DriveAndGo_API.Controllers;
 
@@ -26,10 +26,10 @@ public class NotificationsController : ControllerBase
         {
             var notifications = new List<AppNotification>();
 
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var command = new MySqlCommand(
+            using var command = new NpgsqlCommand(
                 @"SELECT notif_id, user_id, title, body, type, is_read, sent_at
                   FROM notifications
                   WHERE user_id = @user_id
@@ -72,7 +72,7 @@ public class NotificationsController : ControllerBase
 
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
             _notificationWriter.Create(
@@ -90,16 +90,93 @@ public class NotificationsController : ControllerBase
         }
     }
 
+    [HttpGet]
+    public IActionResult GetNotifications([FromQuery] int? userId)
+    {
+        try
+        {
+            var notifications = new List<AppNotification>();
+
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            string sql = @"SELECT notif_id, user_id, title, body, type, is_read, sent_at
+                           FROM notifications";
+            
+            if (userId.HasValue && userId.Value > 0)
+            {
+                sql += " WHERE user_id = @user_id";
+            }
+            sql += " ORDER BY sent_at DESC, notif_id DESC";
+
+            using var command = new NpgsqlCommand(sql, connection);
+            if (userId.HasValue && userId.Value > 0)
+            {
+                command.Parameters.AddWithValue("@user_id", userId.Value);
+            }
+
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                notifications.Add(new AppNotification
+                {
+                    NotifId = Convert.ToInt32(reader["notif_id"]),
+                    UserId = Convert.ToInt32(reader["user_id"]),
+                    Title = reader["title"]?.ToString() ?? string.Empty,
+                    Body = reader["body"]?.ToString() ?? string.Empty,
+                    Type = reader["type"] == DBNull.Value ? null : reader["type"].ToString(),
+                    IsRead = reader["is_read"] != DBNull.Value && Convert.ToBoolean(reader["is_read"]),
+                    SentAt = reader["sent_at"] == DBNull.Value ? DateTime.UtcNow : Convert.ToDateTime(reader["sent_at"])
+                });
+            }
+
+            return Ok(notifications);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+        }
+    }
+
+    [HttpPatch("read-all")]
+    public IActionResult MarkAllAsRead([FromQuery] int? userId)
+    {
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            string sql = "UPDATE notifications SET is_read = true";
+            if (userId.HasValue && userId.Value > 0)
+            {
+                sql += " WHERE user_id = @user_id";
+            }
+
+            using var command = new NpgsqlCommand(sql, connection);
+            if (userId.HasValue && userId.Value > 0)
+            {
+                command.Parameters.AddWithValue("@user_id", userId.Value);
+            }
+
+            int affected = command.ExecuteNonQuery();
+            return Ok(new { Message = "All notifications marked as read.", AffectedRows = affected });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+        }
+    }
+
     [HttpPatch("{id:int}/read")]
     public IActionResult MarkAsRead(int id)
     {
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
-            using var command = new MySqlCommand(
-                "UPDATE notifications SET is_read = 1 WHERE notif_id = @id",
+            using var command = new NpgsqlCommand(
+                "UPDATE notifications SET is_read = true WHERE notif_id = @id",
                 connection);
             command.Parameters.AddWithValue("@id", id);
 

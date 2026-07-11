@@ -1,5 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using MySql.Data.MySqlClient;
+using Microsoft.AspNetCore.Mvc;
+using Npgsql;
 using DriveAndGo_API.Models;
 
 namespace DriveAndGo_API.Controllers
@@ -24,10 +24,10 @@ namespace DriveAndGo_API.Controllers
             {
                 List<Rating> ratings = new List<Rating>();
 
-                using var conn = new MySqlConnection(_connectionString);
+                using var conn = new NpgsqlConnection(_connectionString);
                 conn.Open();
 
-                var cmd = new MySqlCommand(@"
+                var cmd = new NpgsqlCommand(@"
                     SELECT r.rating_id, r.rental_id, r.customer_id,
                            r.driver_id, r.vehicle_id,
                            r.driver_score, r.vehicle_score,
@@ -78,10 +78,10 @@ namespace DriveAndGo_API.Controllers
             {
                 List<Rating> ratings = new List<Rating>();
 
-                using var conn = new MySqlConnection(_connectionString);
+                using var conn = new NpgsqlConnection(_connectionString);
                 conn.Open();
 
-                var cmd = new MySqlCommand(@"
+                var cmd = new NpgsqlCommand(@"
                     SELECT r.rating_id, r.rental_id, r.customer_id,
                            r.driver_id, r.vehicle_id,
                            r.driver_score, r.vehicle_score,
@@ -132,10 +132,10 @@ namespace DriveAndGo_API.Controllers
         {
             try
             {
-                using var conn = new MySqlConnection(_connectionString);
+                using var conn = new NpgsqlConnection(_connectionString);
                 conn.Open();
 
-                var cmd = new MySqlCommand(@"
+                var cmd = new NpgsqlCommand(@"
                     SELECT d.driver_id, u.full_name,
                            ROUND(AVG(r.driver_score), 2) AS avg_rating,
                            COUNT(r.rating_id) AS total_reviews,
@@ -201,11 +201,11 @@ namespace DriveAndGo_API.Controllers
 
             try
             {
-                using var conn = new MySqlConnection(_connectionString);
+                using var conn = new NpgsqlConnection(_connectionString);
                 conn.Open();
 
                 // Check kung naka-complete na ang rental
-                var rentalCmd = new MySqlCommand(@"
+                var rentalCmd = new NpgsqlCommand(@"
                     SELECT status FROM rentals
                     WHERE rental_id = @rental_id", conn);
                 rentalCmd.Parameters.AddWithValue("@rental_id",
@@ -223,7 +223,7 @@ namespace DriveAndGo_API.Controllers
                     });
 
                 // Check kung naka-rate na ang rental na ito
-                var checkCmd = new MySqlCommand(@"
+                var checkCmd = new NpgsqlCommand(@"
                     SELECT COUNT(*) FROM ratings
                     WHERE rental_id  = @rental_id
                     AND   customer_id = @customer_id", conn);
@@ -241,7 +241,7 @@ namespace DriveAndGo_API.Controllers
                     });
 
                 // I-save ang rating
-                var insertCmd = new MySqlCommand(@"
+                var insertCmd = new NpgsqlCommand(@"
                     INSERT INTO ratings
                         (rental_id, customer_id, driver_id,
                          vehicle_id, driver_score, vehicle_score,
@@ -275,7 +275,7 @@ namespace DriveAndGo_API.Controllers
                 // I-update ang average rating ng driver
                 if (rating.DriverId.HasValue)
                 {
-                    var updateDriverCmd = new MySqlCommand(@"
+                    var updateDriverCmd = new NpgsqlCommand(@"
                         UPDATE drivers
                         SET rating_avg = (
                             SELECT ROUND(AVG(driver_score), 2)

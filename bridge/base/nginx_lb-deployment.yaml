@@ -1,0 +1,41 @@
+#! nginx_lb-deployment.yaml
+# Generated code, do not edit
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: nginx-lb
+    namespace: driveandgo-project
+    labels:
+        com.docker.compose.project: driveandgo_project
+        com.docker.compose.service: nginx_lb
+spec:
+    replicas: 1
+    selector:
+        matchLabels:
+            com.docker.compose.project: driveandgo_project
+            com.docker.compose.service: nginx_lb
+    strategy:
+        type: Recreate
+    template:
+        metadata:
+            labels:
+                com.docker.compose.project: driveandgo_project
+                com.docker.compose.service: nginx_lb
+                com.docker.compose.network.default: "true"
+        spec:
+            containers:
+                - name: driveandgo-nginx-lb
+                  image: nginx:alpine
+                  imagePullPolicy: IfNotPresent
+                  ports:
+                    - name: nginx-lb-80
+                      containerPort: 80
+                  volumeMounts:
+                    - name: etc-nginx-nginx-conf
+                      mountPath: /etc/nginx/nginx.conf
+                      readOnly: true
+            volumes:
+                - name: etc-nginx-nginx-conf
+                  hostPath:
+                    path: C:\Users\martq\source\repos\DriveAndGo_Project\nginx\nginx.conf
+                  readOnly: true

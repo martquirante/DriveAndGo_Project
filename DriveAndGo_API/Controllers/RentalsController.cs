@@ -1,7 +1,7 @@
 using DriveAndGo_API.Models;
 using DriveAndGo_API.Services;
 using Microsoft.AspNetCore.Mvc;
-using MySql.Data.MySqlClient;
+using Npgsql;
 using System.Globalization;
 
 namespace DriveAndGo_API.Controllers;
@@ -11,11 +11,13 @@ namespace DriveAndGo_API.Controllers;
 public class RentalsController : ControllerBase
 {
     private readonly string _connectionString;
+    private readonly NpgsqlDataSource _ds;
     private readonly NotificationWriter _notificationWriter;
 
-    public RentalsController(IConfiguration configuration, NotificationWriter notificationWriter)
+    public RentalsController(IConfiguration configuration, NpgsqlDataSource ds, NotificationWriter notificationWriter)
     {
         _connectionString = configuration.GetConnectionString("DefaultConnection")!;
+        _ds = ds;
         _notificationWriter = notificationWriter;
     }
 
@@ -78,11 +80,11 @@ public class RentalsController : ControllerBase
 
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
             using var transaction = connection.BeginTransaction();
 
-            using var duplicateCommand = new MySqlCommand(
+            using var duplicateCommand = new NpgsqlCommand(
                 @"SELECT COUNT(*) FROM rentals
                   WHERE customer_id = @customer_id
                     AND vehicle_id = @vehicle_id
@@ -97,7 +99,7 @@ public class RentalsController : ControllerBase
                 return Conflict(new { Message = "You already have a pending booking for this vehicle." });
             }
 
-            using var vehicleCommand = new MySqlCommand(
+            using var vehicleCommand = new NpgsqlCommand(
                 @"SELECT LOWER(COALESCE(status, '')) FROM vehicles
                   WHERE vehicle_id = @vehicle_id
                   LIMIT 1",
@@ -119,7 +121,7 @@ public class RentalsController : ControllerBase
             int? driverUserId = null;
             if (rental.DriverId.HasValue)
             {
-                using var driverCheckCommand = new MySqlCommand(
+                using var driverCheckCommand = new NpgsqlCommand(
                     @"SELECT driver_id, user_id, LOWER(COALESCE(status, '')) AS status
                       FROM drivers
                       WHERE driver_id = @driver_id
@@ -144,11 +146,13 @@ public class RentalsController : ControllerBase
                 }
             }
 
-            using var insertCommand = new MySqlCommand(
+            // PostgreSQL: use RETURNING to get new rental_id in one round-trip
+            using var insertCommand = new NpgsqlCommand(
                 @"INSERT INTO rentals
                     (customer_id, vehicle_id, driver_id, start_date, end_date, destination, status, total_amount, payment_method, payment_status, created_at)
                   VALUES
-                    (@customer_id, @vehicle_id, @driver_id, @start_date, @end_date, @destination, 'pending', @total_amount, @payment_method, 'unpaid', NOW())",
+                    (@customer_id, @vehicle_id, @driver_id, @start_date, @end_date, @destination, 'pending', @total_amount, @payment_method, 'unpaid', NOW())
+                  RETURNING rental_id",
                 connection,
                 transaction);
 
@@ -157,12 +161,11 @@ public class RentalsController : ControllerBase
             insertCommand.Parameters.AddWithValue("@driver_id", rental.DriverId.HasValue ? rental.DriverId.Value : DBNull.Value);
             insertCommand.Parameters.AddWithValue("@start_date", rental.StartDate);
             insertCommand.Parameters.AddWithValue("@end_date", rental.EndDate.Value);
-            insertCommand.Parameters.AddWithValue("@destination", string.IsNullOrWhiteSpace(rental.Destination) ? DBNull.Value : rental.Destination.Trim());
+            insertCommand.Parameters.AddWithValue("@destination", string.IsNullOrWhiteSpace(rental.Destination) ? DBNull.Value : (object)rental.Destination.Trim());
             insertCommand.Parameters.AddWithValue("@total_amount", rental.TotalAmount);
             insertCommand.Parameters.AddWithValue("@payment_method", NormalizeLower(rental.PaymentMethod, "cash"));
-            insertCommand.ExecuteNonQuery();
 
-            var rentalId = Convert.ToInt32(new MySqlCommand("SELECT LAST_INSERT_ID()", connection, transaction).ExecuteScalar(), CultureInfo.InvariantCulture);
+            var rentalId = Convert.ToInt32(insertCommand.ExecuteScalar(), CultureInfo.InvariantCulture);
 
             _notificationWriter.Create(
                 connection,
@@ -187,7 +190,7 @@ public class RentalsController : ControllerBase
 
             return Ok(new
             {
-                Message = "Booking request submitted successfully.",
+                Message  = "Booking request submitted successfully.",
                 RentalId = rentalId
             });
         }
@@ -202,11 +205,11 @@ public class RentalsController : ControllerBase
     {
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
             using var transaction = connection.BeginTransaction();
 
-            using var command = new MySqlCommand(
+            using var command = new NpgsqlCommand(
                 @"SELECT
                     r.customer_id,
                     r.driver_id,
@@ -219,7 +222,8 @@ public class RentalsController : ControllerBase
                   JOIN vehicles v ON v.vehicle_id = r.vehicle_id
                   LEFT JOIN drivers d ON d.driver_id = r.driver_id
                   WHERE r.rental_id = @id
-                  LIMIT 1",
+                  LIMIT 1
+                  FOR UPDATE OF r",
                 connection,
                 transaction);
             command.Parameters.AddWithValue("@id", id);
@@ -230,13 +234,13 @@ public class RentalsController : ControllerBase
                 return NotFound(new { Message = "Rental not found." });
             }
 
-            var customerId = Convert.ToInt32(reader["customer_id"], CultureInfo.InvariantCulture);
-            var vehicleId = Convert.ToInt32(reader["vehicle_id"], CultureInfo.InvariantCulture);
-            var driverId = reader["driver_id"] == DBNull.Value ? (int?)null : Convert.ToInt32(reader["driver_id"], CultureInfo.InvariantCulture);
-            var driverUserId = reader["driver_user_id"] == DBNull.Value ? (int?)null : Convert.ToInt32(reader["driver_user_id"], CultureInfo.InvariantCulture);
-            var rentalStatus = reader["rental_status"]?.ToString() ?? string.Empty;
+            var customerId    = Convert.ToInt32(reader["customer_id"], CultureInfo.InvariantCulture);
+            var vehicleId     = Convert.ToInt32(reader["vehicle_id"], CultureInfo.InvariantCulture);
+            var driverId      = reader["driver_id"] == DBNull.Value ? (int?)null : Convert.ToInt32(reader["driver_id"], CultureInfo.InvariantCulture);
+            var driverUserId  = reader["driver_user_id"] == DBNull.Value ? (int?)null : Convert.ToInt32(reader["driver_user_id"], CultureInfo.InvariantCulture);
+            var rentalStatus  = reader["rental_status"]?.ToString() ?? string.Empty;
             var vehicleStatus = reader["vehicle_status"]?.ToString() ?? string.Empty;
-            var driverStatus = reader["driver_status"]?.ToString() ?? string.Empty;
+            var driverStatus  = reader["driver_status"]?.ToString() ?? string.Empty;
             reader.Close();
 
             if (!string.Equals(rentalStatus, "pending", StringComparison.OrdinalIgnoreCase))
@@ -295,7 +299,7 @@ public class RentalsController : ControllerBase
     {
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
             using var transaction = connection.BeginTransaction();
 
@@ -333,7 +337,7 @@ public class RentalsController : ControllerBase
     {
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
             using var transaction = connection.BeginTransaction();
 
@@ -394,7 +398,7 @@ public class RentalsController : ControllerBase
     {
         try
         {
-            using var connection = new MySqlConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
             using var transaction = connection.BeginTransaction();
 
@@ -447,14 +451,71 @@ public class RentalsController : ControllerBase
         }
     }
 
+
+    // GET /api/rentals/calendar?year=2026&month=7
+    [HttpGet("calendar")]
+    public async Task<IActionResult> GetCalendarEvents([FromQuery] int? year, [FromQuery] int? month)
+    {
+        try
+        {
+            int y = year  ?? DateTime.Now.Year;
+            int m = month ?? DateTime.Now.Month;
+            var startRange = new DateTime(y, m, 1);
+            var endRange   = startRange.AddMonths(1).AddDays(-1);
+
+            var events = new List<object>();
+            await using var conn = await _ds.OpenConnectionAsync();
+            await using var cmd  = new NpgsqlCommand(
+                @"SELECT r.rental_id, r.start_date, r.end_date, r.status,
+                         r.destination, r.total_amount, r.payment_status,
+                         u.full_name AS customer_name,
+                         CONCAT(v.brand, ' ', v.model) AS vehicle_name,
+                         v.plate_no,
+                         COALESCE(du.full_name, 'Self-Drive') AS driver_name
+                  FROM rentals r
+                  JOIN users u   ON r.customer_id = u.user_id
+                  JOIN vehicles v ON r.vehicle_id = v.vehicle_id
+                  LEFT JOIN drivers d  ON r.driver_id = d.driver_id
+                  LEFT JOIN users du   ON d.user_id = du.user_id
+                  WHERE r.start_date <= @end AND r.end_date >= @start
+                  ORDER BY r.start_date ASC", conn);
+            cmd.Parameters.AddWithValue("@start", NpgsqlTypes.NpgsqlDbType.Date, startRange);
+            cmd.Parameters.AddWithValue("@end",   NpgsqlTypes.NpgsqlDbType.Date, endRange);
+            cmd.CommandTimeout = 30;
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                events.Add(new {
+                    rentalId     = reader.GetInt32(reader.GetOrdinal("rental_id")),
+                    startDate    = reader.GetDateTime(reader.GetOrdinal("start_date")).ToString("yyyy-MM-dd"),
+                    endDate      = reader.IsDBNull(reader.GetOrdinal("end_date")) ? null
+                                   : reader.GetDateTime(reader.GetOrdinal("end_date")).ToString("yyyy-MM-dd"),
+                    status       = reader["status"]?.ToString() ?? "pending",
+                    destination  = reader.IsDBNull(reader.GetOrdinal("destination")) ? null : reader["destination"].ToString(),
+                    totalAmount  = Convert.ToDecimal(reader["total_amount"]),
+                    paymentStatus = reader["payment_status"]?.ToString(),
+                    customerName = reader["customer_name"]?.ToString(),
+                    vehicleName  = reader["vehicle_name"]?.ToString(),
+                    plateNo      = reader["plate_no"]?.ToString(),
+                    driverName   = reader["driver_name"]?.ToString()
+                });
+            }
+            return Ok(events);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = ex.Message });
+        }
+    }
     private List<Rental> ReadRentals(string? whereClause = null, int? id = null, string? orderBy = null)
     {
         var rentals = new List<Rental>();
 
-        using var connection = new MySqlConnection(_connectionString);
+        using var connection = new NpgsqlConnection(_connectionString);
         connection.Open();
 
-        using var command = new MySqlCommand(BuildRentalQuery(whereClause, orderBy), connection);
+        using var command = new NpgsqlCommand(BuildRentalQuery(whereClause, orderBy), connection);
         if (id.HasValue)
         {
             command.Parameters.AddWithValue("@id", id.Value);
@@ -510,35 +571,35 @@ public class RentalsController : ControllerBase
         return sql;
     }
 
-    private static Rental MapRental(MySqlDataReader reader)
+    private static Rental MapRental(NpgsqlDataReader reader)
     {
         return new Rental
         {
-            RentalId = Convert.ToInt32(reader["rental_id"], CultureInfo.InvariantCulture),
-            CustomerId = Convert.ToInt32(reader["customer_id"], CultureInfo.InvariantCulture),
-            VehicleId = Convert.ToInt32(reader["vehicle_id"], CultureInfo.InvariantCulture),
-            DriverId = reader["driver_id"] == DBNull.Value ? (int?)null : Convert.ToInt32(reader["driver_id"], CultureInfo.InvariantCulture),
-            StartDate = Convert.ToDateTime(reader["start_date"], CultureInfo.InvariantCulture),
-            EndDate = reader["end_date"] == DBNull.Value ? null : Convert.ToDateTime(reader["end_date"], CultureInfo.InvariantCulture),
-            Destination = reader["destination"] == DBNull.Value ? null : reader["destination"].ToString(),
-            Status = reader["status"]?.ToString() ?? "pending",
-            TotalAmount = reader["total_amount"] == DBNull.Value ? 0 : Convert.ToDecimal(reader["total_amount"], CultureInfo.InvariantCulture),
+            RentalId      = Convert.ToInt32(reader["rental_id"], CultureInfo.InvariantCulture),
+            CustomerId    = Convert.ToInt32(reader["customer_id"], CultureInfo.InvariantCulture),
+            VehicleId     = Convert.ToInt32(reader["vehicle_id"], CultureInfo.InvariantCulture),
+            DriverId      = reader["driver_id"] == DBNull.Value ? (int?)null : Convert.ToInt32(reader["driver_id"], CultureInfo.InvariantCulture),
+            StartDate     = Convert.ToDateTime(reader["start_date"], CultureInfo.InvariantCulture),
+            EndDate       = reader["end_date"] == DBNull.Value ? null : Convert.ToDateTime(reader["end_date"], CultureInfo.InvariantCulture),
+            Destination   = reader["destination"] == DBNull.Value ? null : reader["destination"].ToString(),
+            Status        = reader["status"]?.ToString() ?? "pending",
+            TotalAmount   = reader["total_amount"] == DBNull.Value ? 0 : Convert.ToDecimal(reader["total_amount"], CultureInfo.InvariantCulture),
             PaymentMethod = reader["payment_method"]?.ToString() ?? "cash",
             PaymentStatus = reader["payment_status"]?.ToString() ?? "unpaid",
-            CreatedAt = reader["created_at"] == DBNull.Value ? DateTime.UtcNow : Convert.ToDateTime(reader["created_at"], CultureInfo.InvariantCulture),
-            CustomerName = reader["customer_name"] == DBNull.Value ? null : reader["customer_name"].ToString(),
+            CreatedAt     = reader["created_at"] == DBNull.Value ? DateTime.UtcNow : Convert.ToDateTime(reader["created_at"], CultureInfo.InvariantCulture),
+            CustomerName  = reader["customer_name"] == DBNull.Value ? null : reader["customer_name"].ToString(),
             CustomerPhone = reader["customer_phone"] == DBNull.Value ? null : reader["customer_phone"].ToString(),
             CustomerEmail = reader["customer_email"] == DBNull.Value ? null : reader["customer_email"].ToString(),
-            VehicleName = reader["vehicle_name"] == DBNull.Value ? null : reader["vehicle_name"].ToString(),
+            VehicleName   = reader["vehicle_name"] == DBNull.Value ? null : reader["vehicle_name"].ToString(),
             VehiclePlateNo = reader["vehicle_plate_no"] == DBNull.Value ? null : reader["vehicle_plate_no"].ToString(),
-            DriverName = reader["driver_name"] == DBNull.Value ? null : reader["driver_name"].ToString(),
-            DriverPhone = reader["driver_phone"] == DBNull.Value ? null : reader["driver_phone"].ToString()
+            DriverName    = reader["driver_name"] == DBNull.Value ? null : reader["driver_name"].ToString(),
+            DriverPhone   = reader["driver_phone"] == DBNull.Value ? null : reader["driver_phone"].ToString()
         };
     }
 
-    private static void ExecuteStatusUpdate(MySqlConnection connection, MySqlTransaction transaction, string sql, int id)
+    private static void ExecuteStatusUpdate(NpgsqlConnection connection, NpgsqlTransaction transaction, string sql, int id)
     {
-        using var command = new MySqlCommand(sql, connection, transaction);
+        using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("@id", id);
         command.ExecuteNonQuery();
     }
@@ -550,9 +611,9 @@ public class RentalsController : ControllerBase
             : value.Trim().ToLowerInvariant();
     }
 
-    private static RentalStatusSnapshot? GetRentalStatusSnapshot(MySqlConnection connection, MySqlTransaction transaction, int rentalId)
+    private static RentalStatusSnapshot? GetRentalStatusSnapshot(NpgsqlConnection connection, NpgsqlTransaction transaction, int rentalId)
     {
-        using var command = new MySqlCommand(
+        using var command = new NpgsqlCommand(
             @"SELECT
                 r.customer_id,
                 r.driver_id,
@@ -575,11 +636,11 @@ public class RentalsController : ControllerBase
 
         return new RentalStatusSnapshot
         {
-            CustomerId = Convert.ToInt32(reader["customer_id"], CultureInfo.InvariantCulture),
-            DriverId = reader["driver_id"] == DBNull.Value ? (int?)null : Convert.ToInt32(reader["driver_id"], CultureInfo.InvariantCulture),
+            CustomerId   = Convert.ToInt32(reader["customer_id"], CultureInfo.InvariantCulture),
+            DriverId     = reader["driver_id"] == DBNull.Value ? (int?)null : Convert.ToInt32(reader["driver_id"], CultureInfo.InvariantCulture),
             DriverUserId = reader["driver_user_id"] == DBNull.Value ? (int?)null : Convert.ToInt32(reader["driver_user_id"], CultureInfo.InvariantCulture),
-            VehicleId = Convert.ToInt32(reader["vehicle_id"], CultureInfo.InvariantCulture),
-            Status = reader["rental_status"]?.ToString() ?? string.Empty
+            VehicleId    = Convert.ToInt32(reader["vehicle_id"], CultureInfo.InvariantCulture),
+            Status       = reader["rental_status"]?.ToString() ?? string.Empty
         };
     }
 
@@ -591,4 +652,58 @@ public class RentalsController : ControllerBase
         public int? DriverUserId { get; set; }
         public string Status { get; set; } = string.Empty;
     }
+
+    // POST /api/rentals/{id}/split  — Barkada Mode split payments
+    [HttpPost("{id:int}/split")]
+    public async Task<IActionResult> CreateSplit(int id, [FromBody] SplitRequest req)
+    {
+        try {
+            await using var conn = await _ds.OpenConnectionAsync();
+            foreach (var share in req.Shares) {
+                await using var cmd = new NpgsqlCommand(
+                    "INSERT INTO split_payments (rental_id, email, share_amount, payment_status) VALUES (@rid, @email, @amt, 'pending')", conn);
+                cmd.Parameters.AddWithValue("@rid",   id);
+                cmd.Parameters.AddWithValue("@email", share.Email);
+                cmd.Parameters.AddWithValue("@amt",   share.Amount);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            return Ok(new { message = "Split payments initialized.", rentalId = id, count = req.Shares.Count });
+        } catch (Exception ex) { return StatusCode(500, new { message = ex.Message }); }
+    }
+
+    // GET /api/rentals/{id}/split
+    [HttpGet("{id:int}/split")]
+    public async Task<IActionResult> GetSplit(int id)
+    {
+        try {
+            var list = new List<object>();
+            await using var conn = await _ds.OpenConnectionAsync();
+            await using var cmd = new NpgsqlCommand(
+                "SELECT split_payment_id, email, share_amount, payment_status, paid_at FROM split_payments WHERE rental_id = @rid ORDER BY split_payment_id", conn);
+            cmd.Parameters.AddWithValue("@rid", id);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) {
+                list.Add(new {
+                    splitId       = reader.GetInt32(0),
+                    email         = reader.GetString(1),
+                    shareAmount   = reader.GetDecimal(2),
+                    paymentStatus = reader.GetString(3),
+                    paidAt        = reader.IsDBNull(4) ? null : reader.GetDateTime(4).ToString("yyyy-MM-dd HH:mm")
+                });
+            }
+            return Ok(list);
+        } catch (Exception ex) { return StatusCode(500, new { message = ex.Message }); }
+    }
 }
+
+public class SplitRequest
+{
+    public List<SplitShare> Shares { get; set; } = new();
+}
+
+public class SplitShare
+{
+    public string  Email  { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+}
+

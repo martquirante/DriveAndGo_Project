@@ -1,12 +1,14 @@
-﻿#nullable disable
+#nullable disable
 using DriveAndGo_Admin.Helpers;
 using DriveAndGo_Admin.Panels;
+using Microsoft.AspNetCore.SignalR.Client;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Reflection;
+using System.Text.Json;
 using System.Windows.Forms;
 
 namespace DriveAndGo_Admin
@@ -20,6 +22,10 @@ namespace DriveAndGo_Admin
 
         // ── State ──
         private bool _sidebarCollapsed = false;
+        private UserControl _activePanel;
+        private HubConnection _hubConnection;
+        private int _unreadNotifCount = 0;
+        private List<dynamic> _notifications = new();
 
         // ── UI ──
         private Panel sidebarPanel;
@@ -51,6 +57,10 @@ namespace DriveAndGo_Admin
         private Button btnDrivers;
         private Button btnTransactions;
         private Button btnReports;
+        private Button btnCalendar;
+        private Button btnDocVault;
+        private Button btnExpenses;
+        private Button btnSplitPay;
         private Button btnLogout;
 
         // ── Animation ──
@@ -94,6 +104,19 @@ namespace DriveAndGo_Admin
 
         public MainForm()
         {
+            try
+            {
+                var iconPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "logo.png");
+                if (System.IO.File.Exists(iconPath))
+                {
+                    using (var bmp = new Bitmap(iconPath))
+                    {
+                        this.Icon = Icon.FromHandle(bmp.GetHicon());
+                    }
+                }
+            }
+            catch { }
+
             SetDoubleBuffer(this);
             InitializeForm();
             BuildSidebar();
@@ -105,6 +128,73 @@ namespace DriveAndGo_Admin
             var dash = new DashboardPanel();
             ThemeManager.ThemeChanged += (s, e) => dash?.GetType();
             LoadPanel(dash);
+            InitializeSignalR();
+        }
+
+        private async void InitializeSignalR()
+        {
+            try
+            {
+                // Connect to the API SignalR Hub
+                _hubConnection = new HubConnectionBuilder()
+                    .WithUrl(ApiService.BaseUrl.Replace("/api", "") + "/hubs/admin")
+                    .WithAutomaticReconnect()
+                    .Build();
+
+                _hubConnection.On("ReceiveVehicleUpdate", () =>
+                {
+                    if (this.IsDisposed || !this.IsHandleCreated) return;
+                    this.Invoke((System.Windows.Forms.MethodInvoker)(() =>
+                    {
+                        if (_activePanel is FleetPanel fleet)
+                        {
+                            fleet.LoadVehiclesFromDB();
+                        }
+                    }));
+                });
+
+                _hubConnection.On("ReceiveDashboardUpdate", () =>
+                {
+                    if (this.IsDisposed || !this.IsHandleCreated) return;
+                    this.Invoke((System.Windows.Forms.MethodInvoker)(() =>
+                    {
+                        if (_activePanel is DashboardPanel dash)
+                        {
+                            dash.LoadStatsFromDB();
+                        }
+                    }));
+                });
+
+                _hubConnection.On<JsonElement>("ReceiveNotification", (notif) =>
+                {
+                    if (this.IsDisposed || !this.IsHandleCreated) return;
+                    this.Invoke((System.Windows.Forms.MethodInvoker)(() =>
+                    {
+                        _unreadNotifCount++;
+                        btnNotifications.Invalidate();
+
+                        try
+                        {
+                            string title = notif.GetProperty("title").GetString();
+                            string body = notif.GetProperty("body").GetString();
+                            _notifications.Insert(0, new { Title = title, Body = body, Time = DateTime.Now });
+
+                            ToolTip tt = new ToolTip();
+                            tt.ToolTipIcon = ToolTipIcon.Info;
+                            tt.ToolTipTitle = title;
+                            tt.Show(body, btnNotifications, 20, 45, 5000);
+                        }
+                        catch { }
+                    }));
+                });
+
+                await _hubConnection.StartAsync();
+                Console.WriteLine("SignalR connection established successfully.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("SignalR initialization failed: " + ex.Message);
+            }
         }
 
         // ══════════════════════════════════════════════
@@ -306,22 +396,26 @@ namespace DriveAndGo_Admin
             btnDrivers = CreateNavButton("Drivers", "👤", 276);
             btnTransactions = CreateNavButton("Transactions", "💳", 328);
             btnReports = CreateNavButton("Reports", "📈", 380);
+            btnCalendar = CreateNavButton("Calendar", "📅", 432);
+            btnDocVault = CreateNavButton("Doc Vault", "📋", 484);
+            btnExpenses = CreateNavButton("Expenses", "💰", 536);
+            btnSplitPay = CreateNavButton("Split Pay", "🤝", 588);
 
             btnDashboard.Click += (s, e) => { SetActiveButton(btnDashboard); LoadPanel(new DashboardPanel()); };
             btnVehicles.Click += (s, e) => { SetActiveButton(btnVehicles); LoadPanel(new FleetPanel()); };
 
             btnRentals.Click += (s, e) => {
                 SetActiveButton(btnRentals);
-
-                // Tatawagin na natin yung ginawa nating RentalsPanel!
                 LoadPanel(new RentalsPanel());
             };
 
-            // Note: DriversPanel is not yet implemented, but we can still set it up in the sidebar and show a placeholder when clicked.
-            // Ito ung pinaplitan ko lagigit ng actual panel pag na-click, para ma-test yung navigation at theme consistency kahit hindi pa tapos yung panel.
             btnDrivers.Click += (s, e) => { SetActiveButton(btnDrivers); LoadPanel(new DriversPanel()); };
             btnTransactions.Click += (s, e) => { SetActiveButton(btnTransactions); LoadPanel(new TransactionsPanel()); };
             btnReports.Click += (s, e) => { SetActiveButton(btnReports); LoadPanel(new ReportsPanel()); };
+            btnCalendar.Click += (s, e) => { SetActiveButton(btnCalendar); LoadPanel(new CalendarPanel()); };
+            btnDocVault.Click += (s, e) => { SetActiveButton(btnDocVault); LoadPanel(new DocumentVaultPanel()); };
+            btnExpenses.Click += (s, e) => { SetActiveButton(btnExpenses); LoadPanel(new ExpensesPanel()); };
+            btnSplitPay.Click += (s, e) => { SetActiveButton(btnSplitPay); LoadPanel(new SplitPaymentsPanel()); };
 
             dividerBottom = new Panel();
             dividerBottom.Size = new Size(200, 1);
@@ -406,6 +500,10 @@ namespace DriveAndGo_Admin
             sidebarPanel.Controls.Add(btnDrivers);
             sidebarPanel.Controls.Add(btnTransactions);
             sidebarPanel.Controls.Add(btnReports);
+            sidebarPanel.Controls.Add(btnCalendar);
+            sidebarPanel.Controls.Add(btnDocVault);
+            sidebarPanel.Controls.Add(btnExpenses);
+            sidebarPanel.Controls.Add(btnSplitPay);
             sidebarPanel.Controls.Add(dividerBottom);
             sidebarPanel.Controls.Add(userPanel);
             sidebarPanel.Controls.Add(btnLogout);
@@ -493,6 +591,70 @@ namespace DriveAndGo_Admin
             btnNotifications.Cursor = Cursors.Hand;
             SetRoundRegion(btnNotifications, 20);
             AttachRipple(btnNotifications, ThemeManager.CurrentPrimary);
+
+            btnNotifications.Paint += (s, e) =>
+            {
+                if (_unreadNotifCount > 0)
+                {
+                    e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                    int badgeSize = 16;
+                    var rect = new Rectangle(btnNotifications.Width - badgeSize - 2, 2, badgeSize, badgeSize);
+                    using var brush = new SolidBrush(Color.FromArgb(239, 68, 68)); // Tailwind Red 500
+                    e.Graphics.FillEllipse(brush, rect);
+
+                    using var font = new Font("Segoe UI", 8F, FontStyle.Bold);
+                    using var format = new StringFormat
+                    {
+                        Alignment = StringAlignment.Center,
+                        LineAlignment = StringAlignment.Center
+                    };
+                    string txt = _unreadNotifCount > 9 ? "9+" : _unreadNotifCount.ToString();
+                    e.Graphics.DrawString(txt, font, Brushes.White, rect, format);
+                }
+            };
+
+            btnNotifications.Click += (s, e) =>
+            {
+                _unreadNotifCount = 0;
+                btnNotifications.Invalidate();
+
+                var menu = new ContextMenuStrip();
+                menu.BackColor = ThemeManager.CurrentCard;
+                menu.ForeColor = ThemeManager.CurrentText;
+                menu.ShowImageMargin = false;
+
+                if (_notifications.Count == 0)
+                {
+                    var item = menu.Items.Add("No notifications");
+                    item.Enabled = false;
+                }
+                else
+                {
+                    var count = Math.Min(6, _notifications.Count);
+                    for (int i = 0; i < count; i++)
+                    {
+                        var n = _notifications[i];
+                        string title = n.Title;
+                        string body = n.Body;
+                        DateTime time = n.Time;
+                        var diff = DateTime.Now - time;
+                        string timeAgo = diff.TotalMinutes < 1 ? "Just now" :
+                                         diff.TotalMinutes < 60 ? $"{(int)diff.TotalMinutes} mins ago" :
+                                         diff.TotalHours < 24 ? $"{(int)diff.TotalHours} hours ago" :
+                                         time.ToString("MMM dd, HH:mm");
+
+                        var item = menu.Items.Add($"{title}\n{body} ({timeAgo})");
+                        item.Font = new Font("Segoe UI", 9F);
+                    }
+
+                    menu.Items.Add(new ToolStripSeparator());
+                    var markAllItem = menu.Items.Add("Clear all notifications");
+                    markAllItem.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+                    markAllItem.Click += (ms, me) => _notifications.Clear();
+                }
+
+                menu.Show(btnNotifications, new Point(0, btnNotifications.Height));
+            };
 
 
             // Ung button na toggle ng theme (dark/light) - custom drawn para smooth at walang text
@@ -602,6 +764,7 @@ namespace DriveAndGo_Admin
         // ══════════════════════════════════════════════
         public void LoadPanel(UserControl panel)
         {
+            _activePanel = panel;
             contentPanel.Controls.Clear();
 
             panel.Size = contentPanel.ClientSize;
@@ -716,6 +879,10 @@ namespace DriveAndGo_Admin
                 (btnDrivers,      "👤", "Drivers"),
                 (btnTransactions, "💳", "Transactions"),
                 (btnReports,      "📈", "Reports"),
+                (btnCalendar,     "📅", "Calendar"),
+                (btnDocVault,     "📋", "Doc Vault"),
+                (btnExpenses,     "💰", "Expenses"),
+                (btnSplitPay,     "🤝", "Split Pay"),
             };
 
             foreach (var (btn, icon, text) in map)
@@ -781,7 +948,7 @@ namespace DriveAndGo_Admin
 
         private void RefreshNavButtonRegions()
         {
-            var buttons = new[] { btnDashboard, btnVehicles, btnRentals, btnDrivers, btnTransactions, btnReports, btnLogout };
+            var buttons = new[] { btnDashboard, btnVehicles, btnRentals, btnDrivers, btnTransactions, btnReports, btnCalendar, btnDocVault, btnExpenses, btnSplitPay, btnLogout };
             foreach (var b in buttons)
                 SetRoundRegion(b, 8);
         }
@@ -888,7 +1055,7 @@ namespace DriveAndGo_Admin
 
         private void AttachAllRipples()
         {
-            var navBtns = new[] { btnDashboard, btnVehicles, btnRentals, btnDrivers, btnTransactions, btnReports };
+            var navBtns = new[] { btnDashboard, btnVehicles, btnRentals, btnDrivers, btnTransactions, btnReports, btnCalendar, btnDocVault, btnExpenses, btnSplitPay };
             foreach (var b in navBtns)
                 AttachRipple(b, ThemeManager.CurrentPrimary);
         }
@@ -930,7 +1097,7 @@ namespace DriveAndGo_Admin
         // ══════════════════════════════════════════════
         private void StartAnimations()
         {
-            var navBtns = new[] { btnDashboard, btnVehicles, btnRentals, btnDrivers, btnTransactions, btnReports };
+            var navBtns = new[] { btnDashboard, btnVehicles, btnRentals, btnDrivers, btnTransactions, btnReports, btnCalendar, btnDocVault, btnExpenses, btnSplitPay };
             foreach (var b in navBtns)
             {
                 AttachHoverGlow(b);

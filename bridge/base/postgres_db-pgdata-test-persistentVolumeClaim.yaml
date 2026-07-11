@@ -1,0 +1,18 @@
+#! postgres_db-pgdata-test-persistentVolumeClaim.yaml
+# Generated code, do not edit
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+    name: postgres_db-pgdata-test
+    namespace: driveandgo-project
+    labels:
+        com.docker.compose.service: postgres_db
+        com.docker.compose.volume: pgdata_test
+spec:
+    accessModes:
+        # TODO would need to check which services use this volume
+        - ReadWriteOnce
+    volumeMode: Filesystem
+    resources:
+        requests:
+            storage: 100Mi
