@@ -423,6 +423,49 @@ public class RentalsController : ControllerBase
                 ExecuteStatusUpdate(connection, transaction, "UPDATE drivers SET status = 'available' WHERE driver_id = @id", rental.DriverId.Value);
             }
 
+            // Odometer Telematics Increment & Maintenance Check
+            decimal currentOdometer = 0;
+            decimal lastMaintOdometer = 0;
+            using (var selectCmd = new NpgsqlCommand("SELECT COALESCE(current_odometer, 0), COALESCE(last_maintenance_odometer, 0) FROM vehicles WHERE vehicle_id = @vid", connection, transaction))
+            {
+                selectCmd.Parameters.AddWithValue("@vid", rental.VehicleId);
+                using var reader = selectCmd.ExecuteReader();
+                if (reader.Read())
+                {
+                    currentOdometer = Convert.ToDecimal(reader[0]);
+                    lastMaintOdometer = Convert.ToDecimal(reader[1]);
+                }
+            }
+
+            decimal tripDistance = new Random().Next(150, 800); // simulated trip distance
+            decimal newOdometer = currentOdometer + tripDistance;
+
+            using (var updateCmd = new NpgsqlCommand("UPDATE vehicles SET current_odometer = @odo WHERE vehicle_id = @vid", connection, transaction))
+            {
+                updateCmd.Parameters.AddWithValue("@odo", newOdometer);
+                updateCmd.Parameters.AddWithValue("@vid", rental.VehicleId);
+                updateCmd.ExecuteNonQuery();
+            }
+
+            if (newOdometer - lastMaintOdometer >= 5000)
+            {
+                string vehicleInfo = "Vehicle #" + rental.VehicleId;
+                using (var nameCmd = new NpgsqlCommand("SELECT CONCAT(brand, ' ', model, ' (', plate_no, ')') FROM vehicles WHERE vehicle_id = @vid", connection, transaction))
+                {
+                    nameCmd.Parameters.AddWithValue("@vid", rental.VehicleId);
+                    var nameVal = nameCmd.ExecuteScalar();
+                    if (nameVal != null) vehicleInfo = nameVal.ToString();
+                }
+
+                _notificationWriter.Create(
+                    connection,
+                    1, // Admin User Id
+                    "🔧 MAINTENANCE DUE",
+                    $"Oil change required immediately for {vehicleInfo} (Odometer: {newOdometer:F0} km).",
+                    "maintenance-due",
+                    transaction);
+            }
+
             _notificationWriter.Create(
                 connection,
                 rental.CustomerId,

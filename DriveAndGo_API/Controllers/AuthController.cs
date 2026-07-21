@@ -103,6 +103,9 @@ public class AuthController : ControllerBase
                     u.password_hash,
                     u.phone,
                     u.role,
+                    u.failed_login_attempts,
+                    u.lockout_enabled,
+                    u.lockout_end,
                     d.driver_id
                   FROM users u
                   LEFT JOIN drivers d ON d.user_id = u.user_id
@@ -119,6 +122,16 @@ public class AuthController : ControllerBase
             }
 
             var storedHash = reader["password_hash"]?.ToString() ?? string.Empty;
+            int userId = Convert.ToInt32(reader["user_id"]);
+            int failedAttempts = reader["failed_login_attempts"] != DBNull.Value ? Convert.ToInt32(reader["failed_login_attempts"]) : 0;
+            bool lockoutEnabled = reader["lockout_enabled"] != DBNull.Value && Convert.ToBoolean(reader["lockout_enabled"]);
+            var lockoutEnd = reader["lockout_end"] != DBNull.Value ? (DateTime?)Convert.ToDateTime(reader["lockout_end"]) : null;
+
+            if (lockoutEnabled && lockoutEnd.HasValue && lockoutEnd.Value > DateTime.UtcNow)
+            {
+                return StatusCode(423, new { Message = $"Account locked due to consecutive failed login attempts. Try again after {lockoutEnd.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss}." });
+            }
+
             bool isValid = false;
             try
             {
@@ -126,24 +139,81 @@ public class AuthController : ControllerBase
             }
             catch
             {
-                // Fallback for unhashed legacy passwords from existing database
                 isValid = string.Equals(request.Password, storedHash, StringComparison.Ordinal);
             }
 
             if (!isValid && !string.Equals(request.Password, storedHash, StringComparison.Ordinal))
             {
-                return Unauthorized(new { Message = "Invalid email or password." });
+                reader.Close();
+                failedAttempts++;
+                if (failedAttempts >= 5)
+                {
+                    DateTime lockoutEndVal = DateTime.UtcNow.AddMinutes(15);
+                    using (var lockCmd = new NpgsqlCommand("UPDATE users SET failed_login_attempts = @attempts, lockout_enabled = true, lockout_end = @end WHERE user_id = @uid", connection))
+                    {
+                        lockCmd.Parameters.AddWithValue("@attempts", failedAttempts);
+                        lockCmd.Parameters.AddWithValue("@end", lockoutEndVal);
+                        lockCmd.Parameters.AddWithValue("@uid", userId);
+                        lockCmd.ExecuteNonQuery();
+                    }
+                    return StatusCode(423, new { Message = "Account locked for 15 minutes due to 5 consecutive failed login attempts." });
+                }
+                else
+                {
+                    using (var failCmd = new NpgsqlCommand("UPDATE users SET failed_login_attempts = @attempts WHERE user_id = @uid", connection))
+                    {
+                        failCmd.Parameters.AddWithValue("@attempts", failedAttempts);
+                        failCmd.Parameters.AddWithValue("@uid", userId);
+                        failCmd.ExecuteNonQuery();
+                    }
+                    return Unauthorized(new { Message = $"Invalid email or password. Attempt {failedAttempts} of 5." });
+                }
+            }
+
+            // Reset failed login attempts on successful login
+            reader.Close();
+            if (failedAttempts > 0 || lockoutEnabled)
+            {
+                using (var resetCmd = new NpgsqlCommand("UPDATE users SET failed_login_attempts = 0, lockout_enabled = false, lockout_end = NULL WHERE user_id = @uid", connection))
+                {
+                    resetCmd.Parameters.AddWithValue("@uid", userId);
+                    resetCmd.ExecuteNonQuery();
+                }
+            }
+
+            // Re-open reader to fetch the results or query again (simpler to query again or read variables)
+            string fullName = "";
+            string email = "";
+            string phone = "";
+            string role = "";
+            int? driverId = null;
+
+            using (var finalCmd = new NpgsqlCommand(
+                @"SELECT u.full_name, u.email, u.phone, u.role, d.driver_id 
+                  FROM users u LEFT JOIN drivers d ON d.user_id = u.user_id 
+                  WHERE u.user_id = @uid", connection))
+            {
+                finalCmd.Parameters.AddWithValue("@uid", userId);
+                using var finalReader = finalCmd.ExecuteReader();
+                if (finalReader.Read())
+                {
+                    fullName = finalReader["full_name"]?.ToString() ?? string.Empty;
+                    email = finalReader["email"]?.ToString() ?? string.Empty;
+                    phone = finalReader["phone"]?.ToString() ?? string.Empty;
+                    role = finalReader["role"]?.ToString() ?? "customer";
+                    driverId = finalReader["driver_id"] == DBNull.Value ? null : (int?)Convert.ToInt32(finalReader["driver_id"]);
+                }
             }
 
             return Ok(new AuthResponse
             {
                 Message  = "Login successful.",
-                UserId   = Convert.ToInt32(reader["user_id"]),
-                DriverId = reader["driver_id"] == DBNull.Value ? null : Convert.ToInt32(reader["driver_id"]),
-                FullName = reader["full_name"]?.ToString() ?? string.Empty,
-                Email    = reader["email"]?.ToString() ?? string.Empty,
-                Phone    = reader["phone"]?.ToString() ?? string.Empty,
-                Role     = reader["role"]?.ToString() ?? "customer"
+                UserId   = userId,
+                DriverId = driverId,
+                FullName = fullName,
+                Email    = email,
+                Phone    = phone,
+                Role     = role
             });
         }
         catch (Exception ex)

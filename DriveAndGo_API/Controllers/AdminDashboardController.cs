@@ -9,10 +9,12 @@ namespace DriveAndGo_API.Controllers;
 public class AdminDashboardController : ControllerBase
 {
     private readonly IAdminDashboardService _dashboardService;
+    private readonly IConfiguration _configuration;
 
-    public AdminDashboardController(IAdminDashboardService dashboardService)
+    public AdminDashboardController(IAdminDashboardService dashboardService, IConfiguration configuration)
     {
         _dashboardService = dashboardService;
+        _configuration = configuration;
     }
 
     [HttpGet("summary")]
@@ -80,133 +82,157 @@ public class AdminDashboardController : ControllerBase
                         $"Format the response in friendly, professional markdown.";
 
         // --- Multi-Provider Fallback Pipeline Keys ---
-        string openRouterKey = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY") ?? string.Empty;
-        string geminiDirectKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY") ?? string.Empty;
-        string groqKey         = Environment.GetEnvironmentVariable("GROQ_API_KEY") ?? string.Empty;
+        string openRouterKey = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY") 
+            ?? _configuration["AiConfig:OpenRouterApiKey"] 
+            ?? string.Empty;
+        string geminiDirectKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY") 
+            ?? _configuration["AiConfig:GeminiApiKey"] 
+            ?? string.Empty;
+        string groqKey         = Environment.GetEnvironmentVariable("GROQ_API_KEY") 
+            ?? _configuration["AiConfig:GroqApiKey"] 
+            ?? string.Empty;
 
-        // ─────────────────────────────────────────────────────────────
-        //  TIER 1: OpenRouter (Gemini Flash)
-        // ─────────────────────────────────────────────────────────────
-        try
+        // Define provider invocation tasks
+        var providers = new List<(string SourceName, Func<Task<string>> Call)>
         {
-            using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(8) };
-            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", openRouterKey);
-            client.DefaultRequestHeaders.Add("HTTP-Referer", "http://driveandgo.com");
-            client.DefaultRequestHeaders.Add("X-Title", "DriveAndGo Admin Portal");
+            ("AI Engine (OpenRouter - Gemini)", () => TryOpenRouter(prompt, openRouterKey)),
+            ("AI Engine (Google AI Studio Direct)", () => TryGeminiDirect(prompt, geminiDirectKey)),
+            ("AI Engine (Groq - Llama)", () => TryGroq(prompt, groqKey))
+        };
 
-            var requestBody = new
+        // Shuffle providers to achieve automatic load-balancing
+        var rnd = new Random();
+        var shuffledProviders = providers.OrderBy(_ => rnd.Next()).ToList();
+
+        string contentText = null;
+        string activeSource = "Rule Engine (Local Fallback)";
+
+        foreach (var provider in shuffledProviders)
+        {
+            try
             {
-                model = "google/gemini-2.5-flash",
-                messages = new[] { new { role = "user", content = prompt } }
-            };
-
-            var json = System.Text.Json.JsonSerializer.Serialize(requestBody);
-            using var content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
-
-            var response = await client.PostAsync("https://openrouter.ai/api/v1/chat/completions", content);
-            if (response.IsSuccessStatusCode)
-            {
-                var body = await response.Content.ReadAsStringAsync();
-                var doc = System.Text.Json.JsonDocument.Parse(body);
-                var text = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
-                if (!string.IsNullOrEmpty(text))
+                string res = await provider.Call();
+                if (!string.IsNullOrEmpty(res))
                 {
-                    return Ok(new { source = "AI Engine (OpenRouter - Gemini)", content = text });
+                    contentText = res;
+                    activeSource = provider.SourceName;
+                    break;
                 }
             }
-        }
-        catch { }
-
-        // ─────────────────────────────────────────────────────────────
-        //  TIER 2: Google AI Studio Direct (Gemini)
-        // ─────────────────────────────────────────────────────────────
-        try
-        {
-            using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(8) };
-            var requestBody = new
+            catch
             {
-                contents = new[]
-                {
-                    new { parts = new[] { new { text = prompt } } }
-                }
-            };
-
-            var json = System.Text.Json.JsonSerializer.Serialize(requestBody);
-            using var content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
-
-            // Google Gemini generateContent endpoint
-            var response = await client.PostAsync($"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={geminiDirectKey}", content);
-            if (response.IsSuccessStatusCode)
-            {
-                var body = await response.Content.ReadAsStringAsync();
-                var doc = System.Text.Json.JsonDocument.Parse(body);
-                var text = doc.RootElement
-                    .GetProperty("candidates")[0]
-                    .GetProperty("content")
-                    .GetProperty("parts")[0]
-                    .GetProperty("text")
-                    .GetString();
-
-                if (!string.IsNullOrEmpty(text))
-                {
-                    return Ok(new { source = "AI Engine (Google AI Studio Direct)", content = text });
-                }
+                // Fallback to next available tier in pipeline
             }
         }
-        catch { }
 
-        // ─────────────────────────────────────────────────────────────
-        //  TIER 3: Groq Cloud (Llama 3.1 8B Instant)
-        // ─────────────────────────────────────────────────────────────
-        try
+        // If all online AI endpoints fail, fallback to the local analytics rule engine
+        if (string.IsNullOrEmpty(contentText))
         {
-            using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(8) };
-            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", groqKey);
+            string occupancyMsg = occupancy > 70 
+                ? "Your occupancy rate is excellent! Consider raising weekend rates slightly to optimize yield."
+                : "Occupancy is low. We recommend running promotional campaigns or lowering daily rates temporarily.";
 
-            var requestBody = new
-            {
-                model = "llama-3.1-8b-instant",
-                messages = new[] { new { role = "user", content = prompt } }
-            };
-
-            var json = System.Text.Json.JsonSerializer.Serialize(requestBody);
-            using var content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
-
-            var response = await client.PostAsync("https://api.groq.com/openai/v1/chat/completions", content);
-            if (response.IsSuccessStatusCode)
-            {
-                var body = await response.Content.ReadAsStringAsync();
-                var doc = System.Text.Json.JsonDocument.Parse(body);
-                var text = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
-                if (!string.IsNullOrEmpty(text))
-                {
-                    return Ok(new { source = "AI Engine (Groq - Llama)", content = text });
-                }
-            }
+            contentText = $"### 💡 Drive & Go Business Health Analysis (Local Fallback Engine)\n\n" +
+                          $"*Note: Online AI services are currently offline or rate-limited. Generating report using local analytical engine.*\n\n" +
+                          $"#### 📊 Performance Summary\n" +
+                          $"* **Occupancy Rate**: **{occupancy}%** ({summary.ActiveRentals} active bookings out of {summary.TotalVehicles} vehicles).\n" +
+                          $"* **Revenue Performance**: Monthly revenue is currently at **₱{summary.RevenueThisMonth:N2}** (All-time: ₱{summary.TotalRevenueAllTime:N2}).\n" +
+                          $"* **Operations Alert**: There are **{summary.PendingRentals} pending bookings** awaiting admin action.\n\n" +
+                          $"#### 📈 Observations & Recommendations\n" +
+                          $"1. **Optimize Fleet Occupancy**:\n" +
+                          $"   - {occupancyMsg}\n" +
+                          $"2. **Actionable Operations Items**:\n" +
+                          $"   - Process the **{summary.PendingRentals} pending rental bookings** to release unutilized assets back to the catalog.\n" +
+                          $"3. **Dynamic Pricing Alert**:\n" +
+                          $"   - High demand days suggest adjusting baseline rates of top models by +10% during weekend peaks.";
         }
-        catch { }
 
-        // ─────────────────────────────────────────────────────────────
-        //  TIER 4: Fallback Local Analytics Rule-Based Engine
-        // ─────────────────────────────────────────────────────────────
-        string occupancyMsg = occupancy > 70 
-            ? "Your occupancy rate is excellent! Consider raising weekend rates slightly to optimize yield."
-            : "Occupancy is low. We recommend running promotional campaigns or lowering daily rates temporarily.";
+        // Return real-time parsed values alongside markdown content to eliminate client-side regex parsing issues
+        return Ok(new
+        {
+            source = activeSource,
+            content = contentText,
+            occupancy = occupancy,
+            monthlyRevenue = summary.RevenueThisMonth,
+            totalRevenue = summary.TotalRevenueAllTime,
+            pendingBookings = summary.PendingRentals
+        });
+    }
 
-        string fallbackMarkdown = $"### 💡 Drive & Go Business Health Analysis (Local Fallback Engine)\n\n" +
-                                  $"*Note: Online AI services are currently offline or rate-limited. Generating report using local analytical engine.*\n\n" +
-                                  $"#### 📊 Performance Summary\n" +
-                                  $"* **Occupancy Rate**: **{occupancy}%** ({summary.ActiveRentals} active bookings out of {summary.TotalVehicles} vehicles).\n" +
-                                  $"* **Revenue Performance**: Monthly revenue is currently at **₱{summary.RevenueThisMonth:N2}** (All-time: ₱{summary.TotalRevenueAllTime:N2}).\n" +
-                                  $"* **Operations Alert**: There are **{summary.PendingRentals} pending bookings** awaiting admin action.\n\n" +
-                                  $"#### 📈 Observations & Recommendations\n" +
-                                  $"1. **Optimize Fleet Occupancy**:\n" +
-                                  $"   - {occupancyMsg}\n" +
-                                  $"2. **Actionable Operations Items**:\n" +
-                                  $"   - Process the **{summary.PendingRentals} pending rental bookings** to release unutilized assets back to the catalog.\n" +
-                                  $"3. **Dynamic Pricing Alert**:\n" +
-                                  $"   - High demand days suggest adjusting baseline rates of top models by +10% during weekend peaks.";
+    private async Task<string> TryOpenRouter(string prompt, string key)
+    {
+        if (string.IsNullOrEmpty(key)) return null;
+        using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(7) };
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
+        client.DefaultRequestHeaders.Add("HTTP-Referer", "http://driveandgo.com");
+        client.DefaultRequestHeaders.Add("X-Title", "DriveAndGo Admin Portal");
 
-        return Ok(new { source = "Rule Engine (Local Fallback)", content = fallbackMarkdown });
+        var requestBody = new
+        {
+            model = "google/gemini-2.5-flash",
+            messages = new[] { new { role = "user", content = prompt } }
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(requestBody);
+        using var content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+        var response = await client.PostAsync("https://openrouter.ai/api/v1/chat/completions", content);
+        if (response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            return doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
+        }
+        return null;
+    }
+
+    private async Task<string> TryGeminiDirect(string prompt, string key)
+    {
+        if (string.IsNullOrEmpty(key)) return null;
+        using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(7) };
+        var requestBody = new
+        {
+            contents = new[]
+            {
+                new { parts = new[] { new { text = prompt } } }
+            }
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(requestBody);
+        using var content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+        var response = await client.PostAsync($"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}", content);
+        if (response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            return doc.RootElement.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString();
+        }
+        return null;
+    }
+
+    private async Task<string> TryGroq(string prompt, string key)
+    {
+        if (string.IsNullOrEmpty(key)) return null;
+        using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(7) };
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
+
+        var requestBody = new
+        {
+            model = "llama-3.1-8b-instant",
+            messages = new[] { new { role = "user", content = prompt } }
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(requestBody);
+        using var content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+        var response = await client.PostAsync("https://api.groq.com/openai/v1/chat/completions", content);
+        if (response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            return doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
+        }
+        return null;
     }
 }

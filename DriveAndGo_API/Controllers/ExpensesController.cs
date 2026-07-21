@@ -91,6 +91,103 @@ public class ExpensesController : ControllerBase
             });
         } catch (Exception ex) { return StatusCode(500, new { message = ex.Message }); }
     }
+
+    // POST /api/expenses/scan-receipt
+    [HttpPost("scan-receipt")]
+    public async Task<IActionResult> ScanReceipt([FromForm] IFormFile? receiptFile, [FromForm] int? vehicleId)
+    {
+        try
+        {
+            if (receiptFile == null)
+            {
+                return BadRequest(new { Message = "No receipt image file uploaded." });
+            }
+
+            // Simulated AI OCR Engine parsing binary stream
+            string fileName = receiptFile.FileName.ToLower();
+            string merchantName = "Shell Select Petron Station";
+            DateTime transactionDate = DateTime.Now.AddDays(-1);
+            decimal totalAmount = 1850.00m;
+            string category = "Fuel";
+
+            // Set dynamic metadata based on file naming simulation
+            if (fileName.Contains("toll") || fileName.Contains("highway"))
+            {
+                merchantName = "NLEX Tollways Corp";
+                category = "Tolls";
+                totalAmount = 450.00m;
+                if (fileName.Contains("high") || fileName.Contains("fraud"))
+                {
+                    totalAmount = 2500.00m; // exceeds ₱1500 Toll gate threshold
+                }
+            }
+            else if (fileName.Contains("repair") || fileName.Contains("wash") || fileName.Contains("maint"))
+            {
+                merchantName = "Auto Clean Premium Car Wash";
+                category = "Maintenance";
+                totalAmount = 1200.00m;
+                if (fileName.Contains("exceed") || fileName.Contains("expensive") || fileName.Contains("wash"))
+                {
+                    totalAmount = 2800.00m; // exceeds ₱2000 Car Wash threshold
+                }
+            }
+            else if (fileName.Contains("fuel") || fileName.Contains("gas"))
+            {
+                merchantName = "Caltex Petrol Hub";
+                category = "Fuel";
+                totalAmount = 3500.00m;
+                if (fileName.Contains("high") || fileName.Contains("fraud"))
+                {
+                    totalAmount = 9500.00m; // exceeds ₱8000 Fuel threshold
+                }
+            }
+
+            // Programmatic auditing threshold check
+            string status = "Approved";
+            if (category == "Tolls" && totalAmount > 1500.00m)
+            {
+                status = "Requires Manual Review / Flagged";
+            }
+            else if (category == "Maintenance" && totalAmount > 2000.00m)
+            {
+                status = "Requires Manual Review / Flagged";
+            }
+            else if (category == "Fuel" && totalAmount > 8000.00m)
+            {
+                status = "Requires Manual Review / Flagged";
+            }
+
+            // Insert into the database expenses table
+            await using var conn = await _ds.OpenConnectionAsync();
+            await using var cmd = new NpgsqlCommand(
+                "INSERT INTO expenses (vehicle_id, amount, category, receipt_url, status) VALUES (@vid, @amt, @cat, NULL, @status) RETURNING expense_id", conn);
+            cmd.Parameters.AddWithValue("@vid", vehicleId.HasValue ? (object)vehicleId.Value : DBNull.Value);
+            cmd.Parameters.AddWithValue("@amt", totalAmount);
+            cmd.Parameters.AddWithValue("@cat", category.ToLower());
+            cmd.Parameters.AddWithValue("@status", status);
+            
+            var expenseId = (int)(await cmd.ExecuteScalarAsync())!;
+
+            return Ok(new
+            {
+                success = true,
+                message = status == "Approved" ? "Receipt scanned successfully." : "Receipt flagged for audit review.",
+                expenseId = expenseId,
+                parsedData = new
+                {
+                    merchantName,
+                    transactionDate = transactionDate.ToString("yyyy-MM-dd"),
+                    totalAmount,
+                    category,
+                    status
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "OCR parsing failed: " + ex.Message });
+        }
+    }
 }
 
 public class ExpenseRequest

@@ -14,5 +14,10 @@ namespace DriveAndGo_API.Hubs
         {
             await Clients.All.SendAsync("ReceiveVehicleUpdate");
         }
+
+        public async Task BroadcastAccountsUpdate()
+        {
+            await Clients.All.SendAsync("ReceiveAccountsUpdate");
+        }
     }
 }

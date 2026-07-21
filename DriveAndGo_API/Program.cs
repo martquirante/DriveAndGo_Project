@@ -62,6 +62,9 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
     ?? Environment.GetEnvironmentVariable("SUPABASE_CONNECTION_STRING")
     ?? throw new InvalidOperationException("No database connection string found.");
 
+// Initialize Database Tables
+DatabaseInitializer.Initialize(connectionString);
+
 // Register NpgsqlDataSource with retry-on-failure for Supabase PgBouncer resilience
 var dataSourceBuilder = new Npgsql.NpgsqlDataSourceBuilder(connectionString);
 dataSourceBuilder.UseLoggerFactory(LoggerFactory.Create(b => b.AddConsole()));
@@ -75,10 +78,15 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // ─────────────────────────────────────────────────────────────
 //  4.  Application Services (DI)
 // ─────────────────────────────────────────────────────────────
+builder.Services.AddHealthChecks();
 builder.Services.AddScoped<DbService>();
 builder.Services.AddScoped<NotificationWriter>();
 builder.Services.AddScoped<IFirebaseService, FirebaseService>();
 builder.Services.AddScoped<IAdminDashboardService, AdminDashboardService>();
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<IStorageService, StorageService>();
+builder.Services.AddScoped<DriveAndGo_API.Services.AuditService>();
+builder.Services.AddHostedService<DriveAndGo_API.Services.RentalComplianceWorker>();
 
 // ─────────────────────────────────────────────────────────────
 //  5.  JWT Authentication
@@ -150,5 +158,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapHub<DriveAndGo_API.Hubs.AdminHub>("/hubs/admin");
+app.MapHealthChecks("/api/health");
 app.MapControllers();
 app.Run();

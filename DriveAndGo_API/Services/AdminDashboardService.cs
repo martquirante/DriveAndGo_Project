@@ -23,7 +23,15 @@ public record DashboardSummaryDto(
     int ActiveRentals,
     int PendingRentals,
     decimal TotalRevenueAllTime,
-    decimal RevenueThisMonth
+    decimal RevenueThisMonth,
+    int TotalReviews,
+    decimal AvgRating,
+    int DueToday,
+    int Overdue,
+    int PendingExtensions,
+    int OpenIssues,
+    string TopDriverName,
+    decimal TopDriverRating
 );
 
 public record RevenuePeriodDto(
@@ -72,13 +80,43 @@ public class AdminDashboardService : IAdminDashboardService
                         && t.PaidAt >= firstOfMonth)
             .SumAsync(t => (decimal?)t.Amount) ?? 0;
 
+        var totalReviews = await _db.Ratings.CountAsync();
+        var avgRating = totalReviews > 0 ? await _db.Ratings.AverageAsync(r => (decimal?)r.VehicleScore) ?? 0m : 0m;
+
+        var todayStart = DateTime.UtcNow.Date;
+        var todayEnd = todayStart.AddDays(1);
+        var dueToday = await _db.Rentals
+            .CountAsync(r => (r.Status == "active" || r.Status == "in-use") && r.EndDate >= todayStart && r.EndDate < todayEnd);
+
+        var overdue = await _db.Rentals
+            .CountAsync(r => r.Status == "overdue" || ((r.Status == "active" || r.Status == "in-use") && r.EndDate < DateTime.UtcNow));
+
+        var pendingExtensions = await _db.Extensions.CountAsync(e => e.Status == "pending");
+        var openIssues = await _db.Issues.CountAsync(i => i.Status == "open");
+
+        var topDriver = await _db.Drivers
+            .AsNoTracking()
+            .Join(_db.Users, d => d.UserId, u => u.UserId, (d, u) => new { u.FullName, d.RatingAvg, d.TotalTrips })
+            .Where(x => x.TotalTrips > 0)
+            .OrderByDescending(x => x.RatingAvg)
+            .ThenByDescending(x => x.TotalTrips)
+            .FirstOrDefaultAsync();
+
         return new DashboardSummaryDto(
             totalUsers,
             totalVehicles,
             activeRentals,
             pendingRentals,
             totalRevenue,
-            revenueThisMonth
+            revenueThisMonth,
+            totalReviews,
+            Math.Round(avgRating, 1),
+            dueToday,
+            overdue,
+            pendingExtensions,
+            openIssues,
+            topDriver?.FullName ?? "No driver ratings yet",
+            topDriver?.RatingAvg ?? 0m
         );
     }
 
