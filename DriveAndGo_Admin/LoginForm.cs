@@ -1,102 +1,79 @@
+#nullable disable
+using DriveAndGo_Admin.Helpers;
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.Windows.Forms;
-using System.Runtime.InteropServices;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
-using DriveAndGo_Admin.Helpers;
+using System.Windows.Forms;
 
 namespace DriveAndGo_Admin
 {
+    /// <summary>
+    /// World-Class SaaS & Mobile App Inspired Login Screen.
+    /// Features Pepsi-Style Interactive Reveal Card with Mouse-Tracking Spotlight on Left Panel (60FPS GDI+),
+    /// ultra-low ghost idle card opacity, exact business description, and dynamic ThemeManager Integration on Right Panel.
+    /// </summary>
     public class LoginForm : Form
     {
-        // ── UI Elements ──
-        private Panel cardPanel;
-        private Panel glowPanel;
-        private PictureBox picLogo;
-        private Label lblAppName;
-        private Label lblSubtitle;
-        private Label lblEmailHint;
-        private Label lblPasswordHint;
-        private Label lblError;
-        private TextBox txtEmail;
-        private TextBox txtPassword;
-        private Button btnLogin;
-        private Button btnShowPassword;
-        private Button btnExit;
-        private bool _passwordVisible = false;
+        // ── UI Panels ───────────────────────────────────────────────────────────
+        private Panel _leftPanel;
+        private Panel _rightPanel;
 
-        // FIX: Method para matago ang grid. Palitan ng 'true' kung gusto itong ipakita.
-        private bool _showGrid = false;
+        // ── Right Panel Controls ────────────────────────────────────────────────
+        private Label      _lblPortal;
+        private Label      _lblHint;
+        private Label      _lblEmail;
+        private Label      _lblPassword;
+        private Label      _lblError;
+        private Label      _lblVerRight;
+        private Panel      _accentBar;
+        private Panel      _txtEmailWrap;
+        private Panel      _txtPasswordWrap;
+        private TextBox    _txtEmail;
+        private TextBox    _txtPassword;
+        private Button     _btnLogin;
+        private Button     _btnShowPass;
+        private Button     _btnExit;
+        private Button     _btnThemeToggle;
+        private bool       _passVisible = false;
+        private bool       _eyeHovered  = false;
 
-        // ── Animation timers ──
+        // ── Theme Switcher Animation State ──────────────────────────────────────
+        private float _knobX;
+        private float _knobTarget;
+        private System.Windows.Forms.Timer _knobTimer;
+
+        // ── Left Panel Physics & Mouse Spotlight State ──────────────────────────
+        private PointF _targetMousePos;
+        private PointF _currentMousePos;
+        private float  _hoverProgress = 0f; // 0.0 (idle) -> 1.0 (fully hovered)
+        private System.Windows.Forms.Timer _physicsTimer;
+
+        // ── Button Hover Glow State ─────────────────────────────────────────────
+        private System.Windows.Forms.Timer _btnGlowTimer;
+        private float _btnGlow;
+        private bool  _btnHovered;
+
+        // ── General Form Timers & Focus ─────────────────────────────────────────
         private System.Windows.Forms.Timer _fadeTimer;
-        private System.Windows.Forms.Timer _floatTimer;
-        private System.Windows.Forms.Timer _pulseTimer;
-        private float _opacity = 0f;
-        private int _floatOffset = 0;
-        private bool _floatUp = true;
-        private int _pulseAlpha = 60;
-        private bool _pulseGrow = true;
+        private float _opacity;
+        private Panel _focusedWrap;
 
-        // ── Win32 drop shadow ──
+        // ── Form Drag Support ───────────────────────────────────────────────────
+        private bool  _dragging;
+        private Point _dragStart;
+
+        // ── Win32 DWM Drop Shadow ───────────────────────────────────────────────
         [DllImport("dwmapi.dll")]
-        private static extern int DwmExtendFrameIntoClientArea(
-            IntPtr hwnd, ref MARGINS margins);
-
+        private static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref MARGINS m);
         [StructLayout(LayoutKind.Sequential)]
-        private struct MARGINS
-        {
-            public int Left, Right, Top, Bottom;
-        }
+        private struct MARGINS { public int Left, Right, Top, Bottom; }
 
         protected override CreateParams CreateParams
         {
-            get
-            {
-                var cp = base.CreateParams;
-                cp.ClassStyle |= 0x00020000;
-                return cp;
-            }
-        }
-
-        // ── Drag support (no title bar) ──
-        private bool _dragging;
-        private Point _dragStart;
-
-        public LoginForm()
-        {
-            // FIX: Enable Double Buffering para smooth ang background grid at walang flicker
-            this.DoubleBuffered = true;
-            this.SetStyle(ControlStyles.OptimizedDoubleBuffer |
-                          ControlStyles.AllPaintingInWmPaint |
-                          ControlStyles.UserPaint, true);
-            this.UpdateStyles();
-
-            try
-            {
-                var iconPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "logo.png");
-                if (System.IO.File.Exists(iconPath))
-                {
-                    using (var bmp = new Bitmap(iconPath))
-                    {
-                        this.Icon = Icon.FromHandle(bmp.GetHicon());
-                    }
-                }
-            }
-            catch { }
-
-            BuildUI();
-            StartAnimations();
-        }
-
-        // FIX: Helper method para i-force ang Double Buffering sa standard Panels
-        private void EnableDoubleBuffering(Control control)
-        {
-            typeof(Control).InvokeMember("DoubleBuffered",
-                BindingFlags.SetProperty | BindingFlags.Instance | BindingFlags.NonPublic,
-                null, control, new object[] { true });
+            get { var cp = base.CreateParams; cp.ClassStyle |= 0x00020000; return cp; }
         }
 
         protected override void OnHandleCreated(EventArgs e)
@@ -110,620 +87,861 @@ namespace DriveAndGo_Admin
             catch { }
         }
 
-        private void BuildUI()
+        public LoginForm()
         {
-            // ── Form ──
-            this.Size = new Size(460, 640);
-            this.StartPosition = FormStartPosition.CenterScreen;
+            this.DoubleBuffered = true;
+            this.SetStyle(
+                ControlStyles.OptimizedDoubleBuffer |
+                ControlStyles.AllPaintingInWmPaint  |
+                ControlStyles.UserPaint, true);
+            this.UpdateStyles();
+
+            IconHelper.ApplyToForm(this);
+
+            BuildForm();
+            BuildLeftPanel();
+            BuildRightPanel();
+            ApplyTheme();
+            StartAnimations();
+        }
+
+        private void BuildForm()
+        {
+            this.Size            = new Size(940, 600);
+            this.MinimumSize     = new Size(940, 600);
+            this.StartPosition   = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.None;
-            // FIX: Use a real dark color instead of Color.Transparent for BackColor
-            // Transparent BackColor + None border causes the black window issue
-            this.BackColor = Color.FromArgb(10, 10, 18);
-            this.Font = new Font("Segoe UI", 10F);
-            // FIX: Start at Opacity 0 is fine, but ensure timer fires ASAP
-            this.Opacity = 0;
+            this.BackColor       = ThemeManager.CurrentBackground;
+            this.Font            = new Font("Segoe UI", 10F);
+            this.Opacity         = 0;
+            this.Text            = "Drive & Go — Admin Portal";
 
-            // FIX: Tawagin ang static background generator bago i-setup ang UI elements
-            SetupStaticBackground();
-
-            // Allow dragging
-            this.MouseDown += (s, e) => {
-                if (e.Button == MouseButtons.Left)
-                {
-                    _dragging = true;
-                    _dragStart = e.Location;
-                }
+            this.MouseDown += (s, e) =>
+            {
+                if (e.Button == MouseButtons.Left) { _dragging = true; _dragStart = e.Location; }
             };
-            this.MouseMove += (s, e) => {
+            this.MouseMove += (s, e) =>
+            {
                 if (_dragging)
-                    this.Location = new Point(
-                        this.Left + e.X - _dragStart.X,
-                        this.Top + e.Y - _dragStart.Y);
+                    this.Location = new Point(this.Left + e.X - _dragStart.X, this.Top + e.Y - _dragStart.Y);
             };
             this.MouseUp += (s, e) => _dragging = false;
+        }
 
-            // ── Paint background ──
-            this.Paint += OnFormPaint;
+        // ════════════════════════════════════════════════════════════════════════
+        //  LEFT PANEL — PEPSI-STYLE INTERACTIVE REVEAL CARD (NATIVE GDI+)
+        // ════════════════════════════════════════════════════════════════════════
+        private void BuildLeftPanel()
+        {
+            _leftPanel = new Panel();
+            EnableDB(_leftPanel);
+            _leftPanel.Size      = new Size(390, 600);
+            _leftPanel.Location  = new Point(0, 0);
+            _leftPanel.BackColor = ThemeManager.CurrentBackground;
+            _leftPanel.Paint     += OnLeftPanelPaint;
 
-            // ── Outer glow panel (3D depth illusion) ──
-            glowPanel = new Panel();
-            EnableDoubleBuffering(glowPanel); // In-apply ang Double Buffering
-            glowPanel.Size = new Size(380, 500);
-            glowPanel.Location = new Point(38, 68);
-            glowPanel.BackColor = Color.FromArgb(10, 10, 18);
-            glowPanel.Paint += OnGlowPaint;
-            this.Controls.Add(glowPanel);
+            _targetMousePos  = new PointF(195f, 300f);
+            _currentMousePos = _targetMousePos;
 
-            // ── Card Panel ──
-            cardPanel = new Panel();
-            EnableDoubleBuffering(cardPanel); // In-apply ang Double Buffering
-            cardPanel.Size = new Size(370, 490);
-            cardPanel.Location = new Point(45, 75);
-            cardPanel.BackColor = Color.FromArgb(22, 22, 35);
-            cardPanel.Paint += OnCardPaint;
+            _leftPanel.MouseDown += (s, e) =>
+            {
+                if (e.Button == MouseButtons.Left) { _dragging = true; _dragStart = new Point(e.X, e.Y); }
+            };
+            _leftPanel.MouseMove += (s, e) =>
+            {
+                _targetMousePos = e.Location;
+                if (_dragging)
+                    this.Location = new Point(this.Left + e.X - _dragStart.X, this.Top + e.Y - _dragStart.Y);
+            };
+            _leftPanel.MouseUp += (s, e) => _dragging = false;
 
-            cardPanel.MouseDown += (s, e) => {
-                if (e.Button == MouseButtons.Left)
+            _leftPanel.MouseEnter += (s, e) =>
+            {
+                _leftPanel.Cursor = Cursors.Cross; // Interactive spotlight cursor pointer
+            };
+            _leftPanel.MouseLeave += (s, e) =>
+            {
+                _leftPanel.Cursor = Cursors.Default;
+            };
+
+            this.Controls.Add(_leftPanel);
+        }
+
+        private void OnLeftPanelPaint(object sender, PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode     = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+            int w = _leftPanel.Width;
+            int h = _leftPanel.Height;
+
+            // 1. Base Background from ThemeManager
+            g.FillRectangle(new SolidBrush(ThemeManager.CurrentBackground), _leftPanel.ClientRectangle);
+
+            // 2. Mouse-Tracking Ambient Spotlight Glow
+            int spotRadius = (int)(190 + _hoverProgress * 70);
+            float cx = _currentMousePos.X;
+            float cy = _currentMousePos.Y;
+            var spotRect = new RectangleF(cx - spotRadius, cy - spotRadius, spotRadius * 2, spotRadius * 2);
+
+            try
+            {
+                using (var glowPath = new GraphicsPath())
                 {
-                    _dragging = true;
-                    _dragStart = new Point(
-                        e.X + cardPanel.Left,
-                        e.Y + cardPanel.Top);
+                    glowPath.AddEllipse(spotRect);
+                    using var spotBrush = new PathGradientBrush(glowPath);
+
+                    int alpha = (int)(55 + _hoverProgress * 125);
+                    spotBrush.CenterColor    = Color.FromArgb(alpha, ThemeManager.CurrentPrimary);
+                    spotBrush.SurroundColors = new[] { Color.Transparent };
+                    g.FillPath(spotBrush, glowPath);
+                }
+            }
+            catch { }
+
+            // 3. Glassmorphic Card (0% Opacity when Idle; Fades in ONLY on Hover)
+            int cardW = 320;
+            int cardH = 460;
+            int cardX = (w - cardW) / 2;
+            int cardY = (h - cardH) / 2;
+            float centerX = cardX + cardW / 2f;
+            float centerY = cardY + cardH / 2f;
+
+            // Parallax Tilt Shift
+            float parallaxX = (cx - centerX) * 0.04f * _hoverProgress;
+            float parallaxY = (cy - centerY) * 0.04f * _hoverProgress;
+
+            var cardBounds = new Rectangle(cardX + (int)parallaxX, cardY + (int)parallaxY, cardW, cardH);
+            using var cardPath = RR(cardBounds, 20);
+
+            // Dynamic Hover Opacity Calculations (Completely invisible when idle)
+            int cardBgAlpha = (int)(45 * _hoverProgress);
+            int cardBorderAlpha = (int)(110 * _hoverProgress);
+
+            if (cardBgAlpha > 0)
+            {
+                Color cardBgColor = ThemeManager.IsDarkMode
+                    ? Color.FromArgb(cardBgAlpha, 255, 255, 255)
+                    : Color.FromArgb((int)(70 * _hoverProgress), 255, 255, 255);
+
+                using (var cardBrush = new SolidBrush(cardBgColor))
+                {
+                    g.FillPath(cardBrush, cardPath);
+                }
+            }
+
+            if (cardBorderAlpha > 0)
+            {
+                Color cardBorderColor = ThemeManager.IsDarkMode
+                    ? Color.FromArgb(cardBorderAlpha, 255, 255, 255)
+                    : Color.FromArgb(cardBorderAlpha, ThemeManager.CurrentBorder);
+
+                using (var borderPen = new Pen(cardBorderColor, 1.2f))
+                {
+                    g.DrawPath(borderPen, cardPath);
+                }
+            }
+
+            // 4. Element Sliding & Fading Mathematics
+            float lift = _hoverProgress * 80f; // 80px translation lift on hover
+
+            float logoY  = centerY - 50f - lift + parallaxY * 0.5f;
+            float titleY = logoY + 95f;
+            float subY   = titleY + 42f;
+            float descY  = titleY + 45f;
+
+            // Draw Logo Image (80x80)
+            int logoSize = 80;
+            var logoRect = new Rectangle((int)(centerX + parallaxX * 1.3f - logoSize / 2f), (int)logoY, logoSize, logoSize);
+            try
+            {
+                if (Properties.Resources.DriveAndGo_Logo != null)
+                {
+                    g.DrawImage(Properties.Resources.DriveAndGo_Logo, logoRect);
+                }
+            }
+            catch { }
+
+            // Draw Main Title ("Drive & Go")
+            using (var titleFont = new Font("Segoe UI", 26F, FontStyle.Bold))
+            using (var titleBrush = new SolidBrush(ThemeManager.CurrentPrimary))
+            {
+                var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
+                g.DrawString("Drive & Go", titleFont, titleBrush, centerX + parallaxX, titleY, sf);
+            }
+
+            // Idle Subtitle ("Vehicle Rental Platform") — Fades OUT on hover
+            int subAlpha = (int)((1f - _hoverProgress) * 255f);
+            subAlpha = Math.Clamp(subAlpha, 0, 255);
+
+            if (subAlpha > 5)
+            {
+                using (var subFont = new Font("Segoe UI", 11F, FontStyle.Regular))
+                using (var subBrush = new SolidBrush(Color.FromArgb(subAlpha, ThemeManager.CurrentSubText)))
+                {
+                    var sfSub = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
+                    g.DrawString("Vehicle Rental Platform", subFont, subBrush, centerX + parallaxX, subY, sfSub);
+                }
+            }
+
+            // Hover Business Description — Fades IN on hover
+            int descAlpha = (int)(_hoverProgress * 255f);
+            descAlpha = Math.Clamp(descAlpha, 0, 255);
+
+            if (descAlpha > 5)
+            {
+                string descText = "DriveAndGo is the definitive platform engineered to maximize fleet profitability and protect your automotive assets. By unifying real-time vehicle tracking, automated transaction billing, and deep operational telemetry, we empower business owners to minimize overhead, eliminate security leaks, and accelerate revenue growth effortlessly.";
+
+                var descRect = new RectangleF(cardX + 22 + parallaxX, descY, cardW - 44, 200);
+                using (var descFont = new Font("Segoe UI", 9.25F, FontStyle.Regular))
+                using (var descBrush = new SolidBrush(Color.FromArgb(descAlpha, ThemeManager.CurrentText)))
+                {
+                    var sfDesc = new StringFormat
+                    {
+                        Alignment     = StringAlignment.Center,
+                        LineAlignment = StringAlignment.Near,
+                        Trimming      = StringTrimming.EllipsisWord
+                    };
+                    g.DrawString(descText, descFont, descBrush, descRect, sfDesc);
+                }
+            }
+
+            // Version Footer at bottom of left panel
+            using (var verFont = new Font("Segoe UI", 8.5F))
+            using (var verBrush = new SolidBrush(ThemeManager.CurrentSubText))
+            {
+                var sfVer = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
+                g.DrawString("v2.0 Enterprise  •  © 2026 DriveAndGo Inc.", verFont, verBrush, centerX, h - 30, sfVer);
+            }
+
+            // 1px Vertical divider line on right edge
+            using var linePen = new Pen(ThemeManager.CurrentBorder, 1f);
+            g.DrawLine(linePen, w - 1, 0, w - 1, h);
+        }
+
+        // ════════════════════════════════════════════════════════════════════════
+        //  RIGHT PANEL — AUTHENTICATION CARD & THEME SWITCHER
+        // ════════════════════════════════════════════════════════════════════════
+        private void BuildRightPanel()
+        {
+            _rightPanel = new Panel();
+            EnableDB(_rightPanel);
+            _rightPanel.Size      = new Size(550, 600);
+            _rightPanel.Location  = new Point(390, 0);
+            _rightPanel.BackColor = ThemeManager.CurrentBackground;
+            _rightPanel.Paint     += OnRightPanelPaint;
+
+            _rightPanel.MouseDown += (s, e) =>
+            {
+                if (e.Button == MouseButtons.Left)
+                { _dragging = true; _dragStart = new Point(e.X + _rightPanel.Left, e.Y); }
+            };
+            _rightPanel.MouseMove += (s, e) =>
+            {
+                if (_dragging)
+                    this.Location = new Point(this.Left + e.X + _rightPanel.Left - _dragStart.X, this.Top + e.Y - _dragStart.Y);
+            };
+            _rightPanel.MouseUp += (s, e) => _dragging = false;
+
+            // ── Exit Button (Top Right) ──
+            _btnExit = new Button
+            {
+                Text      = "✕",
+                Font      = new Font("Segoe UI", 11F, FontStyle.Bold),
+                ForeColor = ThemeManager.CurrentSubText,
+                BackColor = Color.Transparent,
+                FlatStyle = FlatStyle.Flat,
+                Size      = new Size(36, 36),
+                Location  = new Point(_rightPanel.Width - 44, 12),
+                Cursor    = Cursors.Hand
+            };
+            _btnExit.FlatAppearance.BorderSize = 0;
+            _btnExit.Click       += (s, e) => FadeAndClose();
+            _btnExit.MouseEnter  += (s, e) => _btnExit.ForeColor = Color.FromArgb(239, 68, 68);
+            _btnExit.MouseLeave  += (s, e) => _btnExit.ForeColor = ThemeManager.CurrentSubText;
+            _rightPanel.Controls.Add(_btnExit);
+
+            // ── Theme Switcher Toggle (Top Right, next to Exit) ──
+            _btnThemeToggle = new Button
+            {
+                Size      = new Size(64, 34),
+                Location  = new Point(_rightPanel.Width - 44 - 64 - 10, 13),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.Transparent,
+                Cursor    = Cursors.Hand
+            };
+            _btnThemeToggle.FlatAppearance.BorderSize         = 0;
+            _btnThemeToggle.FlatAppearance.MouseOverBackColor = Color.Transparent;
+
+            _knobX      = ThemeManager.IsDarkMode ? 32f : 4f;
+            _knobTarget = _knobX;
+            _knobTimer  = new System.Windows.Forms.Timer { Interval = 12 };
+
+            _btnThemeToggle.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+
+                var rect = new Rectangle(0, 0, _btnThemeToggle.Width - 1, _btnThemeToggle.Height - 1);
+                using var path = RR(rect, 17);
+                g.FillPath(new SolidBrush(ThemeManager.CurrentCard), path);
+                g.DrawPath(new Pen(ThemeManager.CurrentBorder, 1f), path);
+
+                int circleSize = 26;
+                var circleRect = new RectangleF(_knobX, 3.5f, circleSize, circleSize);
+                Color circleColor = ThemeManager.IsDarkMode
+                    ? ThemeManager.CurrentPrimary : Color.FromArgb(245, 158, 11);
+
+                using (var glow = new GraphicsPath())
+                {
+                    glow.AddEllipse(circleRect.X - 3, circleRect.Y - 3, circleSize + 6, circleSize + 6);
+                    using var gb = new PathGradientBrush(glow);
+                    gb.CenterColor    = Color.FromArgb(60, circleColor);
+                    gb.SurroundColors = new[] { Color.Transparent };
+                    g.FillPath(gb, glow);
+                }
+
+                g.FillEllipse(new SolidBrush(circleColor), circleRect);
+
+                string icon = ThemeManager.IsDarkMode ? "🌙" : "☀️";
+                using var font = new Font("Segoe UI Emoji", 9.5F);
+                var sf = new StringFormat
+                    { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                g.DrawString(icon, font, Brushes.White, circleRect, sf);
+            };
+
+            _knobTimer.Tick += (s, e) =>
+            {
+                float diff = _knobTarget - _knobX;
+                if (Math.Abs(diff) < 0.5f) { _knobX = _knobTarget; _knobTimer.Stop(); }
+                else _knobX += diff * 0.22f;
+                _btnThemeToggle.Invalidate();
+            };
+
+            _btnThemeToggle.Click += (s, e) =>
+            {
+                ThemeManager.IsDarkMode = !ThemeManager.IsDarkMode;
+                _knobTarget = ThemeManager.IsDarkMode ? 32f : 4f;
+                _knobTimer.Start();
+                ApplyTheme();
+            };
+
+            _rightPanel.Controls.Add(_btnThemeToggle);
+
+            // ── Heading ──
+            _lblPortal = new Label
+            {
+                Text      = "Admin Portal",
+                Font      = new Font("Segoe UI", 22F, FontStyle.Bold),
+                ForeColor = ThemeManager.CurrentText,
+                AutoSize  = false,
+                Size      = new Size(_rightPanel.Width, 42),
+                Location  = new Point(0, 105),
+                TextAlign = ContentAlignment.MiddleCenter,
+                BackColor = Color.Transparent
+            };
+            _rightPanel.Controls.Add(_lblPortal);
+
+            _accentBar = new Panel
+            {
+                Size      = new Size(50, 3),
+                Location  = new Point((_rightPanel.Width - 50) / 2, 152),
+                BackColor = ThemeManager.CurrentPrimary
+            };
+            _rightPanel.Controls.Add(_accentBar);
+
+            _lblHint = new Label
+            {
+                Text      = "Sign in to continue",
+                Font      = new Font("Segoe UI", 9.5F),
+                ForeColor = ThemeManager.CurrentSubText,
+                AutoSize  = false,
+                Size      = new Size(_rightPanel.Width, 22),
+                Location  = new Point(0, 162),
+                TextAlign = ContentAlignment.MiddleCenter,
+                BackColor = Color.Transparent
+            };
+            _rightPanel.Controls.Add(_lblHint);
+
+            // Inputs
+            _lblEmail = MakeInputLabel("EMAIL ADDRESS", 212);
+            _rightPanel.Controls.Add(_lblEmail);
+            _txtEmailWrap = MakeInputWrapper(234, "✉", out _txtEmail, false);
+            _txtEmail.PlaceholderText = "admin@driveandgo.com";
+            _txtEmail.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Down || e.KeyCode == Keys.Enter)
+                {
+                    e.SuppressKeyPress = true;
+                    _txtPassword.Focus();
+                    _txtPassword.SelectAll();
                 }
             };
-            this.Controls.Add(cardPanel);
+            _rightPanel.Controls.Add(_txtEmailWrap);
 
-            // ── Exit button ──
-            btnExit = new Button();
-            btnExit.Text = "✕";
-            btnExit.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
-            btnExit.ForeColor = Color.FromArgb(100, 100, 130);
-            btnExit.BackColor = Color.Transparent;
-            btnExit.FlatStyle = FlatStyle.Flat;
-            btnExit.FlatAppearance.BorderSize = 0;
-            btnExit.Size = new Size(36, 36);
-            btnExit.Location = new Point(this.Width - 44, 8);
-            btnExit.Cursor = Cursors.Hand;
-            btnExit.Click += (s, e) => FadeOut();
-            btnExit.MouseEnter += (s, e) =>
-                btnExit.ForeColor = Color.FromArgb(239, 68, 68);
-            btnExit.MouseLeave += (s, e) =>
-                btnExit.ForeColor = Color.FromArgb(100, 100, 130);
-            this.Controls.Add(btnExit);
-
-            // ── Logo ──
-            picLogo = new PictureBox();
-            picLogo.Size = new Size(72, 72);
-            picLogo.Location = new Point(
-                (cardPanel.Width - 72) / 2, 28);
-            picLogo.SizeMode = PictureBoxSizeMode.Zoom;
-            picLogo.BackColor = Color.Transparent;
-            try
+            _lblPassword = MakeInputLabel("PASSWORD", 304);
+            _rightPanel.Controls.Add(_lblPassword);
+            _txtPasswordWrap = MakeInputWrapper(326, "🔒", out _txtPassword, true);
+            _txtPassword.PlaceholderText = "••••••••";
+            _txtPassword.KeyDown += (s, e) =>
             {
-                picLogo.Image = Properties.Resources.DriveAndGo_Logo;
-            }
-            catch { }
-            cardPanel.Controls.Add(picLogo);
-
-            // ── App name ──
-            lblAppName = new Label();
-            lblAppName.Text = "Drive & Go";
-            lblAppName.UseMnemonic = false;
-            lblAppName.Font = new Font("Segoe UI", 22F, FontStyle.Bold);
-            lblAppName.ForeColor = Color.FromArgb(230, 81, 0);
-            lblAppName.AutoSize = false;
-            lblAppName.Size = new Size(cardPanel.Width, 36);
-            lblAppName.TextAlign = ContentAlignment.MiddleCenter;
-            lblAppName.Location = new Point(0, 108);
-            lblAppName.BackColor = Color.Transparent;
-            cardPanel.Controls.Add(lblAppName);
-
-            // ── Subtitle ──
-            lblSubtitle = new Label();
-            lblSubtitle.Text = "Vehicle Rental — Admin Portal";
-            lblSubtitle.Font = new Font("Segoe UI", 9F);
-            lblSubtitle.ForeColor = Color.FromArgb(90, 90, 120);
-            lblSubtitle.AutoSize = false;
-            lblSubtitle.Size = new Size(cardPanel.Width, 20);
-            lblSubtitle.TextAlign = ContentAlignment.MiddleCenter;
-            lblSubtitle.Location = new Point(0, 146);
-            lblSubtitle.BackColor = Color.Transparent;
-            cardPanel.Controls.Add(lblSubtitle);
-
-            // ── Accent line ──
-            var accentLine = new Panel();
-            accentLine.Size = new Size(50, 3);
-            accentLine.Location = new Point(
-                (cardPanel.Width - 50) / 2, 172);
-            accentLine.BackColor = Color.FromArgb(230, 81, 0);
-            cardPanel.Controls.Add(accentLine);
-
-            // ── Email label ──
-            lblEmailHint = new Label();
-            lblEmailHint.Text = "EMAIL ADDRESS";
-            lblEmailHint.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
-            lblEmailHint.ForeColor = Color.FromArgb(100, 100, 140);
-            lblEmailHint.AutoSize = true;
-            lblEmailHint.Location = new Point(35, 196);
-            lblEmailHint.BackColor = Color.Transparent;
-            cardPanel.Controls.Add(lblEmailHint);
-
-            // ── Email TextBox ──
-            txtEmail = CreateStyledTextBox(35, 216, 300, false);
-            txtEmail.PlaceholderText = "admin@driveandgo.com";
-            cardPanel.Controls.Add(txtEmail);
-
-            // ── Password label ──
-            lblPasswordHint = new Label();
-            lblPasswordHint.Text = "PASSWORD";
-            lblPasswordHint.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
-            lblPasswordHint.ForeColor = Color.FromArgb(100, 100, 140);
-            lblPasswordHint.AutoSize = true;
-            lblPasswordHint.Location = new Point(35, 278);
-            lblPasswordHint.BackColor = Color.Transparent;
-            cardPanel.Controls.Add(lblPasswordHint);
-
-            // ── Password TextBox ──
-            txtPassword = CreateStyledTextBox(35, 298, 256, true);
-            txtPassword.PlaceholderText = "••••••••";
-            txtPassword.KeyDown += (s, e) => {
-                if (e.KeyCode == Keys.Enter) OnLogin(s, e);
-            };
-            cardPanel.Controls.Add(txtPassword);
-
-            // ── Show/hide password ──
-            btnShowPassword = new Button();
-            btnShowPassword.Text = "👁";
-            btnShowPassword.Size = new Size(40, 40);
-            btnShowPassword.Location = new Point(295, 297);
-            btnShowPassword.FlatStyle = FlatStyle.Flat;
-            btnShowPassword.FlatAppearance.BorderSize = 0;
-            btnShowPassword.BackColor = Color.Transparent;
-            btnShowPassword.ForeColor = Color.FromArgb(80, 80, 110);
-            btnShowPassword.Font = new Font("Segoe UI", 13F);
-            btnShowPassword.Cursor = Cursors.Hand;
-            btnShowPassword.Click += (s, e) => {
-                _passwordVisible = !_passwordVisible;
-                txtPassword.UseSystemPasswordChar = !_passwordVisible;
-                btnShowPassword.ForeColor = _passwordVisible
-                    ? Color.FromArgb(230, 81, 0)
-                    : Color.FromArgb(80, 80, 110);
-            };
-            cardPanel.Controls.Add(btnShowPassword);
-
-            // ── Error label ──
-            lblError = new Label();
-            lblError.AutoSize = false;
-            lblError.Size = new Size(300, 20);
-            lblError.Location = new Point(35, 355);
-            lblError.Font = new Font("Segoe UI", 9F);
-            lblError.ForeColor = Color.FromArgb(239, 68, 68);
-            lblError.TextAlign = ContentAlignment.MiddleLeft;
-            lblError.BackColor = Color.Transparent;
-            lblError.Visible = false;
-            cardPanel.Controls.Add(lblError);
-
-            // ── Login button ──
-            btnLogin = new Button();
-            btnLogin.Text = "LOG IN";
-            btnLogin.Size = new Size(300, 50);
-            btnLogin.Location = new Point(35, 382);
-            btnLogin.FlatStyle = FlatStyle.Flat;
-            btnLogin.FlatAppearance.BorderSize = 0;
-            btnLogin.BackColor = Color.FromArgb(230, 81, 0);
-            btnLogin.ForeColor = Color.White;
-            btnLogin.Font = new Font("Segoe UI", 12F, FontStyle.Bold);
-            btnLogin.Cursor = Cursors.Hand;
-            btnLogin.Click += OnLogin;
-            btnLogin.Paint += OnLoginButtonPaint;
-            btnLogin.MouseEnter += (s, e) => {
-                btnLogin.BackColor = Color.FromArgb(255, 100, 20);
-                btnLogin.Invalidate();
-            };
-            btnLogin.MouseLeave += (s, e) => {
-                btnLogin.BackColor = Color.FromArgb(230, 81, 0);
-                btnLogin.Invalidate();
-            };
-            cardPanel.Controls.Add(btnLogin);
-
-            // ── Version ──
-            var lblVersion = new Label();
-            lblVersion.Text = "DriveAndGo v1.0  •  © 2026";
-            lblVersion.Font = new Font("Segoe UI", 8F);
-            lblVersion.ForeColor = Color.FromArgb(40, 40, 60);
-            lblVersion.AutoSize = false;
-            lblVersion.Size = new Size(cardPanel.Width, 22);
-            lblVersion.TextAlign = ContentAlignment.MiddleCenter;
-            lblVersion.Location = new Point(0, 458);
-            lblVersion.BackColor = Color.Transparent;
-            cardPanel.Controls.Add(lblVersion);
-
-            // FIX: Set z-order so cardPanel is above glowPanel
-            this.Controls.SetChildIndex(cardPanel, 0);
-            this.Controls.SetChildIndex(btnExit, 0);
-        }
-
-        // ══ PAINT HANDLERS ══
-
-        private void OnFormPaint(object sender, PaintEventArgs e)
-        {
-            var g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-
-            // FIX: Inalis na dito yung pag-draw ng background gradient at grid
-            // dahil handle na yun ng SetupStaticBackground() bilang BackgroundImage.
-
-            // Pulsing glow behind card na lang ang id-draw dito
-            int cx = cardPanel.Left + cardPanel.Width / 2;
-            int cy = cardPanel.Top + cardPanel.Height / 2;
-            try
-            {
-                using var glowBrush = new PathGradientBrush(
-                    new Point[] {
-                        new Point(cx - 200, cy - 250),
-                        new Point(cx + 200, cy - 250),
-                        new Point(cx + 200, cy + 250),
-                        new Point(cx - 200, cy + 250)
-                    })
+                if (e.KeyCode == Keys.Up)
                 {
-                    CenterColor = Color.FromArgb(_pulseAlpha, 230, 81, 0),
-                    SurroundColors = new[] { Color.Transparent }
-                };
-                g.FillEllipse(glowBrush, cx - 180, cy - 220, 360, 440);
-            }
-            catch { }
-        }
+                    e.SuppressKeyPress = true;
+                    _txtEmail.Focus();
+                    _txtEmail.SelectAll();
+                }
+                else if (e.KeyCode == Keys.Down)
+                {
+                    e.SuppressKeyPress = true;
+                    _btnLogin.Focus();
+                }
+                else if (e.KeyCode == Keys.Enter)
+                {
+                    e.SuppressKeyPress = true;
+                    DoLogin();
+                }
+            };
+            _rightPanel.Controls.Add(_txtPasswordWrap);
 
-        private void OnGlowPaint(object sender, PaintEventArgs e)
-        {
-            var g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-
-            g.FillRectangle(
-                new SolidBrush(Color.FromArgb(10, 10, 18)),
-                glowPanel.ClientRectangle);
-
-            // Multi-layer shadow for 3D depth
-            for (int i = 8; i >= 1; i--)
+            // Vector Eye Button
+            _btnShowPass = new Button
             {
-                int alpha = i * 6;
-                float blur = i * 3;
-                using var shadowBrush = new SolidBrush(Color.FromArgb(alpha, 0, 0, 0));
-                var shadowRect = new RectangleF(
-                    blur, blur + _floatOffset * 0.3f,
-                    glowPanel.Width - blur * 2,
-                    glowPanel.Height - blur * 2);
-                using var path = GetRoundedRectF(shadowRect, 18);
-                g.FillPath(shadowBrush, path);
+                Size      = new Size(36, 36),
+                Location  = new Point(_txtPasswordWrap.Right - 42, 333),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.Transparent,
+                Cursor    = Cursors.Hand
+            };
+            _btnShowPass.FlatAppearance.BorderSize = 0;
+            _btnShowPass.Click += (s, e) =>
+            {
+                _passVisible = !_passVisible;
+                _txtPassword.UseSystemPasswordChar = !_passVisible;
+                _btnShowPass.Invalidate();
+            };
+            _btnShowPass.MouseEnter += (s, e) => { _eyeHovered = true;  _btnShowPass.Invalidate(); };
+            _btnShowPass.MouseLeave += (s, e) => { _eyeHovered = false; _btnShowPass.Invalidate(); };
+            _btnShowPass.Paint += OnEyeButtonPaint;
+
+            _rightPanel.Controls.Add(_btnShowPass);
+            _btnShowPass.BringToFront();
+
+            _lblError = new Label
+            {
+                AutoSize  = false,
+                Size      = new Size(400, 22),
+                Location  = new Point(75, 384),
+                Font      = new Font("Segoe UI", 9F),
+                ForeColor = Color.FromArgb(239, 68, 68),
+                BackColor = Color.Transparent,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Visible   = false
+            };
+            _rightPanel.Controls.Add(_lblError);
+
+            _btnLogin = new Button
+            {
+                Text      = "SIGN IN",
+                Size      = new Size(400, 50),
+                Location  = new Point(75, 416),
+                FlatStyle = FlatStyle.Flat,
+                Font      = new Font("Segoe UI", 12F, FontStyle.Bold),
+                ForeColor = Color.White,
+                BackColor = ThemeManager.CurrentPrimary,
+                Cursor    = Cursors.Hand
+            };
+            _btnLogin.FlatAppearance.BorderSize         = 0;
+            _btnLogin.FlatAppearance.MouseOverBackColor = Color.Transparent;
+            _btnLogin.FlatAppearance.MouseDownBackColor = Color.Transparent;
+            _btnLogin.Paint += OnLoginBtnPaint;
+            _btnLogin.Click += (s, e) => DoLogin();
+            _btnLogin.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Up)
+                {
+                    e.SuppressKeyPress = true;
+                    _txtPassword.Focus();
+                    _txtPassword.SelectAll();
+                }
+            };
+
+            _btnGlowTimer = new System.Windows.Forms.Timer { Interval = 12 };
+            _btnGlowTimer.Tick += (s, e) =>
+            {
+                float target = _btnHovered ? 1f : 0f;
+                float diff   = target - _btnGlow;
+                if (Math.Abs(diff) < 0.02f) { _btnGlow = target; _btnGlowTimer.Stop(); }
+                else _btnGlow += diff * 0.22f;
+                _btnLogin.Invalidate();
+            };
+            _btnLogin.MouseEnter += (s, e) => { _btnHovered = true;  _btnGlowTimer.Start(); };
+            _btnLogin.MouseLeave += (s, e) => { _btnHovered = false; _btnGlowTimer.Start(); };
+            SetRoundRegion(_btnLogin, 12);
+            _rightPanel.Controls.Add(_btnLogin);
+
+            _lblVerRight = new Label
+            {
+                Text      = "DriveAndGo Admin v2.0  •  © 2026",
+                Font      = new Font("Segoe UI", 8.5F),
+                ForeColor = ThemeManager.CurrentSubText,
+                AutoSize  = false,
+                Size      = new Size(_rightPanel.Width, 20),
+                Location  = new Point(0, 568),
+                TextAlign = ContentAlignment.MiddleCenter,
+                BackColor = Color.Transparent
+            };
+            _rightPanel.Controls.Add(_lblVerRight);
+
+            this.Controls.Add(_rightPanel);
+        }
+
+        private void OnEyeButtonPaint(object sender, PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            Color iconCol = _eyeHovered || _passVisible
+                ? ThemeManager.CurrentPrimary
+                : ThemeManager.CurrentSubText;
+
+            using var pen = new Pen(iconCol, 1.8f);
+            pen.StartCap = LineCap.Round;
+            pen.EndCap   = LineCap.Round;
+
+            int cx = _btnShowPass.Width / 2;
+            int cy = _btnShowPass.Height / 2;
+
+            var eyePath = new GraphicsPath();
+            eyePath.AddArc(cx - 10, cy - 8, 20, 16, 200, 140);
+            eyePath.AddArc(cx - 10, cy - 8, 20, 16, 20,  140);
+            g.DrawPath(pen, eyePath);
+
+            if (_passVisible)
+            {
+                using var pupilBrush = new SolidBrush(iconCol);
+                g.FillEllipse(pupilBrush, cx - 3, cy - 3, 6, 6);
+            }
+            else
+            {
+                g.DrawLine(pen, cx - 7, cy - 6, cx + 7, cy + 6);
             }
         }
 
-        private void OnCardPaint(object sender, PaintEventArgs e)
+        private Label MakeInputLabel(string text, int y)
         {
-            var g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-
-            var rect = new Rectangle(0, 0,
-                cardPanel.Width - 1, cardPanel.Height - 1);
-            using var path = GetRoundedRect(rect, 18);
-
-            cardPanel.Region = new Region(path);
-
-            // Card background
-            using var cardBrush = new LinearGradientBrush(
-                rect,
-                Color.FromArgb(28, 28, 42),
-                Color.FromArgb(18, 18, 30),
-                LinearGradientMode.Vertical);
-            g.FillPath(cardBrush, path);
-
-            // Top edge highlight (3D effect)
-            using var topPen = new Pen(Color.FromArgb(55, 255, 255, 255), 1f);
-            g.DrawLine(topPen, 18, 1, cardPanel.Width - 18, 1);
-
-            // Border glow
-            using var borderPen = new Pen(Color.FromArgb(45, 230, 81, 0), 1.5f);
-            g.DrawPath(borderPen, path);
-
-            // Inner subtle border
-            using var innerPen = new Pen(Color.FromArgb(25, 255, 255, 255), 0.5f);
-            var innerRect = new Rectangle(1, 1,
-                cardPanel.Width - 3, cardPanel.Height - 3);
-            using var innerPath = GetRoundedRect(innerRect, 17);
-            g.DrawPath(innerPen, innerPath);
+            return new Label
+            {
+                Text      = text,
+                Font      = new Font("Segoe UI", 8F, FontStyle.Bold),
+                ForeColor = ThemeManager.CurrentSubText,
+                AutoSize  = true,
+                Location  = new Point(75, y),
+                BackColor = Color.Transparent
+            };
         }
 
-        private void OnLoginButtonPaint(object sender, PaintEventArgs e)
+        private Panel MakeInputWrapper(int y, string iconSymbol, out TextBox tb, bool isPassword)
+        {
+            var wrap = new Panel();
+            EnableDB(wrap);
+            wrap.Size      = new Size(400, 50);
+            wrap.Location  = new Point(75, y);
+            wrap.BackColor = ThemeManager.IsDarkMode ? Color.FromArgb(18, 18, 34) : Color.FromArgb(255, 255, 255);
+            wrap.Cursor    = Cursors.IBeam;
+            wrap.Paint    += (s, e) => DrawInputWrapper(e, wrap, iconSymbol);
+
+            tb = new TextBox
+            {
+                Size        = new Size(isPassword ? wrap.Width - 46 - 48 : wrap.Width - 46 - 16, 28),
+                Location    = new Point(44, 13),
+                BorderStyle = BorderStyle.None,
+                BackColor   = wrap.BackColor,
+                ForeColor   = ThemeManager.CurrentText,
+                Font        = new Font("Segoe UI", 10.5F)
+            };
+            if (isPassword) tb.UseSystemPasswordChar = true;
+
+            var textBox = tb;
+            textBox.Enter += (s, e) => { _focusedWrap = wrap; wrap.Invalidate(); };
+            textBox.Leave += (s, e) => { _focusedWrap = null; wrap.Invalidate(); };
+            wrap.Click    += (s, e) => textBox.Focus();
+            wrap.Controls.Add(textBox);
+            SetRoundRegion(wrap, 12);
+            return wrap;
+        }
+
+        private void DrawInputWrapper(PaintEventArgs e, Panel wrap, string iconSymbol)
         {
             var g = e.Graphics;
-            var btn = (Button)sender;
-            var rect = new Rectangle(0, 0,
-                btn.Width - 1, btn.Height - 1);
-
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            using var path = GetRoundedRect(rect, 10);
-            btn.Region = new Region(path);
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
-            // Gradient button
-            using var btnBrush = new LinearGradientBrush(
-                rect,
-                Color.FromArgb(255, 120, 30),
-                Color.FromArgb(200, 60, 0),
-                LinearGradientMode.Vertical);
-            g.FillPath(btnBrush, path);
+            var r = new Rectangle(0, 0, wrap.Width - 1, wrap.Height - 1);
+            using var path = RR(r, 12);
+            wrap.Region = new Region(path);
 
-            // Shine on top half
-            var shineRect = new Rectangle(2, 2, btn.Width - 4, btn.Height / 2 - 2);
-            using var shinePath = GetRoundedRect(shineRect, 8);
-            using var shineBrush = new LinearGradientBrush(
-                shineRect,
-                Color.FromArgb(60, 255, 255, 255),
-                Color.FromArgb(5, 255, 255, 255),
-                LinearGradientMode.Vertical);
-            g.FillPath(shineBrush, shinePath);
+            Color inputBg = ThemeManager.IsDarkMode ? Color.FromArgb(18, 18, 34) : Color.FromArgb(255, 255, 255);
+            g.FillPath(new SolidBrush(inputBg), path);
 
-            // Button text
-            var format = new StringFormat
+            bool focused = _focusedWrap == wrap;
+            Color borderCol = focused
+                ? ThemeManager.CurrentPrimary
+                : ThemeManager.CurrentBorder;
+            
+            using var pen = new Pen(borderCol, focused ? 1.5f : 1f);
+            g.DrawPath(pen, path);
+
+            Color iconCol = focused ? ThemeManager.CurrentPrimary : ThemeManager.CurrentSubText;
+            using var iconFont = new Font("Segoe UI Emoji", 11F);
+            using var iconBrush = new SolidBrush(iconCol);
+            
+            var sf = new StringFormat
             {
                 Alignment = StringAlignment.Center,
                 LineAlignment = StringAlignment.Center
             };
-            using var textBrush = new SolidBrush(Color.White);
-            g.DrawString(btn.Text,
-                new Font("Segoe UI", 12F, FontStyle.Bold),
-                textBrush, rect, format);
+            var iconRect = new RectangleF(10, 0, 30, wrap.Height);
+            g.DrawString(iconSymbol, iconFont, iconBrush, iconRect, sf);
+
+            if (focused)
+            {
+                using var accentPen = new Pen(ThemeManager.CurrentPrimary, 2f);
+                g.DrawLine(accentPen, 16, wrap.Height - 1, wrap.Width - 16, wrap.Height - 1);
+            }
         }
 
-        // ══ ANIMATIONS ══
+        private void OnRightPanelPaint(object sender, PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            g.FillRectangle(new SolidBrush(ThemeManager.CurrentBackground), _rightPanel.ClientRectangle);
+
+            int cx = _rightPanel.Width / 2;
+            try
+            {
+                using var gb = new PathGradientBrush(new Point[]
+                {
+                    new(cx - 200, -10), new(cx + 200, -10),
+                    new(cx + 200, 90),  new(cx - 200, 90)
+                })
+                {
+                    CenterColor    = Color.FromArgb(14, ThemeManager.CurrentPrimary),
+                    SurroundColors = new[] { Color.Transparent }
+                };
+                g.FillEllipse(gb, cx - 205, -15, 410, 110);
+            }
+            catch { }
+        }
+
+        private void OnLoginBtnPaint(object sender, PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            var rect = new Rectangle(0, 0, _btnLogin.Width - 1, _btnLogin.Height - 1);
+            using var path = RR(rect, 12);
+            _btnLogin.Region = new Region(path);
+
+            Color btnColor = ThemeManager.CurrentPrimary;
+            g.FillPath(new SolidBrush(btnColor), path);
+
+            if (_btnGlow > 0.01f)
+            {
+                int a = (int)(40 * _btnGlow);
+                using var glow = new SolidBrush(Color.FromArgb(a, 255, 255, 255));
+                g.FillPath(glow, path);
+            }
+
+            using var fmt = new StringFormat
+            { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+            g.DrawString(_btnLogin.Text,
+                new Font("Segoe UI", 12F, FontStyle.Bold),
+                Brushes.White, rect, fmt);
+        }
+
+        private void ApplyTheme()
+        {
+            this.BackColor = ThemeManager.CurrentBackground;
+
+            if (_leftPanel != null) _leftPanel.BackColor = ThemeManager.CurrentBackground;
+            if (_rightPanel != null) _rightPanel.BackColor = ThemeManager.CurrentBackground;
+            if (_btnExit != null) _btnExit.ForeColor = ThemeManager.CurrentSubText;
+            if (_lblPortal != null) _lblPortal.ForeColor = ThemeManager.CurrentText;
+            if (_lblHint != null) _lblHint.ForeColor = ThemeManager.CurrentSubText;
+            if (_lblEmail != null) _lblEmail.ForeColor = ThemeManager.CurrentSubText;
+            if (_lblPassword != null) _lblPassword.ForeColor = ThemeManager.CurrentSubText;
+            if (_lblVerRight != null) _lblVerRight.ForeColor = ThemeManager.CurrentSubText;
+            if (_accentBar != null) _accentBar.BackColor = ThemeManager.CurrentPrimary;
+            if (_btnLogin != null) _btnLogin.BackColor = ThemeManager.CurrentPrimary;
+
+            Color inputBg = ThemeManager.IsDarkMode ? Color.FromArgb(18, 18, 34) : Color.FromArgb(255, 255, 255);
+            Color inputText = ThemeManager.CurrentText;
+
+            if (_txtEmailWrap != null) { _txtEmailWrap.BackColor = inputBg; _txtEmailWrap.Invalidate(); }
+            if (_txtEmail != null) { _txtEmail.BackColor = inputBg; _txtEmail.ForeColor = inputText; }
+
+            if (_txtPasswordWrap != null) { _txtPasswordWrap.BackColor = inputBg; _txtPasswordWrap.Invalidate(); }
+            if (_txtPassword != null) { _txtPassword.BackColor = inputBg; _txtPassword.ForeColor = inputText; }
+
+            _btnShowPass?.Invalidate();
+            _btnLogin?.Invalidate();
+            _btnThemeToggle?.Invalidate();
+            _leftPanel?.Invalidate();
+            _rightPanel?.Invalidate();
+            this.Invalidate();
+        }
 
         private void StartAnimations()
         {
-            // Fade in
-            _fadeTimer = new System.Windows.Forms.Timer();
-            _fadeTimer.Interval = 16;
-            _fadeTimer.Tick += (s, e) => {
-                _opacity += 0.04f;
-                if (_opacity >= 1f)
-                {
-                    _opacity = 1f;
-                    _fadeTimer.Stop();
-                }
-                this.Opacity = _opacity;
+            _fadeTimer = new System.Windows.Forms.Timer { Interval = 16 };
+            _fadeTimer.Tick += (s, e) =>
+            {
+                _opacity += 0.06f;
+                this.Opacity = Math.Min(_opacity, 1.0);
+                if (_opacity >= 1.0) { _fadeTimer.Stop(); _fadeTimer.Dispose(); }
             };
             _fadeTimer.Start();
 
-            _floatOffset = 0;
-            // _floatTimer = new System.Windows.Forms.Timer();
-            // _floatTimer.Interval = 40;
-            // _floatTimer.Tick += (s, e) => {
-            //     if (_floatUp)
-            //     {
-            //         _floatOffset--;
-            //         if (_floatOffset <= -6) _floatUp = false;
-            //     }
-            //     else
-            //     {
-            //         _floatOffset++;
-            //         if (_floatOffset >= 0) _floatUp = true;
-            //     }
-            //     cardPanel.Top = 75 + _floatOffset;
-            //     glowPanel.Top = 68 + _floatOffset;
-            //     glowPanel.Invalidate();
-            // };
-            // _floatTimer.Start();
+            // 60FPS Physics Timer for Mouse-Tracking Spotlight + Reveal Card
+            _physicsTimer = new System.Windows.Forms.Timer { Interval = 16 };
+            _physicsTimer.Tick += (s, e) =>
+            {
+                _currentMousePos.X += (_targetMousePos.X - _currentMousePos.X) * 0.15f;
+                _currentMousePos.Y += (_targetMousePos.Y - _currentMousePos.Y) * 0.15f;
 
-            // Pulse glow
-            _pulseTimer = new System.Windows.Forms.Timer();
-            _pulseTimer.Interval = 40;
-            _pulseTimer.Tick += (s, e) => {
-                if (_pulseGrow)
+                if (_leftPanel != null && !_leftPanel.IsDisposed)
                 {
-                    _pulseAlpha += 1;
-                    if (_pulseAlpha >= 80) _pulseGrow = false;
+                    Point clientPt = _leftPanel.PointToClient(Cursor.Position);
+                    float targetHover = _leftPanel.ClientRectangle.Contains(clientPt) ? 1f : 0f;
+                    _hoverProgress += (targetHover - _hoverProgress) * 0.12f;
+                    _leftPanel.Invalidate();
                 }
-                else
-                {
-                    _pulseAlpha -= 1;
-                    if (_pulseAlpha <= 30) _pulseGrow = true;
-                }
-                this.Invalidate();
             };
-            _pulseTimer.Start();
+            _physicsTimer.Start();
         }
 
-        private void FadeOut()
+        private void FadeAndClose()
         {
-            var t = new System.Windows.Forms.Timer();
-            t.Interval = 16;
-            t.Tick += (s, e) => {
-                this.Opacity -= 0.06f;
-                if (this.Opacity <= 0)
-                {
-                    t.Stop();
-                    Application.Exit();
-                }
+            var t = new System.Windows.Forms.Timer { Interval = 16 };
+            t.Tick += (s, e) =>
+            {
+                this.Opacity -= 0.08f;
+                if (this.Opacity <= 0) { t.Stop(); Application.Exit(); }
             };
             t.Start();
         }
 
-        // ══ LOGIN LOGIC ══
-
-        private void OnLogin(object sender, EventArgs e)
+        private void DoLogin()
         {
-            string email    = txtEmail.Text.Trim();
-            string password = txtPassword.Text;
+            string email = _txtEmail?.Text?.Trim() ?? "";
+            string pass  = _txtPassword?.Text ?? "";
 
-            if (string.IsNullOrWhiteSpace(email) ||
-                string.IsNullOrWhiteSpace(password))
+            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(pass))
             {
                 ShowError("Please enter both email and password.");
                 return;
             }
 
-            btnLogin.Text    = "Authenticating...";
-            btnLogin.Enabled = false;
-            lblError.Visible = false;
+            _btnLogin.Text    = "AUTHENTICATING...";
+            _btnLogin.Enabled = false;
+            _lblError.Visible = false;
+            _btnLogin.Invalidate();
 
-            // Run async login on background thread so UI stays responsive
             Task.Run(async () =>
             {
-                var (result, apiError) = await ApiService.LoginAsync(email, password);
+                var (result, apiError) = await ApiService.LoginAsync(email, pass);
 
                 this.Invoke((Action)(() =>
                 {
-                    btnLogin.Text    = "LOG IN";
-                    btnLogin.Enabled = true;
-                    btnLogin.Invalidate();
+                    _btnLogin.Text    = "SIGN IN";
+                    _btnLogin.Enabled = true;
+                    _btnLogin.Invalidate();
 
                     if (result == null)
                     {
-                        // Login failed — show the error from the API
                         ShowError("⚠  " + (apiError ?? "Login failed. Check API server."));
                         return;
                     }
-
-                    // Ensure the logged-in user is an admin
                     if (!string.Equals(result.Role, "admin", StringComparison.OrdinalIgnoreCase))
                     {
-                        ShowError("⚠  Access denied. Admin accounts only.");
+                        ShowError("⚠  Access denied — Admin accounts only.");
                         SessionManager.Clear();
                         return;
                     }
 
-                    // Fade out then open MainForm
-                    var t = new System.Windows.Forms.Timer();
-                    t.Interval = 16;
-                    t.Tick += (s2, e2) =>
+                    var loader = new PostLoginLoaderForm();
+                    loader.Show();
+
+                    var fadeOut = new System.Windows.Forms.Timer { Interval = 16 };
+                    fadeOut.Tick += (s2, e2) =>
                     {
-                        this.Opacity -= 0.06f;
+                        this.Opacity -= 0.08f;
                         if (this.Opacity <= 0)
                         {
-                            t.Stop();
-                            var mainForm = new MainForm();
-                            mainForm.Show();
+                            fadeOut.Stop();
+                            fadeOut.Dispose();
                             this.Hide();
                         }
                     };
-                    t.Start();
+                    fadeOut.Start();
                 }));
             });
         }
 
-        // ══ HELPERS ══
-
         private void ShowError(string message)
         {
-            lblError.Text = message;
-            lblError.Visible = true;
+            _lblError.Text    = message;
+            _lblError.Visible = true;
 
-            int origX = cardPanel.Left;
-            var shakeTimer = new System.Windows.Forms.Timer();
+            int origX = _rightPanel.Left;
             int count = 0;
-            shakeTimer.Interval = 25;
-            shakeTimer.Tick += (s, e) => {
+            var shake = new System.Windows.Forms.Timer { Interval = 22 };
+            shake.Tick += (s, e) =>
+            {
                 count++;
-                cardPanel.Left = count % 2 == 0
-                    ? origX + 8 : origX - 8;
-                if (count >= 8)
-                {
-                    cardPanel.Left = origX;
-                    shakeTimer.Stop();
-                    shakeTimer.Dispose();
-                }
+                _rightPanel.Left = count % 2 == 0 ? origX + 6 : origX - 6;
+                if (count >= 10) { _rightPanel.Left = origX; shake.Stop(); shake.Dispose(); }
             };
-            shakeTimer.Start();
+            shake.Start();
         }
 
-        private TextBox CreateStyledTextBox(
-            int x, int y, int width, bool isPassword)
+        private GraphicsPath RR(Rectangle r, int radius)
         {
-            var tb = new TextBox();
-            tb.Size = new Size(width, 40);
-            tb.Location = new Point(x, y);
-            tb.Font = new Font("Segoe UI", 11F);
-            tb.BackColor = Color.FromArgb(14, 14, 24);
-            tb.ForeColor = Color.FromArgb(210, 210, 240);
-            tb.BorderStyle = BorderStyle.FixedSingle;
-            if (isPassword)
-                tb.UseSystemPasswordChar = true;
-
-            tb.Enter += (s, e) => {
-                tb.BackColor = Color.FromArgb(20, 20, 36);
-                cardPanel.Invalidate();
-            };
-            tb.Leave += (s, e) => {
-                tb.BackColor = Color.FromArgb(14, 14, 24);
-                cardPanel.Invalidate();
-            };
-            return tb;
-        }
-
-        private GraphicsPath GetRoundedRect(Rectangle r, int radius)
-        {
+            int d = radius * 2;
+            var arc = new Rectangle(r.Location, new Size(d, d));
             var path = new GraphicsPath();
-            path.AddArc(r.X, r.Y, radius, radius, 180, 90);
-            path.AddArc(r.Right - radius, r.Y, radius, radius, 270, 90);
-            path.AddArc(r.Right - radius, r.Bottom - radius, radius, radius, 0, 90);
-            path.AddArc(r.X, r.Bottom - radius, radius, radius, 90, 90);
-            path.CloseFigure();
+            path.AddArc(arc, 180, 90); arc.X = r.Right - d;
+            path.AddArc(arc, 270, 90); arc.Y = r.Bottom - d;
+            path.AddArc(arc, 0,   90); arc.X = r.Left;
+            path.AddArc(arc, 90,  90); path.CloseFigure();
             return path;
         }
 
-        private GraphicsPath GetRoundedRectF(RectangleF r, float radius)
+        private void SetRoundRegion(Control c, int r)
         {
-            var path = new GraphicsPath();
-            path.AddArc(r.X, r.Y, radius, radius, 180, 90);
-            path.AddArc(r.Right - radius, r.Y, radius, radius, 270, 90);
-            path.AddArc(r.Right - radius, r.Bottom - radius, radius, radius, 0, 90);
-            path.AddArc(r.X, r.Bottom - radius, radius, radius, 90, 90);
-            path.CloseFigure();
-            return path;
+            c.Region = new Region(RR(new Rectangle(0, 0, c.Width, c.Height), r));
+        }
+
+        private static void EnableDB(Control c)
+        {
+            typeof(Control).InvokeMember("DoubleBuffered",
+                BindingFlags.SetProperty | BindingFlags.Instance | BindingFlags.NonPublic,
+                null, c, new object[] { true });
         }
 
         protected override void Dispose(bool disposing)
         {
-            _fadeTimer?.Dispose();
-            _floatTimer?.Dispose();
-            _pulseTimer?.Dispose();
-            base.Dispose(disposing);
-        }
-
-        private void SetupStaticBackground()
-        {
-            var bmp = new Bitmap(this.Width, this.Height);
-            using (var g = Graphics.FromImage(bmp))
+            if (disposing)
             {
-                // 1. D-DRAWING NG GRADIENT (Kailangan naka-ON ang AntiAlias para smooth ang kulay)
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                using var bgBrush = new LinearGradientBrush(
-                    new Rectangle(0, 0, this.Width, this.Height),
-                    Color.FromArgb(8, 8, 16),
-                    Color.FromArgb(18, 18, 32),
-                    LinearGradientMode.ForwardDiagonal);
-                g.FillRectangle(bgBrush, new Rectangle(0, 0, this.Width, this.Height));
-
-                // FIX: Check if grid should be shown. Method para matago ang grid.
-                if (_showGrid)
-                {
-                    // 2. D-DRAWING NG GRID (Dapat NAKA-OFF ang AntiAlias para crisp at 1px exact ang linya)
-                    g.SmoothingMode = SmoothingMode.None; // <-- ITO ANG MAGPAPALINIS NG GRID
-
-                    // Ginawa kong mas subtle (opacity 8 or 10 lang) para hindi agaw-pansin
-                    using var gridPen = new Pen(Color.FromArgb(10, 255, 255, 255), 1f);
-
-                    // Medyo niluwagan ko ang spacing (40) para mas mukhang modern at hindi crowded
-                    int spacing = 40;
-
-                    for (int x = 0; x < this.Width; x += spacing)
-                        g.DrawLine(gridPen, x, 0, x, this.Height);
-
-                    for (int y = 0; y < this.Height; y += spacing)
-                        g.DrawLine(gridPen, 0, y, this.Width, y);
-                }
+                _fadeTimer?.Dispose();
+                _physicsTimer?.Dispose();
+                _btnGlowTimer?.Dispose();
+                _knobTimer?.Dispose();
             }
-
-            this.BackgroundImage = bmp;
-            this.BackgroundImageLayout = ImageLayout.None;
+            base.Dispose(disposing);
         }
     }
 }

@@ -186,16 +186,37 @@ namespace DriveAndGo_Admin.Panels
             {
                 var g = e.Graphics;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
-                using var path = RoundRect(new Rectangle(0, 0, pnlProfileCard.Width - 1, pnlProfileCard.Height - 1), 12);
-                g.FillPath(new SolidBrush(pnlProfileCard.BackColor), path);
-                g.DrawPath(new Pen(ColBorder, 1), path);
+                int w = pnlProfileCard.Width, h = pnlProfileCard.Height;
+                if (w < 10 || h < 10) return;
 
-                using var headerPath = new GraphicsPath();
-                headerPath.AddArc(0, 0, 24, 24, 180, 90);
-                headerPath.AddArc(pnlProfileCard.Width - 25, 0, 24, 24, 270, 90);
-                headerPath.AddLine(pnlProfileCard.Width - 1, 10, pnlProfileCard.Width - 1, 60);
-                headerPath.AddLine(0, 60, 0, 10);
-                g.FillPath(new SolidBrush(ColAccent), headerPath);
+                var rect = new Rectangle(0, 0, w - 1, h - 1);
+                using var path = RoundRect(rect, 16);
+                pnlProfileCard.Region = new Region(path);
+
+                bool dark = ThemeManager.IsDarkMode;
+                WinColor c1 = dark ? WinColor.FromArgb(24, 24, 42) : WinColor.White;
+                WinColor c2 = dark ? WinColor.FromArgb(14, 14, 26) : WinColor.FromArgb(248, 248, 252);
+                using (var bgBrush = new LinearGradientBrush(rect, c1, c2, LinearGradientMode.Vertical))
+                {
+                    g.FillPath(bgBrush, path);
+                }
+
+                // ── Top accent color bar (full-width, 3px) ──
+                var topBarRect = new Rectangle(0, 0, w, 3);
+                using var topBarBrush = new LinearGradientBrush(topBarRect,
+                    ColAccent, ThemeManager.CurrentPrimaryGlow, LinearGradientMode.Horizontal);
+                g.FillRectangle(topBarBrush, topBarRect);
+
+                // ── Inner shine highlight ──
+                var shineR = new Rectangle(2, 3, w - 4, 120);
+                using var shinePath = RoundRect(shineR, 12);
+                using var shineBrush = new LinearGradientBrush(shineR,
+                    WinColor.FromArgb(dark ? 12 : 40, 255, 255, 255),
+                    WinColor.Transparent, LinearGradientMode.Vertical);
+                g.FillPath(shineBrush, shinePath);
+
+                // Border
+                g.DrawPath(new Pen(WinColor.FromArgb(dark ? 30 : 160, ThemeManager.CurrentBorder), 1), path);
             };
 
             Panel pnlAvatar = new Panel { Size = new Size(80, 80), Location = new Point(20, 30), BackColor = WinColor.Transparent };
@@ -678,21 +699,25 @@ namespace DriveAndGo_Admin.Panels
             dgv.AllowUserToDeleteRows = false;
             dgv.ReadOnly = true;
             dgv.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgv.Font = new Font("Segoe UI", 10F);
+            dgv.Font = new Font("Segoe UI", 9.5F);
             dgv.RowTemplate.Height = 42;
             dgv.EnableHeadersVisualStyles = false;
-            dgv.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
+            dgv.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
 
             dgv.DefaultCellStyle.BackColor = dk ? ColBg : WinColor.White;
             dgv.DefaultCellStyle.ForeColor = ColText;
-            dgv.DefaultCellStyle.SelectionBackColor = dk ? WinColor.FromArgb(30, 30, 48) : WinColor.FromArgb(220, 232, 255);
-            dgv.DefaultCellStyle.SelectionForeColor = dk ? ColAccent : WinColor.FromArgb(10, 10, 30);
+            dgv.DefaultCellStyle.SelectionBackColor = dk ? WinColor.FromArgb(32, 255, 90, 31) : WinColor.FromArgb(255, 240, 230);
+            dgv.DefaultCellStyle.SelectionForeColor = ColAccent;
             dgv.DefaultCellStyle.Padding = new Padding(8, 0, 8, 0);
 
             dgv.ColumnHeadersDefaultCellStyle.BackColor = dk ? WinColor.FromArgb(8, 8, 16) : WinColor.FromArgb(235, 236, 245);
             dgv.ColumnHeadersDefaultCellStyle.ForeColor = ColSub;
             dgv.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             dgv.ColumnHeadersHeight = 38;
+
+            dgv.AlternatingRowsDefaultCellStyle.BackColor = dk
+                ? WinColor.FromArgb(20, 20, 34)
+                : WinColor.FromArgb(250, 250, 255);
         }
 
         // ══ UTILS ══
@@ -706,12 +731,21 @@ namespace DriveAndGo_Admin.Panels
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold),
                 Cursor = Cursors.Hand,
-                BackColor = WinColor.FromArgb(20, color),
+                BackColor = WinColor.FromArgb(15, color),
                 ForeColor = color
             };
             btn.FlatAppearance.BorderColor = color;
             btn.FlatAppearance.BorderSize = 1;
-            btn.FlatAppearance.MouseOverBackColor = WinColor.FromArgb(45, color);
+            btn.FlatAppearance.MouseOverBackColor = WinColor.FromArgb(35, color);
+
+            // Added premium rounded corners
+            btn.HandleCreated += (s, e) =>
+            {
+                if (btn.IsDisposed) return;
+                var r = new Rectangle(0, 0, btn.Width, btn.Height);
+                using var p = RoundRect(r, 6);
+                btn.Region = new Region(p);
+            };
             return btn;
         }
 

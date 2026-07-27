@@ -193,12 +193,31 @@ namespace DriveAndGo_Admin.Panels
             _lblRentalStatus.ForeColor = ThemeManager.CurrentText;
 
             _lblSplitStatus.ForeColor = ThemeManager.CurrentText;
+            
+            // Modern grid style
+            bool dk = ThemeManager.IsDarkMode;
             _gridSplits.BackgroundColor = ThemeManager.CurrentBackground;
             _gridSplits.GridColor = ThemeManager.CurrentBorder;
-            _gridSplits.DefaultCellStyle.BackColor = ThemeManager.CurrentCard;
+            _gridSplits.BorderStyle = BorderStyle.None;
+            _gridSplits.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
+            _gridSplits.RowHeadersVisible = false;
+            _gridSplits.EnableHeadersVisualStyles = false;
+            _gridSplits.RowTemplate.Height = 38;
+            _gridSplits.Font = new Font("Segoe UI", 9.5F);
+
+            _gridSplits.DefaultCellStyle.BackColor = dk ? ThemeManager.CurrentCard : Color.White;
             _gridSplits.DefaultCellStyle.ForeColor = ThemeManager.CurrentText;
-            _gridSplits.ColumnHeadersDefaultCellStyle.BackColor = ThemeManager.CurrentBackground;
-            _gridSplits.ColumnHeadersDefaultCellStyle.ForeColor = ThemeManager.CurrentText;
+            _gridSplits.DefaultCellStyle.SelectionBackColor = dk ? Color.FromArgb(32, 255, 90, 31) : Color.FromArgb(255, 240, 230);
+            _gridSplits.DefaultCellStyle.SelectionForeColor = Color.FromArgb(255, 90, 31);
+
+            _gridSplits.ColumnHeadersDefaultCellStyle.BackColor = dk ? Color.FromArgb(8, 8, 16) : Color.FromArgb(235, 236, 245);
+            _gridSplits.ColumnHeadersDefaultCellStyle.ForeColor = ThemeManager.CurrentSubText;
+            _gridSplits.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            _gridSplits.ColumnHeadersHeight = 36;
+
+            _gridSplits.AlternatingRowsDefaultCellStyle.BackColor = dk 
+                ? Color.FromArgb(20, 20, 34) 
+                : Color.FromArgb(250, 250, 255);
 
             _lblAddShare.ForeColor = ThemeManager.CurrentText;
             _lblEmail.ForeColor = ThemeManager.CurrentText;
@@ -209,6 +228,21 @@ namespace DriveAndGo_Admin.Panels
             _txtAmount.ForeColor = ThemeManager.CurrentText;
 
             _lblSumSplit.ForeColor = ThemeManager.CurrentText;
+
+            // Apply round regions to action buttons
+            foreach (var btn in new Button[] { _btnLoadRental, _btnAddShare, _btnSendSplit })
+            {
+                if (btn != null)
+                {
+                    if (btn == _btnLoadRental)
+                    {
+                        btn.BackColor = ThemeManager.CurrentCard;
+                        btn.ForeColor = ThemeManager.CurrentText;
+                        btn.FlatAppearance.BorderColor = ThemeManager.CurrentBorder;
+                    }
+                    SetRound(btn, 6);
+                }
+            }
         }
 
         private async Task LoadRentalAsync()

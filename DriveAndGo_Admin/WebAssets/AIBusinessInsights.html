@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Business Insights</title>
+    
+    <!-- Outfit Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: '#ea580c',
+                    }
+                }
+            }
+        };
+    </script>
+    
+    <style>
+        :root {
+            --bg-color: #07070e;
+            --text-main: #f1f5f9;
+            --text-sub: #94a3b8;
+            --card-bg: rgba(15, 23, 42, 0.5);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --card-inner-bg: rgba(2, 6, 23, 0.4);
+            --raw-bg: rgba(2, 6, 23, 0.6);
+            --pill-bg: #1e293b;
+            --pill-border: rgba(51, 65, 85, 0.6);
+            --pill-text: #cbd5e1;
+            --circle-track: #1e293b;
+        }
+
+        [data-theme="light"] {
+            --bg-color: #f8fafc;
+            --text-main: #0f172a;
+            --text-sub: #64748b;
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --card-border: rgba(226, 232, 240, 0.9);
+            --card-inner-bg: rgba(241, 245, 249, 0.85);
+            --raw-bg: rgba(241, 245, 249, 0.95);
+            --pill-bg: #e2e8f0;
+            --pill-border: rgba(203, 213, 225, 0.8);
+            --pill-text: #334155;
+            --circle-track: #cbd5e1;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            overflow-x: hidden;
+            user-select: none;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .theme-card {
+            background-color: var(--card-bg) !important;
+            border-color: var(--card-border) !important;
+        }
+
+        .theme-card-inner {
+            background-color: var(--card-inner-bg) !important;
+            border-color: var(--card-border) !important;
+        }
+
+        .theme-text-main {
+            color: var(--text-main) !important;
+        }
+
+        .theme-text-sub {
+            color: var(--text-sub) !important;
+        }
+
+        .theme-pill {
+            background-color: var(--pill-bg) !important;
+            border-color: var(--pill-border) !important;
+            color: var(--pill-text) !important;
+        }
+
+        .theme-raw-bg {
+            background-color: var(--raw-bg) !important;
+            border-color: var(--card-border) !important;
+        }
+
+        .circle-track-stroke {
+            stroke: var(--circle-track) !important;
+        }
+
+        /* Glassmorphism scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.1);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(234, 88, 12, 0.4);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(234, 88, 12, 0.6);
+        }
+
+        /* Ambient glow animations */
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 0.6; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.05); }
+        }
+        .ambient-glow {
+            animation: pulseGlow 8s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="p-6 relative min-h-screen">
+
+    <!-- Ambient background blurs -->
+    <div class="fixed top-[-10%] left-[-10%] w-[60%] h-[60%] rounded-full bg-orange-600/10 blur-[130px] pointer-events-none z-0 ambient-glow"></div>
+    <div class="fixed bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-blue-600/10 blur-[130px] pointer-events-none z-0 ambient-glow" style="animation-delay: -4s;"></div>
+
+    <div class="max-w-4xl mx-auto flex flex-col gap-6 relative z-10">
+        
+        <!-- Header Panel -->
+        <div class="flex items-center justify-between border-b border-orange-500/20 pb-4">
+            <div class="flex items-center gap-3">
+                <div class="relative flex h-3 w-3">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-tight bg-gradient-to-r from-orange-500 to-amber-400 bg-clip-text text-transparent">
+                        AI Engine Active
+                    </h1>
+                    <p class="text-xs theme-text-sub">Telemetry logs fully synchronized</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <span id="ai-model-label" class="text-xs theme-pill px-2.5 py-1 rounded-full uppercase tracking-wider font-semibold border">
+                    Groq / Llama-3
+                </span>
+            </div>
+        </div>
+
+        <!-- Dynamic Loader Widget -->
+        <div id="loader" class="flex flex-col items-center justify-center py-20 gap-4">
+            <div class="w-12 h-12 border-4 border-orange-500/20 border-t-orange-500 rounded-full animate-spin"></div>
+            <p id="loader-text" class="text-sm theme-text-sub animate-pulse">Analyzing live dashboard telemetry...</p>
+        </div>
+
+        <!-- Rendered Content Container -->
+        <div id="content" class="hidden flex flex-col gap-6">
+            
+            <!-- KPI Metrics Dashboard Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                
+                <!-- Occupancy Card -->
+                <div class="theme-card backdrop-blur-md border p-5 rounded-2xl flex items-center justify-between shadow-lg hover:border-orange-500/30 transition-all duration-300">
+                    <div class="flex flex-col gap-1">
+                        <span class="text-xs font-bold theme-text-sub uppercase tracking-wide">Occupancy Rate</span>
+                        <div class="flex items-baseline gap-1 mt-1">
+                            <span id="kpi-occupancy" class="text-2xl font-extrabold theme-text-main">50%</span>
+                        </div>
+                        <span id="kpi-target-occupancy" class="text-xs theme-text-sub">Target: 70-80%</span>
+                    </div>
+                    <div class="relative flex items-center justify-center">
+                        <svg class="w-16 h-16 transform -rotate-90">
+                            <circle cx="32" cy="32" r="28" class="circle-track-stroke" stroke-width="5" fill="transparent" />
+                            <circle id="circle-progress" cx="32" cy="32" r="28" class="text-orange-500 transition-all duration-500 ease-out" 
+                                stroke-width="5" 
+                                fill="transparent" 
+                                stroke-dasharray="175.9"
+                                stroke-dashoffset="88"
+                                stroke-linecap="round"
+                                style="filter: drop-shadow(0 0 4px rgba(234, 88, 12, 0.6))"
+                            />
+                        </svg>
+                        <span id="kpi-occupancy-center" class="absolute text-[10px] font-bold theme-text-main">50%</span>
+                    </div>
+                </div>
+
+                <!-- Monthly Revenue Card -->
+                <div class="theme-card backdrop-blur-md border p-5 rounded-2xl flex flex-col justify-between shadow-lg hover:border-orange-500/30 transition-all duration-300">
+                    <div>
+                        <span class="text-xs font-bold theme-text-sub uppercase tracking-wide">Monthly Revenue</span>
+                        <div id="kpi-monthly-rev" class="text-2xl font-extrabold theme-text-main mt-2 tracking-tight">
+                            ₱0.00
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 mt-3 text-xs text-emerald-500 font-semibold">
+                        <i class="fa-solid fa-arrow-trend-up"></i>
+                        <span>Current billing period</span>
+                    </div>
+                </div>
+
+                <!-- All Time Total Card -->
+                <div class="theme-card backdrop-blur-md border p-5 rounded-2xl flex flex-col justify-between shadow-lg hover:border-orange-500/30 transition-all duration-300">
+                    <div>
+                        <span class="text-xs font-bold theme-text-sub uppercase tracking-wide">All Time Revenue</span>
+                        <div id="kpi-total-rev" class="text-2xl font-extrabold theme-text-main mt-2 tracking-tight">
+                            ₱0.00
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 mt-3 text-xs text-orange-500 font-semibold">
+                        <i class="fa-solid fa-fire"></i>
+                        <span id="kpi-growth">Growth: 0% MoM</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Action Required Section -->
+            <div class="theme-card backdrop-blur-md border p-6 rounded-2xl shadow-lg">
+                <h3 class="text-sm font-bold theme-text-main uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-circle-exclamation text-orange-500"></i>
+                    Action Required & Optimization Tasks
+                </h3>
+                <div id="actions-list" class="flex flex-col gap-3">
+                    <!-- Actions will be rendered here -->
+                </div>
+            </div>
+
+            <!-- Raw Markdown Output Section -->
+            <div class="border rounded-2xl overflow-hidden theme-raw-bg">
+                <button 
+                    onclick="toggleRaw()"
+                    class="w-full px-5 py-3 flex items-center justify-between text-xs font-semibold theme-text-sub hover:opacity-80 transition-all duration-200"
+                >
+                    <span>Toggle Raw AI Output Analysis</span>
+                    <i id="raw-arrow" class="fa-solid fa-chevron-down"></i>
+                </button>
+                <div id="raw-container" class="hidden p-5 border-t theme-card-inner font-mono text-xs theme-text-sub whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">
+                    <!-- Raw text -->
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        window.setInsightsTheme = function(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+        };
+
+        function toggleRaw() {
+            const container = document.getElementById('raw-container');
+            const arrow = document.getElementById('raw-arrow');
+            const isHidden = container.classList.contains('hidden');
+            
+            if (isHidden) {
+                container.classList.remove('hidden');
+                arrow.classList.remove('fa-chevron-down');
+                arrow.classList.add('fa-chevron-up');
+            } else {
+                container.classList.add('hidden');
+                arrow.classList.remove('fa-chevron-up');
+                arrow.classList.add('fa-chevron-down');
+            }
+        }
+
+        function parseAiOutput(text) {
+            const data = {
+                occupancyRate: 50,
+                targetOccupancy: "70-80%",
+                monthlyRevenue: "₱0.00",
+                totalRevenue: "₱0.00",
+                growthRate: "0%",
+                actions: []
+            };
+
+            if (!text) return data;
+
+            const lines = text.split('\n');
+            lines.forEach(line => {
+                const cleaned = line.trim();
+                
+                if (cleaned.toLowerCase().includes('occupancy:')) {
+                    const match = cleaned.match(/(\d+)%/);
+                    if (match) {
+                        data.occupancyRate = parseInt(match[1]);
+                    }
+                }
+                if (cleaned.toLowerCase().includes('target occupancy:')) {
+                    data.targetOccupancy = cleaned.replace(/.*?target occupancy:/i, '').trim();
+                }
+
+                if (cleaned.toLowerCase().includes('monthly revenue:')) {
+                    data.monthlyRevenue = cleaned.replace(/.*?monthly revenue:/i, '').trim();
+                }
+                if (cleaned.toLowerCase().includes('total revenue:')) {
+                    data.totalRevenue = cleaned.replace(/.*?total revenue:/i, '').trim();
+                }
+                if (cleaned.toLowerCase().includes('growth rate:')) {
+                    data.growthRate = cleaned.replace(/.*?growth rate:/i, '').trim();
+                }
+
+                if (cleaned.toLowerCase().includes('action required:') || 
+                    (cleaned.startsWith('* ') && 
+                     (cleaned.toLowerCase().includes('action') || 
+                      cleaned.toLowerCase().includes('increase') || 
+                      cleaned.toLowerCase().includes('optimize') || 
+                      cleaned.toLowerCase().includes('expand') || 
+                      cleaned.toLowerCase().includes('resolve')))) {
+                    
+                    let actionText = cleaned.replace(/.*?(action required:|action:)/i, '').trim();
+                    if (actionText.startsWith('*')) actionText = actionText.substring(1).trim();
+                    
+                    if (actionText.includes(',') && actionText.split(',').length > 1) {
+                        actionText.split(',').forEach(act => {
+                            const trimmedAct = act.trim();
+                            if (trimmedAct && !data.actions.includes(trimmedAct)) {
+                                data.actions.push(trimmedAct.charAt(0).toUpperCase() + trimmedAct.slice(1));
+                            }
+                        });
+                    } else if (actionText && !data.actions.includes(actionText)) {
+                        data.actions.push(actionText.charAt(0).toUpperCase() + actionText.slice(1));
+                    }
+                }
+            });
+
+            if (data.actions.length === 0) {
+                const actionLines = lines.filter(l => l.toLowerCase().includes('action required') || l.toLowerCase().includes('recommendation'));
+                actionLines.forEach(l => {
+                    const textOnly = l.replace(/\*\*|###|\*/g, '').trim();
+                    if (textOnly) data.actions.push(textOnly);
+                });
+            }
+
+            return data;
+        }
+
+        window.updateInsights = function(text, isLoading, occupancy, monthlyRevenue, totalRevenue, source) {
+            const loader = document.getElementById('loader');
+            const content = document.getElementById('content');
+            const loaderText = document.getElementById('loader-text');
+
+            if (isLoading) {
+                loader.classList.remove('hidden');
+                content.classList.add('hidden');
+                loaderText.innerText = text || "Analyzing live dashboard telemetry...";
+                return;
+            }
+
+            loader.classList.add('hidden');
+            content.classList.remove('hidden');
+
+            const parsed = parseAiOutput(text);
+
+            let displayOccupancy = (occupancy !== undefined && occupancy !== null) ? occupancy : parsed.occupancyRate;
+            let displayMonthly = (monthlyRevenue !== undefined && monthlyRevenue !== null) ? "₱" + monthlyRevenue : parsed.monthlyRevenue;
+            let displayTotal = (totalRevenue !== undefined && totalRevenue !== null) ? "₱" + totalRevenue : parsed.totalRevenue;
+
+            document.getElementById('kpi-occupancy').innerText = displayOccupancy + "%";
+            document.getElementById('kpi-occupancy-center').innerText = displayOccupancy + "%";
+            document.getElementById('kpi-target-occupancy').innerText = "Target: " + parsed.targetOccupancy;
+            document.getElementById('kpi-monthly-rev').innerText = displayMonthly;
+            document.getElementById('kpi-total-rev').innerText = displayTotal;
+            document.getElementById('kpi-growth').innerText = "Growth: " + parsed.growthRate + " MoM";
+            document.getElementById('raw-container').innerText = text;
+
+            if (source) {
+                const modelLabel = document.getElementById('ai-model-label');
+                if (modelLabel) {
+                    modelLabel.innerText = source.toUpperCase();
+                }
+            }
+
+            const radius = 28;
+            const circumference = 2 * Math.PI * radius;
+            const offset = circumference - (displayOccupancy / 100) * circumference;
+            document.getElementById('circle-progress').setAttribute('stroke-dashoffset', offset);
+
+            const listContainer = document.getElementById('actions-list');
+            listContainer.innerHTML = '';
+            
+            if (parsed.actions.length > 0) {
+                parsed.actions.forEach(act => {
+                    const item = document.createElement('div');
+                    item.className = "flex items-start gap-3 theme-card-inner border p-3.5 rounded-xl transition-all duration-200 hover:border-orange-500/30";
+                    item.innerHTML = `
+                        <i class="fa-solid fa-check-double text-orange-500 mt-1 flex-shrink-0"></i>
+                        <span class="text-sm theme-text-main leading-relaxed font-medium">${act}</span>
+                    `;
+                    listContainer.appendChild(item);
+                });
+            } else {
+                listContainer.innerHTML = `<p class="text-sm theme-text-sub italic">No critical operation actions detected.</p>`;
+            }
+        };
+
+        window.updateInsightsFromBase64 = function(base64Text, isLoading, occupancy, monthlyRevenue, totalRevenue, source) {
+            try {
+                const rawString = window.atob(base64Text);
+                const bytes = new Uint8Array(rawString.length);
+                for (let i = 0; i < rawString.length; i++) {
+                    bytes[i] = rawString.charCodeAt(i);
+                }
+                const decodedText = new TextDecoder("utf-8").decode(bytes);
+                window.updateInsights(decodedText, isLoading, occupancy, monthlyRevenue, totalRevenue, source);
+            } catch (ex) {
+                window.updateInsights("Error decoding payload: " + ex.message, false);
+            }
+        };
+
+        window.updateInsights("Contacting Groq Llama-3 AI Engine...", true);
+    </script>
+</body>
+</html>

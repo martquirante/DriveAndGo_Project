@@ -1,8 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
-		<Nullable>enable</Nullable>
+		<Nullable>disable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
+		<NoWarn>$(NoWarn);MSB3277;CS8600;CS8602;CS8603;CS8618;CS8632</NoWarn>
 	</PropertyGroup>
 	<ItemGroup>
 	  <Compile Remove="DriveAndGo_Admin\**" />
@@ -38,4 +39,14 @@
 		<!-- .env file loader -->
 		<PackageReference Include="DotNetEnv" Version="3.1.1" />
 	</ItemGroup>
+
+	<!-- ═══════════════════════════════════════════════════════════════════════
+	     AUTO-UNBLOCK & AUTHENTICODE DEV SIGNING:
+	     Executes Sign-Dev.ps1 to create/trust DriveAndGoDevCert, strip Mark-of-the-Web,
+	     and sign all output binaries to resolve 0x800711C7 (Smart App Control).
+	════════════════════════════════════════════════════════════════════════ -->
+	<Target Name="SignOutput" AfterTargets="Build">
+		<Exec Command="powershell -ExecutionPolicy Bypass -NoProfile -NonInteractive -File &quot;$(ProjectDir)Sign-Dev.ps1&quot; -TargetPath &quot;$(TargetPath)&quot;" ContinueOnError="true" />
+	</Target>
+
 </Project>

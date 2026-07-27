@@ -60,7 +60,7 @@ namespace DriveAndGo_Admin.Panels
         // Action buttons
         private Button btnApprove, btnReject, btnComplete,
                        btnConfirmPayment, btnExportPDF, btnWalkIn,
-                       btnCancel, btnExtensions;
+                       btnCancel, btnExtensions, btnReplayRoute, btnPromosHeader;
 
         private TextBox txtSearch;
         private ComboBox cboStatus, cboPayment;
@@ -180,8 +180,14 @@ namespace DriveAndGo_Admin.Panels
             btnWalkIn = CreateBtn("＋ Walk-In", ColAccent, 466, 78, 120);
             btnWalkIn.Click += OnWalkInRental;
 
+            btnPromosHeader = CreateBtn("🎫 Promos", ColPurple, 596, 78, 110);
+            btnPromosHeader.Click += (s, e) => {
+                using var frm = new PromoCodesForm();
+                frm.ShowDialog(this);
+            };
+
             topBar.Controls.AddRange(new Control[]
-                { lblTitle, lblStats, txtSearch, cboStatus, cboPayment, btnRefresh, btnWalkIn });
+                { lblTitle, lblStats, txtSearch, cboStatus, cboPayment, btnRefresh, btnWalkIn, btnPromosHeader });
 
             dgvRentals = new DataGridView { Dock = DockStyle.Fill };
             StyleGrid(dgvRentals);
@@ -297,6 +303,7 @@ namespace DriveAndGo_Admin.Panels
             btnExtensions = CreateBtn("📋 Extensions", ColPurple, 392, 8, 110);
             btnConfirmPayment = CreateBtn("💳 Paid", ColGreen, 508, 8, 80);
             btnExportPDF = CreateBtn("📄 PDF", ColAccent, 594, 8, 70);
+            btnReplayRoute = CreateBtn("📍 Replay", ColBlue, 670, 8, 90);
 
             btnApprove.Click += (s, e) => UpdateStatus("approved");
             btnReject.Click += (s, e) => UpdateStatus("rejected");
@@ -305,10 +312,17 @@ namespace DriveAndGo_Admin.Panels
             btnExtensions.Click += OnManageExtensions;
             btnConfirmPayment.Click += OnConfirmPayment;
             btnExportPDF.Click += OnExportPDF;
+            btnReplayRoute.Click += (s, e) => {
+                if (_selectedId > 0)
+                {
+                    using var frm = new ReplayMapForm(_selectedId);
+                    frm.ShowDialog(this);
+                }
+            };
 
             pnlActionBar.Controls.AddRange(new Control[]
                 { btnApprove, btnReject, btnCancel, btnComplete,
-                  btnExtensions, btnConfirmPayment, btnExportPDF });
+                  btnExtensions, btnConfirmPayment, btnExportPDF, btnReplayRoute });
 
             rightPanel.Controls.Add(pnlStatusBanner);
             rightPanel.Controls.Add(pnlInfoCards);
@@ -592,14 +606,25 @@ namespace DriveAndGo_Admin.Panels
                 card.Paint += (s, ev) =>
                 {
                     var g = ev.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias;
-                    using var path = RoundRect(new Rectangle(0, 0, card.Width - 1, card.Height - 1), 6);
-                    g.FillPath(new SolidBrush(ThemeManager.IsDarkMode
-                        ? WinColor.FromArgb(22, 22, 35) : WinColor.White), path);
-                    g.FillRectangle(new SolidBrush(color), 0, card.Height - 3, card.Width, 3);
-                    g.DrawPath(new Pen(WinColor.FromArgb(25, color), 1), path);
+                    var rect = new Rectangle(0, 0, card.Width - 1, card.Height - 1);
+                    using var path = RoundRect(rect, 8);
+                    
+                    bool dark = ThemeManager.IsDarkMode;
+                    WinColor c1 = dark ? WinColor.FromArgb(22, 22, 38) : WinColor.White;
+                    WinColor c2 = dark ? WinColor.FromArgb(14, 14, 26) : WinColor.FromArgb(248, 248, 252);
+                    using (var bgBrush = new LinearGradientBrush(rect, c1, c2, LinearGradientMode.Vertical))
+                    {
+                        g.FillPath(bgBrush, path);
+                    }
+
+                    // Vertical left accent bar (3px width)
+                    g.FillRectangle(new SolidBrush(color), 0, 8, 3, card.Height - 16);
+
+                    // Border
+                    g.DrawPath(new Pen(WinColor.FromArgb(dark ? 30 : 160, ThemeManager.CurrentBorder), 1), path);
                 };
-                card.Controls.Add(new Label { Text = label, Font = new Font("Segoe UI", 7F, FontStyle.Bold), ForeColor = color, AutoSize = true, Location = new Point(8, 6), BackColor = WinColor.Transparent });
-                card.Controls.Add(new Label { Text = value, Font = new Font("Segoe UI", 8.5F, FontStyle.Bold), ForeColor = ColText, AutoSize = false, Size = new Size(cw - 12, 34), Location = new Point(8, 22), BackColor = WinColor.Transparent });
+                card.Controls.Add(new Label { Text = label, Font = new Font("Segoe UI", 7F, FontStyle.Bold), ForeColor = color, AutoSize = true, Location = new Point(10, 6), BackColor = WinColor.Transparent });
+                card.Controls.Add(new Label { Text = value, Font = new Font("Segoe UI", 8.5F, FontStyle.Bold), ForeColor = ColText, AutoSize = false, Size = new Size(cw - 16, 34), Location = new Point(10, 22), BackColor = WinColor.Transparent });
                 pnlInfoCards.Controls.Add(card);
             }
 
@@ -860,6 +885,7 @@ namespace DriveAndGo_Admin.Panels
             btnExtensions.ForeColor = pendExt > 0 ? ColPurple : ColSub;
             btnConfirmPayment.Enabled = payment == "unpaid";
             btnExportPDF.Enabled = true;
+            btnReplayRoute.Enabled = _selectedId > 0;
         }
 
         // ══ STATUS ACTIONS ══════════════════════════════════════════════════
@@ -1316,21 +1342,25 @@ namespace DriveAndGo_Admin.Panels
             dgv.AllowUserToDeleteRows = false;
             dgv.ReadOnly = true;
             dgv.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgv.Font = new Font("Segoe UI", 10F);
+            dgv.Font = new Font("Segoe UI", 9.5F);
             dgv.RowTemplate.Height = 42;
             dgv.EnableHeadersVisualStyles = false;
             dgv.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
 
             dgv.DefaultCellStyle.BackColor = dk ? ColBg : WinColor.White;
             dgv.DefaultCellStyle.ForeColor = ColText;
-            dgv.DefaultCellStyle.SelectionBackColor = dk ? WinColor.FromArgb(30, 30, 48) : WinColor.FromArgb(220, 232, 255);
-            dgv.DefaultCellStyle.SelectionForeColor = dk ? ColAccent : WinColor.FromArgb(10, 10, 30);
+            dgv.DefaultCellStyle.SelectionBackColor = dk ? WinColor.FromArgb(32, 255, 90, 31) : WinColor.FromArgb(255, 240, 230);
+            dgv.DefaultCellStyle.SelectionForeColor = ColAccent;
             dgv.DefaultCellStyle.Padding = new Padding(8, 0, 8, 0);
 
             dgv.ColumnHeadersDefaultCellStyle.BackColor = dk ? WinColor.FromArgb(8, 8, 16) : WinColor.FromArgb(235, 236, 245);
             dgv.ColumnHeadersDefaultCellStyle.ForeColor = ColSub;
             dgv.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
             dgv.ColumnHeadersHeight = 38;
+
+            dgv.AlternatingRowsDefaultCellStyle.BackColor = dk
+                ? WinColor.FromArgb(20, 20, 34)
+                : WinColor.FromArgb(250, 250, 255);
         }
 
         private bool TableExists(object conn, string t)
@@ -1348,12 +1378,21 @@ namespace DriveAndGo_Admin.Panels
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold),
                 Cursor = Cursors.Hand,
-                BackColor = WinColor.FromArgb(20, color),
+                BackColor = WinColor.FromArgb(15, color),
                 ForeColor = color
             };
             btn.FlatAppearance.BorderColor = color;
             btn.FlatAppearance.BorderSize = 1;
-            btn.FlatAppearance.MouseOverBackColor = WinColor.FromArgb(45, color);
+            btn.FlatAppearance.MouseOverBackColor = WinColor.FromArgb(35, color);
+
+            // Added premium rounded corners
+            btn.HandleCreated += (s, e) =>
+            {
+                if (btn.IsDisposed) return;
+                var r = new Rectangle(0, 0, btn.Width, btn.Height);
+                using var p = RoundRect(r, 6);
+                btn.Region = new Region(p);
+            };
             return btn;
         }
 

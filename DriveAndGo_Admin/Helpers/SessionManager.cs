@@ -19,7 +19,12 @@ namespace DriveAndGo_Admin.Helpers
         /// </summary>
         public static string JwtToken  { get; set; } = string.Empty;
 
+        /// <summary>Alias for JwtToken for convenience.</summary>
+        public static string Token => JwtToken;
+
         public static bool IsLoggedIn => !string.IsNullOrWhiteSpace(JwtToken);
+
+        public static System.Drawing.Image CustomAvatar { get; set; }
 
         /// <summary>Clears all session data on logout.</summary>
         public static void Clear()
@@ -29,6 +34,7 @@ namespace DriveAndGo_Admin.Helpers
             Role     = string.Empty;
             Email    = string.Empty;
             JwtToken = string.Empty;
+            CustomAvatar = null;
         }
     }
 }

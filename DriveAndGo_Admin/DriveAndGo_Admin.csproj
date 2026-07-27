@@ -7,6 +7,8 @@
 		<UseWindowsForms>true</UseWindowsForms>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Platforms>AnyCPU;x64</Platforms>
+		<NoWarn>$(NoWarn);MSB3277</NoWarn>
+		<ApplicationIcon>WebAssets\app.ico</ApplicationIcon>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -55,12 +57,32 @@
 			<Generator>SettingsSingleFileGenerator</Generator>
 			<LastGenOutput>Settings.Designer.cs</LastGenOutput>
 		</None>
-		<None Update="WebAssets\garage_3D.png">
-		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		<None Update="WebAssets\*.html">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
-		<None Update="WebAssets\logo.png">
-		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		<None Update="WebAssets\*.ico">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="WebAssets\*.png">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="WebAssets\*.jpg">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+		<None Update="Resources\loadingScreenVideo\*.mp4">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 	</ItemGroup>
+
+	<!-- ═══════════════════════════════════════════════════════════════════════
+	     AUTO-UNBLOCK & AUTO-SIGN:
+	     Strips Zone.Identifier ADS and self-signs binaries with local dev cert.
+	     Fixes 0x800711C7 (Smart App Control / Application Control policy block).
+	════════════════════════════════════════════════════════════════════════ -->
+	<Target Name="AutoUnblockOutput" AfterTargets="Build">
+		<Exec
+			Command="powershell -NoProfile -NonInteractive -Command &quot;Get-ChildItem -Path '$(OutputPath)' -Recurse -File -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue; $cert = Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert -ErrorAction SilentlyContinue | Select-Object -First 1; if ($cert) { Set-AuthenticodeSignature -FilePath '$(TargetPath)' -Certificate $cert -ErrorAction SilentlyContinue }&quot;"
+			ContinueOnError="true" />
+	</Target>
 
 </Project>

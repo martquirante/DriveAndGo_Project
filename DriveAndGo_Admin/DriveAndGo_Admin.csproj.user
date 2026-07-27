@@ -1,19 +1,49 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DebuggerFlavor>ProjectDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ActiveDebugProfile>DriveAndGo_Admin</ActiveDebugProfile>
+  </PropertyGroup>
   <ItemGroup>
+    <Compile Update="AIBusinessInsightsForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="ChatOverlayPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
     <Compile Update="LoginForm.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Update="MainForm.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Update="Panels\AccountsPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="Panels\CalendarPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
     <Compile Update="Panels\DashboardPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="Panels\DocumentVaultPanel.cs">
       <SubType>UserControl</SubType>
     </Compile>
     <Compile Update="Panels\DriversPanel.cs">
       <SubType>UserControl</SubType>
     </Compile>
+    <Compile Update="Panels\ExpensesPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
     <Compile Update="Panels\FleetPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="Panels\MaintenanceFuelPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="Panels\PromoCodesPanel.cs">
       <SubType>UserControl</SubType>
     </Compile>
     <Compile Update="Panels\RentalsPanel.cs">
@@ -22,8 +52,23 @@
     <Compile Update="Panels\ReportsPanel.cs">
       <SubType>UserControl</SubType>
     </Compile>
+    <Compile Update="Panels\SplitPaymentsPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
     <Compile Update="Panels\TransactionsPanel.cs">
       <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="PostLoginLoaderForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="PromoCodesForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="ReplayMapForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="UserProfileFlyoutPanel.cs">
+      <SubType>Component</SubType>
     </Compile>
   </ItemGroup>
 </Project>

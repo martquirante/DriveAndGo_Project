@@ -215,13 +215,11 @@ namespace DriveAndGo_Admin.Panels
             {
                 var g = e.Graphics;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
+                // Minimalist modern bottom gradient line instead of retro scanlines
                 using var br = new LinearGradientBrush(
-                    new Point(0, topBar.Height - 2), new Point(topBar.Width, topBar.Height - 2),
-                    ColAccent, Color.Transparent);
-                g.FillRectangle(br, 0, topBar.Height - 2, topBar.Width, 2);
-                using var scanPen = new Pen(Color.FromArgb(dk ? 8 : 4, ColAccent), 1);
-                for (int sy = 0; sy < topBar.Height; sy += 4)
-                    g.DrawLine(scanPen, 0, sy, topBar.Width, sy);
+                    new Rectangle(0, topBar.Height - 1, topBar.Width, 1),
+                    ColAccent, Color.Transparent, LinearGradientMode.Horizontal);
+                g.DrawLine(new Pen(br, 1), 0, topBar.Height - 1, topBar.Width, topBar.Height - 1);
             };
 
             lblTitle = new Label
@@ -856,27 +854,37 @@ namespace DriveAndGo_Admin.Panels
 
             card.Controls.AddRange(new Control[] { colorBar, pic, info });
 
-            // ── Rounded corners + selection glow ─────────────────────────
+            // ── Rounded corners, card gradient, and selection glow ─────────
             card.Paint += (s, e) =>
             {
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
                 bool sel = _selectedId == vid;
                 var rect = new Rectangle(0, 0, card.Width - 1, card.Height - 1);
-                using var path = RoundRect(rect, 10);
+                using var path = RoundRect(rect, 12);
 
+                // Body glassmorphism fill
+                Color c1 = dk ? Color.FromArgb(20, 20, 36) : Color.FromArgb(255, 255, 255);
+                Color c2 = dk ? Color.FromArgb(10, 10, 22) : Color.FromArgb(248, 248, 255);
+                using (var bgBrush = new LinearGradientBrush(rect, c1, c2, LinearGradientMode.Vertical))
+                {
+                    g.FillPath(bgBrush, path);
+                }
+
+                // Selection glowing border
                 if (sel)
                 {
-                    int[] glowA = { 6, 14, 26, 40 };
-                    int[] glowW = { 16, 10, 6, 2 };
+                    int[] glowA = { 8, 16, 28, 45 };
+                    int[] glowW = { 10, 7, 4, 2 };
                     for (int gi = 0; gi < glowA.Length; gi++)
                         using (var gp = new Pen(Color.FromArgb(glowA[gi], sc), glowW[gi]))
-                            e.Graphics.DrawPath(gp, path);
+                            g.DrawPath(gp, path);
                 }
 
                 using var brd = new Pen(
-                    sel ? sc : (dk ? Color.FromArgb(18, 18, 40) : Color.FromArgb(218, 218, 238)),
-                    sel ? 2f : 1f);
-                e.Graphics.DrawPath(brd, path);
+                    sel ? sc : (dk ? Color.FromArgb(32, ThemeManager.CurrentBorder) : Color.FromArgb(218, 218, 238)),
+                    sel ? 1.8f : 1f);
+                g.DrawPath(brd, path);
             };
 
             Color hoverBg = dk ? Color.FromArgb(14, 14, 30) : Color.FromArgb(242, 242, 255);
@@ -1880,13 +1888,22 @@ namespace DriveAndGo_Admin.Panels
                 Location = new Point(x, y),
                 FlatStyle = FlatStyle.Flat,
                 Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
-                BackColor = Color.FromArgb(20, color),
+                BackColor = Color.FromArgb(15, color),
                 ForeColor = color,
                 Cursor = Cursors.Hand
             };
             btn.FlatAppearance.BorderColor = color;
             btn.FlatAppearance.BorderSize = 1;
-            btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(44, color);
+            btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(35, color);
+
+            // Added premium rounded corners
+            btn.HandleCreated += (s, e) =>
+            {
+                if (btn.IsDisposed) return;
+                var r = new Rectangle(0, 0, btn.Width, btn.Height);
+                using var p = RoundRect(r, 6);
+                btn.Region = new Region(p);
+            };
             return btn;
         }
 

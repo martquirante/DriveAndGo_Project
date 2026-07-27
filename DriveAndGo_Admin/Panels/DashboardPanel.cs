@@ -1,12 +1,8 @@
 #nullable disable
 using DriveAndGo_Admin.Helpers;
-using System;
 using System.Data;
-using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Text.Json;
-using System.Threading.Tasks;
-using System.Windows.Forms;
 
 namespace DriveAndGo_Admin.Panels
 {
@@ -39,13 +35,27 @@ namespace DriveAndGo_Admin.Panels
         private int _overdueRentals = 0;
         private int _openIssues = 0;
 
+        // ── Quick Stats values ──
+        private int _totalUsers = 0;
+        private int _totalReviews = 0;
+        private decimal _avgRating = 0;
+        private int _dueToday = 0;
+        private int _overdue = 0;
+        private int _pendingExtensions = 0;
+        private string _topDriverName = "No driver ratings yet";
+        private decimal _topDriverRating = 0;
+
         // ── Layout ──
         private Panel _scrollContainer;
         private Panel[] _statCards = new Panel[8];
+        private Panel _canvas3DCard;
         private Panel _bookingsCard;
         private Panel _quickStatsCard;
         private Panel _fleetCard;
         private Panel _pendingCard;
+
+        // ── React WebView2 (DashboardOverview.html) ──
+        private Microsoft.Web.WebView2.WinForms.WebView2 _dashWebView;
 
         // ── Animation ──
         private System.Windows.Forms.Timer _entranceTimer;
@@ -79,8 +89,24 @@ namespace DriveAndGo_Admin.Panels
             _refreshTimer.Tick += (s, e) => LoadStatsFromDB();
             _refreshTimer.Start();
 
-            // Defer the first data fetch until the window handle exists
-            this.HandleCreated += (s, e) => LoadStatsFromDB();
+            this.HandleCreated += (s, e) =>
+            {
+                LoadStatsFromDB();
+                // Build the React-powered Dashboard WebView2 once the handle exists
+                BuildWebDashboard();
+            };
+
+            this.VisibleChanged += (s, e) =>
+            {
+                if (this.Visible && this.IsHandleCreated && !this.IsDisposed)
+                {
+                    LoadStatsFromDB();
+                    // Re-inject auth token and trigger React refresh
+                    RefreshWebViewData();
+                    // Sync CSS variable theme — keeps dark/light in sync without reload
+                    PushThemeToWebView(Helpers.ThemeManager.IsDarkMode ? "dark" : "light");
+                }
+            };
         }
 
         private void ThemeChanged_Handler(object sender, EventArgs e)
@@ -125,8 +151,223 @@ namespace DriveAndGo_Admin.Panels
         }
 
         // ══════════════════════════════════════════════
+        //  REACT DASHBOARD WEBVIEW2
+        //  Loads DashboardOverview.html — a self-contained
+        //  React 18 + Babel Standalone page with:
+        //   • Live data fetch from /api/admin/dashboard/summary
+        //   • 3D tilt metric cards
+        //   • Staggered fadeInUp animations
+        //   • window.forceDashboardRefresh global for C# interop
+        // ══════════════════════════════════════════════
+        private async void BuildWebDashboard()
+        {
+            try
+            {
+                string htmlPath = System.IO.Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "DashboardOverview.html");
+
+                if (!System.IO.File.Exists(htmlPath))
+                {
+                    Console.WriteLine("[Dashboard] DashboardOverview.html not found at: " + htmlPath);
+                    return;
+                }
+
+                // Create the WebView2 control
+                _dashWebView = new Microsoft.Web.WebView2.WinForms.WebView2 { Dock = DockStyle.Fill };
+
+                // Insert BEHIND the scroll container so native C# cards still show if needed
+                // (but we use DockStyle.Fill — the web panel takes priority via BringToFront)
+                Controls.Add(_dashWebView);
+                _dashWebView.BringToFront();
+
+                // Initialise the WebView2 environment
+                var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(
+                    null, System.IO.Path.Combine(System.IO.Path.GetTempPath(), "DriveAndGo_DashWV2"));
+
+                await _dashWebView.EnsureCoreWebView2Async(env);
+
+                // ── React → C# message bridge ─────────────────────────────────
+                // React calls: window.chrome.webview.postMessage({ action: 'open_ai_insights' })
+                // C# receives it here and dispatches to the correct handler.
+                _dashWebView.CoreWebView2.WebMessageReceived += WebView_WebMessageReceived;
+
+                // Harden settings
+                _dashWebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                _dashWebView.CoreWebView2.Settings.AreDevToolsEnabled            = false;
+                _dashWebView.CoreWebView2.Settings.IsStatusBarEnabled            = false;
+
+                string token   = Helpers.SessionManager.Token ?? string.Empty;
+                string apiBase = Helpers.ApiService.BaseUrl.TrimEnd('/');
+                string currentTheme = ThemeManager.IsDarkMode ? "dark" : "light";
+
+                // Inject BEFORE navigation so scripts running on document load have API credentials and data-theme defined immediately
+                await _dashWebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
+                    $"window.API_BASE_URL = '{apiBase}'; window.AUTH_TOKEN = '{token}'; document.documentElement.setAttribute('data-theme', '{currentTheme}');");
+                await _dashWebView.CoreWebView2.ExecuteScriptAsync(
+                    $"window.API_BASE_URL = '{apiBase}'; window.AUTH_TOKEN = '{token}'; document.documentElement.setAttribute('data-theme', '{currentTheme}');");
+
+                // After the page finishes loading, re-verify credentials, sync theme & trigger data fetch
+                _dashWebView.CoreWebView2.NavigationCompleted += async (sender, args) =>
+                {
+                    if (_dashWebView == null || _dashWebView.IsDisposed || _dashWebView.CoreWebView2 == null) return;
+                    try
+                    {
+                        string currentToken   = Helpers.SessionManager.Token ?? string.Empty;
+                        string currentApiBase = Helpers.ApiService.BaseUrl.TrimEnd('/');
+                        string activeTheme    = ThemeManager.IsDarkMode ? "dark" : "light";
+
+                        // Step 1: Set globals and apply theme immediately
+                        await _dashWebView.CoreWebView2.ExecuteScriptAsync(
+                            $"window.API_BASE_URL = '{currentApiBase}'; window.AUTH_TOKEN = '{currentToken}';" +
+                            $"if(window.setDashboardTheme) window.setDashboardTheme('{activeTheme}');");
+
+                        // Step 2: Trigger React data fetch
+                        await _dashWebView.CoreWebView2.ExecuteScriptAsync(
+                            "if(window.forceDashboardRefresh) window.forceDashboardRefresh();" +
+                            "else if(window.refreshDashboardData) window.refreshDashboardData();");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("[Dashboard] Post-navigation script failed: " + ex.Message);
+                    }
+                };
+
+                // Navigate to the HTML host page
+                _dashWebView.CoreWebView2.Navigate("file:///" + htmlPath.Replace('\\', '/'));
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[Dashboard] BuildWebDashboard failed: " + ex.Message);
+                // Graceful fallback: keep the native WinForms panel visible
+                _dashWebView?.Dispose();
+                _dashWebView = null;
+            }
+        }
+
+        // ══════════════════════════════════════════════
         //  LOAD DATA  — via DriveAndGo_API
         // ══════════════════════════════════════════════
+        public void RefreshWebViewData()
+        {
+            if (!this.IsHandleCreated || this.IsDisposed) return;
+            this.BeginInvoke((MethodInvoker)(async () =>
+            {
+                try
+                {
+                    var wv = _dashWebView;
+                    if (wv == null || wv.IsDisposed || wv.CoreWebView2 == null) return;
+
+                    // Re-inject fresh auth token every time the panel becomes visible
+                    string token   = SessionManager.JwtToken ?? string.Empty;
+                    string apiBase = ApiService.BaseUrl.TrimEnd('/');
+                    string initJs  = $"window.API_BASE_URL='{apiBase}'; window.AUTH_TOKEN='{token}';"
+                                   + " if(window.forceDashboardRefresh) window.forceDashboardRefresh();"
+                                   + " else if(window.refreshDashboardData) window.refreshDashboardData();";
+                    await wv.CoreWebView2.ExecuteScriptAsync(initJs);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("[Dashboard] WebView2 refresh failed: " + ex.Message);
+                }
+            }));
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        //  REACT → C# MESSAGE BRIDGE
+        //  React fires: window.chrome.webview.postMessage({ action: 'open_ai_insights' })
+        //  This event handler receives it and routes to the correct UI action.
+        //  NOTE: WebMessageReceived fires on a background/WebView thread.
+        //        Always marshal back to the UI thread via BeginInvoke before
+        //        touching any WinForms controls or async dialogs.
+        // ══════════════════════════════════════════════════════════════
+        private void WebView_WebMessageReceived(
+            object sender,
+            Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
+        {
+            try
+            {
+                string rawStr = e.TryGetWebMessageAsString();
+                string action = string.Empty;
+
+                if (!string.IsNullOrEmpty(rawStr))
+                {
+                    action = rawStr;
+                }
+                else
+                {
+                    try
+                    {
+                        string json = e.WebMessageAsJson;
+                        if (!string.IsNullOrEmpty(json))
+                        {
+                            using var doc = System.Text.Json.JsonDocument.Parse(json);
+                            if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                                doc.RootElement.TryGetProperty("action", out var actionProp))
+                            {
+                                action = actionProp.GetString();
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
+                switch (action.Trim())
+                {
+                    case "open_ai_insights":
+                        // Marshal to UI thread — WebMessageReceived fires off the UI thread
+                        if (!this.IsHandleCreated || this.IsDisposed) return;
+                        this.BeginInvoke((MethodInvoker)(() =>
+                        {
+                            try
+                            {
+                                using var aiForm = new AIBusinessInsightsForm();
+                                aiForm.ShowDialog(this.FindForm());
+                            }
+                            catch (Exception ex)
+                            { Console.WriteLine("[Dashboard] AI Insights dialog failed: " + ex.Message); }
+                        }));
+                        break;
+
+                    default:
+                        if (!string.IsNullOrWhiteSpace(action))
+                            Console.WriteLine("[Dashboard] Unknown WebView action: " + action);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[Dashboard] WebMessageReceived error: " + ex.Message);
+            }
+        }
+
+        //  Called by MainForm on theme toggle AND on dashboard navigation.
+        //  window.setDashboardTheme is defined in DashboardOverview.html:
+        //    window.setDashboardTheme = (theme) => {
+        //      document.documentElement.setAttribute('data-theme', theme);
+        //    };
+        // ══════════════════════════════════════════════════════════════
+        public void PushThemeToWebView(string theme) // "dark" | "light"
+        {
+            if (!this.IsHandleCreated || this.IsDisposed) return;
+            this.BeginInvoke((MethodInvoker)(async () =>
+            {
+                try
+                {
+                    var wv = _dashWebView;
+                    if (wv == null || wv.IsDisposed || wv.CoreWebView2 == null) return;
+
+                    // Sanitize: only allow "dark" or "light" to prevent injection
+                    string safeTheme = theme == "light" ? "light" : "dark";
+                    await wv.CoreWebView2.ExecuteScriptAsync(
+                        $"if(window.setDashboardTheme) window.setDashboardTheme('{safeTheme}');");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("[Dashboard] PushThemeToWebView failed: " + ex.Message);
+                }
+            }));
+        }
+
         public void LoadStatsFromDB()
         {
             Task.Run(async () =>
@@ -143,22 +384,49 @@ namespace DriveAndGo_Admin.Panels
                     using var doc = JsonDocument.Parse(result.Body);
                     var root = doc.RootElement;
 
-                    int     totalVehicles  = root.TryGetProperty("totalVehicles",   out var tv) ? tv.GetInt32()   : 0;
-                    int     activeRentals  = root.TryGetProperty("activeRentals",    out var ar) ? ar.GetInt32()   : 0;
-                    int     pendingRentals = root.TryGetProperty("pendingRentals",   out var pr) ? pr.GetInt32()   : 0;
-                    decimal monthRev       = root.TryGetProperty("revenueThisMonth", out var mr) ? mr.GetDecimal() : 0m;
+                    int totalVehicles = root.TryGetProperty("totalVehicles", out var tv) ? tv.GetInt32() : 0;
+                    int activeRentals = root.TryGetProperty("activeRentals", out var ar) ? ar.GetInt32() : 0;
+                    int pendingRentals = root.TryGetProperty("pendingRentals", out var pr) ? pr.GetInt32() : 0;
+                    decimal monthRev = root.TryGetProperty("revenueThisMonth", out var mr) ? mr.GetDecimal() : 0m;
+
+                    int totalUsers = root.TryGetProperty("totalUsers", out var tu) ? tu.GetInt32() : 0;
+                    int totalReviews = root.TryGetProperty("totalReviews", out var tr) ? tr.GetInt32() : 0;
+                    decimal avgRating = root.TryGetProperty("avgRating", out var avgr) ? avgr.GetDecimal() : 0m;
+                    int dueToday = root.TryGetProperty("dueToday", out var dt) ? dt.GetInt32() : 0;
+                    int overdue = root.TryGetProperty("overdue", out var od) ? od.GetInt32() : 0;
+                    int pendingExts = root.TryGetProperty("pendingExtensions", out var pe) ? pe.GetInt32() : 0;
+                    int openIssues = root.TryGetProperty("openIssues", out var oi) ? oi.GetInt32() : 0;
+                    string topDriverName = root.TryGetProperty("topDriverName", out var tdn) ? tdn.GetString() : "No driver ratings yet";
+                    decimal topDriverRating = root.TryGetProperty("topDriverRating", out var tdr) ? tdr.GetDecimal() : 0m;
 
                     // Guard: only Invoke if the handle is ready (prevents silent crash on first load)
                     if (!this.IsHandleCreated || this.IsDisposed) return;
 
                     this.BeginInvoke((MethodInvoker)(() =>
                     {
-                        _totalVehicles   = totalVehicles;
-                        _activeRentals   = activeRentals;
+                        _totalVehicles = totalVehicles;
+                        _activeRentals = activeRentals;
                         _pendingBookings = pendingRentals;
-                        _todayRevenue    = monthRev;
-                        BuildUI();
-                        StartEntranceAnimation();
+                        _todayRevenue = monthRev;
+                        _totalUsers = totalUsers;
+                        _totalReviews = totalReviews;
+                        _avgRating = avgRating;
+                        _dueToday = dueToday;
+                        _overdue = overdue;
+                        _pendingExtensions = pendingExts;
+                        _openIssues = openIssues;
+                        _topDriverName = topDriverName;
+                        _topDriverRating = topDriverRating;
+
+                        if (_statCards == null || _statCards[0] == null)
+                        {
+                            BuildUI();
+                            StartEntranceAnimation();
+                        }
+                        else
+                        {
+                            _scrollContainer.Invalidate(true);
+                        }
                     }));
                 }
                 catch (Exception ex)
@@ -215,7 +483,7 @@ namespace DriveAndGo_Admin.Panels
                 _statCards[i].Width = cardW;
             }
 
-            int rows2Start = statTop + (((_statCards.Length - 1) / cols) + 1) * (cardH + gap) + gap;
+            int rows2Start = statTop + ((_statCards.Length - 1) / cols + 1) * (cardH + gap) + gap;
 
             bool wide = W >= 900;
             int bkW = wide ? (int)(usable * 0.68) : usable;
@@ -309,16 +577,6 @@ namespace DriveAndGo_Admin.Panels
                 BackColor = Color.Transparent
             };
 
-            var lblDate = new Label
-            {
-                Text = DateTime.Now.ToString("dddd, MMMM dd, yyyy"),
-                Font = new Font("Segoe UI", 10F, FontStyle.Bold),
-                ForeColor = ColAccent,
-                AutoSize = true,
-                Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                BackColor = Color.Transparent
-            };
-
             var btnRefresh = new Button
             {
                 Text = "⟳  Refresh",
@@ -349,28 +607,21 @@ namespace DriveAndGo_Admin.Panels
             btnRefresh.FlatAppearance.BorderSize = 1;
             btnRefresh.FlatAppearance.MouseOverBackColor = Color.FromArgb(20, ColAccent);
 
-            pnl.Resize += (s, e) =>
+            Action positionControls = () =>
             {
                 btnRefresh.Location = new Point(Math.Max(8, pnl.ClientSize.Width - btnRefresh.Width - 10), 7);
                 btnAiInsights.Location = new Point(Math.Max(8, btnRefresh.Left - btnAiInsights.Width - 10), 7);
-                lblDate.Location = new Point(Math.Max(8, btnAiInsights.Left - lblDate.Width - 12), 15);
             };
+            pnl.Resize += (s, e) => positionControls();
+            positionControls();
 
             btnRefresh.Click += (s, e) =>
             {
-                lblDate.Text = DateTime.Now.ToString("dddd, MMMM dd, yyyy");
                 LoadStatsFromDB();
-                _scrollContainer.Controls.Clear();
-                _statCards = new Panel[8];
-                BackColor = ColBg;
-                _scrollContainer.BackColor = ColBg;
-                BuildUI();
-                StartEntranceAnimation();
             };
 
             pnl.Controls.Add(lblTitle);
             pnl.Controls.Add(lblSub);
-            pnl.Controls.Add(lblDate);
             pnl.Controls.Add(btnRefresh);
             pnl.Controls.Add(btnAiInsights);
             _scrollContainer.Controls.Add(pnl);
@@ -420,7 +671,7 @@ namespace DriveAndGo_Admin.Panels
             hs.Timer = new System.Windows.Forms.Timer { Interval = 12 };
             hs.Timer.Tick += (s, e) =>
             {
-                float target = hs.Hovered ? 6f : 0f;
+                float target = hs.Hovered ? 8f : 0f;
                 float diff = target - hs.Lift;
                 if (Math.Abs(diff) < 0.2f) { hs.Lift = target; hs.Timer.Stop(); }
                 else hs.Lift += diff * 0.28f;
@@ -476,6 +727,11 @@ namespace DriveAndGo_Admin.Panels
                 glowBr.CenterColor = Color.FromArgb((int)(12 * alpha), accentColor);
                 glowBr.SurroundColors = new[] { Color.Transparent };
                 g.FillPath(glowBr, glowPath);
+
+                // Neon accent glow border
+                using var neonPen = new Pen(Color.FromArgb((int)(20 * alpha), accentColor), 2f);
+                using var neonPath = GetRoundedRect(new Rectangle(drawR.X + 1, drawR.Y + 1, drawR.Width - 2, drawR.Height - 2), 13);
+                g.DrawPath(neonPen, neonPath);
 
                 g.Restore(state);
             };
@@ -571,6 +827,81 @@ namespace DriveAndGo_Admin.Panels
         }
 
         // ══════════════════════════════════════════════
+        //  3D CANVAS
+        // ══════════════════════════════════════════════
+        private async void Build3DCanvas()
+        {
+            _canvas3DCard = new Panel { BackColor = Color.Transparent };
+            SetDoubleBuffer(_canvas3DCard);
+
+            // Paint: glassmorphic card identical to CreateCard() but for the 3D analytics header
+            _canvas3DCard.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                int w = _canvas3DCard.Width, h = _canvas3DCard.Height;
+                var rect = new Rectangle(0, 0, w - 1, h - 1);
+                var path = GetRoundedRect(rect, 14);
+                bool dark = ThemeManager.IsDarkMode;
+                Color c1 = dark ? Color.FromArgb(20, 14, 28) : Color.White;
+                Color c2 = dark ? Color.FromArgb(10, 8, 18) : Color.FromArgb(248, 248, 255);
+                using var bg = new LinearGradientBrush(rect, c1, c2, LinearGradientMode.Vertical);
+                g.FillPath(bg, path);
+                _canvas3DCard.Region = new Region(path);
+                // Orange neon glow border
+                using var glowPen = new Pen(Color.FromArgb(dark ? 40 : 20, 255, 90, 31), 1.5f);
+                g.DrawPath(glowPen, path);
+                // Top shimmer
+                g.DrawLine(new Pen(Color.FromArgb(dark ? 20 : 70, 255, 255, 255), 1f), 14, 1, w - 14, 1);
+                // Title
+                using var titleFont = new Font("Segoe UI", 11F, FontStyle.Bold);
+                g.DrawString("⬡  Fleet 3D Analytics", titleFont, new SolidBrush(ColAccent), new PointF(18, 14));
+                // Orange accent underline
+                g.FillRectangle(new SolidBrush(ColAccent), 18, 36, 38, 3);
+            };
+
+            // WebView2 container (padding-top 44 to clear the title area)
+            var wvContainer = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Color.Transparent,
+                Padding = new Padding(0, 44, 0, 0)
+            };
+            SetDoubleBuffer(wvContainer);
+            _canvas3DCard.Controls.Add(wvContainer);
+            _scrollContainer.Controls.Add(_canvas3DCard);
+
+            // Load WebView2 asynchronously
+            try
+            {
+                var webView = new Microsoft.Web.WebView2.WinForms.WebView2 { Dock = DockStyle.Fill };
+                wvContainer.Controls.Add(webView);
+                var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(
+                    null, System.IO.Path.GetTempPath());
+                await webView.EnsureCoreWebView2Async(env);
+                webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+                string htmlPath = System.IO.Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "Dashboard3D.html");
+                if (System.IO.File.Exists(htmlPath))
+                    webView.CoreWebView2.Navigate("file:///" + htmlPath.Replace('\\', '/'));
+            }
+            catch
+            {
+                // Fallback label if WebView2 unavailable
+                wvContainer.Controls.Add(new Label
+                {
+                    Text = "⬡  3D Fleet Analytics — WebView2 required",
+                    Font = new Font("Segoe UI", 10F),
+                    ForeColor = Color.FromArgb(80, 255, 90, 31),
+                    AutoSize = true,
+                    Location = new Point(20, 16),
+                    BackColor = Color.Transparent
+                });
+            }
+        }
+
+        // ══════════════════════════════════════════════
         //  RECENT BOOKINGS
         // ══════════════════════════════════════════════
         private void BuildRecentBookings()
@@ -647,13 +978,13 @@ namespace DriveAndGo_Admin.Panels
                     {
                         if (count++ >= 12) break;
                         var row = dt.NewRow();
-                        row["#"]        = elem.TryGetProperty("rentalId", out var rid) ? rid.GetInt32() : 0;
+                        row["#"] = elem.TryGetProperty("rentalId", out var rid) ? rid.GetInt32() : 0;
                         row["Customer"] = elem.TryGetProperty("customerName", out var cn) ? cn.GetString() : "";
-                        row["Vehicle"]  = elem.TryGetProperty("vehicleName", out var vn) ? vn.GetString() : "";
-                        row["Start"]    = elem.TryGetProperty("startDate", out var sd) && sd.ValueKind != JsonValueKind.Null ? sd.GetDateTime().ToString("MMM dd, yyyy") : "";
-                        row["End"]      = elem.TryGetProperty("endDate", out var ed) && ed.ValueKind != JsonValueKind.Null ? ed.GetDateTime().ToString("MMM dd, yyyy") : "";
-                        row["Status"]   = elem.TryGetProperty("status", out var st) ? st.GetString() : "";
-                        row["Amount"]   = elem.TryGetProperty("totalAmount", out var amt) ? $"₱{amt.GetDecimal():N2}" : "₱0.00";
+                        row["Vehicle"] = elem.TryGetProperty("vehicleName", out var vn) ? vn.GetString() : "";
+                        row["Start"] = elem.TryGetProperty("startDate", out var sd) && sd.ValueKind != JsonValueKind.Null ? sd.GetDateTime().ToString("MMM dd, yyyy") : "";
+                        row["End"] = elem.TryGetProperty("endDate", out var ed) && ed.ValueKind != JsonValueKind.Null ? ed.GetDateTime().ToString("MMM dd, yyyy") : "";
+                        row["Status"] = elem.TryGetProperty("status", out var st) ? st.GetString() : "";
+                        row["Amount"] = elem.TryGetProperty("totalAmount", out var amt) ? $"₱{amt.GetDecimal():N2}" : "₱0.00";
                         dt.Rows.Add(row);
                     }
 
@@ -679,32 +1010,23 @@ namespace DriveAndGo_Admin.Panels
         {
             _quickStatsCard = CreateCard("Quick Stats");
 
-            decimal monthRevenue = 0;
-            int totalUsers = 0, totalRatings = 0, dueToday = 0, overdue = 0, pendingExtensions = 0, openIssues = 0;
-            decimal avgRating = 0;
-            string topDriverName = "No driver ratings yet";
-            decimal topDriverRating = 0;
-
-            monthRevenue = _todayRevenue;
-
-
             var items = new[]
             {
-                ("Monthly Revenue",   "₱" + monthRevenue.ToString("N2"), ColAccent),
-                ("Total Customers",   totalUsers.ToString(), ColBlue),
-                ("Total Reviews",     totalRatings.ToString(), ColPurple),
-                ("Avg. Rating",       avgRating.ToString("0.0") + " / 5.0", ColGreen),
-                ("Due Today / Overdue", $"{dueToday} due  ·  {overdue} overdue", overdue > 0 ? ColRed : ColYellow),
-                ("Ops Queue",         $"{pendingExtensions} extensions  ·  {openIssues} issues", (pendingExtensions + openIssues) > 0 ? ColYellow : ColGreen),
-                ("Top Driver",        topDriverRating > 0 ? $"{topDriverName}  ·  {topDriverRating:0.0}★" : topDriverName, ColBlue),
+                ("Monthly Revenue",     "₱" + _todayRevenue.ToString("N2"), ColAccent, Math.Min(1f, (float)(_todayRevenue / 500000m))),
+                ("Total Customers",     _totalUsers.ToString(), ColBlue, Math.Min(1f, _totalUsers / 500f)),
+                ("Total Reviews",       _totalReviews.ToString(), ColPurple, Math.Min(1f, _totalReviews / 200f)),
+                ("Avg. Rating",         _avgRating.ToString("0.0") + " / 5.0", ColGreen, (float)_avgRating / 5f),
+                ("Due Today / Overdue", $"{_dueToday} due  ·  {_overdue} overdue", _overdue > 0 ? ColRed : ColYellow, Math.Min(1f, (_dueToday + _overdue) / 20f)),
+                ("Ops Queue",           $"{_pendingExtensions} extensions  ·  {_openIssues} issues", (_pendingExtensions + _openIssues) > 0 ? ColYellow : ColGreen, Math.Min(1f, (_pendingExtensions + _openIssues) / 10f)),
+                ("Top Driver",          _topDriverRating > 0 ? $"{_topDriverName}  ·  {_topDriverRating:0.0}★" : _topDriverName, ColBlue, (float)_topDriverRating / 5f),
             };
 
             int itemY = 56;
-            foreach (var (label, val, color) in items)
+            foreach (var (label, val, color, pct) in items)
             {
                 var row = new Panel
                 {
-                    Size = new Size(280, 46),
+                    Size = new Size(280, 58),
                     Location = new Point(20, itemY),
                     BackColor = Color.Transparent,
                     Tag = "qsrow"
@@ -745,8 +1067,49 @@ namespace DriveAndGo_Admin.Panels
 
                 row.Controls.Add(lblKey);
                 row.Controls.Add(lblVal);
+
+                // Animated progress fill bar (6px tall, at bottom of row)
+                var trackBar = new Panel { Size = new Size(row.Width - 80, 5), Location = new Point(14, row.Height - 10), BackColor = Color.FromArgb(25, color), Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
+                var fillBar = new Panel { Size = new Size(4, 5), Location = new Point(0, 0), BackColor = color };
+                SetDoubleBuffer(fillBar);
+                fillBar.Paint += (s, e) =>
+                {
+                    using var brush = new LinearGradientBrush(fillBar.ClientRectangle.IsEmpty ? new Rectangle(0, 0, 1, 1) : fillBar.ClientRectangle, Color.FromArgb(160, color), color, LinearGradientMode.Horizontal);
+                    e.Graphics.FillRectangle(brush, fillBar.ClientRectangle);
+                };
+                trackBar.Controls.Add(fillBar);
+                row.Controls.Add(trackBar);
+
+                // Badge chip on right edge
+                var badge = new Panel { Size = new Size(72, 20), Location = new Point(row.Width - 80, 8), Anchor = AnchorStyles.Top | AnchorStyles.Right, BackColor = Color.Transparent };
+                SetDoubleBuffer(badge);
+                string badgeText = val.Length > 12 ? val.Substring(0, 12) : val;
+                badge.Paint += (s, e) =>
+                {
+                    e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                    using var path = GetRoundedRect(new Rectangle(0, 0, badge.Width - 1, badge.Height - 1), 10);
+                    e.Graphics.FillPath(new SolidBrush(Color.FromArgb(40, color)), path);
+                    e.Graphics.DrawPath(new Pen(Color.FromArgb(60, color), 0.8f), path);
+                    using var f = new Font("Segoe UI", 7.5F, FontStyle.Bold);
+                    using var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                    e.Graphics.DrawString(badgeText, f, new SolidBrush(color), new RectangleF(0, 0, badge.Width, badge.Height), fmt);
+                };
+                row.Controls.Add(badge);
+
+                // Animate the fill bar
+                float _prog = 0f;
+                var progTimer = new System.Windows.Forms.Timer { Interval = 14 };
+                progTimer.Tick += (s, e) =>
+                {
+                    _prog += 0.055f;
+                    if (_prog >= pct) { _prog = pct; progTimer.Stop(); progTimer.Dispose(); }
+                    fillBar.Width = Math.Max(4, (int)(trackBar.Width * _prog));
+                    fillBar.Invalidate();
+                };
+                progTimer.Start();
+
                 _quickStatsCard.Controls.Add(row);
-                itemY += 56;
+                itemY += 68;
             }
 
             _scrollContainer.Controls.Add(_quickStatsCard);
@@ -760,10 +1123,10 @@ namespace DriveAndGo_Admin.Panels
             _fleetCard = CreateCard("Fleet Status");
 
             int available = 0, rented = 0, maintenance = 0, retired = 0;
-            available   = _totalVehicles > 0 ? _totalVehicles - _activeRentals : 0;
-            rented      = _activeRentals;
+            available = _totalVehicles > 0 ? _totalVehicles - _activeRentals : 0;
+            rented = _activeRentals;
             maintenance = 0;
-            retired     = 0;
+            retired = 0;
 
             int total = Math.Max(available + rented + maintenance + retired, 1);
             var statuses = new[]
@@ -824,18 +1187,56 @@ namespace DriveAndGo_Admin.Panels
         // ══════════════════════════════════════════════
         private void BuildPendingActions()
         {
-            _pendingCard = CreateCard("Admin Action Feed");
+            _pendingCard = CreateCard("Operational Telemetry");
 
-            var lbl = new Label
+            var telemetry = new[]
             {
-                Text = "✓  No urgent admin actions",
-                Font = new Font("Segoe UI", 11F),
-                ForeColor = ColGreen,
-                AutoSize = true,
-                Location = new Point(20, 76),
-                BackColor = Color.Transparent
+                ("Pending Bookings", _pendingBookings, _pendingBookings > 0 ? ColRed    : ColGreen, _pendingBookings > 0 ? "ACTION" : "CLEAR"),
+                ("Overdue Rentals",  _overdueRentals,  _overdueRentals  > 0 ? ColRed    : ColGreen, _overdueRentals  > 0 ? "FOLLOW UP" : "CLEAR"),
+                ("Open Issues",      _openIssues,      _openIssues      > 0 ? ColYellow : ColGreen, _openIssues      > 0 ? "REVIEW" : "OK"),
+                ("Pending Payments", _pendingPayments,  _pendingPayments > 0 ? ColYellow : ColGreen, _pendingPayments > 0 ? "PENDING" : "CLEAR"),
             };
-            _pendingCard.Controls.Add(lbl);
+
+            int rowY = 48;
+            foreach (var (label, count, color, badge) in telemetry)
+            {
+                var row = new Panel { Size = new Size(_pendingCard.Width - 40, 32), Location = new Point(20, rowY), BackColor = Color.Transparent, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+                SetDoubleBuffer(row);
+
+                row.Paint += (s, e) =>
+                {
+                    var g = e.Graphics;
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    var rect2 = new Rectangle(0, 0, row.Width - 1, row.Height - 1);
+                    using var path = GetRoundedRect(rect2, 8);
+                    bool d = ThemeManager.IsDarkMode;
+                    g.FillPath(new SolidBrush(d ? Color.FromArgb(16, 16, 28) : Color.FromArgb(248, 248, 255)), path);
+                    g.FillRectangle(new SolidBrush(color), 0, 6, 3, 20);
+                    g.DrawPath(new Pen(Color.FromArgb(d ? 22 : 160, ThemeManager.CurrentBorder), 0.5f), path);
+
+                    // Label
+                    using var lf = new Font("Segoe UI", 9F);
+                    g.DrawString(label, lf, new SolidBrush(ColSub), new PointF(12, 8));
+
+                    // Count
+                    using var vf = new Font("Segoe UI", 10F, FontStyle.Bold);
+                    string countStr = count.ToString();
+                    g.DrawString(countStr, vf, new SolidBrush(color), new PointF(200, 6));
+
+                    // Badge pill
+                    var bRect = new Rectangle(row.Width - 78, 6, 72, 20);
+                    using var bPath = GetRoundedRect(bRect, 10);
+                    g.FillPath(new SolidBrush(Color.FromArgb(35, color)), bPath);
+                    g.DrawPath(new Pen(Color.FromArgb(55, color), 0.8f), bPath);
+                    using var bf = new Font("Segoe UI", 7.5F, FontStyle.Bold);
+                    using var bfmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                    g.DrawString(badge, bf, new SolidBrush(color), new RectangleF(bRect.X, bRect.Y, bRect.Width, bRect.Height), bfmt);
+                };
+
+                _pendingCard.Controls.Add(row);
+                rowY += 38;
+            }
+
             _scrollContainer.Controls.Add(_pendingCard);
         }
 
@@ -972,8 +1373,8 @@ namespace DriveAndGo_Admin.Panels
             var dialog = new Form
             {
                 Text = "💡 AI Business Insights & Recommendations",
-                Size = new Size(650, 520),
-                FormBorderStyle = FormBorderStyle.FixedDialog,
+                Size = new Size(800, 600),
+                FormBorderStyle = FormBorderStyle.None,
                 StartPosition = FormStartPosition.CenterParent,
                 MaximizeBox = false,
                 MinimizeBox = false,
@@ -981,74 +1382,130 @@ namespace DriveAndGo_Admin.Panels
                 ForeColor = ColText
             };
 
-            var title = new Label
+            // Custom Glassmorphic Title Bar
+            var titleBar = new Panel
             {
-                Text = "🧠  AI Business Operations Advisor",
-                Font = new Font("Segoe UI", 14F, FontStyle.Bold),
-                ForeColor = ColAccent,
-                Location = new Point(20, 20),
-                Size = new Size(400, 30),
-                BackColor = Color.Transparent
+                Dock = DockStyle.Top,
+                Height = 50,
+                BackColor = Color.FromArgb(15, ThemeManager.CurrentBorder)
             };
 
-            var txtBox = new RichTextBox
+            // Allow dragging
+            Point lastClick = Point.Empty;
+            titleBar.MouseDown += (s, e) =>
             {
-                Location = new Point(20, 60),
-                Size = new Size(595, 330),
-                Font = new Font("Segoe UI", 10.5F),
-                BackColor = ColCard,
-                ForeColor = ColText,
-                BorderStyle = BorderStyle.None,
-                ReadOnly = true,
-                Text = "Analyzing dashboard stats and running dynamic pricing models..."
+                if (e.Button == MouseButtons.Left) lastClick = e.Location;
+            };
+            titleBar.MouseMove += (s, e) =>
+            {
+                if (e.Button == MouseButtons.Left && lastClick != Point.Empty)
+                {
+                    dialog.Left += e.X - lastClick.X;
+                    dialog.Top += e.Y - lastClick.Y;
+                }
+            };
+
+            var lblTitle = new Label
+            {
+                Text = "🧠  AI BUSINESS OPERATIONS ADVISOR",
+                Font = new Font("Segoe UI", 12F, FontStyle.Bold),
+                ForeColor = Color.White,
+                AutoSize = true,
+                Location = new Point(20, 14),
+                BackColor = Color.Transparent
             };
 
             var btnClose = new Button
             {
-                Text = "Close Panel",
-                Location = new Point(260, 415),
-                Size = new Size(130, 38),
+                Text = "✕",
+                Size = new Size(36, 30),
+                Location = new Point(dialog.Width - 50, 10),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = ColAccent,
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
+                Font = new Font("Segoe UI", 10F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(200, 200, 200),
+                BackColor = Color.Transparent,
                 Cursor = Cursors.Hand
             };
             btnClose.FlatAppearance.BorderSize = 0;
+            btnClose.FlatAppearance.MouseOverBackColor = Color.FromArgb(239, 68, 68);
             btnClose.Click += (s, e) => dialog.Close();
 
-            dialog.Controls.Add(title);
-            dialog.Controls.Add(txtBox);
-            dialog.Controls.Add(btnClose);
+            titleBar.Controls.Add(lblTitle);
+            titleBar.Controls.Add(btnClose);
+            dialog.Controls.Add(titleBar);
+
+            // Container for WebView2
+            var pnlWebView = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8), BackColor = Color.Transparent };
+            dialog.Controls.Add(pnlWebView);
+            pnlWebView.BringToFront();
+
+            // Form border painting
+            dialog.Paint += (s, e) =>
+            {
+                using var pen = new Pen(ColAccent, 2);
+                e.Graphics.DrawRectangle(pen, 0, 0, dialog.Width - 1, dialog.Height - 1);
+            };
 
             dialog.Shown += async (s, e) =>
             {
                 try
                 {
-                    var res = await ApiService.GetAsync("admin/dashboard/ai-insights");
-                    if (!res.Success)
-                    {
-                        txtBox.Text = "Failed to retrieve AI insights. Verify that your API server is running.";
-                        return;
-                    }
+                    var webView = new Microsoft.Web.WebView2.WinForms.WebView2 { Dock = DockStyle.Fill };
+                    pnlWebView.Controls.Add(webView);
 
-                    var root = JsonDocument.Parse(res.Body).RootElement;
-                    string content = root.GetProperty("content").GetString();
-                    string source = root.GetProperty("source").GetString();
-                    
-                    dialog.Text = $"💡 AI Business Insights ({source})";
+                    var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, Path.GetTempPath());
+                    await webView.EnsureCoreWebView2Async(env);
 
-                    txtBox.Clear();
-                    var lines = content.Split('\n');
-                    foreach (var line in lines)
+                    webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                    webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+
+                    string htmlPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "AIBusinessInsights.html");
+                    if (File.Exists(htmlPath))
                     {
-                        txtBox.AppendText(line + "\n");
-                        await Task.Delay(15);
+                        webView.CoreWebView2.Navigate("file:///" + htmlPath.Replace('\\', '/'));
+
+                        webView.CoreWebView2.NavigationCompleted += async (sender, args) =>
+                        {
+                            if (dialog.IsDisposed || !dialog.IsHandleCreated) return;
+                            try
+                            {
+                                var res = await ApiService.GetAsync("admin/dashboard/ai-insights");
+                                if (dialog.IsDisposed || !dialog.IsHandleCreated || webView.IsDisposed || webView.CoreWebView2 == null) return;
+
+                                if (res.Success)
+                                {
+                                    var root = JsonDocument.Parse(res.Body).RootElement;
+                                    string content = root.GetProperty("content").GetString();
+                                    string source = root.GetProperty("source").GetString();
+                                    double occupancy = root.TryGetProperty("occupancy", out var occ) ? occ.GetDouble() : 0;
+                                    decimal monthlyRevenue = root.TryGetProperty("monthlyRevenue", out var mr) ? mr.GetDecimal() : 0;
+                                    decimal totalRevenue = root.TryGetProperty("totalRevenue", out var tr) ? tr.GetDecimal() : 0;
+
+                                    lblTitle.Text = $"🧠  AI BUSINESS OPERATIONS ADVISOR ({source.ToUpper()})";
+                                    byte[] bytes = System.Text.Encoding.UTF8.GetBytes(content);
+                                    string base64 = Convert.ToBase64String(bytes);
+                                    await webView.CoreWebView2.ExecuteScriptAsync($"window.updateInsightsFromBase64('{base64}', false, {occupancy}, '{monthlyRevenue:N2}', '{totalRevenue:N2}', '{source}');");
+                                }
+                                else
+                                {
+                                    byte[] bytes = System.Text.Encoding.UTF8.GetBytes("Failed to load AI insights. Live server returned error.");
+                                    string base64 = Convert.ToBase64String(bytes);
+                                    await webView.CoreWebView2.ExecuteScriptAsync($"window.updateInsightsFromBase64('{base64}', false, 0, '0.00', '0.00', 'Error');");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                if (dialog.IsDisposed || !dialog.IsHandleCreated || webView.IsDisposed || webView.CoreWebView2 == null) return;
+                                byte[] bytes = System.Text.Encoding.UTF8.GetBytes($"Error: {ex.Message}");
+                                string base64 = Convert.ToBase64String(bytes);
+                                await webView.CoreWebView2.ExecuteScriptAsync($"window.updateInsightsFromBase64('{base64}', false, 0, '0.00', '0.00', 'Error');");
+                            }
+                        };
                     }
                 }
                 catch (Exception ex)
                 {
-                    txtBox.Text = $"Error getting insights: {ex.Message}";
+                    MessageBox.Show("Failed to load AI component: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             };
 
@@ -1057,10 +1514,15 @@ namespace DriveAndGo_Admin.Panels
 
         protected override void Dispose(bool disposing)
         {
-            ThemeManager.ThemeChanged -= ThemeChanged_Handler;
-            _entranceTimer?.Dispose();
-            _refreshTimer?.Stop();
-            _refreshTimer?.Dispose();
+            if (disposing)
+            {
+                ThemeManager.ThemeChanged -= ThemeChanged_Handler;
+                _entranceTimer?.Dispose();
+                _refreshTimer?.Stop();
+                _refreshTimer?.Dispose();
+                try { _canvas3DCard?.Dispose(); } catch { }
+                try { _dashWebView?.Dispose(); } catch { }
+            }
             base.Dispose(disposing);
         }
     }

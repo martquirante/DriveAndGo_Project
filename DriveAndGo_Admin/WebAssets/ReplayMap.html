@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>DriveAndGo Route Replay</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            background: #0b0b16;
+            color: #c8d0f0;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* Glassmorphism Control Panel Overlay */
+        .controls-overlay {
+            position: absolute;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 700px;
+            background: rgba(11, 11, 22, 0.75);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 90, 31, 0.25);
+            border-radius: 18px;
+            padding: 16px 24px;
+            z-index: 1000;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), inset 0 0 15px rgba(255, 90, 31, 0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .controls-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .btn {
+            background: rgba(255, 90, 31, 0.1);
+            border: 1px solid rgba(255, 90, 31, 0.4);
+            color: #ff5a1f;
+            border-radius: 30px;
+            padding: 6px 16px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn:hover, .btn.active {
+            background: rgba(255, 90, 31, 0.35);
+            box-shadow: 0 0 15px rgba(255, 90, 31, 0.4);
+            border-color: #ff5a1f;
+        }
+
+        /* Timeline Slider Custom Styling */
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+        }
+
+        .timeline-slider {
+            flex: 1;
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.1);
+            outline: none;
+            cursor: pointer;
+        }
+
+        .timeline-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #ff5a1f;
+            cursor: pointer;
+            box-shadow: 0 0 8px #ff5a1f;
+            transition: transform 0.1s ease;
+        }
+
+        .timeline-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        .stat-badge {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 4px 10px;
+            font-size: 11px;
+            color: #9ab0e0;
+        }
+
+        .stat-value {
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        /* Marker & Info */
+        .replay-pfp {
+            box-shadow: 0 0 15px rgba(255, 90, 31, 0.6);
+        }
+
+        .v-marker {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            filter: drop-shadow(0 4px 10px rgba(0,0,0,0.5));
+        }
+
+        .v-circle {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 2px solid #ff5a1f;
+            background: #0b0b16;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            box-shadow: 0 0 12px rgba(255, 90, 31, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <div class="controls-overlay">
+        <!-- Slider Row -->
+        <div class="slider-container">
+            <span class="stat-badge" id="timeLabel" style="min-width: 70px; text-align: center;">00:00:00</span>
+            <input type="range" class="timeline-slider" id="progressSlider" min="0" max="100" value="0" step="1">
+            <span class="stat-badge" id="totalTimeLabel" style="min-width: 70px; text-align: center;">00:00:00</span>
+        </div>
+
+        <!-- Button Actions -->
+        <div class="controls-row">
+            <div style="display: flex; gap: 8px;">
+                <button class="btn" id="playBtn" onclick="togglePlay()">Play</button>
+                <button class="btn" id="stopBtn" onclick="resetReplay()">Reset</button>
+            </div>
+
+            <!-- Speed selector -->
+            <div style="display: flex; gap: 6px;">
+                <button class="btn speed-btn" id="spd1" onclick="setSpeed(1)">1x</button>
+                <button class="btn speed-btn active" id="spd5" onclick="setSpeed(5)">5x</button>
+                <button class="btn speed-btn" id="spd15" onclick="setSpeed(15)">15x</button>
+                <button class="btn speed-btn" id="spd30" onclick="setSpeed(30)">30x</button>
+            </div>
+
+            <!-- Stats -->
+            <div style="display: flex; gap: 8px;">
+                <span class="stat-badge">Speed: <span id="currentSpeed" class="stat-value">0</span> km/h</span>
+                <span class="stat-badge">Index: <span id="currentIndex" class="stat-value">0</span>/<span id="totalPoints" class="stat-value">0</span></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var map = L.map('map', { zoomControl: true, attributionControl: false }).setView([14.8169, 121.0453], 13);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 20 }).addTo(map);
+
+        var gpsPoints = [];
+        var carMarker = null;
+        var routePolyline = null;
+        var playInterval = null;
+        var currentIndex = 0;
+        var replaySpeed = 5; // steps per second
+
+        // Load data sent from C#
+        window.setData = function(pointsJson) {
+            try {
+                gpsPoints = JSON.parse(pointsJson);
+                if (!gpsPoints || gpsPoints.length === 0) {
+                    console.log("No points available.");
+                    return;
+                }
+
+                // Render Route Polyline
+                var latlngs = gpsPoints.map(p => [parseFloat(p.lat), parseFloat(p.lng)]);
+                
+                if (routePolyline) map.removeLayer(routePolyline);
+                routePolyline = L.polyline(latlngs, {
+                    color: '#ff5a1f',
+                    weight: 4,
+                    opacity: 0.8,
+                    dashArray: '10, 6'
+                }).addTo(map);
+
+                // Fit boundaries
+                map.fitBounds(routePolyline.getBounds(), { padding: [50, 50] });
+
+                // Set up car marker at start
+                setupCarMarker(latlngs[0]);
+                
+                // Set Slider values
+                var slider = document.getElementById('progressSlider');
+                slider.max = gpsPoints.length - 1;
+                slider.value = 0;
+                
+                document.getElementById('totalPoints').textContent = gpsPoints.length;
+                document.getElementById('totalTimeLabel').textContent = formatTime(gpsPoints[gpsPoints.length - 1].time);
+                
+                updateStats(0);
+            } catch (e) {
+                console.error("setData error: " + e.message);
+            }
+        };
+
+        function setupCarMarker(latlng) {
+            if (carMarker) map.removeLayer(carMarker);
+            var customIcon = L.divIcon({
+                className: '',
+                html: `<div class="v-marker"><div class="v-circle">🚗</div></div>`,
+                iconSize: [44, 44],
+                iconAnchor: [22, 22]
+            });
+            carMarker = L.marker(latlng, { icon: customIcon }).addTo(map);
+        }
+
+        function formatTime(isoStr) {
+            if (!isoStr) return "00:00:00";
+            var d = new Date(isoStr);
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        }
+
+        function updateStats(idx) {
+            if (idx < 0 || idx >= gpsPoints.length) return;
+            var pt = gpsPoints[idx];
+            document.getElementById('currentIndex').textContent = idx;
+            document.getElementById('currentSpeed').textContent = Math.round(pt.speed);
+            document.getElementById('timeLabel').textContent = formatTime(pt.time);
+            document.getElementById('progressSlider').value = idx;
+            
+            if (carMarker) {
+                carMarker.setLatLng([parseFloat(pt.lat), parseFloat(pt.lng)]);
+                // Point calculation if there is a next point
+                if (idx < gpsPoints.length - 1) {
+                    var nextPt = gpsPoints[idx + 1];
+                    var dy = parseFloat(nextPt.lat) - parseFloat(pt.lat);
+                    var dx = Math.cos(Math.PI / 180 * parseFloat(pt.lat)) * (parseFloat(nextPt.lng) - parseFloat(pt.lng));
+                    if (Math.abs(dy) > 0.000001 || Math.abs(dx) > 0.000001) {
+                        var bearing = (90 - Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+                        var circle = document.querySelector('.v-circle');
+                        if (circle) {
+                            circle.style.transform = `rotate(${bearing}deg)`;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Slider Event
+        document.getElementById('progressSlider').addEventListener('input', function(e) {
+            var val = parseInt(e.target.value);
+            currentIndex = val;
+            updateStats(currentIndex);
+        });
+
+        function togglePlay() {
+            var btn = document.getElementById('playBtn');
+            if (playInterval) {
+                // Pause
+                clearInterval(playInterval);
+                playInterval = null;
+                btn.textContent = "Play";
+                btn.style.background = "";
+            } else {
+                // Play
+                btn.textContent = "Pause";
+                btn.style.background = "rgba(255, 90, 31, 0.4)";
+                playInterval = setInterval(function() {
+                    if (currentIndex < gpsPoints.length - 1) {
+                        currentIndex++;
+                        updateStats(currentIndex);
+                    } else {
+                        // End of route
+                        togglePlay();
+                    }
+                }, 1000 / replaySpeed);
+            }
+        }
+
+        function resetReplay() {
+            if (playInterval) togglePlay();
+            currentIndex = 0;
+            updateStats(0);
+        }
+
+        function setSpeed(spd) {
+            // Remove active classes
+            document.querySelectorAll('.speed-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('spd' + spd).classList.add('active');
+            
+            replaySpeed = spd;
+            if (playInterval) {
+                // Restart timer with new speed
+                clearInterval(playInterval);
+                playInterval = setInterval(function() {
+                    if (currentIndex < gpsPoints.length - 1) {
+                        currentIndex++;
+                        updateStats(currentIndex);
+                    } else {
+                        togglePlay();
+                    }
+                }, 1000 / replaySpeed);
+            }
+        }
+    </script>
+</body>
+</html>

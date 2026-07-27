@@ -30,7 +30,9 @@ public class MessagesController : ControllerBase
             await using var cmd = new NpgsqlCommand(
                 @"SELECT message_id, sender_id, receiver_id, message_body, timestamp, is_group_chat
                   FROM chat_messages
-                  WHERE (sender_id = @sid AND receiver_id = @rid) OR (sender_id = @rid AND receiver_id = @sid)
+                  WHERE (sender_id = @sid AND receiver_id = @rid)
+                     OR (sender_id = @rid AND receiver_id = @sid)
+                     OR (receiver_id = @rid AND is_group_chat = true)
                   ORDER BY timestamp ASC", conn);
             cmd.Parameters.AddWithValue("@sid", senderId);
             cmd.Parameters.AddWithValue("@rid", receiverId);
@@ -99,50 +101,85 @@ public class MessagesController : ControllerBase
         {
             var list = new List<object>();
             await using var conn = await _ds.OpenConnectionAsync();
+            var seenIds = new HashSet<string>();
             
-            // Query to find distinct user IDs (drivers/customers) that have exchanged messages with this user,
-            // along with the last message content and timestamp.
-            await using var cmd = new NpgsqlCommand(
+            // 1. Fetch conversations with messages in chat_messages
+            await using (var cmd = new NpgsqlCommand(
                 @"WITH LastMsgs AS (
                     SELECT 
                         CASE WHEN sender_id = @userId THEN receiver_id ELSE sender_id END AS contact_id,
                         message_body,
                         timestamp,
+                        is_group_chat,
                         ROW_NUMBER() OVER (PARTITION BY CASE WHEN sender_id = @userId THEN receiver_id ELSE sender_id END ORDER BY timestamp DESC) as rn
                     FROM chat_messages
-                    WHERE sender_id = @userId OR receiver_id = @userId
+                    WHERE sender_id = @userId OR receiver_id = @userId OR is_group_chat = true
                   )
-                  SELECT contact_id, message_body, timestamp
+                  SELECT contact_id, message_body, timestamp, is_group_chat
                   FROM LastMsgs
                   WHERE rn = 1
-                  ORDER BY timestamp DESC", conn);
-            cmd.Parameters.AddWithValue("@userId", userId);
-
-            await using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
+                  ORDER BY timestamp DESC", conn))
             {
-                string contactId = reader["contact_id"].ToString();
-                // Map contact details from dummy database or custom name based on prefix
-                string contactName = contactId.StartsWith("d") ? $"Driver {contactId.Substring(1)}" : $"Customer {contactId.Substring(1)}";
-                string role = contactId.StartsWith("d") ? "Driver" : "Customer";
-
-                list.Add(new
+                cmd.Parameters.AddWithValue("@userId", userId);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
                 {
-                    id = contactId,
-                    name = contactName,
-                    role = role,
-                    lastMessage = reader["message_body"].ToString(),
-                    time = reader.GetDateTime(reader.GetOrdinal("timestamp")).ToString("t"),
-                    unreadCount = 0 // dynamically computed or zero for now
-                });
+                    string contactId = reader["contact_id"].ToString();
+                    if (seenIds.Contains(contactId)) continue;
+                    seenIds.Add(contactId);
+
+                    bool isGroup = reader.GetBoolean(reader.GetOrdinal("is_group_chat")) || contactId.StartsWith("gc_") || contactId.StartsWith("g");
+                    string role = isGroup ? "Group" : (contactId.StartsWith("d") ? "Driver" : "Customer");
+                    string name = isGroup ? (contactId == "gc_drivers" ? "Drivers Community GC" : contactId == "gc_customers" ? "Customers General Support" : $"Group {contactId}")
+                                          : (contactId.StartsWith("d") ? $"Driver {contactId.TrimStart('d')}" : $"Customer {contactId}");
+
+                    list.Add(new
+                    {
+                        id = contactId,
+                        name = name,
+                        role = role,
+                        lastMessage = reader["message_body"].ToString(),
+                        time = reader.GetDateTime(reader.GetOrdinal("timestamp")).ToString("h:mm tt"),
+                        unreadCount = 0
+                    });
+                }
             }
 
-            // If empty, supply default active conversation starters so they can write to them
-            if (list.Count == 0)
+            // 2. Query real users table for active drivers and customers if no messages exist yet
+            await using (var userCmd = new NpgsqlCommand(
+                @"SELECT user_id, full_name, role FROM users WHERE role != 'admin' ORDER BY full_name ASC LIMIT 10", conn))
             {
-                list.Add(new { id = "d1", name = "Juan dela Cruz", role = "Driver", lastMessage = "Tap to start conversation", time = "12:00", unreadCount = 0 });
-                list.Add(new { id = "d2", name = "Maria Santos", role = "Driver", lastMessage = "Tap to start conversation", time = "12:00", unreadCount = 0 });
-                list.Add(new { id = "c1", name = "Rico Gonzalez", role = "Customer", lastMessage = "Tap to start conversation", time = "12:00", unreadCount = 0 });
+                await using var userReader = await userCmd.ExecuteReaderAsync();
+                while (await userReader.ReadAsync())
+                {
+                    string uid = userReader["user_id"].ToString();
+                    if (seenIds.Contains(uid)) continue;
+                    seenIds.Add(uid);
+
+                    string name = userReader["full_name"]?.ToString() ?? ("User " + uid);
+                    string userRole = userReader["role"]?.ToString() ?? "";
+                    string role = string.Equals(userRole, "driver", StringComparison.OrdinalIgnoreCase) ? "Driver" : "Customer";
+
+                    list.Add(new
+                    {
+                        id = uid,
+                        name = name,
+                        role = role,
+                        lastMessage = "No messages yet",
+                        time = "",
+                        unreadCount = 0
+                    });
+                }
+            }
+
+            // 3. Ensure standard Group Chat channels exist
+            if (!seenIds.Contains("gc_drivers"))
+            {
+                list.Add(new { id = "gc_drivers", name = "Drivers Community GC", role = "Group", lastMessage = "Group Chat Channel", time = "", unreadCount = 0 });
+            }
+            if (!seenIds.Contains("gc_customers"))
+            {
+                list.Add(new { id = "gc_customers", name = "Customers General Support", role = "Group", lastMessage = "Group Chat Channel", time = "", unreadCount = 0 });
             }
 
             return Ok(list);
