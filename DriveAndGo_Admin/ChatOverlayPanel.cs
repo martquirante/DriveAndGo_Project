@@ -44,7 +44,7 @@ namespace DriveAndGo_Admin
         private Label   _lblConvName;
         private Label   _lblConvStatus;
         private Button  _btnToggleExpand;
-        private Panel   _messagesPanel;
+        private Panel   _pnlWelcomeState;
         private FlowLayoutPanel _flowMessages;
         private TextBox _txtInput;
         private Button  _btnSend;
@@ -481,10 +481,9 @@ namespace DriveAndGo_Admin
             inputBar.Controls.Add(_btnSend);
             _rightPane.Controls.Add(inputBar);
 
-            // ── Messages Stream ──
+            // ── Messages Stream / Welcome State ──
             _flowMessages = new FlowLayoutPanel
             {
-                Dock            = DockStyle.Fill,
                 FlowDirection   = FlowDirection.TopDown,
                 WrapContents    = false,
                 AutoScroll      = true,
@@ -492,6 +491,12 @@ namespace DriveAndGo_Admin
                 Padding         = new Padding(12, 8, 12, 8)
             };
             EnableDB(_flowMessages);
+
+            _pnlWelcomeState = _flowMessages;
+            _pnlWelcomeState.Location = new Point(0, _headerBar.Bottom);
+            _pnlWelcomeState.Size = new Size(_rightPane.Width, Math.Max(100, _rightPane.Height - _headerBar.Height - inputBar.Height));
+            _pnlWelcomeState.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+
             _flowMessages.Resize += (s, e) =>
             {
                 int targetW = Math.Max(100, _flowMessages.ClientSize.Width - 24);
@@ -898,16 +903,18 @@ namespace DriveAndGo_Admin
                     g.DrawString("⚡", font, Brushes.White, new RectangleF(avRect.X, avRect.Y, avRect.Width, avRect.Height), fmt);
                 }
 
+                string title = "DriveAndGo Messaging Hub";
                 using (var titleFont = new Font("Segoe UI", 15F, FontStyle.Bold))
-                using (var fmt = new StringFormat { Alignment = StringAlignment.Center })
                 {
-                    g.DrawString("DriveAndGo Messaging Hub", titleFont, new SolidBrush(ThemeManager.CurrentText), new PointF(cx, 130), fmt);
-                }
+                    SizeF titleSize = g.MeasureString(title, titleFont);
+                    float titleX = (container.Width - titleSize.Width) / 2f;
+                    g.DrawString(title, titleFont, new SolidBrush(ThemeManager.CurrentText), new PointF(titleX, 130));
 
-                int badgeX = cx + 124;
-                var vBadge = new Rectangle(badgeX, 134, 18, 18);
-                g.FillEllipse(Brushes.DodgerBlue, vBadge);
-                DrawCheckmark(g, vBadge, Color.White, 1.3f);
+                    int badgeX = (int)(titleX + titleSize.Width + 5);
+                    var vBadge = new Rectangle(badgeX, 134, 18, 18);
+                    g.FillEllipse(Brushes.DodgerBlue, vBadge);
+                    DrawCheckmark(g, vBadge, Color.White, 1.3f);
+                }
 
                 using (var subFont = new Font("Segoe UI", 9.5F))
                 using (var fmt = new StringFormat { Alignment = StringAlignment.Center })
@@ -962,6 +969,11 @@ namespace DriveAndGo_Admin
                 }
             };
             container.Controls.Add(btnStart);
+
+            container.Resize += (s, e) =>
+            {
+                btnStart.Location = new Point((container.Width - btnStart.Width) / 2, 355);
+            };
 
             _flowMessages.Controls.Add(container);
         }

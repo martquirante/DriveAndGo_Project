@@ -25,7 +25,13 @@ namespace DriveAndGo_Admin.Panels
 
         private readonly string _connStr = string.Empty; // No longer used — data comes from DriveAndGo_API
 
-        // ── Stat values ──
+        // ── Skeleton & Number Animation State ──
+        private bool _isTableLoading = false;
+        private bool _isMetricsLoading = false;
+        private float _shimmerProgress = 0f;
+        private System.Windows.Forms.Timer _shimmerTimer;
+
+        // ── Stat values (Current Animated & Targets) ──
         private int _totalVehicles = 0;
         private int _activeRentals = 0;
         private int _availDrivers = 0;
@@ -34,6 +40,15 @@ namespace DriveAndGo_Admin.Panels
         private int _pendingPayments = 0;
         private int _overdueRentals = 0;
         private int _openIssues = 0;
+
+        private int _targetVehicles = 0;
+        private int _targetRentals = 0;
+        private int _targetDrivers = 0;
+        private decimal _targetRevenue = 0m;
+        private int _targetPendingBookings = 0;
+        private int _targetPendingPayments = 0;
+        private int _targetOverdueRentals = 0;
+        private int _targetOpenIssues = 0;
 
         // ── Quick Stats values ──
         private int _totalUsers = 0;
@@ -45,9 +60,11 @@ namespace DriveAndGo_Admin.Panels
         private string _topDriverName = "No driver ratings yet";
         private decimal _topDriverRating = 0;
 
-        // ── Layout ──
+        // ── Controls references ──
         private Panel _scrollContainer;
         private Panel[] _statCards = new Panel[8];
+        private Label[] _statCardValueLabels = new Label[8];
+        private DataGridView _dgvRecentBookings;
         private Panel _canvas3DCard;
         private Panel _bookingsCard;
         private Panel _quickStatsCard;
@@ -80,6 +97,10 @@ namespace DriveAndGo_Admin.Panels
 
             Resize += (s, e) => RelayoutAll();
             ThemeManager.ThemeChanged += ThemeChanged_Handler;
+
+            _shimmerTimer = new System.Windows.Forms.Timer { Interval = 16 };
+            _shimmerTimer.Tick += OnShimmerTimerTick;
+            _shimmerTimer.Start();
 
             BuildScrollContainer();
             BuildUI();
@@ -368,72 +389,265 @@ namespace DriveAndGo_Admin.Panels
             }));
         }
 
+        // ══════════════════════════════════════════════
+        //  LIVE DATA FETCHING & ANIMATIONS
+        // ══════════════════════════════════════════════
+        private void OnShimmerTimerTick(object sender, EventArgs e)
+        {
+            _shimmerProgress += 0.15f;
+
+            if (_isTableLoading)
+            {
+                _bookingsCard?.Invalidate();
+            }
+
+            if (AnimateStatNumbers())
+            {
+                UpdateStatCardValues();
+            }
+        }
+
+        private bool AnimateStatNumbers()
+        {
+            bool animating = false;
+            animating |= StepInt(ref _totalVehicles, _targetVehicles);
+            animating |= StepInt(ref _activeRentals, _targetRentals);
+            animating |= StepInt(ref _availDrivers, _targetDrivers);
+            animating |= StepInt(ref _pendingBookings, _targetPendingBookings);
+            animating |= StepInt(ref _pendingPayments, _targetPendingPayments);
+            animating |= StepInt(ref _overdueRentals, _targetOverdueRentals);
+            animating |= StepInt(ref _openIssues, _targetOpenIssues);
+            animating |= StepDecimal(ref _todayRevenue, _targetRevenue);
+            return animating;
+        }
+
+        private static bool StepInt(ref int current, int target)
+        {
+            if (current == target) return false;
+            int diff = target - current;
+            int step = Math.Sign(diff) * Math.Max(1, Math.Abs(diff) / 5);
+            current += step;
+            if (Math.Sign(target - current) != Math.Sign(diff)) current = target;
+            return true;
+        }
+
+        private static bool StepDecimal(ref decimal current, decimal target)
+        {
+            if (current == target) return false;
+            decimal diff = target - current;
+            decimal step = diff * 0.2m;
+            if (Math.Abs(step) < 0.01m) current = target;
+            else current += step;
+            return true;
+        }
+
+        private void UpdateStatCardValues()
+        {
+            if (_statCardValueLabels == null) return;
+            if (_statCardValueLabels.Length > 0 && _statCardValueLabels[0] != null) _statCardValueLabels[0].Text = _totalVehicles.ToString();
+            if (_statCardValueLabels.Length > 1 && _statCardValueLabels[1] != null) _statCardValueLabels[1].Text = _activeRentals.ToString();
+            if (_statCardValueLabels.Length > 2 && _statCardValueLabels[2] != null) _statCardValueLabels[2].Text = _availDrivers.ToString();
+            if (_statCardValueLabels.Length > 3 && _statCardValueLabels[3] != null) _statCardValueLabels[3].Text = $"₱{_todayRevenue:N2}";
+            if (_statCardValueLabels.Length > 4 && _statCardValueLabels[4] != null) _statCardValueLabels[4].Text = _pendingBookings.ToString();
+            if (_statCardValueLabels.Length > 5 && _statCardValueLabels[5] != null) _statCardValueLabels[5].Text = _pendingPayments.ToString();
+            if (_statCardValueLabels.Length > 6 && _statCardValueLabels[6] != null) _statCardValueLabels[6].Text = _overdueRentals.ToString();
+            if (_statCardValueLabels.Length > 7 && _statCardValueLabels[7] != null) _statCardValueLabels[7].Text = _openIssues.ToString();
+        }
+
+        private void RenderSkeletonTable(Graphics g, int alpha)
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            bool dark = ThemeManager.IsDarkMode;
+            Color baseColor = dark ? Color.FromArgb(255, 255, 255) : Color.FromArgb(120, 120, 140);
+            using var skeletonBrush = new SolidBrush(Color.FromArgb(alpha, baseColor));
+            using var headerBrush = new SolidBrush(Color.FromArgb(Math.Min(255, alpha + 20), baseColor));
+
+            int startX = 20;
+            int startY = 52;
+            int rowHeight = 36;
+            int numRows = 5;
+
+            // Header Skeleton
+            int cardW = _bookingsCard != null ? _bookingsCard.Width : 700;
+            using (var headerPath = GetRoundedRect(new Rectangle(startX, startY, cardW - 40, 28), 6))
+            {
+                g.FillPath(headerBrush, headerPath);
+            }
+
+            // Dummy Rows
+            for (int i = 0; i < numRows; i++)
+            {
+                int y = startY + 36 + (i * rowHeight);
+
+                // 1. Booking ID (50x15)
+                using (var path = GetRoundedRect(new Rectangle(startX + 6, y + 10, 50, 15), 4))
+                    g.FillPath(skeletonBrush, path);
+
+                // 2. Customer Name (140x15)
+                using (var path = GetRoundedRect(new Rectangle(startX + 80, y + 10, 140, 15), 4))
+                    g.FillPath(skeletonBrush, path);
+
+                // 3. Vehicle Name (100x15)
+                using (var path = GetRoundedRect(new Rectangle(startX + 250, y + 10, 100, 15), 4))
+                    g.FillPath(skeletonBrush, path);
+
+                // 4. Start Date (80x15)
+                using (var path = GetRoundedRect(new Rectangle(startX + 370, y + 10, 80, 15), 4))
+                    g.FillPath(skeletonBrush, path);
+
+                // 5. Status Pill (70x22, fully rounded)
+                using (var path = GetRoundedRect(new Rectangle(startX + 470, y + 6, 70, 22), 11))
+                    g.FillPath(skeletonBrush, path);
+
+                // 6. Amount (70x15)
+                using (var path = GetRoundedRect(new Rectangle(startX + 560, y + 10, 70, 15), 4))
+                    g.FillPath(skeletonBrush, path);
+            }
+        }
+
         public void LoadStatsFromDB()
         {
-            Task.Run(async () =>
-            {
-                try
-                {
-                    var result = await ApiService.GetAsync("admin/dashboard/summary");
-                    if (!result.Success)
-                    {
-                        Console.WriteLine("Dashboard summary error: " + (result.Error ?? result.Body));
-                        return;
-                    }
+            Task.Run(async () => await LoadDashboardDataAsync());
+        }
 
-                    using var doc = JsonDocument.Parse(result.Body);
+        public async Task LoadDashboardDataAsync()
+        {
+            if (!this.IsHandleCreated || this.IsDisposed) return;
+
+            this.Invoke((MethodInvoker)(() =>
+            {
+                _isTableLoading = true;
+                _isMetricsLoading = true;
+                _totalVehicles = 0;
+                _activeRentals = 0;
+                _availDrivers = 0;
+                _todayRevenue = 0m;
+                _pendingBookings = 0;
+                _pendingPayments = 0;
+                _overdueRentals = 0;
+                _openIssues = 0;
+                UpdateStatCardValues();
+
+                if (_dgvRecentBookings != null) _dgvRecentBookings.Visible = false;
+                _bookingsCard?.Invalidate(true);
+                _bookingsCard?.Update();
+                this.Invalidate(true);
+            }));
+
+            try
+            {
+                var summaryTask = ApiService.GetAsync("admin/dashboard/summary");
+                var rentalsTask = ApiService.GetAsync("rentals");
+                var minDelayTask = Task.Delay(600);
+
+                await Task.WhenAll(summaryTask, rentalsTask, minDelayTask);
+
+                var summaryRes = summaryTask.Result;
+                var rentalsRes = rentalsTask.Result;
+
+                int totalVehicles = 0, activeRentals = 0, pendingRentals = 0, totalUsers = 0, totalReviews = 0, dueToday = 0, overdue = 0, pendingExts = 0, openIssues = 0, pendingPayments = 0;
+                decimal monthRev = 0m, avgRating = 0m, topDriverRating = 0m;
+                string topDriverName = "No driver ratings yet";
+
+                if (summaryRes.Success)
+                {
+                    using var doc = JsonDocument.Parse(summaryRes.Body);
                     var root = doc.RootElement;
 
-                    int totalVehicles = root.TryGetProperty("totalVehicles", out var tv) ? tv.GetInt32() : 0;
-                    int activeRentals = root.TryGetProperty("activeRentals", out var ar) ? ar.GetInt32() : 0;
-                    int pendingRentals = root.TryGetProperty("pendingRentals", out var pr) ? pr.GetInt32() : 0;
-                    decimal monthRev = root.TryGetProperty("revenueThisMonth", out var mr) ? mr.GetDecimal() : 0m;
+                    totalVehicles = root.TryGetProperty("totalVehicles", out var tv) ? tv.GetInt32() : 0;
+                    activeRentals = root.TryGetProperty("activeRentals", out var ar) ? ar.GetInt32() : 0;
+                    pendingRentals = root.TryGetProperty("pendingRentals", out var pr) ? pr.GetInt32() : 0;
+                    monthRev = root.TryGetProperty("revenueThisMonth", out var mr) ? mr.GetDecimal() : 0m;
+                    totalUsers = root.TryGetProperty("totalUsers", out var tu) ? tu.GetInt32() : 0;
+                    totalReviews = root.TryGetProperty("totalReviews", out var tr) ? tr.GetInt32() : 0;
+                    avgRating = root.TryGetProperty("avgRating", out var avgr) ? avgr.GetDecimal() : 0m;
+                    dueToday = root.TryGetProperty("dueToday", out var dt) ? dt.GetInt32() : 0;
+                    overdue = root.TryGetProperty("overdue", out var od) ? od.GetInt32() : 0;
+                    pendingExts = root.TryGetProperty("pendingExtensions", out var pe) ? pe.GetInt32() : 0;
+                    openIssues = root.TryGetProperty("openIssues", out var oi) ? oi.GetInt32() : 0;
+                    pendingPayments = root.TryGetProperty("pendingPayments", out var pp) ? pp.GetInt32() : 0;
+                    topDriverName = root.TryGetProperty("topDriverName", out var tdn) ? tdn.GetString() : "No driver ratings yet";
+                    topDriverRating = root.TryGetProperty("topDriverRating", out var tdr) ? tdr.GetDecimal() : 0m;
+                }
 
-                    int totalUsers = root.TryGetProperty("totalUsers", out var tu) ? tu.GetInt32() : 0;
-                    int totalReviews = root.TryGetProperty("totalReviews", out var tr) ? tr.GetInt32() : 0;
-                    decimal avgRating = root.TryGetProperty("avgRating", out var avgr) ? avgr.GetDecimal() : 0m;
-                    int dueToday = root.TryGetProperty("dueToday", out var dt) ? dt.GetInt32() : 0;
-                    int overdue = root.TryGetProperty("overdue", out var od) ? od.GetInt32() : 0;
-                    int pendingExts = root.TryGetProperty("pendingExtensions", out var pe) ? pe.GetInt32() : 0;
-                    int openIssues = root.TryGetProperty("openIssues", out var oi) ? oi.GetInt32() : 0;
-                    string topDriverName = root.TryGetProperty("topDriverName", out var tdn) ? tdn.GetString() : "No driver ratings yet";
-                    decimal topDriverRating = root.TryGetProperty("topDriverRating", out var tdr) ? tdr.GetDecimal() : 0m;
+                DataTable dtBookings = new DataTable();
+                dtBookings.Columns.Add("#", typeof(int));
+                dtBookings.Columns.Add("Customer", typeof(string));
+                dtBookings.Columns.Add("Vehicle", typeof(string));
+                dtBookings.Columns.Add("Start", typeof(string));
+                dtBookings.Columns.Add("End", typeof(string));
+                dtBookings.Columns.Add("Status", typeof(string));
+                dtBookings.Columns.Add("Amount", typeof(string));
 
-                    // Guard: only Invoke if the handle is ready (prevents silent crash on first load)
-                    if (!this.IsHandleCreated || this.IsDisposed) return;
+                if (rentalsRes.Success)
+                {
+                    using var doc = JsonDocument.Parse(rentalsRes.Body);
+                    int count = 0;
+                    foreach (var elem in doc.RootElement.EnumerateArray())
+                    {
+                        if (count++ >= 12) break;
+                        var row = dtBookings.NewRow();
+                        row["#"] = elem.TryGetProperty("rentalId", out var rid) ? rid.GetInt32() : 0;
+                        row["Customer"] = elem.TryGetProperty("customerName", out var cn) ? cn.GetString() : "";
+                        row["Vehicle"] = elem.TryGetProperty("vehicleName", out var vn) ? vn.GetString() : "";
+                        row["Start"] = elem.TryGetProperty("startDate", out var sd) && sd.ValueKind != JsonValueKind.Null ? sd.GetDateTime().ToString("MMM dd, yyyy") : "";
+                        row["End"] = elem.TryGetProperty("endDate", out var ed) && ed.ValueKind != JsonValueKind.Null ? ed.GetDateTime().ToString("MMM dd, yyyy") : "";
+                        row["Status"] = elem.TryGetProperty("status", out var st) ? st.GetString() : "";
+                        row["Amount"] = elem.TryGetProperty("totalAmount", out var amt) ? $"₱{amt.GetDecimal():N2}" : "₱0.00";
+                        dtBookings.Rows.Add(row);
+                    }
+                }
 
+                if (!this.IsHandleCreated || this.IsDisposed) return;
+
+                this.BeginInvoke((MethodInvoker)(() =>
+                {
+                    _targetVehicles = totalVehicles;
+                    _targetRentals = activeRentals;
+                    _targetDrivers = totalUsers;
+                    _targetRevenue = monthRev;
+                    _targetPendingBookings = pendingRentals;
+                    _targetPendingPayments = pendingPayments;
+                    _targetOverdueRentals = overdue;
+                    _targetOpenIssues = openIssues;
+
+                    _totalUsers = totalUsers;
+                    _totalReviews = totalReviews;
+                    _avgRating = avgRating;
+                    _dueToday = dueToday;
+                    _overdue = overdue;
+                    _pendingExtensions = pendingExts;
+                    _openIssues = openIssues;
+                    _topDriverName = topDriverName;
+                    _topDriverRating = topDriverRating;
+
+                    _isTableLoading = false;
+                    _isMetricsLoading = false;
+
+                    if (_dgvRecentBookings != null)
+                    {
+                        _dgvRecentBookings.DataSource = dtBookings;
+                        _dgvRecentBookings.Visible = true;
+                    }
+
+                    _bookingsCard?.Invalidate();
+                }));
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Dashboard load error: " + ex.Message);
+                if (this.IsHandleCreated && !this.IsDisposed)
+                {
                     this.BeginInvoke((MethodInvoker)(() =>
                     {
-                        _totalVehicles = totalVehicles;
-                        _activeRentals = activeRentals;
-                        _pendingBookings = pendingRentals;
-                        _todayRevenue = monthRev;
-                        _totalUsers = totalUsers;
-                        _totalReviews = totalReviews;
-                        _avgRating = avgRating;
-                        _dueToday = dueToday;
-                        _overdue = overdue;
-                        _pendingExtensions = pendingExts;
-                        _openIssues = openIssues;
-                        _topDriverName = topDriverName;
-                        _topDriverRating = topDriverRating;
-
-                        if (_statCards == null || _statCards[0] == null)
-                        {
-                            BuildUI();
-                            StartEntranceAnimation();
-                        }
-                        else
-                        {
-                            _scrollContainer.Invalidate(true);
-                        }
+                        _isTableLoading = false;
+                        _isMetricsLoading = false;
+                        if (_dgvRecentBookings != null) _dgvRecentBookings.Visible = true;
+                        _bookingsCard?.Invalidate();
                     }));
                 }
-                catch (Exception ex)
-                {
-                    Console.WriteLine("Dashboard load error: " + ex.Message);
-                }
-            });
+            }
         }
 
         // ══════════════════════════════════════════════
@@ -797,6 +1011,11 @@ namespace DriveAndGo_Admin.Panels
                 BackColor = Color.Transparent
             };
 
+            if (idx >= 0 && idx < _statCardValueLabels.Length)
+            {
+                _statCardValueLabels[idx] = lblValue;
+            }
+
             var lblTitle2 = new Label
             {
                 Text = title,
@@ -907,8 +1126,17 @@ namespace DriveAndGo_Admin.Panels
         private void BuildRecentBookings()
         {
             _bookingsCard = CreateCard("Recent Bookings");
+            _bookingsCard.Paint += (s, e) =>
+            {
+                if (_isTableLoading)
+                {
+                    int pulseAlpha = (int)(15 + (Math.Sin(_shimmerProgress * 0.1) + 1) * 20);
+                    RenderSkeletonTable(e.Graphics, pulseAlpha);
+                }
+            };
 
             var dgv = new DataGridView();
+            _dgvRecentBookings = dgv;
             dgv.Location = new Point(20, 52);
             dgv.Size = new Size(700, 228);
             dgv.BackgroundColor = ColCard;
@@ -955,49 +1183,6 @@ namespace DriveAndGo_Admin.Panels
                     e.CellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
                 }
             };
-
-            Task.Run(async () =>
-            {
-                try
-                {
-                    var result = await ApiService.GetAsync("rentals");
-                    if (!result.Success) return;
-
-                    var dt = new DataTable();
-                    dt.Columns.Add("#", typeof(int));
-                    dt.Columns.Add("Customer", typeof(string));
-                    dt.Columns.Add("Vehicle", typeof(string));
-                    dt.Columns.Add("Start", typeof(string));
-                    dt.Columns.Add("End", typeof(string));
-                    dt.Columns.Add("Status", typeof(string));
-                    dt.Columns.Add("Amount", typeof(string));
-
-                    using var doc = JsonDocument.Parse(result.Body);
-                    int count = 0;
-                    foreach (var elem in doc.RootElement.EnumerateArray())
-                    {
-                        if (count++ >= 12) break;
-                        var row = dt.NewRow();
-                        row["#"] = elem.TryGetProperty("rentalId", out var rid) ? rid.GetInt32() : 0;
-                        row["Customer"] = elem.TryGetProperty("customerName", out var cn) ? cn.GetString() : "";
-                        row["Vehicle"] = elem.TryGetProperty("vehicleName", out var vn) ? vn.GetString() : "";
-                        row["Start"] = elem.TryGetProperty("startDate", out var sd) && sd.ValueKind != JsonValueKind.Null ? sd.GetDateTime().ToString("MMM dd, yyyy") : "";
-                        row["End"] = elem.TryGetProperty("endDate", out var ed) && ed.ValueKind != JsonValueKind.Null ? ed.GetDateTime().ToString("MMM dd, yyyy") : "";
-                        row["Status"] = elem.TryGetProperty("status", out var st) ? st.GetString() : "";
-                        row["Amount"] = elem.TryGetProperty("totalAmount", out var amt) ? $"₱{amt.GetDecimal():N2}" : "₱0.00";
-                        dt.Rows.Add(row);
-                    }
-
-                    this.Invoke((MethodInvoker)(() =>
-                    {
-                        dgv.DataSource = dt;
-                    }));
-                }
-                catch (Exception ex)
-                {
-                    this.Invoke((MethodInvoker)(() => AddErrorLabel(_bookingsCard, ex.Message)));
-                }
-            });
 
             _bookingsCard.Controls.Add(dgv);
             _scrollContainer.Controls.Add(_bookingsCard);

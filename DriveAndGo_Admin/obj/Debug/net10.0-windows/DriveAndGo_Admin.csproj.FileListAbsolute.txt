@@ -3,6 +3,7 @@ C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.
 C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\runtimes\win-arm64\native\WebView2Loader.dll
 C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\Resources\loadingScreenVideo\loadingScreenVideo-enhanced.mp4
 C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\WebAssets\AIBusinessInsights.html
+C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\WebAssets\app.ico
 C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\WebAssets\ChatOverlay.html
 C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\WebAssets\Dashboard3D.html
 C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\WebAssets\DashboardOverview.html
@@ -82,4 +83,3 @@ C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.
 C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.pdb
 C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\DriveAndGo_Admin.genruntimeconfig.cache
 C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\obj\Debug\net10.0-windows\ref\DriveAndGo_Admin.dll
-C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\bin\Debug\net10.0-windows\WebAssets\app.ico

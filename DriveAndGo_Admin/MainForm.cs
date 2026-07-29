@@ -4,6 +4,7 @@ using DriveAndGo_Admin.Panels;
 using Microsoft.AspNetCore.SignalR.Client;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -19,6 +20,7 @@ namespace DriveAndGo_Admin
         private const int SidebarFullWidth      = 240;
         private const int SidebarCollapsedWidth = 64;
         private const int HeaderHeight          = 65;
+        private const int SidebarAnimationDurationMs = 180;
 
         // ── FAB constants ──────────────────────────────────────────────────────────
         private const int FabSize   = 60;
@@ -98,7 +100,6 @@ namespace DriveAndGo_Admin
         private System.Windows.Forms.Timer _themeTimer;
         private System.Windows.Forms.Timer _glassTimer;
         private System.Windows.Forms.Timer _clockTimer;
-        private bool _sidebarAnimating = false;
 
         // ── Panel transition (cinematic veil composite) ───────────────────────────
         private System.Windows.Forms.Timer _panelFadeTimer;
@@ -115,6 +116,9 @@ namespace DriveAndGo_Admin
 
         private float _targetSidebarW  = SidebarFullWidth;
         private float _currentSidebarW = SidebarFullWidth;
+        private int _sidebarAnimationStartW = SidebarFullWidth;
+        private float _sidebarToggleProgress = 0f;
+        private readonly Stopwatch _sidebarAnimationClock = new();
 
         // ── Theme fade state ──────────────────────────────────────────────────────
         private Color _fromBg, _toBg;
@@ -196,6 +200,8 @@ namespace DriveAndGo_Admin
             BuildSidebar();
             BuildHeader();
             BuildContent();
+            EnableSmoothTransitions(sidebarPanel);
+            EnableSmoothTransitions(contentPanel);
             BuildFAB();
             ApplyTheme(animated: false);
             StartAnimations();
@@ -443,12 +449,13 @@ namespace DriveAndGo_Admin
             sidebarPanel.Paint += OnSidebarPaint;
 
             // ── Logo area ──
+            // ── Logo area ──
             var logoPanel = new Panel
             {
                 Size      = new Size(SidebarFullWidth, 95),
                 Location  = new Point(0, 0),
                 BackColor = Color.Transparent,
-                Anchor    = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+                Anchor    = AnchorStyles.Top | AnchorStyles.Left
             };
 
             picLogo = new PictureBox
@@ -484,14 +491,16 @@ namespace DriveAndGo_Admin
             dividerTop = new Panel
             {
                 Size     = new Size(200, 1),
-                Location = new Point(20, 95)
+                Location = new Point(20, 95),
+                Anchor   = AnchorStyles.Top | AnchorStyles.Left
             };
 
             // ── Active indicator pill ──
             activeIndicator = new Panel
             {
                 Size     = new Size(4, 34),
-                Location = new Point(0, 155)
+                Location = new Point(0, 155),
+                Anchor   = AnchorStyles.Top | AnchorStyles.Left
             };
             activeIndicator.Paint += (s, e) =>
             {
@@ -530,7 +539,7 @@ namespace DriveAndGo_Admin
             dividerBottom = new Panel
             {
                 Size   = new Size(200, 1),
-                Anchor = AnchorStyles.Bottom | AnchorStyles.Left
+                Anchor = AnchorStyles.Top | AnchorStyles.Left
             };
             dividerBottom.Location = new Point(20, this.Height - 110);
 
@@ -538,7 +547,7 @@ namespace DriveAndGo_Admin
             userPanel = new Panel
             {
                 Size      = new Size(SidebarFullWidth, 70),
-                Anchor    = AnchorStyles.Bottom | AnchorStyles.Left,
+                Anchor    = AnchorStyles.Top | AnchorStyles.Left,
                 BackColor = Color.Transparent
             };
             userPanel.Location = new Point(0, this.Height - 95);
@@ -585,7 +594,7 @@ namespace DriveAndGo_Admin
             {
                 Text      = "  🔓  Log Out",
                 Size      = new Size(SidebarFullWidth - 20, 46),
-                Anchor    = AnchorStyles.Bottom | AnchorStyles.Left,
+                Anchor    = AnchorStyles.Top | AnchorStyles.Left,
                 FlatStyle = FlatStyle.Flat,
                 ForeColor = Color.FromArgb(220, 68, 68),
                 BackColor = Color.Transparent,
@@ -688,18 +697,18 @@ namespace DriveAndGo_Admin
                 float cx = btnToggleSidebar.Width  / 2f;
                 float cy = btnToggleSidebar.Height / 2f;
                 float w  = 8f;
-                if (_sidebarCollapsed)
-                {
-                    g.DrawLine(pen, cx - 4, cy - 6, cx + 2, cy);
-                    g.DrawLine(pen, cx - 4, cy + 6, cx + 2, cy);
-                    g.DrawLine(pen, cx - 6, cy,     cx + 2, cy);
-                }
-                else
-                {
-                    g.DrawLine(pen, cx - w, cy - 6, cx + w, cy - 6);
-                    g.DrawLine(pen, cx - w, cy,     cx + w, cy);
-                    g.DrawLine(pen, cx - w, cy + 6, cx + w, cy + 6);
-                }
+                float p = Clamp01(_sidebarToggleProgress);
+
+                PointF topStart = LerpPoint(new PointF(cx - w, cy - 6), new PointF(cx - 4, cy - 6), p);
+                PointF topEnd   = LerpPoint(new PointF(cx + w, cy - 6), new PointF(cx + 2, cy),     p);
+                PointF midStart = LerpPoint(new PointF(cx - w, cy),     new PointF(cx - 6, cy),     p);
+                PointF midEnd   = LerpPoint(new PointF(cx + w, cy),     new PointF(cx + 2, cy),     p);
+                PointF botStart = LerpPoint(new PointF(cx - w, cy + 6), new PointF(cx - 4, cy + 6), p);
+                PointF botEnd   = LerpPoint(new PointF(cx + w, cy + 6), new PointF(cx + 2, cy),     p);
+
+                g.DrawLine(pen, topStart, topEnd);
+                g.DrawLine(pen, midStart, midEnd);
+                g.DrawLine(pen, botStart, botEnd);
             };
 
             // ── Page title ────────────────────────────────────────────────────────
@@ -1335,6 +1344,7 @@ namespace DriveAndGo_Admin
             {
                 incoming = new T();
                 incoming.BackColor = ThemeManager.CurrentBackground;
+                SetDoubleBuffer(incoming);
                 _panelCache[panelType] = incoming;
             }
 
@@ -1363,29 +1373,23 @@ namespace DriveAndGo_Admin
             else if (incoming is FleetPanel fp) fp.LoadVehiclesFromDB();
         }
 
-        private void OnToggleSidebar(object sender, EventArgs e)
+        private void ToggleSidebarText(bool showText)
         {
-            _sidebarCollapsed = !_sidebarCollapsed;
-            _targetSidebarW   = _sidebarCollapsed ? SidebarCollapsedWidth : SidebarFullWidth;
+            if (sidebarPanel == null || sidebarPanel.IsDisposed) return;
 
-            btnToggleSidebar.Invalidate();
-            AnimateLabelFade(lblLogo,    !_sidebarCollapsed);
-            AnimateLabelFade(lblLogoSub, !_sidebarCollapsed);
-            userPanel.Visible = !_sidebarCollapsed;
+            sidebarPanel.SuspendLayout();
 
-            UpdateNavButtonText();
-            AnimateSidebar();
+            if (lblLogo != null)    lblLogo.Visible    = showText;
+            if (lblLogoSub != null) lblLogoSub.Visible = showText;
+            if (userPanel != null)  userPanel.Visible  = showText;
+
+            UpdateNavButtonText(showText);
+
+            sidebarPanel.ResumeLayout(true);
+            sidebarPanel.Invalidate();
         }
 
-        private void AnimateLabelFade(Label lbl, bool show)
-        {
-            if (show) { lbl.Visible = true; return; }
-            var t = new System.Windows.Forms.Timer { Interval = 120 };
-            t.Tick += (s, e2) => { lbl.Visible = false; t.Stop(); t.Dispose(); };
-            t.Start();
-        }
-
-        private void UpdateNavButtonText()
+        private void UpdateNavButtonText(bool showText)
         {
             var map = new[]
             {
@@ -1404,7 +1408,8 @@ namespace DriveAndGo_Admin
 
             foreach (var (btn, icon, text) in map)
             {
-                if (_sidebarCollapsed)
+                if (btn == null) continue;
+                if (!showText)
                 {
                     btn.Text      = icon;
                     btn.TextAlign = ContentAlignment.MiddleCenter;
@@ -1421,31 +1426,81 @@ namespace DriveAndGo_Admin
                 }
             }
 
-            btnLogout.Text      = _sidebarCollapsed ? "🔓" : "  🔓  Log Out";
-            btnLogout.TextAlign = _sidebarCollapsed ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft;
-            btnLogout.Font      = _sidebarCollapsed
-                ? new Font("Segoe UI Emoji", 14F) : new Font("Segoe UI", 10F);
+            if (btnLogout != null)
+            {
+                btnLogout.Text      = !showText ? "🔓" : "  🔓  Log Out";
+                btnLogout.TextAlign = !showText ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft;
+                btnLogout.Font      = !showText ? new Font("Segoe UI Emoji", 14F) : new Font("Segoe UI", 10F);
+            }
         }
 
-        private void AnimateSidebar()
+        private void OnToggleSidebar(object sender, EventArgs e)
         {
-            _sidebarAnimating = true;
-            if (_animTimer == null || !_animTimer.Enabled)
-                StartAnimations();
+            _sidebarCollapsed = !_sidebarCollapsed;
+            int startWidth    = sidebarPanel.Width;
+            int targetWidth   = _sidebarCollapsed ? SidebarCollapsedWidth : SidebarFullWidth;
+
+            btnToggleSidebar?.Invalidate();
+
+            // 1. Immediately hide text/labels to free up GDI+ rendering before the slide starts
+            ToggleSidebarText(false);
+
+            _sidebarTimer?.Stop();
+            _sidebarAnimationClock.Restart();
+
+            if (_sidebarTimer == null)
+            {
+                _sidebarTimer = new System.Windows.Forms.Timer { Interval = 1 }; // 1ms tick for max 120+ FPS smoothness
+                _sidebarTimer.Tick += (s, e2) =>
+                {
+                    if (sidebarPanel == null || sidebarPanel.IsDisposed)
+                    {
+                        _sidebarTimer.Stop();
+                        return;
+                    }
+
+                    double elapsed = _sidebarAnimationClock.Elapsed.TotalMilliseconds;
+                    double duration = 160.0; // 160ms ultra-fluid animation
+                    double t = Math.Min(1.0, elapsed / duration);
+
+                    // Smooth Ease-Out Cubic: 1 - (1 - t)^3
+                    double eased = 1.0 - Math.Pow(1.0 - t, 3);
+                    int currentWidth = (int)Math.Round(startWidth + (targetWidth - startWidth) * eased);
+
+                    if (sidebarPanel.Width != currentWidth)
+                    {
+                        sidebarPanel.Width = currentWidth;
+                    }
+
+                    if (t >= 1.0)
+                    {
+                        _sidebarTimer.Stop();
+                        _sidebarAnimationClock.Stop();
+
+                        sidebarPanel.Width = targetWidth;
+                        ApplySidebarChildWidths(targetWidth);
+
+                        // 3. Restore text and full details if expanding
+                        if (!_sidebarCollapsed)
+                        {
+                            ToggleSidebarText(true);
+                        }
+                    }
+                };
+            }
+
+            _sidebarTimer.Start();
         }
 
-        private void ApplySidebarWidth(int w)
+        private void ApplySidebarChildWidths(int w)
         {
-            sidebarPanel.SuspendLayout();
-            sidebarPanel.Width = w;
-
+            if (sidebarPanel == null || sidebarPanel.IsDisposed) return;
             int btnW = Math.Max(10, w - 20);
             foreach (Control c in sidebarPanel.Controls)
             {
                 if (c is Button btn)
                 {
-                    btn.Width    = btnW;
-                    btn.Location = new Point(10, btn.Location.Y);
+                    btn.Width = btnW;
                 }
                 if (c == dividerTop || c == dividerBottom)
                 {
@@ -1453,9 +1508,7 @@ namespace DriveAndGo_Admin
                     if (dw > 0) c.Width = dw;
                 }
             }
-
-            sidebarPanel.ResumeLayout();
-            sidebarPanel.Invalidate();
+            RefreshNavButtonRegions();
         }
 
         private void RefreshNavButtonRegions()
@@ -1671,25 +1724,6 @@ namespace DriveAndGo_Admin
                     activeIndicator.Top = (int)_currentIndicatorY;
                 }
 
-                // Sidebar width animation
-                if (_sidebarAnimating)
-                {
-                    float sd = _targetSidebarW - _currentSidebarW;
-                    if (Math.Abs(sd) < 0.5f)
-                    {
-                        _currentSidebarW  = _targetSidebarW;
-                        ApplySidebarWidth((int)_currentSidebarW);
-                        _sidebarAnimating = false;
-                        RefreshNavButtonRegions();
-                    }
-                    else
-                    {
-                        _currentSidebarW += sd * 0.28f;
-                        ApplySidebarWidth((int)_currentSidebarW);
-                        animActive = true;
-                    }
-                }
-
                 if (!animActive)
                 {
                     _animTimer.Stop();
@@ -1777,7 +1811,8 @@ namespace DriveAndGo_Admin
                 TextAlign = ContentAlignment.MiddleLeft,
                 Font      = new Font("Segoe UI", 11F),
                 BackColor = Color.Transparent,
-                Cursor    = Cursors.Hand
+                Cursor    = Cursors.Hand,
+                Anchor    = AnchorStyles.Top | AnchorStyles.Left
             };
             btn.FlatAppearance.BorderSize           = 0;
             btn.FlatAppearance.MouseOverBackColor   = Color.Transparent;
@@ -2289,8 +2324,33 @@ namespace DriveAndGo_Admin
         private static int Clamp(int v, int min = 0, int max = 255)
             => v < min ? min : v > max ? max : v;
 
+        private static float Clamp01(float value)
+            => value < 0f ? 0f : value > 1f ? 1f : value;
+
+        private static float EaseOutCubic(float t)
+        {
+            t = 1f - Clamp01(t);
+            return 1f - (t * t * t);
+        }
+
+        private static PointF LerpPoint(PointF from, PointF to, float t)
+            => new PointF(
+                from.X + ((to.X - from.X) * t),
+                from.Y + ((to.Y - from.Y) * t));
+
+        private void EnableSmoothTransitions(Control control)
+        {
+            if (control == null) return;
+
+            typeof(Control).InvokeMember("DoubleBuffered",
+                BindingFlags.SetProperty | BindingFlags.Instance | BindingFlags.NonPublic,
+                null, control, new object[] { true });
+        }
+
         private static void SetDoubleBuffer(Control c)
         {
+            if (c == null) return;
+
             typeof(Control).InvokeMember("DoubleBuffered",
                 BindingFlags.SetProperty | BindingFlags.Instance | BindingFlags.NonPublic,
                 null, c, new object[] { true });
