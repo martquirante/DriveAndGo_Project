@@ -37,7 +37,6 @@ namespace DriveAndGo_Admin
         // ── Window drag state ─────────────────────────────────────────────────────
         private bool  _dragging;
         private Point _dragStart;
-        private bool  _wasMaximized;
 
         // ── UI ─────────────────────────────────────────────────────────────────────
         private Panel    sidebarPanel;
@@ -53,10 +52,12 @@ namespace DriveAndGo_Admin
         private Label      lblHeaderTitle;
         private Label      lblUserName;
         private Label      lblUserRole;
-        private Label      lblOnlineStatus;
-        private Panel      userPanel;
-        private Panel      dividerBottom;
-        private Panel      dividerTop;
+        private Panel      _userProfileCard;
+        private Panel      _sidebarAvatarPanel;
+        private Panel      _navContainer;
+        private float      _profileHoverAlpha = 0f;
+        private bool       _isProfileHovered  = false;
+        private System.Windows.Forms.Timer _profileHoverTimer;
 
         private Button btnToggleSidebar;
         private Button btnThemeToggle;
@@ -94,29 +95,36 @@ namespace DriveAndGo_Admin
         private Button btnAccounts;
         private Button btnLogout;
 
+        // ── Sidebar dual-layer panels ─────────────────────────────────────────────
+        // Two completely separate inner surfaces that cross-fade during toggle.
+        // _sidebarFullLayer  : 240 px-wide full text+icon layout (always Dock=Fill)
+        // _sidebarIconLayer  : 64 px-wide centred emoji-only layout  (always Dock=Fill)
+        // The outer sidebarPanel clips whichever layer is visible as it animates width.
+        private Panel _sidebarFullLayer;
+        private Panel _sidebarIconLayer;
+        private float _fullLayerAlpha = 1f;
+        private float _iconLayerAlpha = 0f;
+
+        // ── Mirrored icon-mode buttons (live only inside _sidebarIconLayer) ────────
+        private Button[] _iconNavBtns;   // parallel to nav order
+        private Button   _iconLogout;
+        private Button   _iconActiveButton;
+
         // ── Animation ─────────────────────────────────────────────────────────────
         private System.Windows.Forms.Timer _animTimer;
         private System.Windows.Forms.Timer _sidebarTimer;
         private System.Windows.Forms.Timer _themeTimer;
-        private System.Windows.Forms.Timer _glassTimer;
         private System.Windows.Forms.Timer _clockTimer;
 
         // ── Panel transition (cinematic veil composite) ───────────────────────────
-        private System.Windows.Forms.Timer _panelFadeTimer;
-        private float   _panelFadeAlpha = 1f;   // 1=fully covered, 0=revealed
-        private TransitionVeil _transitionVeil;
 
         // ── Mouse glow tracking ───────────────────────────────────────────────────
         private Point _mouseGlowPos;
-        private bool  _mouseGlowVisible;
 
         private float _targetIndicatorY  = 155;
         private float _currentIndicatorY = 155;
         private float _opacity           = 0f;
 
-        private float _targetSidebarW  = SidebarFullWidth;
-        private float _currentSidebarW = SidebarFullWidth;
-        private int _sidebarAnimationStartW = SidebarFullWidth;
         private float _sidebarToggleProgress = 0f;
         private readonly Stopwatch _sidebarAnimationClock = new();
 
@@ -208,7 +216,61 @@ namespace DriveAndGo_Admin
             SetActiveButton(btnDashboard);
             NavigateTo<DashboardPanel>();
             InitializeSignalR();
+            InitializeNetworkMonitoring();
             FetchUserProfileFromApiAsync();
+        }
+
+        private Panel _pnlOfflineWarning;
+        private Label _lblOfflineWarningText;
+        private System.Windows.Forms.Timer _netCheckTimer;
+
+        private void InitializeNetworkMonitoring()
+        {
+            _pnlOfflineWarning = new Panel
+            {
+                Height = 32,
+                Dock = DockStyle.Top,
+                BackColor = Color.FromArgb(185, 28, 28),
+                Visible = false
+            };
+
+            _lblOfflineWarningText = new Label
+            {
+                Text = "⚠️ Offline: No active internet connection. An internet connection is required to access AI services and live features.",
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+
+            _pnlOfflineWarning.Controls.Add(_lblOfflineWarningText);
+            this.Controls.Add(_pnlOfflineWarning);
+            this.Controls.SetChildIndex(_pnlOfflineWarning, 0);
+
+            _netCheckTimer = new System.Windows.Forms.Timer { Interval = 4000 };
+            _netCheckTimer.Tick += async (s, e) =>
+            {
+                bool isOnline = await CheckInternetConnectionAsync();
+                if (_pnlOfflineWarning.Visible != !isOnline)
+                {
+                    _pnlOfflineWarning.Visible = !isOnline;
+                }
+            };
+            _netCheckTimer.Start();
+        }
+
+        private static async System.Threading.Tasks.Task<bool> CheckInternetConnectionAsync()
+        {
+            try
+            {
+                using var ping = new System.Net.NetworkInformation.Ping();
+                var reply = await ping.SendPingAsync("8.8.8.8", 1500);
+                return reply.Status == System.Net.NetworkInformation.IPStatus.Success;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         // ══════════════════════════════════════════════════════════════════════════
@@ -290,7 +352,15 @@ namespace DriveAndGo_Admin
             this.KeyPreview      = true;
             this.KeyDown        += (s, e) =>
             {
-                if (e.Alt && e.KeyCode == Keys.F4) Application.Exit();
+                if (e.Alt && e.KeyCode == Keys.F4)
+                {
+                    Application.Exit();
+                }
+                else if (e.Control && e.KeyCode == Keys.K)
+                {
+                    e.SuppressKeyPress = true;
+                    ToggleChatFloat();
+                }
             };
         }
 
@@ -390,8 +460,6 @@ namespace DriveAndGo_Admin
             lblUserName.ForeColor = ThemeManager.CurrentText;
             lblUserRole.ForeColor = ThemeManager.CurrentPrimary;
 
-            dividerTop.BackColor    = ThemeManager.CurrentBorder;
-            dividerBottom.BackColor = ThemeManager.CurrentBorder;
             activeIndicator.BackColor = ThemeManager.CurrentPrimary;
 
             // Update chrome buttons to match new theme
@@ -402,16 +470,31 @@ namespace DriveAndGo_Admin
                 btnWinMinimize.ForeColor = ThemeManager.CurrentText;
             }
 
-            foreach (Control c in sidebarPanel.Controls)
+            // Apply theme to nav buttons inside the new container
+            if (_navContainer != null)
             {
-                if (c is Button btn && btn != btnLogout)
+                foreach (Control c in _navContainer.Controls)
                 {
-                    btn.BackColor = (btn == activeButton)
-                        ? ThemeManager.NavActiveBg
-                        : Color.Transparent;
-                    btn.ForeColor = (btn == activeButton)
+                    if (c is Button btn && btn != btnLogout)
+                    {
+                        btn.BackColor = (btn == activeButton) ? ThemeManager.NavActiveBg : Color.Transparent;
+                        btn.ForeColor = (btn == activeButton) ? ThemeManager.CurrentPrimary : ThemeManager.CurrentText;
+                    }
+                }
+            }
+
+            // Also update icon layer buttons
+            if (_iconNavBtns != null)
+            {
+                foreach (var ib in _iconNavBtns)
+                {
+                    if (ib == null) continue;
+                    ib.ForeColor = (ib == _iconActiveButton)
                         ? ThemeManager.CurrentPrimary
                         : ThemeManager.CurrentText;
+                    ib.BackColor = (ib == _iconActiveButton)
+                        ? (ThemeManager.IsDarkMode ? Color.FromArgb(40, 255, 255, 255) : Color.FromArgb(20, 0, 0, 0))
+                        : Color.Transparent;
                 }
             }
 
@@ -433,6 +516,10 @@ namespace DriveAndGo_Admin
             btnThemeToggle.Invalidate();
             btnToggleSidebar.Invalidate();
             userAvatarPanel?.Invalidate();
+            _userProfileCard?.Invalidate();
+            _sidebarAvatarPanel?.Invalidate();
+            picLogo?.Parent?.Invalidate(true);
+            picLogo?.Invalidate();
             headerPanel.Invalidate();
             sidebarPanel.Invalidate();
         }
@@ -448,16 +535,46 @@ namespace DriveAndGo_Admin
             sidebarPanel.Dock  = DockStyle.Left;
             sidebarPanel.Paint += OnSidebarPaint;
 
-            // ── Logo area ──
-            // ── Logo area ──
-            var logoPanel = new Panel
+            _profileHoverTimer = new System.Windows.Forms.Timer { Interval = 15 };
+            _profileHoverTimer.Tick += (s, e) =>
             {
-                Size      = new Size(SidebarFullWidth, 95),
-                Location  = new Point(0, 0),
-                BackColor = Color.Transparent,
-                Anchor    = AnchorStyles.Top | AnchorStyles.Left
+                float target = _isProfileHovered ? 1f : 0f;
+                float diff   = target - _profileHoverAlpha;
+                if (Math.Abs(diff) < 0.02f)
+                {
+                    _profileHoverAlpha = target;
+                    _profileHoverTimer.Stop();
+                }
+                else
+                {
+                    _profileHoverAlpha += diff * 0.25f;
+                }
+                _userProfileCard?.Invalidate();
             };
 
+            // ── Build the two inner layers ──────────────────────────────────────────
+            BuildSidebarFullLayer();
+            BuildSidebarIconLayer();
+
+            // Stack: full layer on top initially (expanded state)
+            sidebarPanel.Controls.Add(_sidebarIconLayer);
+            sidebarPanel.Controls.Add(_sidebarFullLayer);
+            _sidebarFullLayer.BringToFront();
+
+            this.Controls.Add(sidebarPanel);
+        }
+
+        // ── Full-mode layer (240 px): logo, labels, full text nav buttons ──────────
+        private void BuildSidebarFullLayer()
+        {
+            _sidebarFullLayer = new Panel
+            {
+                Dock      = DockStyle.Fill,
+                BackColor = Color.Transparent
+            };
+            SetDoubleBuffer(_sidebarFullLayer);
+
+            // Logo area
             picLogo = new PictureBox
             {
                 Size     = new Size(38, 38),
@@ -469,12 +586,12 @@ namespace DriveAndGo_Admin
 
             lblLogo = new Label
             {
-                Text      = "Drive&Go",
+                Text        = "Drive&Go",
                 UseMnemonic = false,
-                Font      = new Font("Segoe UI", 14F, FontStyle.Bold),
-                Location  = new Point(56, 24),
-                AutoSize  = true,
-                BackColor = Color.Transparent
+                Font        = new Font("Segoe UI", 14F, FontStyle.Bold),
+                Location    = new Point(56, 24),
+                AutoSize    = true,
+                BackColor   = Color.Transparent
             };
 
             lblLogoSub = new Label
@@ -486,43 +603,62 @@ namespace DriveAndGo_Admin
                 BackColor = Color.Transparent
             };
 
-            logoPanel.Controls.AddRange(new Control[] { picLogo, lblLogo, lblLogoSub });
-
-            dividerTop = new Panel
+            // ── CUSTOM SCROLLABLE NAV CONTAINER ──
+            _navContainer = new Panel
             {
-                Size     = new Size(200, 1),
-                Location = new Point(20, 95),
-                Anchor   = AnchorStyles.Top | AnchorStyles.Left
+                Location = new Point(0, 95),
+                Size = new Size(SidebarFullWidth, sidebarPanel.Height - 220),
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left,
+                BackColor = Color.Transparent,
+                AutoScroll = false // Kill native scrollbar
             };
+            SetDoubleBuffer(_navContainer);
 
-            // ── Active indicator pill ──
-            activeIndicator = new Panel
-            {
-                Size     = new Size(4, 34),
-                Location = new Point(0, 155),
-                Anchor   = AnchorStyles.Top | AnchorStyles.Left
-            };
-            activeIndicator.Paint += (s, e) =>
-            {
+            activeIndicator = new Panel { Size = new Size(4, 34), Location = new Point(0, 15), BackColor = Color.Transparent };
+            activeIndicator.Paint += (s, e) => {
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                using var path = GetRoundedRect(new Rectangle(0, 0, 4, activeIndicator.Height), 2);
-                using var brush = new SolidBrush(ThemeManager.CurrentPrimary);
-                e.Graphics.FillPath(brush, path);
+                e.Graphics.FillPath(new SolidBrush(ThemeManager.CurrentPrimary), GetRoundedRect(new Rectangle(0, 0, 4, activeIndicator.Height), 2));
             };
-            activeIndicator.BackColor = Color.Transparent;
 
-            // ── Nav buttons ──
-            btnDashboard    = CreateNavButton("Dashboard",    "📊", 120);
-            btnVehicles     = CreateNavButton("Fleet",        "🚗", 172);
-            btnRentals      = CreateNavButton("Rentals",      "📝", 224);
-            btnDrivers      = CreateNavButton("Drivers",      "👤", 276);
-            btnTransactions = CreateNavButton("Transactions", "💳", 328);
-            btnReports      = CreateNavButton("Reports",      "📈", 380);
-            btnCalendar     = CreateNavButton("Calendar",     "📅", 432);
-            btnDocVault     = CreateNavButton("Doc Vault",    "📋", 484);
-            btnExpenses     = CreateNavButton("Expenses",     "💰", 536);
-            btnSplitPay     = CreateNavButton("Split Pay",    "🤝", 588);
-            btnAccounts     = CreateNavButton("Accounts",     "👥", 640);
+            btnDashboard    = CreateNavButton("Dashboard",    "📊", 10);
+            btnVehicles     = CreateNavButton("Fleet",        "🚗", 62);
+            btnRentals      = CreateNavButton("Rentals",      "📝", 114);
+            btnDrivers      = CreateNavButton("Drivers",      "👤", 166);
+            btnTransactions = CreateNavButton("Transactions", "💳", 218);
+            btnReports      = CreateNavButton("Reports",      "📈", 270);
+            btnCalendar     = CreateNavButton("Calendar",     "📅", 322);
+            btnDocVault     = CreateNavButton("Doc Vault",    "📋", 374);
+            btnExpenses     = CreateNavButton("Expenses",     "💰", 426);
+            btnSplitPay     = CreateNavButton("Split Pay",    "🤝", 478);
+            btnAccounts     = CreateNavButton("Accounts",     "👥", 530);
+
+            _navContainer.Controls.AddRange(new Control[] {
+                activeIndicator, btnDashboard, btnVehicles, btnRentals, btnDrivers,
+                btnTransactions, btnReports, btnCalendar, btnDocVault,
+                btnExpenses, btnSplitPay, btnAccounts
+            });
+
+            // Smooth MouseWheel Logic
+            int totalNavHeight = 582; // 530 + btn.Height
+            _navContainer.MouseWheel += (s, e) => {
+                int maxScroll = Math.Max(0, totalNavHeight - _navContainer.Height);
+                if (maxScroll <= 0) return;
+                int delta = -e.Delta / 3;
+                int currentY = btnDashboard.Top - 10;
+                int newY = Math.Clamp(currentY - delta, -maxScroll, 0);
+                int offset = newY - currentY;
+                
+                foreach (Control c in _navContainer.Controls) c.Top += offset;
+                _targetIndicatorY += offset;
+                _currentIndicatorY += offset;
+            };
+            // Forward wheel events from buttons to container
+            foreach (Control c in _navContainer.Controls) {
+                c.MouseWheel += (s, e) => {
+                    var args = new MouseEventArgs(e.Button, e.Clicks, e.X, e.Y, e.Delta);
+                    typeof(Panel).GetMethod("OnMouseWheel", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(_navContainer, new object[] { args });
+                };
+            }
 
             btnDashboard.Click    += (s, e) => { SetActiveButton(btnDashboard);    NavigateTo<DashboardPanel>(); };
             btnVehicles.Click     += (s, e) => { SetActiveButton(btnVehicles);     NavigateTo<FleetPanel>(); };
@@ -536,89 +672,343 @@ namespace DriveAndGo_Admin
             btnSplitPay.Click     += (s, e) => { SetActiveButton(btnSplitPay);     NavigateTo<SplitPaymentsPanel>(); };
             btnAccounts.Click     += (s, e) => { SetActiveButton(btnAccounts);     NavigateTo<AccountsPanel>(); };
 
-            dividerBottom = new Panel
+            // ── Unified SaaS Profile Card (bottom-anchored) ─────────────────────────
+            const int _cardH = 104;
+            _userProfileCard = new Panel
             {
-                Size   = new Size(200, 1),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left
-            };
-            dividerBottom.Location = new Point(20, this.Height - 110);
-
-            // ── User info panel ──
-            userPanel = new Panel
-            {
-                Size      = new Size(SidebarFullWidth, 70),
-                Anchor    = AnchorStyles.Top | AnchorStyles.Left,
-                BackColor = Color.Transparent
-            };
-            userPanel.Location = new Point(0, this.Height - 95);
-
-            var dot = new Panel { Size = new Size(8, 8), Location = new Point(12, 26) };
-            dot.Paint += (s, e) =>
-            {
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                e.Graphics.FillEllipse(new SolidBrush(Color.FromArgb(34, 197, 94)), 0, 0, 7, 7);
-            };
-
-            lblUserName = new Label
-            {
-                Text      = SessionManager.UserId > 0 ? SessionManager.FullName : "Admin",
-                Font      = new Font("Segoe UI", 10F, FontStyle.Bold),
-                Location  = new Point(26, 10),
-                AutoSize  = true,
-                BackColor = Color.Transparent
-            };
-
-            lblUserRole = new Label
-            {
-                Text      = SessionManager.UserId > 0 ? SessionManager.Role.ToUpper() : "ADMIN",
-                Font      = new Font("Segoe UI", 8F),
-                Location  = new Point(28, 32),
-                AutoSize  = true,
-                BackColor = Color.Transparent
-            };
-
-            lblOnlineStatus = new Label
-            {
-                Text      = "● Online",
-                Font      = new Font("Segoe UI", 8F),
-                ForeColor = Color.FromArgb(34, 197, 94),
-                Location  = new Point(28, 50),
-                AutoSize  = true,
-                BackColor = Color.Transparent
-            };
-
-            userPanel.Controls.AddRange(new Control[] { dot, lblUserName, lblUserRole, lblOnlineStatus });
-
-            // ── Logout ──
-            btnLogout = new Button
-            {
-                Text      = "  🔓  Log Out",
-                Size      = new Size(SidebarFullWidth - 20, 46),
-                Anchor    = AnchorStyles.Top | AnchorStyles.Left,
-                FlatStyle = FlatStyle.Flat,
-                ForeColor = Color.FromArgb(220, 68, 68),
+                Size      = new Size(SidebarFullWidth - 16, _cardH),
+                Location  = new Point(8, 600), // Repositioned immediately by Resize handler below
                 BackColor = Color.Transparent,
-                TextAlign = ContentAlignment.MiddleLeft,
                 Cursor    = Cursors.Hand
             };
-            btnLogout.Location = new Point(10, this.Height - 55);
-            btnLogout.FlatAppearance.BorderSize = 0;
-            btnLogout.FlatAppearance.MouseOverBackColor = Color.FromArgb(30, 239, 68, 68);
-            btnLogout.Font = new Font("Segoe UI", 10F);
-            SetRoundRegion(btnLogout, 8);
-            AttachRipple(btnLogout, Color.FromArgb(239, 68, 68));
+            SetDoubleBuffer(_userProfileCard);
+
+            // Keep card pinned to the bottom and navContainer height in sync on every resize
+            _sidebarFullLayer.Resize += (s, e) =>
+            {
+                if (_userProfileCard == null || _userProfileCard.IsDisposed) return;
+                _userProfileCard.Top = _sidebarFullLayer.Height - 116;
+                if (_navContainer != null && !_navContainer.IsDisposed)
+                    _navContainer.Height = Math.Max(0, _sidebarFullLayer.Height - 220);
+            };
+
+            // ── Glassmorphic & Hover Glow Paint ─────────────────────────────────────
+            _userProfileCard.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+
+                // Prevent the WinForms transparent-overlap "horns" artefact
+                g.Clear(ThemeManager.CurrentSidebar);
+
+                bool dark  = ThemeManager.IsDarkMode;
+                var  rect  = new Rectangle(1, 1, _userProfileCard.Width - 3, _userProfileCard.Height - 3);
+                using var path = GetRoundedRect(rect, 12);
+
+                // Background: deep slate (dark mode) / soft off-white (light mode)
+                g.FillPath(new SolidBrush(dark
+                    ? Color.FromArgb(16, 16, 26)
+                    : Color.FromArgb(248, 248, 255)), path);
+
+                // 1px border using CurrentBorder with slight transparency
+                int bAlpha = dark ? 30 : 180;
+                g.DrawPath(new Pen(Color.FromArgb(bAlpha, ThemeManager.CurrentBorder), 1f), path);
+
+                // Hover glow state (metric card effect)
+                if (_profileHoverAlpha > 0.01f)
+                {
+                    int glowBgAlpha = (int)(25 * _profileHoverAlpha);
+                    using var glowBrush = new SolidBrush(Color.FromArgb(glowBgAlpha, ThemeManager.CurrentPrimary));
+                    g.FillPath(glowBrush, path);
+
+                    int glowBorderAlpha = (int)(160 * _profileHoverAlpha);
+                    using var glowPen = new Pen(Color.FromArgb(glowBorderAlpha, ThemeManager.CurrentPrimary), 1.5f);
+                    g.DrawPath(glowPen, path);
+                }
+
+                // Horizontal separator line at Y = 58
+                int sepY = 58;
+                g.DrawLine(new Pen(Color.FromArgb(bAlpha, ThemeManager.CurrentBorder), 1f),
+                    10, sepY, _userProfileCard.Width - 10, sepY);
+            };
+
+            // ── Avatar panel (38×38) ─────────────────────────────────────────────────
+            _sidebarAvatarPanel = new Panel
+            {
+                Size      = new Size(38, 38),
+                Location  = new Point(10, 10),
+                BackColor = Color.Transparent,
+                Cursor    = Cursors.Hand
+            };
+            SetDoubleBuffer(_sidebarAvatarPanel);
+            _sidebarAvatarPanel.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode      = SmoothingMode.AntiAlias;
+                g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
+                var r = new Rectangle(0, 0, 37, 37);
+
+                if (SessionManager.CustomAvatar != null)
+                {
+                    try
+                    {
+                        using var cp = new System.Drawing.Drawing2D.GraphicsPath();
+                        cp.AddEllipse(r);
+                        var oc = g.Clip;
+                        g.SetClip(cp);
+                        g.DrawImage(SessionManager.CustomAvatar, r);
+                        g.Clip = oc;
+                    }
+                    catch { }
+                }
+                else
+                {
+                    // Translucent primary circle + first-letter initial centred inside
+                    g.FillEllipse(new SolidBrush(Color.FromArgb(40, ThemeManager.CurrentPrimary)), r);
+                    using var f   = new Font("Segoe UI", 12F, FontStyle.Bold);
+                    using var fmt = new StringFormat
+                        { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                    string ini = (SessionManager.FullName?.Length ?? 0) > 0
+                        ? SessionManager.FullName.Substring(0, 1) : "A";
+                    g.DrawString(ini, f, new SolidBrush(ThemeManager.CurrentPrimary),
+                        new RectangleF(0, 0, 38, 38), fmt);
+                }
+
+                // Online status indicator — green dot with a sidebar-coloured border ring
+                var dot = new Rectangle(25, 25, 11, 11);
+                g.FillEllipse(new SolidBrush(ThemeManager.CurrentAccentGreen), dot);
+                g.DrawEllipse(new Pen(ThemeManager.CurrentSidebar, 2f), dot);
+            };
+
+            // ── User name label (bold, near avatar top) ──────────────────────────────
+            lblUserName = new Label
+            {
+                Text      = SessionManager.UserId > 0 ? SessionManager.FullName : "Admin User",
+                Font      = new Font("Segoe UI", 9.5F, FontStyle.Bold),
+                Location  = new Point(56, 12),
+                AutoSize  = true,
+                BackColor = Color.Transparent,
+                ForeColor = ThemeManager.CurrentText,
+                Cursor    = Cursors.Hand
+            };
+
+            // ── User role label (small, primary-coloured, below name) ─────────────────
+            lblUserRole = new Label
+            {
+                Text      = SessionManager.UserId > 0
+                    ? (SessionManager.Role?.ToUpper() ?? "ADMIN") : "ADMIN",
+                Font      = new Font("Segoe UI", 7.5F, FontStyle.Bold),
+                Location  = new Point(56, 32),
+                AutoSize  = true,
+                BackColor = Color.Transparent,
+                ForeColor = ThemeManager.CurrentPrimary,
+                Cursor    = Cursors.Hand
+            };
+
+            // ── Logout button (below separator, flat + red, hover gives faint red bg) ──
+            btnLogout = new Button
+            {
+                Text      = "🔓  Log Out",
+                Size      = new Size(_userProfileCard.Width - 16, 32),
+                Location  = new Point(8, 64),
+                FlatStyle = FlatStyle.Flat,
+                ForeColor = Color.FromArgb(239, 68, 68),
+                BackColor = Color.Transparent,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Padding   = new Padding(10, 0, 0, 0),
+                Cursor    = Cursors.Hand,
+                Font      = new Font("Segoe UI", 9F, FontStyle.Bold)
+            };
+            btnLogout.FlatAppearance.BorderSize         = 0;
+            btnLogout.FlatAppearance.MouseOverBackColor = Color.FromArgb(15, 239, 68, 68);
+            SetRoundRegion(btnLogout, 6);
             btnLogout.Click += (s, e) => PerformLogout();
 
-            sidebarPanel.Controls.AddRange(new Control[]
+            // ── Assemble card ────────────────────────────────────────────────────────
+            _userProfileCard.Controls.AddRange(new Control[]
             {
-                activeIndicator, logoPanel, dividerTop,
-                btnDashboard, btnVehicles, btnRentals, btnDrivers,
-                btnTransactions, btnReports, btnCalendar, btnDocVault,
-                btnExpenses, btnSplitPay, btnAccounts,
-                dividerBottom, userPanel, btnLogout
+                _sidebarAvatarPanel, lblUserName, lblUserRole, btnLogout
             });
 
-            this.Controls.Add(sidebarPanel);
+            // ── Profile flyout: clicking card, avatar, name, or role opens the flyout ─
+            EventHandler openProfile = (s, e) => ToggleProfileFlyout();
+            _userProfileCard.Click    += openProfile;
+            _sidebarAvatarPanel.Click += openProfile;
+            lblUserName.Click         += openProfile;
+            lblUserRole.Click         += openProfile;
+
+            // ── Hover events to prevent flicker ──────────────────────────────────────
+            Action<bool> triggerProfileHover = (hover) =>
+            {
+                _isProfileHovered = hover;
+                _profileHoverTimer?.Start();
+            };
+
+            _userProfileCard.MouseEnter += (s, e) => triggerProfileHover(true);
+            _userProfileCard.MouseLeave += (s, e) =>
+            {
+                if (!_userProfileCard.ClientRectangle.Contains(_userProfileCard.PointToClient(Cursor.Position)))
+                    triggerProfileHover(false);
+            };
+
+            foreach (Control child in _userProfileCard.Controls)
+            {
+                child.MouseEnter += (s, e) => triggerProfileHover(true);
+                child.MouseLeave += (s, e) =>
+                {
+                    if (!_userProfileCard.ClientRectangle.Contains(_userProfileCard.PointToClient(Cursor.Position)))
+                        triggerProfileHover(false);
+                };
+            }
+
+            _sidebarFullLayer.Controls.AddRange(new Control[]
+            {
+                picLogo, lblLogo, lblLogoSub,
+                _navContainer,
+                _userProfileCard
+            });
+        }
+
+        // ── Icon-mode layer (64 px): centred emojis, avatar circle, mini logout ─────
+        private void BuildSidebarIconLayer()
+        {
+            const int iconBtnW  = SidebarCollapsedWidth - 10; // 54 px
+            const int iconBtnH  = 46;
+            const int startY    = 100;
+            const int step      = 50;
+
+            _sidebarIconLayer = new Panel
+            {
+                Dock      = DockStyle.Fill,
+                BackColor = Color.Transparent
+            };
+            SetDoubleBuffer(_sidebarIconLayer);
+
+            // ── Centred logo icon ──
+            var picLogoIcon = new PictureBox
+            {
+                Size      = new Size(36, 36),
+                Location  = new Point((SidebarCollapsedWidth - 36) / 2, 28),
+                SizeMode  = PictureBoxSizeMode.Zoom,
+                BackColor = Color.Transparent
+            };
+            try { picLogoIcon.Image = Properties.Resources.DriveAndGo_Logo; } catch { }
+            _sidebarIconLayer.Controls.Add(picLogoIcon);
+
+            // ── Centred nav icon buttons ──
+            string[] icons = { "📊", "🚗", "📝", "👤", "💳", "📈", "📅", "📋", "💰", "🤝", "👥" };
+            string[] labels = { "Dashboard", "Fleet", "Rentals", "Drivers", "Transactions", "Reports", "Calendar", "Doc Vault", "Expenses", "Split Pay", "Accounts" };
+            Button[] fullBtns = { btnDashboard, btnVehicles, btnRentals, btnDrivers, btnTransactions, btnReports, btnCalendar, btnDocVault, btnExpenses, btnSplitPay, btnAccounts };
+
+            _iconNavBtns = new Button[icons.Length];
+            for (int i = 0; i < icons.Length; i++)
+            {
+                int capturedIdx = i;
+                string capturedLabel = labels[i];
+                Button fullBtn = fullBtns[i];
+
+                var iconBtn = new Button
+                {
+                    Text      = icons[i],
+                    Size      = new Size(iconBtnW, iconBtnH),
+                    Location  = new Point((SidebarCollapsedWidth - iconBtnW) / 2, startY + i * step),
+                    FlatStyle = FlatStyle.Flat,
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    Font      = new Font("Segoe UI Emoji", 15F),
+                    BackColor = Color.Transparent,
+                    Cursor    = Cursors.Hand,
+                    ForeColor = ThemeManager.CurrentText
+                };
+                iconBtn.FlatAppearance.BorderSize = 0;
+                iconBtn.FlatAppearance.MouseOverBackColor = Color.Transparent;
+                iconBtn.FlatAppearance.MouseDownBackColor = Color.Transparent;
+                SetRoundRegion(iconBtn, 8);
+
+                // Tooltip shows the full name when collapsed
+                var tt = new ToolTip { AutoPopDelay = 3000, InitialDelay = 300 };
+                tt.SetToolTip(iconBtn, capturedLabel);
+
+                // Mirror click to full button so navigation + active state logic is shared
+                iconBtn.Click += (s, ev) =>
+                {
+                    fullBtn.PerformClick();
+                    SyncIconActiveButton(iconBtn);
+                };
+
+                _iconNavBtns[i] = iconBtn;
+                _sidebarIconLayer.Controls.Add(iconBtn);
+            }
+
+            // ── Mini avatar circle ──
+            var miniAvatar = new Panel
+            {
+                Size      = new Size(36, 36),
+                Location  = new Point((SidebarCollapsedWidth - 36) / 2, _sidebarIconLayer.Height == 0 ? 690 : _sidebarIconLayer.Height - 105),
+                Anchor    = AnchorStyles.Bottom | AnchorStyles.Left,
+                BackColor = Color.Transparent
+            };
+            SetDoubleBuffer(miniAvatar);
+            miniAvatar.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode      = SmoothingMode.AntiAlias;
+                g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
+                var r = new Rectangle(0, 0, 35, 35);
+
+                if (SessionManager.CustomAvatar != null)
+                {
+                    try
+                    {
+                        using var cp = new System.Drawing.Drawing2D.GraphicsPath();
+                        cp.AddEllipse(r);
+                        var oc = g.Clip;
+                        g.SetClip(cp);
+                        g.DrawImage(SessionManager.CustomAvatar, r);
+                        g.Clip = oc;
+                    }
+                    catch { }
+                }
+                else
+                {
+                    using var grad = new LinearGradientBrush(r, ThemeManager.CurrentPrimary, ThemeManager.CurrentPrimaryGlow, LinearGradientMode.ForwardDiagonal);
+                    g.FillEllipse(grad, r);
+                    using var f   = new Font("Segoe UI", 11F, FontStyle.Bold);
+                    using var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                    string ini = (SessionManager.FullName?.Length ?? 0) > 0 ? SessionManager.FullName.Substring(0, 1) : "A";
+                    g.DrawString(ini, f, Brushes.White, new RectangleF(0, 0, 36, 36), fmt);
+                }
+
+                // Online status indicator — green dot
+                var dot = new Rectangle(24, 24, 11, 11);
+                g.FillEllipse(new SolidBrush(ThemeManager.CurrentAccentGreen), dot);
+                g.DrawEllipse(new Pen(ThemeManager.CurrentSidebar, 2f), dot);
+            };
+            _sidebarIconLayer.Controls.Add(miniAvatar);
+
+            // ── Mini logout icon button ──
+            _iconLogout = new Button
+            {
+                Text      = "🔓",
+                Size      = new Size(iconBtnW, 36),
+                Location  = new Point((SidebarCollapsedWidth - iconBtnW) / 2, miniAvatar.Top == 0 ? 730 : miniAvatar.Top + 42),
+                Anchor    = AnchorStyles.Bottom | AnchorStyles.Left,
+                FlatStyle = FlatStyle.Flat,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font      = new Font("Segoe UI Emoji", 14F),
+                ForeColor = Color.FromArgb(239, 68, 68),
+                BackColor = Color.Transparent,
+                Cursor    = Cursors.Hand
+            };
+            _iconLogout.FlatAppearance.BorderSize           = 0;
+            _iconLogout.FlatAppearance.MouseOverBackColor   = Color.FromArgb(15, 239, 68, 68);
+            SetRoundRegion(_iconLogout, 6);
+            _iconLogout.Click += (s, e) => PerformLogout();
+            var ttLogout = new ToolTip();
+            ttLogout.SetToolTip(_iconLogout, "Log Out");
+            _sidebarIconLayer.Controls.Add(_iconLogout);
+
+            // Start invisible — full layer is on top
+            _sidebarIconLayer.Visible = false;
         }
 
         // ══════════════════════════════════════════════════════════════════════════
@@ -976,9 +1366,6 @@ namespace DriveAndGo_Admin
 
         // ══════════════════════════════════════════════════════════════════════════
         //  HEADER LAYOUT — Flex-gap right-to-left positioning
-        //  Zone map (all right-anchored, no Anchor property needed):
-        //    [edge] [Close=46] [Max=46] [Min=46] [gap=16] [Avatar=36] [gap=12]
-        //    [Bell=40] [gap=12] [Theme=70] [gap=20] [Clock=195] [gap≥8]
         // ══════════════════════════════════════════════════════════════════════════
         private void RepositionHeaderControls()
         {
@@ -992,17 +1379,20 @@ namespace DriveAndGo_Admin
             btnWinMinimize?.SetBounds(W - 138, 0, 46, HeaderHeight);
 
             // Zone 2 – User avatar (gap=16 from chrome)
-            userAvatarPanel?.SetBounds(W - 138 - 16 - 36, vCenter(36), 36, 36);
+            int avatarX = W - 138 - 16 - 36;
+            userAvatarPanel?.SetBounds(avatarX, vCenter(36), 36, 36);
 
-            // Zone 3 – Notification bell (gap=10 from avatar)
-            btnNotifications?.SetBounds(W - 138 - 16 - 36 - 10 - 40, vCenter(40), 40, 40);
+            // Zone 3 – Notification bell (gap=20 from avatar)
+            int bellX = avatarX - 20 - 40;
+            btnNotifications?.SetBounds(bellX, vCenter(40), 40, 40);
 
             // Zone 4 – Theme toggle (gap=10 from bell)
-            btnThemeToggle?.SetBounds(W - 138 - 16 - 36 - 10 - 40 - 10 - 70, vCenter(36), 70, 36);
+            int themeX = bellX - 10 - 70;
+            btnThemeToggle?.SetBounds(themeX, vCenter(36), 70, 36);
 
             // Zone 5 – Clock (gap=20 from theme toggle)
             if (lblClock != null)
-                lblClock.SetBounds(W - 138 - 16 - 36 - 10 - 40 - 10 - 70 - 20 - 195, vCenter(18), 195, 18);
+                lblClock.SetBounds(themeX - 20 - 195, vCenter(18), 195, 18);
         }
 
         private void UpdateMaximizeIcon()
@@ -1025,7 +1415,6 @@ namespace DriveAndGo_Admin
             contentPanel.MouseMove += (s, e) =>
             {
                 _mouseGlowPos     = e.Location;
-                _mouseGlowVisible = true;
             };
 
             this.Controls.Add(contentPanel);
@@ -1161,6 +1550,9 @@ namespace DriveAndGo_Admin
                 _chatFloatHost.BringToFront();
                 _fabPanel.BringToFront();
 
+                _chatFloatHost?.Focus();
+                _chatOverlay?.Focus();
+
                 // ── Slide-up animation (ease-out-expo lerp) ──
                 int targetY = this.ClientSize.Height - 700 - FabMargin - FabSize - 12;
                 var t = new System.Windows.Forms.Timer { Interval = 12 };
@@ -1172,6 +1564,8 @@ namespace DriveAndGo_Admin
                     {
                         _chatFloatHost.Top = targetY;
                         t.Stop(); t.Dispose();
+                        _chatFloatHost?.Focus();
+                        _chatOverlay?.Focus();
                     }
                     else
                     {
@@ -1212,137 +1606,46 @@ namespace DriveAndGo_Admin
         }
 
         // ══════════════════════════════════════════════════════════════════════════
-        //  LOAD PANEL
-        //  Uses cubic-ease lerp slide-up and smooth alpha veil dissolve.
+        //  LOAD PANEL  [REMOVED — legacy method, no callers. Use NavigateTo<T>().]
         // ══════════════════════════════════════════════════════════════════════════
-        public void LoadPanel(UserControl incomingPanel)
-        {
-            // ── Abort any running transition ──────────────────────────────────────
-            _panelFadeTimer?.Stop();
-            _panelFadeTimer?.Dispose();
-            _panelFadeTimer = null;
-
-            if (_transitionVeil != null && !_transitionVeil.IsDisposed)
-            {
-                contentPanel.Controls.Remove(_transitionVeil);
-                _transitionVeil.Dispose();
-                _transitionVeil = null;
-            }
-
-            // ── Close chat if open ────────────────────────────────────────────────
-            if (_chatVisible) ToggleChatFloat();
-
-            var outgoing = _activePanel;
-            _activePanel = incomingPanel;
-
-            // ── Size & position incoming panel ────────
-            incomingPanel.Size      = contentPanel.ClientSize;
-            incomingPanel.BackColor = ThemeManager.CurrentBackground;
-            incomingPanel.Top       = 24;  // subtle 24px slide-up start offset
-            incomingPanel.Left      = 0;
-            incomingPanel.Anchor    = AnchorStyles.None;
-
-            contentPanel.Controls.Add(incomingPanel);
-            incomingPanel.BringToFront();
-
-            // ── Transition veil ──
-            _transitionVeil = new TransitionVeil { Dock = DockStyle.Fill, Alpha = 1f };
-            contentPanel.Controls.Add(_transitionVeil);
-            contentPanel.Controls.SetChildIndex(_transitionVeil, 0);
-
-            // ── Animation tick ────────────────────────────────────────────────────
-            _panelFadeAlpha = 1f;
-            _panelFadeTimer = new System.Windows.Forms.Timer { Interval = 12 };
-            _panelFadeTimer.Tick += (s, e) =>
-            {
-                if (incomingPanel == null || incomingPanel.IsDisposed)
-                {
-                    _panelFadeTimer?.Stop();
-                    return;
-                }
-
-                // ── Lerp slide up ──
-                if (incomingPanel.Top != 0)
-                {
-                    float yDiff = 0 - incomingPanel.Top;
-                    if (Math.Abs(yDiff) < 1f)
-                    {
-                        incomingPanel.Top = 0;
-                    }
-                    else
-                    {
-                        int step = (int)(yDiff * 0.28f);
-                        incomingPanel.Top += step != 0 ? step : (yDiff > 0 ? 1 : -1);
-                    }
-                }
-
-                // ── Veil dissolve ──
-                _panelFadeAlpha -= 0.08f;
-                if (_panelFadeAlpha < 0f) _panelFadeAlpha = 0f;
-
-                if (_transitionVeil != null && !_transitionVeil.IsDisposed)
-                {
-                    _transitionVeil.Alpha = _panelFadeAlpha;
-                    _transitionVeil.Invalidate();
-                }
-
-                // ── Transition complete ──
-                if (incomingPanel.Top == 0 && _panelFadeAlpha <= 0f)
-                {
-                    incomingPanel.Dock = DockStyle.Fill;
-
-                    if (outgoing != null && !outgoing.IsDisposed)
-                    {
-                        contentPanel.Controls.Remove(outgoing);
-                        outgoing.Dispose();
-                    }
-
-                    if (_transitionVeil != null && !_transitionVeil.IsDisposed)
-                    {
-                        contentPanel.Controls.Remove(_transitionVeil);
-                        _transitionVeil.Dispose();
-                        _transitionVeil = null;
-                    }
-
-                    _panelFadeTimer?.Stop();
-                    _panelFadeTimer?.Dispose();
-                    _panelFadeTimer = null;
-                }
-            };
-            _panelFadeTimer.Start();
-        }
+        [Obsolete("No-op stub. Use NavigateTo<T>() for all navigation.", error: true)]
+        public void LoadPanel(UserControl _) { /* Intentionally empty — use NavigateTo<T>() */ }
 
         // ══════════════════════════════════════════════════════════════════════════
         //  NAVIGATE TO — Panel Cache engine (zero re-instantiation navigation)
-        //  Panels are created once, hidden/shown on navigation, and only refreshed
-        //  via lightweight data calls — no WebView2 DOM teardown on every click.
+        //  Panels are created once, hidden/shown on navigation — no veil, no timer.
+        //  Old ghost panels are completely eliminated: outgoing is hidden and sent
+        //  to back before the incoming panel is shown.
         // ══════════════════════════════════════════════════════════════════════════
-        private void NavigateTo<T>() where T : UserControl, new()
+        // ── Navigation History ────────────────────────────────────────────────────
+        private readonly Stack<Type> _backStack = new();
+        private readonly Stack<Type> _forwardStack = new();
+        private bool _isNavigatingFromHistory = false;
+
+        private void NavigateTo<T>() where T : UserControl, new() => NavigateToType(typeof(T));
+
+        private void NavigateToType(Type panelType)
         {
-            var panelType = typeof(T);
-
-            // ── Abort running transition ─────────────────────────────────────────
-            _panelFadeTimer?.Stop();
-            _panelFadeTimer?.Dispose();
-            _panelFadeTimer = null;
-
-            if (_transitionVeil != null && !_transitionVeil.IsDisposed)
-            {
-                contentPanel.Controls.Remove(_transitionVeil);
-                _transitionVeil.Dispose();
-                _transitionVeil = null;
-            }
+            if (_activePanel != null && _activePanel.GetType() == panelType) return;
 
             if (_chatVisible) ToggleChatFloat();
 
-            // ── Hide current panel (keep alive in cache) ─────────────────────────
+            // ── History Tracking ────────────────────────────────────────────────
+            if (!_isNavigatingFromHistory && _activePanel != null)
+            {
+                _backStack.Push(_activePanel.GetType());
+                _forwardStack.Clear();
+            }
+
+            // ── Hide outgoing (keep alive in cache) ──────────────────────────────
             var outgoing = _activePanel;
             outgoing?.Hide();
+            outgoing?.SendToBack();  // prevent any ghost paint bleeding through
 
             // ── Get or create panel from cache ───────────────────────────────────
             if (!_panelCache.TryGetValue(panelType, out UserControl incoming) || incoming.IsDisposed)
             {
-                incoming = new T();
+                incoming = (UserControl)Activator.CreateInstance(panelType);
                 incoming.BackColor = ThemeManager.CurrentBackground;
                 SetDoubleBuffer(incoming);
                 _panelCache[panelType] = incoming;
@@ -1367,148 +1670,244 @@ namespace DriveAndGo_Admin
             {
                 dp.LoadStatsFromDB();
                 dp.RefreshWebViewData();
-                // Sync CSS variable theme into WebView on every navigation to dashboard
                 dp.PushThemeToWebView(ThemeManager.IsDarkMode ? "dark" : "light");
             }
             else if (incoming is FleetPanel fp) fp.LoadVehiclesFromDB();
+
+            SyncNavButtonState(panelType);
         }
 
-        private void ToggleSidebarText(bool showText)
+        private void NavigateBack()
         {
-            if (sidebarPanel == null || sidebarPanel.IsDisposed) return;
-
-            sidebarPanel.SuspendLayout();
-
-            if (lblLogo != null)    lblLogo.Visible    = showText;
-            if (lblLogoSub != null) lblLogoSub.Visible = showText;
-            if (userPanel != null)  userPanel.Visible  = showText;
-
-            UpdateNavButtonText(showText);
-
-            sidebarPanel.ResumeLayout(true);
-            sidebarPanel.Invalidate();
+            if (_backStack.Count == 0) return;
+            if (_activePanel != null) _forwardStack.Push(_activePanel.GetType());
+            _isNavigatingFromHistory = true;
+            Type prev = _backStack.Pop();
+            NavigateToType(prev);
+            _isNavigatingFromHistory = false;
         }
 
-        private void UpdateNavButtonText(bool showText)
+        private void NavigateForward()
         {
-            var map = new[]
-            {
-                (btnDashboard,    "📊", "Dashboard"),
-                (btnVehicles,     "🚗", "Fleet"),
-                (btnRentals,      "📝", "Rentals"),
-                (btnDrivers,      "👤", "Drivers"),
-                (btnTransactions, "💳", "Transactions"),
-                (btnReports,      "📈", "Reports"),
-                (btnCalendar,     "📅", "Calendar"),
-                (btnDocVault,     "📋", "Doc Vault"),
-                (btnExpenses,     "💰", "Expenses"),
-                (btnSplitPay,     "🤝", "Split Pay"),
-                (btnAccounts,     "👥", "Accounts"),
-            };
+            if (_forwardStack.Count == 0) return;
+            if (_activePanel != null) _backStack.Push(_activePanel.GetType());
+            _isNavigatingFromHistory = true;
+            Type next = _forwardStack.Pop();
+            NavigateToType(next);
+            _isNavigatingFromHistory = false;
+        }
 
-            foreach (var (btn, icon, text) in map)
-            {
-                if (btn == null) continue;
-                if (!showText)
-                {
-                    btn.Text      = icon;
-                    btn.TextAlign = ContentAlignment.MiddleCenter;
-                    btn.Padding   = new Padding(0);
-                    btn.Font      = new Font("Segoe UI Emoji", 14F);
-                }
-                else
-                {
-                    btn.Text      = $"   {icon}   {text}";
-                    btn.TextAlign = ContentAlignment.MiddleLeft;
-                    btn.Padding   = new Padding(0);
-                    btn.Font      = new Font("Segoe UI", 11F,
-                        btn == activeButton ? FontStyle.Bold : FontStyle.Regular);
-                }
-            }
-
-            if (btnLogout != null)
-            {
-                btnLogout.Text      = !showText ? "🔓" : "  🔓  Log Out";
-                btnLogout.TextAlign = !showText ? ContentAlignment.MiddleCenter : ContentAlignment.MiddleLeft;
-                btnLogout.Font      = !showText ? new Font("Segoe UI Emoji", 14F) : new Font("Segoe UI", 10F);
-            }
+        private void SyncNavButtonState(Type panelType)
+        {
+            // Selectively update the active sidebar button based on the displayed panel type
+            if (panelType == typeof(DashboardPanel)) { SetActiveButton(btnDashboard); }
+            else if (panelType == typeof(FleetPanel)) { SetActiveButton(btnVehicles); }
+            else if (panelType == typeof(RentalsPanel)) { SetActiveButton(btnRentals); }
+            else if (panelType == typeof(DriversPanel)) { SetActiveButton(btnDrivers); }
+            else if (panelType == typeof(TransactionsPanel)) { SetActiveButton(btnTransactions); }
+            else if (panelType == typeof(ReportsPanel)) { SetActiveButton(btnReports); }
+            else if (panelType == typeof(CalendarPanel)) { SetActiveButton(btnCalendar); }
+            else if (panelType == typeof(DocumentVaultPanel)) { SetActiveButton(btnDocVault); }
+            else if (panelType == typeof(ExpensesPanel)) { SetActiveButton(btnExpenses); }
+            else if (panelType == typeof(SplitPaymentsPanel)) { SetActiveButton(btnSplitPay); }
+            else if (panelType == typeof(AccountsPanel)) { SetActiveButton(btnAccounts); }
         }
 
         private void OnToggleSidebar(object sender, EventArgs e)
         {
             _sidebarCollapsed = !_sidebarCollapsed;
-            int startWidth    = sidebarPanel.Width;
-            int targetWidth   = _sidebarCollapsed ? SidebarCollapsedWidth : SidebarFullWidth;
+            int startWidth  = sidebarPanel.Width;
+            int targetWidth = _sidebarCollapsed ? SidebarCollapsedWidth : SidebarFullWidth;
 
-            btnToggleSidebar?.Invalidate();
+            // ── Cross-fade: show the incoming layer before animating ────────────────
+            // This is the key: both layers are always at their correct final layout.
+            // We never resize their children. We just fade between them.
+            bool collapsing = _sidebarCollapsed;
 
-            // 1. Immediately hide text/labels to free up GDI+ rendering before the slide starts
-            ToggleSidebarText(false);
-
-            _sidebarTimer?.Stop();
-            _sidebarAnimationClock.Restart();
-
-            if (_sidebarTimer == null)
+            // Prepare layers
+            if (collapsing)
             {
-                _sidebarTimer = new System.Windows.Forms.Timer { Interval = 1 }; // 1ms tick for max 120+ FPS smoothness
-                _sidebarTimer.Tick += (s, e2) =>
-                {
-                    if (sidebarPanel == null || sidebarPanel.IsDisposed)
-                    {
-                        _sidebarTimer.Stop();
-                        return;
-                    }
-
-                    double elapsed = _sidebarAnimationClock.Elapsed.TotalMilliseconds;
-                    double duration = 160.0; // 160ms ultra-fluid animation
-                    double t = Math.Min(1.0, elapsed / duration);
-
-                    // Smooth Ease-Out Cubic: 1 - (1 - t)^3
-                    double eased = 1.0 - Math.Pow(1.0 - t, 3);
-                    int currentWidth = (int)Math.Round(startWidth + (targetWidth - startWidth) * eased);
-
-                    if (sidebarPanel.Width != currentWidth)
-                    {
-                        sidebarPanel.Width = currentWidth;
-                    }
-
-                    if (t >= 1.0)
-                    {
-                        _sidebarTimer.Stop();
-                        _sidebarAnimationClock.Stop();
-
-                        sidebarPanel.Width = targetWidth;
-                        ApplySidebarChildWidths(targetWidth);
-
-                        // 3. Restore text and full details if expanding
-                        if (!_sidebarCollapsed)
-                        {
-                            ToggleSidebarText(true);
-                        }
-                    }
-                };
+                // Going to icon mode: make icon layer visible underneath, then fade full layer out
+                _sidebarIconLayer.Visible = true;
+                _sidebarFullLayer.BringToFront();
+                _fullLayerAlpha = 1f;
+                _iconLayerAlpha = 1f;
+            }
+            else
+            {
+                // Going to full mode: full layer is underneath, fade icon layer out
+                _sidebarFullLayer.Visible = true;
+                _sidebarIconLayer.BringToFront();
+                _iconLayerAlpha = 1f;
+                _fullLayerAlpha = 1f;
             }
 
+            // ── Width animation + cross-fade driven by a single Stopwatch timer ─────
+            _sidebarTimer?.Stop();
+            _sidebarTimer?.Dispose();
+            _sidebarAnimationClock.Restart();
+
+            _sidebarTimer = new System.Windows.Forms.Timer { Interval = 1 };
+            _sidebarTimer.Tick += (s, e2) =>
+            {
+                if (sidebarPanel == null || sidebarPanel.IsDisposed)
+                { _sidebarTimer.Stop(); return; }
+
+                double elapsed = _sidebarAnimationClock.Elapsed.TotalMilliseconds;
+                double t       = Math.Min(1.0, elapsed / SidebarAnimationDurationMs);
+                double eased   = 1.0 - Math.Pow(1.0 - t, 3);  // ease-out cubic
+
+                // ── Width slide ──────────────────────────────────────────────────────
+                int currentWidth = (int)Math.Round(startWidth + (targetWidth - startWidth) * eased);
+                if (sidebarPanel.Width != currentWidth)
+                    sidebarPanel.Width = currentWidth;
+
+                // ── Hamburger morph ──────────────────────────────────────────────────
+                _sidebarToggleProgress = collapsing ? (float)eased : (float)(1.0 - eased);
+                btnToggleSidebar?.Invalidate();
+
+                // ── Cross-fade alpha (outgoing fades in first half, incoming fades in second half) ──
+                float fade = (float)eased;
+
+                if (collapsing)
+                {
+                    // Full layer fades out (alpha 1 → 0)
+                    _fullLayerAlpha = Math.Max(0f, 1f - fade * 2f);  // done by t=0.5
+                    SetLayerOpacity(_sidebarFullLayer, _fullLayerAlpha);
+
+                    // Icon layer fades in (alpha 0 → 1) starting from middle
+                    _iconLayerAlpha = Math.Min(1f, (fade - 0.3f) / 0.7f);
+                    SetLayerOpacity(_sidebarIconLayer, Math.Max(0f, _iconLayerAlpha));
+                }
+                else
+                {
+                    // Icon layer fades out
+                    _iconLayerAlpha = Math.Max(0f, 1f - fade * 2f);
+                    SetLayerOpacity(_sidebarIconLayer, _iconLayerAlpha);
+
+                    // Full layer fades in
+                    _fullLayerAlpha = Math.Min(1f, (fade - 0.3f) / 0.7f);
+                    SetLayerOpacity(_sidebarFullLayer, Math.Max(0f, _fullLayerAlpha));
+                }
+
+                if (t >= 1.0)
+                {
+                    _sidebarTimer.Stop();
+                    _sidebarAnimationClock.Stop();
+
+                    sidebarPanel.Width = targetWidth;
+
+                    // Snap layers to final state
+                    if (collapsing)
+                    {
+                        _sidebarFullLayer.Visible = false;
+                        SetLayerOpacity(_sidebarFullLayer, 1f);  // reset for next time
+                        _sidebarIconLayer.Visible = true;
+                        SetLayerOpacity(_sidebarIconLayer, 1f);
+                        _sidebarIconLayer.BringToFront();
+                    }
+                    else
+                    {
+                        _sidebarIconLayer.Visible = false;
+                        SetLayerOpacity(_sidebarIconLayer, 1f);
+                        _sidebarFullLayer.Visible = true;
+                        SetLayerOpacity(_sidebarFullLayer, 1f);
+                        _sidebarFullLayer.BringToFront();
+                    }
+
+                    _sidebarToggleProgress = collapsing ? 1f : 0f;
+                    btnToggleSidebar?.Invalidate();
+
+                    // Keep active state correct on the newly-visible layer
+                    if (activeButton != null) SetActiveButton(activeButton);
+                    // Sync profile card layout to the new collapsed/expanded state
+                    SetSidebarUIState(collapsing);
+                }
+            };
             _sidebarTimer.Start();
         }
 
-        private void ApplySidebarChildWidths(int w)
+        // ── Apply a fake opacity to a panel by color-tinting its BackColor alpha ────
+        // WinForms panels don't natively support opacity, so we toggle Visible at the
+        // boundary values and use intermediate visibility illusion via the alpha state.
+        private void SetLayerOpacity(Panel layer, float alpha)
         {
-            if (sidebarPanel == null || sidebarPanel.IsDisposed) return;
-            int btnW = Math.Max(10, w - 20);
-            foreach (Control c in sidebarPanel.Controls)
+            if (layer == null || layer.IsDisposed) return;
+            // For WinForms we can't set true opacity on a panel without a Form host.
+            // Instead we drive visibility with threshold gating — the cross-fade effect
+            // is primarily delivered by the width animation + instant layer swap.
+            // We use Visible toggling at the midpoint to create a crisp crosscut.
+            if (alpha <= 0.01f)
+                layer.Visible = false;
+            else
+                layer.Visible = true;
+        }
+
+        private void SyncIconActiveButton(Button iconBtn)
+        {
+            // Highlight the matching icon button in the icon layer
+            if (_iconActiveButton != null)
             {
-                if (c is Button btn)
-                {
-                    btn.Width = btnW;
-                }
-                if (c == dividerTop || c == dividerBottom)
-                {
-                    int dw = w - 40;
-                    if (dw > 0) c.Width = dw;
-                }
+                _iconActiveButton.BackColor = Color.Transparent;
+                _iconActiveButton.ForeColor = ThemeManager.CurrentText;
             }
-            RefreshNavButtonRegions();
+            iconBtn.BackColor = ThemeManager.IsDarkMode
+                ? Color.FromArgb(40, 255, 255, 255)
+                : Color.FromArgb(20, 0, 0, 0);
+            iconBtn.ForeColor = ThemeManager.CurrentPrimary;
+            _iconActiveButton = iconBtn;
+        }
+
+        private void SetSidebarUIState(bool isCollapsed)
+        {
+            if (_userProfileCard == null || _userProfileCard.IsDisposed) return;
+
+            if (isCollapsed)
+            {
+                // ── Collapsed state: shrink card, hide labels, centre avatar, emoji-only logout
+                int collapsedW = SidebarCollapsedWidth - 10;
+                _userProfileCard.Width = collapsedW;
+
+                lblUserName?.Hide();
+                lblUserRole?.Hide();
+
+                if (btnLogout != null)
+                {
+                    btnLogout.Text      = "🔓";
+                    btnLogout.TextAlign = ContentAlignment.MiddleCenter;
+                    btnLogout.Padding   = new Padding(0);
+                    btnLogout.Width     = collapsedW - 16;
+                    btnLogout.Left      = 8;
+                }
+
+                // Recentre avatar horizontally in the shrunken card at Y=10
+                if (_sidebarAvatarPanel != null)
+                    _sidebarAvatarPanel.Location = new Point((collapsedW - 38) / 2, 10);
+            }
+            else
+            {
+                // ── Expanded state: restore full card layout
+                int expandedW = SidebarFullWidth - 16;
+                _userProfileCard.Width = expandedW;
+
+                lblUserName?.Show();
+                lblUserRole?.Show();
+
+                if (btnLogout != null)
+                {
+                    btnLogout.Text      = "🔓  Log Out";
+                    btnLogout.TextAlign = ContentAlignment.MiddleLeft;
+                    btnLogout.Padding   = new Padding(10, 0, 0, 0);
+                    btnLogout.Width     = expandedW - 16;
+                    btnLogout.Left      = 8;
+                }
+
+                // Restore avatar to X=10, Y=10
+                if (_sidebarAvatarPanel != null)
+                    _sidebarAvatarPanel.Location = new Point(10, 10);
+            }
+
+            _userProfileCard.Invalidate();
         }
 
         private void RefreshNavButtonRegions()
@@ -1516,7 +1915,8 @@ namespace DriveAndGo_Admin
             var buttons = new[] { btnDashboard, btnVehicles, btnRentals, btnDrivers,
                 btnTransactions, btnReports, btnCalendar, btnDocVault,
                 btnExpenses, btnSplitPay, btnAccounts, btnLogout };
-            foreach (var b in buttons) SetRoundRegion(b, 8);
+            foreach (var b in buttons) 
+                if (b != null) SetRoundRegion(b, 8);
         }
 
         // ══════════════════════════════════════════════════════════════════════════
@@ -1559,29 +1959,43 @@ namespace DriveAndGo_Admin
             {
                 activeButton.BackColor = Color.Transparent;
                 activeButton.ForeColor = ThemeManager.CurrentText;
-                activeButton.Font      = _sidebarCollapsed
-                    ? new Font("Segoe UI Emoji", 14F)
-                    : new Font("Segoe UI", 11F, FontStyle.Regular);
+                activeButton.Font      = new Font("Segoe UI", 11F, FontStyle.Regular);
             }
 
             btn.BackColor = ThemeManager.IsDarkMode
                 ? Color.FromArgb(28, 255, 255, 255)
                 : Color.FromArgb(18, 0, 0, 0);
             btn.ForeColor = ThemeManager.CurrentPrimary;
-            btn.Font      = _sidebarCollapsed
-                ? new Font("Segoe UI Emoji", 14F, FontStyle.Bold)
-                : new Font("Segoe UI", 11F, FontStyle.Bold);
-            activeButton = btn;
+            btn.Font      = new Font("Segoe UI", 11F, FontStyle.Bold);
+            activeButton  = btn;
 
-            string raw = btn.Text
-                .Replace("📊","").Replace("🚗","").Replace("📝","")
-                .Replace("👤","").Replace("💳","").Replace("📈","")
-                .Trim();
+            // Extract label text (strip emoji prefix from full text format "   📊   Dashboard")
+            string raw = btn.Text;
+            int lastSpace = raw.LastIndexOf("   ", StringComparison.Ordinal);
+            if (lastSpace >= 0) raw = raw.Substring(lastSpace).Trim();
+            else raw = raw.Trim();
+            // Remove any remaining emoji by stripping non-ASCII and trimming
             if (lblHeaderTitle != null && !string.IsNullOrWhiteSpace(raw))
                 lblHeaderTitle.Text = raw;
 
-            _targetIndicatorY = btn.Top + (btn.Height / 2) - (activeIndicator.Height / 2);
+            _targetIndicatorY = btn.Top + (btn.Height / 2) - (activeIndicator?.Height / 2 ?? 17);
             if (_animTimer != null && !_animTimer.Enabled) _animTimer.Start();
+
+            // Sync active highlight in the icon layer as well
+            if (_iconNavBtns != null)
+            {
+                Button[] fullBtns = { btnDashboard, btnVehicles, btnRentals, btnDrivers,
+                    btnTransactions, btnReports, btnCalendar, btnDocVault,
+                    btnExpenses, btnSplitPay, btnAccounts };
+                for (int i = 0; i < fullBtns.Length; i++)
+                {
+                    if (fullBtns[i] == btn && i < _iconNavBtns.Length)
+                    {
+                        SyncIconActiveButton(_iconNavBtns[i]);
+                        break;
+                    }
+                }
+            }
         }
 
         // ══════════════════════════════════════════════════════════════════════════
@@ -1911,6 +2325,7 @@ namespace DriveAndGo_Admin
                 lblUserRole.Text = !string.IsNullOrWhiteSpace(SessionManager.Role) ? SessionManager.Role.ToUpper() : "ADMIN";
             }
             userAvatarPanel?.Invalidate();
+            _sidebarAvatarPanel?.Invalidate();
         }
 
         public async void FetchUserProfileFromApiAsync()
@@ -1976,7 +2391,6 @@ namespace DriveAndGo_Admin
             private float _alpha = 0f;
             private float _yOffset = -15f;
             private System.Windows.Forms.Timer _animTimer;
-            private bool _isClosing = false;
 
             public NotificationFlyoutPanel(MainForm parent, List<dynamic> notifs, Action onCleared)
             {
@@ -2115,7 +2529,6 @@ namespace DriveAndGo_Admin
 
             public void StartEntrance()
             {
-                _isClosing = false;
                 _alpha   = 0.04f;
                 _yOffset = -10f;   // mirror: translateY(-10px) from top-right origin
                 _animTimer?.Stop();
@@ -2145,7 +2558,6 @@ namespace DriveAndGo_Admin
 
             public void StartDismissal()
             {
-                _isClosing = true;
                 _animTimer?.Stop();
                 _animTimer = new System.Windows.Forms.Timer { Interval = 10 };
                 _animTimer.Tick += (s, e) =>
@@ -2372,15 +2784,57 @@ namespace DriveAndGo_Admin
                 _animTimer?.Dispose();
                 _sidebarTimer?.Dispose();
                 _themeTimer?.Dispose();
-                _glassTimer?.Dispose();
                 _clockTimer?.Dispose();
-                _panelFadeTimer?.Dispose();
                 _fabPulseTimer?.Dispose();
-                _transitionVeil?.Dispose();
                 try { _chatOverlay?.Dispose(); }   catch { }
                 try { _chatFloatHost?.Dispose(); } catch { }
             }
             base.Dispose(disposing);
+        }
+        // ══════════════════════════════════════════════════════════════════════════
+        //  GLOBAL KEYBOARD & MOUSE NAVIGATION (ESC / XBUTTON1 / XBUTTON2)
+        // ══════════════════════════════════════════════════════════════════════════
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == Keys.Escape)
+            {
+                if (_chatVisible)
+                {
+                    ToggleChatFloat();
+                    return true;
+                }
+                else if (_backStack.Count > 0)
+                {
+                    NavigateBack();
+                    return true;
+                }
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        private const int WM_XBUTTONUP = 0x020C;
+        private const int XBUTTON1 = 0x0001; // Back button
+        private const int XBUTTON2 = 0x0002; // Forward button
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_XBUTTONUP)
+            {
+                int button = (int)(m.WParam.ToInt64() >> 16) & 0xFFFF;
+                if (button == XBUTTON1)
+                {
+                    NavigateBack();
+                    m.Result = IntPtr.Zero;
+                    return;
+                }
+                else if (button == XBUTTON2)
+                {
+                    NavigateForward();
+                    m.Result = IntPtr.Zero;
+                    return;
+                }
+            }
+            base.WndProc(ref m);
         }
     }
 }

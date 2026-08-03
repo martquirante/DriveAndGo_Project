@@ -27,4 +27,19 @@ public sealed class MessageItem
 
     public bool IsMine { get; set; }
     public string SentAtLabel => SentAt.ToLocalTime().ToString("hh:mm tt");
+
+    [JsonPropertyName("isEdited")]
+    public bool IsEdited { get; set; }
+
+    [JsonPropertyName("editHistory")]
+    public string? EditHistory { get; set; }
+
+    [JsonPropertyName("isUnsent")]
+    public bool IsUnsent { get; set; }
+
+    [JsonPropertyName("hiddenFor")]
+    public string? HiddenFor { get; set; }
+
+    [JsonPropertyName("reactions")]
+    public string? Reactions { get; set; }
 }

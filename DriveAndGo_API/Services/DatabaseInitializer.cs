@@ -157,6 +157,75 @@ namespace DriveAndGo_API.Services
                     cmd.ExecuteNonQuery();
                 }
 
+                // 13. ai_copilot_sessions table — one row per AI conversation thread
+                using (var cmd = new NpgsqlCommand(@"
+                    CREATE TABLE IF NOT EXISTS ai_copilot_sessions (
+                        session_id    SERIAL PRIMARY KEY,
+                        admin_user_id INT NOT NULL,
+                        title         TEXT NOT NULL DEFAULT 'New Conversation',
+                        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 14. ai_copilot_messages table — every turn (system/user/assistant/tool)
+                using (var cmd = new NpgsqlCommand(@"
+                    CREATE TABLE IF NOT EXISTS ai_copilot_messages (
+                        copilot_msg_id    BIGSERIAL PRIMARY KEY,
+                        session_id        INT NOT NULL REFERENCES ai_copilot_sessions(session_id) ON DELETE CASCADE,
+                        sender_id         VARCHAR(100) NOT NULL DEFAULT 'bot_copilot',
+                        llm_role          VARCHAR(20)  NOT NULL DEFAULT 'user',
+                        content           TEXT         NOT NULL,
+                        ui_component_type VARCHAR(30)  NULL,
+                        ui_payload        TEXT         NULL,
+                        tool_name         VARCHAR(100) NULL,
+                        provider_used     VARCHAR(50)  NULL,
+                        tokens_used       INT          NULL,
+                        sent_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_ai_msgs_session
+                        ON ai_copilot_messages(session_id, sent_at ASC);", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 15. chat_messages delivery_status column migration
+                //     Tracks Messenger-style delivery states: sent → delivered → seen
+                using (var cmd = new NpgsqlCommand(@"
+                    ALTER TABLE chat_messages
+                        ADD COLUMN IF NOT EXISTS delivery_status VARCHAR(20) NOT NULL DEFAULT 'sent';
+                    CREATE INDEX IF NOT EXISTS idx_chat_msgs_status
+                        ON chat_messages(receiver_id, delivery_status)
+                        WHERE delivery_status != 'seen';
+                ", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 16. Advanced Messenger Features columns
+                using (var cmd = new NpgsqlCommand(@"
+                    ALTER TABLE chat_messages 
+                        ADD COLUMN IF NOT EXISTS is_edited BOOLEAN NOT NULL DEFAULT false,
+                        ADD COLUMN IF NOT EXISTS edit_history JSONB NOT NULL DEFAULT '[]',
+                        ADD COLUMN IF NOT EXISTS is_unsent BOOLEAN NOT NULL DEFAULT false,
+                        ADD COLUMN IF NOT EXISTS hidden_for JSONB NOT NULL DEFAULT '[]',
+                        ADD COLUMN IF NOT EXISTS reactions JSONB NOT NULL DEFAULT '{}';
+                ", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 17. Fix legacy sender/receiver IDs for AI Copilot
+                using (var cmd = new NpgsqlCommand(@"
+                    UPDATE chat_messages SET sender_id = 'admin' WHERE sender_id = '1';
+                    UPDATE chat_messages SET receiver_id = 'admin' WHERE receiver_id = '1';
+                ", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
                 Console.WriteLine("Database tables initialized successfully.");
             }
             catch (Exception ex)

@@ -1,4 +1,5 @@
 using DriveAndGo_API.Models;
+using DriveAndGo_API.Models.AiCopilot;
 using Microsoft.EntityFrameworkCore;
 
 namespace DriveAndGo_API.Data;
@@ -28,6 +29,8 @@ public class AppDbContext : DbContext
     public DbSet<LocationLog>     LocationLogs    { get; set; }
     public DbSet<GpsLog>          GpsLogs         { get; set; }
     public DbSet<Message>         Messages        { get; set; }
+    public DbSet<AiCopilotSession> AiCopilotSessions { get; set; }
+    public DbSet<AiCopilotMessage> AiCopilotMessages { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -249,6 +252,37 @@ public class AppDbContext : DbContext
             e.Property(m => m.AttachmentUrl).HasColumnName("media_url");
             e.Property(m => m.SentAt).HasColumnName("sent_at").HasDefaultValueSql("NOW()");
             e.Ignore(m => m.SenderName);
+        });
+
+        // ── AI COPILOT SESSIONS ───────────────────────────────
+        modelBuilder.Entity<AiCopilotSession>(e =>
+        {
+            e.ToTable("ai_copilot_sessions");
+            e.HasKey(s => s.SessionId);
+            e.Property(s => s.SessionId).HasColumnName("session_id").UseIdentityAlwaysColumn();
+            e.Property(s => s.AdminUserId).HasColumnName("admin_user_id").IsRequired();
+            e.Property(s => s.Title).HasColumnName("title").HasDefaultValue("New Conversation");
+            e.Property(s => s.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
+            e.Property(s => s.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
+        });
+
+        // ── AI COPILOT MESSAGES ───────────────────────────────
+        modelBuilder.Entity<AiCopilotMessage>(e =>
+        {
+            e.ToTable("ai_copilot_messages");
+            e.HasKey(m => m.CopilotMsgId);
+            e.Property(m => m.CopilotMsgId).HasColumnName("copilot_msg_id");
+            e.Property(m => m.SessionId).HasColumnName("session_id").IsRequired();
+            e.Property(m => m.SenderId).HasColumnName("sender_id").HasDefaultValue("bot_copilot");
+            e.Property(m => m.LlmRole).HasColumnName("llm_role").HasDefaultValue("user");
+            e.Property(m => m.Content).HasColumnName("content").IsRequired();
+            e.Property(m => m.UiComponentType).HasColumnName("ui_component_type");
+            e.Property(m => m.UiPayload).HasColumnName("ui_payload");
+            e.Property(m => m.ToolName).HasColumnName("tool_name");
+            e.Property(m => m.ProviderUsed).HasColumnName("provider_used");
+            e.Property(m => m.TokensUsed).HasColumnName("tokens_used");
+            e.Property(m => m.SentAt).HasColumnName("sent_at").HasDefaultValueSql("NOW()");
+            e.HasOne<AiCopilotSession>().WithMany().HasForeignKey(m => m.SessionId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

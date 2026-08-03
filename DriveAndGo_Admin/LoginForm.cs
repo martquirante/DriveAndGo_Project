@@ -468,7 +468,7 @@ namespace DriveAndGo_Admin
             _lblEmail = MakeInputLabel("EMAIL ADDRESS", 212);
             _rightPanel.Controls.Add(_lblEmail);
             _txtEmailWrap = MakeInputWrapper(234, "✉", out _txtEmail, false);
-            _txtEmail.PlaceholderText = "admin@driveandgo.com";
+            _txtEmail.PlaceholderText = "example@email.com";
             _txtEmail.KeyDown += (s, e) =>
             {
                 if (e.KeyCode == Keys.Down || e.KeyCode == Keys.Enter)

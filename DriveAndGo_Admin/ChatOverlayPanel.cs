@@ -10,6 +10,10 @@ using Microsoft.AspNetCore.SignalR.Client;
 using System.Text.Json;
 using System.Net.Http;
 using System.Threading.Tasks;
+using System.IO;
+using System.Linq;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
 
 namespace DriveAndGo_Admin
 {
@@ -33,6 +37,8 @@ namespace DriveAndGo_Admin
         private Panel _leftPane;     // Conversation list
         private Panel _rightPane;    // Message thread
         private Panel _divider;
+        private WebView2 _webView;
+        private bool _isInitialized = false;
 
         // ── Left pane controls ───────────────────────────────────────────────────
         private Label   _lblChats;
@@ -62,6 +68,15 @@ namespace DriveAndGo_Admin
         private readonly Dictionary<string, (Panel row, MessageDeliveryState[] stateHolder)> _bubbleRegistry = new();
         private string _lastSentBubbleId;
 
+        // ── System Tray Notification Icon ────────────────────────────────────────
+        // Shown when a new message arrives in a non-active conversation.
+        // Disposed explicitly to prevent ghost icons in the system tray.
+        private readonly NotifyIcon _notifyIcon;
+
+        // ── Hover-icon hitbox tracking ────────────────────────────────────────
+        // Hitboxes are tracked as local variables captured in each row's closure.
+        // This dictionary is reserved for future cross-row coordination.
+
         private struct ConvItem
         {
             public string Id, Name, LastMessage, Time, Role;
@@ -79,6 +94,25 @@ namespace DriveAndGo_Admin
         private static Color Orange   => ThemeManager.CurrentPrimary;
         private static Color InputBg  => ThemeManager.CurrentInputBg;
 
+        // ── Win32 Native Scrollbar Suppressor ────────────────────────────────────
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool ShowScrollBar(IntPtr hWnd, int wBar, bool bShow);
+        private const int SB_HORZ = 0;
+        private const int SB_VERT = 1;
+
+        private static void HideNativeScrollBars(Control ctrl)
+        {
+            if (ctrl != null && ctrl.IsHandleCreated)
+            {
+                try
+                {
+                    ShowScrollBar(ctrl.Handle, SB_VERT, false);
+                    ShowScrollBar(ctrl.Handle, SB_HORZ, false);
+                }
+                catch { }
+            }
+        }
+
         // ════════════════════════════════════════════════════════════════════════
         //  CONSTRUCTOR
         // ════════════════════════════════════════════════════════════════════════
@@ -90,20 +124,33 @@ namespace DriveAndGo_Admin
                 ControlStyles.AllPaintingInWmPaint  |
                 ControlStyles.UserPaint, true);
             this.BackColor = ThemeManager.CurrentBackground;
+            this.AutoScroll = false;
+            this.MouseEnter += (s, e) => this.Focus();
             this.Paint    += OnBackgroundPaint;
 
             ThemeManager.ThemeChanged += (s, e) => ApplyTheme();
 
+            // ── Initialize system tray notification icon ──────────────────────
+            _notifyIcon = new NotifyIcon
+            {
+                Text    = "DriveAndGo Admin",
+                Icon    = SystemIcons.Information,
+                Visible = false   // Only made visible when a balloon tip is shown
+            };
+
+            InitializeWebView2();
             BuildLayout();
             InitializeSignalR();
             LoadConversationsFromApi();
         }
+
 
         // ── Background: radial glow ──────────────────────────────────────────────
         private void OnBackgroundPaint(object sender, PaintEventArgs e)
         {
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TranslateTransform(this.AutoScrollPosition.X, this.AutoScrollPosition.Y);
             g.FillRectangle(new SolidBrush(ThemeManager.CurrentBackground), this.ClientRectangle);
 
             int cx = this.Width / 2;
@@ -123,6 +170,51 @@ namespace DriveAndGo_Admin
             catch { }
         }
 
+        private async void InitializeWebView2()
+        {
+            try
+            {
+                _webView = new WebView2
+                {
+                    Dock = DockStyle.Fill,
+                    Visible = false
+                };
+
+                string userDataFolder = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "DriveAndGo", "WebView2ChatData");
+
+                var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
+                await _webView.EnsureCoreWebView2Async(env);
+
+                string webAssetsFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets");
+
+                if (Directory.Exists(webAssetsFolder))
+                {
+                    _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                        "appassets",
+                        webAssetsFolder,
+                        CoreWebView2HostResourceAccessKind.Allow);
+                }
+
+                _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                _webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+                _webView.CoreWebView2.Settings.IsZoomControlEnabled = false;
+                _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+
+                _webView.CoreWebView2.NavigationCompleted += (s, e) =>
+                {
+                    _isInitialized = true;
+                };
+
+                _webView.CoreWebView2.Navigate("https://appassets/ChatOverlay.html");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ChatOverlayPanel] WebView2 init error: {ex.Message}");
+            }
+        }
+
         // ════════════════════════════════════════════════════════════════════════
         //  THEME REFRESHER
         // ════════════════════════════════════════════════════════════════════════
@@ -135,6 +227,11 @@ namespace DriveAndGo_Admin
             if (_flowMessages != null)   _flowMessages.BackColor  = ThemeManager.CurrentBackground;
             if (_headerBar != null)      _headerBar.BackColor     = ThemeManager.CurrentSidebar;
             if (_divider != null)        _divider.BackColor       = ThemeManager.CurrentBorder;
+
+            if (_webView != null && _isInitialized)
+            {
+                _webView.CoreWebView2.ExecuteScriptAsync($"document.documentElement.setAttribute('data-theme', '{ (ThemeManager.IsDarkMode ? "dark" : "light") }');");
+            }
 
             if (_txtSearch != null)
             {
@@ -205,6 +302,7 @@ namespace DriveAndGo_Admin
             _leftPane.SetBounds(0, 0, leftW, this.Height);
             _divider.SetBounds(leftW, 0, 1, this.Height);
             _rightPane.SetBounds(leftW + 1, 0, this.Width - leftW - 1, this.Height);
+            UpdateScrollBounds();
         }
 
         private void BuildLeftPane()
@@ -291,7 +389,7 @@ namespace DriveAndGo_Admin
             _txtSearch.TextChanged += (s, e) => RefreshConvList();
             searchWrap.Controls.Add(_txtSearch);
 
-            _convListPanel = new Panel();
+            _convListPanel = new DarkScrollPanel();
             EnableDB(_convListPanel);
             _convListPanel.Dock       = DockStyle.Fill;
             _convListPanel.BackColor  = ThemeManager.CurrentSidebar;
@@ -311,7 +409,13 @@ namespace DriveAndGo_Admin
                 _convListPanel.ResumeLayout();
             };
 
-            // Explicit Z-order addition to guarantee top-to-bottom layout hierarchy
+            _convListPanel.ControlAdded   += (s, e) => HideNativeScrollBars(_convListPanel);
+            _convListPanel.ControlRemoved += (s, e) => HideNativeScrollBars(_convListPanel);
+            _convListPanel.Resize         += (s, e) => HideNativeScrollBars(_convListPanel);
+            _convListPanel.Paint          += (s, e) => HideNativeScrollBars(_convListPanel);
+            _convListPanel.Scroll         += (s, e) => HideNativeScrollBars(_convListPanel);
+            _convListPanel.MouseWheel     += (s, e) => HideNativeScrollBars(_convListPanel);
+
             _leftPane.Controls.Add(_convListPanel);
             _leftPane.Controls.Add(searchWrap);
             _leftPane.Controls.Add(header);
@@ -482,20 +586,25 @@ namespace DriveAndGo_Admin
             _rightPane.Controls.Add(inputBar);
 
             // ── Messages Stream / Welcome State ──
-            _flowMessages = new FlowLayoutPanel
+            _flowMessages = new DarkScrollFlowLayoutPanel
             {
                 FlowDirection   = FlowDirection.TopDown,
                 WrapContents    = false,
                 AutoScroll      = true,
+                Dock            = DockStyle.Fill,
                 BackColor       = ThemeManager.CurrentBackground,
-                Padding         = new Padding(12, 8, 12, 8)
+                // px-8 equivalent: 32px horizontal padding so bubbles never hug the screen edge
+                Padding         = new Padding(16, 8, 16, 12)
             };
             EnableDB(_flowMessages);
+            _flowMessages.MouseEnter     += (s, e) => { _flowMessages.Focus(); HideNativeScrollBars(_flowMessages); };
+            _flowMessages.ControlAdded   += (s, e) => HideNativeScrollBars(_flowMessages);
+            _flowMessages.ControlRemoved += (s, e) => HideNativeScrollBars(_flowMessages);
+            _flowMessages.Paint          += (s, e) => HideNativeScrollBars(_flowMessages);
+            _flowMessages.Scroll         += (s, e) => HideNativeScrollBars(_flowMessages);
+            _flowMessages.MouseWheel     += (s, e) => HideNativeScrollBars(_flowMessages);
 
             _pnlWelcomeState = _flowMessages;
-            _pnlWelcomeState.Location = new Point(0, _headerBar.Bottom);
-            _pnlWelcomeState.Size = new Size(_rightPane.Width, Math.Max(100, _rightPane.Height - _headerBar.Height - inputBar.Height));
-            _pnlWelcomeState.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
 
             _flowMessages.Resize += (s, e) =>
             {
@@ -506,8 +615,15 @@ namespace DriveAndGo_Admin
                     if (ctrl is Panel p) p.Width = targetW;
                 }
                 _flowMessages.ResumeLayout();
+                UpdateScrollBounds();
             };
             _rightPane.Controls.Add(_flowMessages);
+            _rightPane.Controls.Add(_webView);
+
+            inputBar.SendToBack();
+            _headerBar.SendToBack();
+            _flowMessages.BringToFront();
+            if (_webView != null) _webView.BringToFront();
 
             ShowWelcomeScreen();
         }
@@ -526,41 +642,115 @@ namespace DriveAndGo_Admin
                     .WithAutomaticReconnect()
                     .Build();
 
-                _hubConnection.On<string, string, string, string>("ReceiveChatMessage", (senderId, receiverId, body, timestamp) =>
+                // ── ReceiveChatMessage: now includes messageId (5th arg) ──────────────
+                _hubConnection.On<string, string, string, string, string>(
+                    "ReceiveChatMessage",
+                    (senderId, receiverId, body, timestamp, messageId) =>
                 {
                     if (this.IsDisposed || !this.IsHandleCreated) return;
-                    this.Invoke((System.Windows.Forms.MethodInvoker)(() =>
+                    this.Invoke((System.Windows.Forms.MethodInvoker)(async () =>
                     {
                         UpdateConversationLastMsg(senderId, receiverId, body, timestamp);
 
                         DateTime dt = DateTime.Now;
                         if (DateTime.TryParse(timestamp, out var parsedDt))
-                        {
                             dt = parsedDt.ToLocalTime();
-                        }
 
-                        if (_activeConvId != null)
+                        // ── Case 1: Message arrives in the currently open thread ──────
+                        // User is already looking at it → render and send seen immediately.
+                        if (_activeConvId != null
+                            && senderId != "admin"
+                            && ((senderId == _activeConvId && receiverId == "admin")
+                               || (_activeConvIsGroup && receiverId == _activeConvId)))
                         {
-                            if (senderId != "admin" && 
-                                ((senderId == _activeConvId && receiverId == "admin") ||
-                                 (_activeConvIsGroup && receiverId == _activeConvId)))
-                            {
-                                AddMessage(body, false, dt, MessageDeliveryState.Delivered);
-                                if (_flowMessages.Controls.Count > 0)
-                                    _flowMessages.ScrollControlIntoView(_flowMessages.Controls[_flowMessages.Controls.Count - 1]);
+                            AddMessage(body, false, dt, MessageDeliveryState.Delivered);
+                            if (_flowMessages.Controls.Count > 0)
+                                _flowMessages.ScrollControlIntoView(
+                                    _flowMessages.Controls[_flowMessages.Controls.Count - 1]);
 
-                                if (_lastSentBubbleId != null)
-                                    UpdateBubbleState(_lastSentBubbleId, MessageDeliveryState.Seen);
-                            }
-                            else if (senderId == "admin")
+                            // ACK seen (not just delivered) — user is actively watching
+                            _ = MarkConversationSeenAsync(senderId);
+                        }
+                        // ── Case 2: Background message — user is in a different chat ──
+                        else if (senderId != "admin")
+                        {
+                            // Bump conversation to top of the list (move to index 1, after AI Copilot)
+                            string contactId = senderId;
+                            int foundIdx = _conversations.FindIndex(c => c.Id == contactId);
+                            if (foundIdx > 1)
                             {
-                                if (_lastSentBubbleId != null)
-                                {
-                                    UpdateBubbleState(_lastSentBubbleId, MessageDeliveryState.Delivered);
-                                }
+                                var bumped = _conversations[foundIdx];
+                                _conversations.RemoveAt(foundIdx);
+                                _conversations.Insert(1, bumped);
                             }
+
+                            // Show Windows balloon tip notification
+                            string senderName = _conversations.Find(c => c.Id == contactId).Name;
+                            if (string.IsNullOrEmpty(senderName)) senderName = senderId;
+                            ShowBalloonNotification($"New message from {senderName}", body);
+
+                            // ACK delivered (not seen — user hasn't opened the thread)
+                            if (int.TryParse(messageId, out int mid) && mid > 0)
+                                _ = AckDeliveredAsync(mid);
                         }
                     }));
+                });
+
+                // ── MessageStatusChanged: real delivery/seen push from backend ───────
+                _hubConnection.On<string, string, string, string>(
+                    "MessageStatusChanged",
+                    (messageId, status, senderId, receiverId) =>
+                {
+                    if (this.IsDisposed || !this.IsHandleCreated) return;
+                    // Only update bubbles for messages WE sent
+                    if (senderId != "admin") return;
+
+                    var newState = status switch
+                    {
+                        "delivered" => MessageDeliveryState.Delivered,
+                        "seen"      => MessageDeliveryState.Seen,
+                        "sent"      => MessageDeliveryState.Sent,
+                        _           => MessageDeliveryState.Sent
+                    };
+
+                    // Find the matching registered bubble by messageId tag
+                    this.Invoke((System.Windows.Forms.MethodInvoker)(() =>
+                    {
+                        // Update any bubble whose tag matches the messageId
+                        foreach (var kvp in _bubbleRegistry)
+                        {
+                            var (row, stateHolder) = kvp.Value;
+                            if (row?.Tag?.ToString() == messageId)
+                            {
+                                stateHolder[0] = newState;
+                                _bubbleRegistry[kvp.Key] = (row, stateHolder);
+                                if (row != null && !row.IsDisposed)
+                                    row.Invalidate();
+                                break;
+                            }
+                        }
+                        // Also update last sent bubble if not found by tag (legacy path)
+                        if (_lastSentBubbleId != null)
+                            UpdateBubbleState(_lastSentBubbleId, newState);
+                    }));
+                });
+
+                _hubConnection.On<string, string, string, string>("MessageEdited", (msgId, newText, history, recId) =>
+                {
+                    if (recId == _activeConvId || recId == "admin")
+                        Invoke((System.Windows.Forms.MethodInvoker)(() => LoadMessagesFromApi(_activeConvId)));
+                });
+
+                _hubConnection.On<string, string>("MessageUnsent", (msgId, recId) =>
+                {
+                    if (recId == _activeConvId || recId == "admin")
+                        Invoke((System.Windows.Forms.MethodInvoker)(() => LoadMessagesFromApi(_activeConvId)));
+                });
+
+                _hubConnection.On<string, string, string>("MessageReactionChanged", (msgId, rx, recId) =>
+                {
+                    if (recId == _activeConvId || recId == "admin")
+                        Invoke((System.Windows.Forms.MethodInvoker)(() => LoadMessagesFromApi(_activeConvId)));
                 });
 
                 await _hubConnection.StartAsync();
@@ -571,11 +761,40 @@ namespace DriveAndGo_Admin
             }
         }
 
+        private static string CleanMessagePreview(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return "";
+            text = text.Trim();
+            if (text.StartsWith("{"))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(text);
+                    if (doc.RootElement.TryGetProperty("text", out var tProp))
+                    {
+                        var s = tProp.GetString();
+                        if (!string.IsNullOrWhiteSpace(s)) return s;
+                    }
+                    if (doc.RootElement.TryGetProperty("message", out var mProp))
+                    {
+                        var s = mProp.GetString();
+                        if (!string.IsNullOrWhiteSpace(s)) return s;
+                    }
+                }
+                catch { }
+            }
+            return text;
+        }
+
         private void UpdateConversationLastMsg(string senderId, string receiverId, string body, string timestamp)
         {
             string contactId = senderId == "admin" ? receiverId : senderId;
             DateTime dt = DateTime.Now;
-            DateTime.TryParse(timestamp, out dt);
+            if (!string.IsNullOrWhiteSpace(timestamp) && DateTime.TryParse(timestamp, out var parsedDt))
+                dt = parsedDt;
+
+            string cleanBody = CleanMessagePreview(body);
+            string isoTime = dt.ToString("o");
 
             bool found = false;
             for (int i = 0; i < _conversations.Count; i++)
@@ -583,8 +802,8 @@ namespace DriveAndGo_Admin
                 var conv = _conversations[i];
                 if (conv.Id == contactId)
                 {
-                    conv.LastMessage = body;
-                    conv.Time = dt.ToLocalTime().ToString("h:mm tt");
+                    conv.LastMessage = cleanBody;
+                    conv.Time = isoTime;
                     if (_activeConvId != contactId && senderId != "admin")
                     {
                         conv.UnreadCount++;
@@ -614,32 +833,65 @@ namespace DriveAndGo_Admin
                 {
                     var root = JsonDocument.Parse(res.Body).RootElement;
                     _conversations.Clear();
+
+                    _conversations.Add(new ConvItem
+                    {
+                        Id = "ai_copilot",
+                        Name = "Drive\u0026Go AI",
+                        Role = "AI COPILOT",
+                        LastMessage = "Omniscient AI Intelligence",
+                        Time = "",
+                        UnreadCount = 0,
+                        IsGroup = false
+                    });
+
                     foreach (var item in root.EnumerateArray())
                     {
                         string id = item.GetProperty("id").GetString();
-                        string name = item.GetProperty("name").GetString();
-                        string role = item.TryGetProperty("role", out var rProp) ? rProp.GetString() : "Customer";
-                        string lastMsg = item.TryGetProperty("lastMessage", out var mProp) ? mProp.GetString() : "";
-                        string time = item.TryGetProperty("time", out var tProp) ? tProp.GetString() : "";
-                        if (DateTime.TryParse(time, out var tParsed))
-                        {
-                            time = tParsed.ToLocalTime().ToString("h:mm tt");
-                        }
-                        int unread = item.TryGetProperty("unreadCount", out var uProp) ? uProp.GetInt32() : 0;
-                        bool isGroup = role == "Group" || id.StartsWith("gc") || id.StartsWith("g");
+                        if (string.Equals(id, "ai_copilot", StringComparison.OrdinalIgnoreCase))
+                            continue;
 
+                        string name    = item.GetProperty("name").GetString();
+                        string role    = item.TryGetProperty("role",        out var rProp) ? rProp.GetString()  : "Customer";
+                        string lastMsg = item.TryGetProperty("lastMessage", out var mProp) ? mProp.GetString()  : "";
+                        lastMsg = CleanMessagePreview(lastMsg);
+                        string time    = item.TryGetProperty("time",        out var tProp) ? tProp.GetString()  : "";
+                        int    unread  = item.TryGetProperty("unreadCount", out var uProp) ? uProp.GetInt32()  : 0;
+                        bool   isGroup = role == "Group" || id.StartsWith("gc") || id.StartsWith("g");
+
+                        // Keep raw ISO timestamp in Time so we can sort by it
                         _conversations.Add(new ConvItem
                         {
-                            Id = id,
-                            Name = name,
-                            Role = role,
+                            Id          = id,
+                            Name        = name,
+                            Role        = role,
                             LastMessage = lastMsg,
-                            Time = time,
+                            Time        = time,   // raw ISO string for sorting
                             UnreadCount = unread,
-                            IsGroup = isGroup
+                            IsGroup     = isGroup
                         });
                     }
+
                     RefreshConvList();
+
+                    // Auto-open the most recently active real conversation on first load
+                    if (_activeConvId == null)
+                    {
+                        var mostRecent = _conversations
+                            .Where(c => c.Id != "ai_copilot" &&
+                                        !string.IsNullOrWhiteSpace(c.LastMessage) &&
+                                        c.LastMessage != "No messages yet")
+                            .OrderByDescending(c =>
+                            {
+                                return DateTime.TryParse(c.Time, out var dt) ? dt : DateTime.MinValue;
+                            })
+                            .FirstOrDefault();
+
+                        if (!string.IsNullOrEmpty(mostRecent.Id))
+                            OpenConversation(mostRecent);
+                        else if (_conversations.Count > 0)
+                            OpenConversation(_conversations[0]); // fallback to AI Copilot
+                    }
                 }
                 else
                 {
@@ -661,9 +913,7 @@ namespace DriveAndGo_Admin
 
             var activeConv = _conversations.Find(c => c.Id == contactId);
             if (!string.IsNullOrEmpty(activeConv.Id))
-            {
                 AddMessengerContactHeader(activeConv);
-            }
 
             try
             {
@@ -672,19 +922,52 @@ namespace DriveAndGo_Admin
                 {
                     var root = JsonDocument.Parse(res.Body).RootElement;
                     int count = 0;
+                    DateTime? lastTime = null;
                     foreach (var item in root.EnumerateArray())
                     {
-                        string sId = item.GetProperty("senderId").GetString();
+                        string sId  = item.GetProperty("senderId").GetString();
                         string body = item.GetProperty("messageBody").GetString();
                         DateTime ts = item.GetProperty("timestamp").GetDateTime().ToLocalTime();
-                        
-                        bool isMine = sId == "admin";
-                        AddMessage(body, isMine, ts, MessageDeliveryState.Delivered);
+
+                        if (lastTime == null || ts.Date != lastTime.Value.Date || (ts - lastTime.Value).TotalHours > 1)
+                        {
+                            AddDateSeparator(ts);
+                            lastTime = ts;
+                        }
+
+                        string rawStatus = item.TryGetProperty("deliveryStatus", out var dsProp)
+                            ? (dsProp.GetString() ?? "sent") : "sent";
+                        var historyState = rawStatus switch
+                        {
+                            "seen"      => MessageDeliveryState.Seen,
+                            "delivered" => MessageDeliveryState.Delivered,
+                            "sending"   => MessageDeliveryState.Sending,
+                            _           => MessageDeliveryState.Sent
+                        };
+
+                        bool isMine  = sId == "admin";
+                        string bId   = item.GetProperty("messageId").GetInt32().ToString();
+                        bool isEdited  = item.TryGetProperty("isEdited",  out var eProp) && eProp.GetBoolean();
+                        bool isUnsent  = item.TryGetProperty("isUnsent",  out var uProp) && uProp.GetBoolean();
+                        string rx      = item.TryGetProperty("reactions",  out var rProp) ? (rProp.GetString() ?? "{}") : "{}";
+
+                        AddMessage(body, isMine, ts, historyState, bId, isUnsent, isEdited, rx);
                         count++;
                     }
-                    if (count > 0 && _flowMessages.Controls.Count > 0)
+
+                    // Deferred multi-pass scroll — ensures viewport is positioned at absolute bottom after rendering
+                    if (count > 0)
                     {
-                        _flowMessages.ScrollControlIntoView(_flowMessages.Controls[_flowMessages.Controls.Count - 1]);
+                        this.BeginInvoke((Action)(async () =>
+                        {
+                            _flowMessages.ScrollControlIntoView(
+                                _flowMessages.Controls[_flowMessages.Controls.Count - 1]);
+                            ScrollToBottom();
+                            await Task.Delay(80);
+                            ScrollToBottom();
+                            await Task.Delay(250);
+                            ScrollToBottom();
+                        }));
                     }
                 }
             }
@@ -699,33 +982,77 @@ namespace DriveAndGo_Admin
             RefreshConvList();
         }
 
+        private static DateTime ParseConvTime(string timeStr)
+        {
+            if (string.IsNullOrWhiteSpace(timeStr)) return DateTime.MinValue;
+            if (DateTime.TryParse(timeStr, out var dt)) return dt;
+            return DateTime.MinValue;
+        }
+
+        private static string FormatDisplayTime(string timeStr)
+        {
+            if (string.IsNullOrWhiteSpace(timeStr)) return "";
+            if (DateTime.TryParse(timeStr, out var dt))
+            {
+                dt = dt.ToLocalTime();
+                if (dt.Date == DateTime.Today)
+                    return dt.ToString("h:mm tt");
+                if (dt.Date == DateTime.Today.AddDays(-1))
+                    return "Yesterday";
+                if ((DateTime.Today - dt.Date).TotalDays < 7)
+                    return dt.ToString("ddd");
+                return dt.ToString("MMM d");
+            }
+            return timeStr;
+        }
+
         private void RefreshConvList()
         {
+            _convListPanel.AutoScrollPosition = new Point(0, 0);
             _convListPanel.Controls.Clear();
 
-            string query = _txtSearch?.Text?.Trim().ToLower() ?? "";
-            bool isSearching = !string.IsNullOrEmpty(query);
+            string query      = _txtSearch?.Text?.Trim().ToLower() ?? "";
+            bool   isSearching = !string.IsNullOrEmpty(query);
 
-            int y = 6;
-            int cardW = Math.Max(100, _convListPanel.ClientSize.Width - 4);
+            // ── Pinned #1: AI Copilot ───────────────────────────────────────────────
+            var aiEntry = _conversations.Where(c => c.Id == "ai_copilot").ToList();
+
+            // ── Pinned #2: Group Chats (Drivers Community GC, etc.) ────────────────
+            var groupConvs = _conversations
+                .Where(c => c.Id != "ai_copilot" && (c.IsGroup || c.Role == "Group" || c.Id.StartsWith("gc") || c.Id.StartsWith("g")))
+                .OrderByDescending(c => c.UnreadCount > 0)
+                .ThenByDescending(c => ParseConvTime(c.Time))
+                .ToList();
+
+            // ── Section 3: Established Customer / User Conversations ──────────────
+            // (Sorted by Unread first, then Most Recent Chat timestamp descending)
+            var customerConvs = _conversations
+                .Where(c => c.Id != "ai_copilot" && !(c.IsGroup || c.Role == "Group" || c.Id.StartsWith("gc") || c.Id.StartsWith("g")))
+                .OrderByDescending(c => c.UnreadCount > 0)
+                .ThenByDescending(c => ParseConvTime(c.Time))
+                .ToList();
+
+            var sortedConvs = aiEntry.Concat(groupConvs).Concat(customerConvs).ToList();
+
+            int y      = 6;
+            int cardW  = Math.Max(100, _convListPanel.ClientSize.Width - 4);
             int countVisible = 0;
 
-            foreach (var conv in _conversations)
+            foreach (var conv in sortedConvs)
             {
                 bool hasMessages = !string.IsNullOrWhiteSpace(conv.LastMessage) &&
                                    conv.LastMessage != "No messages yet" &&
                                    conv.LastMessage != "Tap to start conversation" &&
                                    conv.LastMessage != "Group Chat Channel";
 
-                if (!isSearching && !hasMessages)
-                {
+                // Group chats & AI Copilot are pinned; individual customers are shown if established or searching
+                if (!isSearching && !hasMessages && conv.Id != "ai_copilot" && !conv.IsGroup && conv.Role != "Group")
                     continue;
-                }
 
                 if (isSearching)
                 {
                     bool matches = conv.Name.ToLower().Contains(query) ||
-                                   conv.Role.ToLower().Contains(query) ||
+                                   conv.Role.ToLower().Contains(query)  ||
                                    conv.LastMessage.ToLower().Contains(query);
                     if (!matches) continue;
                 }
@@ -742,13 +1069,19 @@ namespace DriveAndGo_Admin
             {
                 var lblEmpty = new Label
                 {
-                    Text      = isSearching ? "No conversations found" : "No active chats yet.\r\nClick '+' or search to start a chat.",
+                    Text      = isSearching
+                        ? "No conversations found"
+                        : "No active chats yet.\r\nClick '+' or search to start a chat.",
                     Font      = new Font("Segoe UI", 9.5F),
                     ForeColor = ThemeManager.CurrentSubText,
                     TextAlign = ContentAlignment.MiddleCenter,
                     Dock      = DockStyle.Fill
                 };
                 _convListPanel.Controls.Add(lblEmpty);
+            }
+            else
+            {
+                _convListPanel.AutoScrollPosition = new Point(0, 0);
             }
         }
 
@@ -773,23 +1106,33 @@ namespace DriveAndGo_Admin
                 g.SmoothingMode = SmoothingMode.AntiAlias;
 
                 bool isActive = _activeConvId == conv.Id;
+                bool hasUnread = conv.UnreadCount > 0;
                 var r = new Rectangle(6, 2, card.Width - 12, card.Height - 4);
                 using var path = RR(r, 10);
 
+                // Active: smooth background highlight only — no full outline border
                 Color bgAlpha = isActive
-                    ? ThemeManager.NavActiveBg
-                    : (ThemeManager.IsDarkMode ? Color.FromArgb(8, 255, 255, 255) : Color.FromArgb(12, 0, 0, 0));
+                    ? (ThemeManager.IsDarkMode
+                        ? Color.FromArgb(55, 255, 255, 255)   // subtle white glow in dark mode
+                        : Color.FromArgb(45, 0, 0, 0))        // subtle dark tint in light mode
+                    : (hasUnread
+                        ? (ThemeManager.IsDarkMode ? Color.FromArgb(40, 234, 88, 12) : Color.FromArgb(25, 234, 88, 12))
+                        : (ThemeManager.IsDarkMode ? Color.FromArgb(8, 255, 255, 255) : Color.FromArgb(12, 0, 0, 0)));
 
                 using var bg = new SolidBrush(bgAlpha);
                 g.FillPath(bg, path);
 
-                if (isActive)
+                // Unread conversations keep a subtle orange outline — active does NOT get a full border
+                if (!isActive && hasUnread)
                 {
-                    using var pen = new Pen(ThemeManager.CurrentPrimary, 1f);
+                    using var pen = new Pen(Color.FromArgb(160, 234, 88, 12), 1f);
                     g.DrawPath(pen, path);
                 }
 
-                g.FillRectangle(new SolidBrush(roleColor), 6, 2, 3, card.Height - 4);
+                // Left accent bar — always visible, thicker and more prominent when active
+                int accentW = isActive ? 4 : 3;
+                Color accentColor = isActive ? ThemeManager.CurrentPrimary : roleColor;
+                g.FillRectangle(new SolidBrush(accentColor), 6, 4, accentW, card.Height - 8);
 
                 var av = new Rectangle(18, 14, 40, 40);
                 using var avGrad = new LinearGradientBrush(av, roleColor,
@@ -804,26 +1147,49 @@ namespace DriveAndGo_Admin
                 using var fmt      = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
                 g.DrawString(init, initFont, Brushes.White, new RectangleF(av.X, av.Y, av.Width, av.Height), fmt);
 
+                // ── Name ───────────
                 using var nameFont = new Font("Segoe UI", 10F, FontStyle.Bold);
-                g.DrawString(conv.Name, nameFont, new SolidBrush(ThemeManager.CurrentText), new PointF(68, 12));
+                using var nameFmt  = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
+                
+                string formattedTime = FormatDisplayTime(conv.Time);
+                float rightPadding = !string.IsNullOrWhiteSpace(formattedTime) ? 75f : 14f;
+                var nameRect = new RectangleF(68, 12, Math.Max(40, card.Width - 68 - rightPadding), 18);
+                Color nameColor = hasUnread ? Color.FromArgb(255, 255, 255) : ThemeManager.CurrentText;
+                g.DrawString(conv.Name, nameFont, new SolidBrush(nameColor), nameRect, nameFmt);
 
                 using var roleFont = new Font("Segoe UI", 7.5F);
                 var roleText = "[" + conv.Role.ToUpper() + "]";
                 g.DrawString(roleText, roleFont, new SolidBrush(roleColor), new PointF(68, 30));
 
-                using var msgFont = new Font("Segoe UI", 9F);
-                string lastMsg = conv.LastMessage;
-                if (lastMsg?.Length > 30) lastMsg = lastMsg.Substring(0, 30) + "...";
-                g.DrawString(lastMsg, msgFont, new SolidBrush(ThemeManager.CurrentSubText), new PointF(68, 46));
+                // ── Last message (bold + vibrant if unread, muted if read) ───────────
+                Font msgFont = hasUnread ? new Font("Segoe UI", 9F, FontStyle.Bold) : new Font("Segoe UI", 9F);
+                Color msgColor = hasUnread
+                    ? (ThemeManager.IsDarkMode ? Color.FromArgb(254, 215, 170) : Color.FromArgb(194, 65, 12))
+                    : ThemeManager.CurrentSubText;
 
-                using var timeFont = new Font("Segoe UI", 7.5F);
-                using var timeFmt = new StringFormat { Alignment = StringAlignment.Far };
-                g.DrawString(conv.Time, timeFont, new SolidBrush(ThemeManager.CurrentSubText), new RectangleF(card.Width - 75, 12, 65, 16), timeFmt);
+                string lastMsg = CleanMessagePreview(conv.LastMessage);
+                float msgRightPadding = hasUnread ? 34f : 14f;
+                var msgRect = new RectangleF(68, 46, Math.Max(40, card.Width - 68 - msgRightPadding), 18);
+                using var msgFmt = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
+                g.DrawString(lastMsg, msgFont, new SolidBrush(msgColor), msgRect, msgFmt);
+                msgFont.Dispose();
 
-                if (conv.UnreadCount > 0)
+                // ── Time Stamp ───────────
+                if (!string.IsNullOrWhiteSpace(formattedTime))
                 {
-                    var badge = new Rectangle(card.Width - 30, card.Height - 26, 22, 18);
-                    g.FillEllipse(new SolidBrush(ThemeManager.CurrentPrimary), badge);
+                    using var timeFont = new Font("Segoe UI", 7.5F, hasUnread ? FontStyle.Bold : FontStyle.Regular);
+                    using var timeFmt = new StringFormat { Alignment = StringAlignment.Far };
+                    Color timeColor = hasUnread ? Color.FromArgb(249, 115, 22) : ThemeManager.CurrentSubText;
+                    g.DrawString(formattedTime, timeFont, new SolidBrush(timeColor), new RectangleF(card.Width - 75, 12, 65, 16), timeFmt);
+                }
+
+                // ── Unread Badge Pill ───────────
+                if (hasUnread)
+                {
+                    var badge = new Rectangle(card.Width - 32, card.Height - 26, 24, 18);
+                    using var badgeBrush = new SolidBrush(Color.FromArgb(234, 88, 12));
+                    using var badgePath = RR(badge, 9);
+                    g.FillPath(badgeBrush, badgePath);
                     using var badgeFont = new Font("Segoe UI", 8F, FontStyle.Bold);
                     g.DrawString(conv.UnreadCount.ToString(), badgeFont, Brushes.White,
                         new RectangleF(badge.X, badge.Y, badge.Width, badge.Height), fmt);
@@ -846,6 +1212,28 @@ namespace DriveAndGo_Admin
             _lblConvStatus.Text = conv.IsGroup ? "Group Chat • Active" : $"{conv.Role} • Online";
             _headerBar.Invalidate();
 
+            if (conv.Id == "ai_copilot")
+            {
+                if (_webView != null) 
+                {
+                    _webView.Visible = true;
+                    if (_isInitialized)
+                    {
+                        _webView.CoreWebView2.ExecuteScriptAsync($"document.documentElement.setAttribute('data-theme', '{ (ThemeManager.IsDarkMode ? "dark" : "light") }');");
+                    }
+                }
+                _flowMessages.Visible = false;
+                if (_txtInput?.Parent != null) _txtInput.Parent.Visible = false;
+                if (_btnSend != null) _btnSend.Visible = false;
+            }
+            else
+            {
+                if (_webView != null) _webView.Visible = false;
+                _flowMessages.Visible = true;
+                if (_txtInput?.Parent != null) _txtInput.Parent.Visible = true;
+                if (_btnSend != null) _btnSend.Visible = true;
+            }
+
             for (int i = 0; i < _conversations.Count; i++)
             {
                 if (_conversations[i].Id == conv.Id)
@@ -858,7 +1246,14 @@ namespace DriveAndGo_Admin
             }
 
             RefreshConvList();
-            LoadMessagesFromApi(conv.Id);
+
+            if (conv.Id != "ai_copilot")
+            {
+                LoadMessagesFromApi(conv.Id);
+                // Mark all incoming messages in this thread as Seen
+                // (admin opened the chat → recipient side sees "Seen")
+                _ = MarkConversationSeenAsync(conv.Id);
+            }
         }
 
         // ════════════════════════════════════════════════════════════════════════
@@ -872,7 +1267,7 @@ namespace DriveAndGo_Admin
 
             var container = new Panel
             {
-                Width     = Math.Max(280, _flowMessages.Width - 40),
+                Width     = Math.Max(280, _flowMessages.ClientSize.Width - 40),
                 Height    = 460,
                 BackColor = Color.Transparent,
                 Margin    = new Padding(10, 20, 10, 20)
@@ -904,26 +1299,29 @@ namespace DriveAndGo_Admin
                 }
 
                 string title = "DriveAndGo Messaging Hub";
-                using (var titleFont = new Font("Segoe UI", 15F, FontStyle.Bold))
+                float titleFontSize = container.Width < 340 ? 12F : 14.5F;
+                using (var titleFont = new Font("Segoe UI", titleFontSize, FontStyle.Bold))
                 {
                     SizeF titleSize = g.MeasureString(title, titleFont);
-                    float titleX = (container.Width - titleSize.Width) / 2f;
+                    float totalTitleW = titleSize.Width + 22;
+                    float titleX = Math.Max(10f, (container.Width - totalTitleW) / 2f);
                     g.DrawString(title, titleFont, new SolidBrush(ThemeManager.CurrentText), new PointF(titleX, 130));
 
-                    int badgeX = (int)(titleX + titleSize.Width + 5);
-                    var vBadge = new Rectangle(badgeX, 134, 18, 18);
+                    int badgeX = (int)(titleX + titleSize.Width + 4);
+                    var vBadge = new Rectangle(badgeX, 134, 16, 16);
                     g.FillEllipse(Brushes.DodgerBlue, vBadge);
-                    DrawCheckmark(g, vBadge, Color.White, 1.3f);
+                    DrawCheckmark(g, vBadge, Color.White, 1.2f);
                 }
 
-                using (var subFont = new Font("Segoe UI", 9.5F))
+                using (var subFont = new Font("Segoe UI", 9F))
                 using (var fmt = new StringFormat { Alignment = StringAlignment.Center })
                 {
                     g.DrawString("Business chats and driver communications", subFont, new SolidBrush(ThemeManager.CurrentSubText), new PointF(cx, 162), fmt);
                 }
 
-                var cardRect = new Rectangle(cx - 160, 200, 320, 100);
-                using (var path = RR(cardRect, 16))
+                int cardW = Math.Min(300, Math.Max(220, container.Width - 32));
+                var cardRect = new Rectangle((container.Width - cardW) / 2, 200, cardW, 95);
+                using (var path = RR(cardRect, 14))
                 {
                     using var cardBg  = new SolidBrush(ThemeManager.CurrentCard);
                     using var cardPen = new Pen(ThemeManager.CurrentBorder, 1f);
@@ -931,16 +1329,16 @@ namespace DriveAndGo_Admin
                     g.DrawPath(cardPen, path);
                 }
 
-                using (var bodyFont = new Font("Segoe UI", 9.5F))
-                using (var fmt = new StringFormat { Alignment = StringAlignment.Center })
+                using (var bodyFont = new Font("Segoe UI", 9F))
+                using (var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
                 {
-                    g.DrawString("Select a conversation from the left menu\r\nto start messaging drivers, customers, or groups.", bodyFont, new SolidBrush(ThemeManager.CurrentText), new RectangleF(cardRect.X + 10, cardRect.Y + 24, cardRect.Width - 20, cardRect.Height - 40), fmt);
+                    g.DrawString("Select a conversation from the left menu to start messaging drivers, customers, or groups.", bodyFont, new SolidBrush(ThemeManager.CurrentText), new RectangleF(cardRect.X + 12, cardRect.Y + 8, cardRect.Width - 24, cardRect.Height - 16), fmt);
                 }
 
                 using (var lockFont = new Font("Segoe UI", 8.5F))
                 using (var fmt = new StringFormat { Alignment = StringAlignment.Center })
                 {
-                    g.DrawString("🔒 End-to-end encrypted dispatch network", lockFont, new SolidBrush(ThemeManager.CurrentSubText), new PointF(cx, 320), fmt);
+                    g.DrawString("🔒 End-to-end encrypted dispatch network", lockFont, new SolidBrush(ThemeManager.CurrentSubText), new PointF(cx, 310), fmt);
                 }
             };
 
@@ -976,16 +1374,27 @@ namespace DriveAndGo_Admin
             };
 
             _flowMessages.Controls.Add(container);
+            UpdateScrollBounds();
         }
 
         private void AddMessengerContactHeader(ConvItem conv)
         {
+            // ── Top spacer: ensures the avatar is never clipped under the sticky header bar ──
+            var spacer = new Panel
+            {
+                Width     = Math.Max(280, _flowMessages.ClientSize.Width - 40),
+                Height    = 12,
+                BackColor = Color.Transparent,
+                Margin    = new Padding(0)
+            };
+            _flowMessages.Controls.Add(spacer);
+
             var headerCard = new Panel
             {
-                Width     = Math.Max(280, _flowMessages.Width - 40),
+                Width     = Math.Max(280, _flowMessages.ClientSize.Width - 40),
                 Height    = 170,
                 BackColor = Color.Transparent,
-                Margin    = new Padding(10, 10, 10, 10)
+                Margin    = new Padding(10, 4, 10, 10)
             };
             EnableDB(headerCard);
 
@@ -1028,66 +1437,202 @@ namespace DriveAndGo_Admin
             };
 
             _flowMessages.Controls.Add(headerCard);
+            UpdateScrollBounds();
+        }
+
+        private static string FormatMessengerDateDivider(DateTime ts)
+        {
+            DateTime now = DateTime.Now;
+            if (ts.Date == now.Date)
+                return "Today";
+            if (ts.Date == now.Date.AddDays(-1))
+                return "Yesterday";
+            if ((now.Date - ts.Date).TotalDays < 7)
+                return ts.ToString("dddd"); // e.g. "Monday", "Tuesday", "Sunday"
+            if (ts.Year == now.Year)
+                return ts.ToString("MMMM d"); // e.g. "July 13"
+            return ts.ToString("MMMM d, yyyy"); // e.g. "July 13, 2025"
+        }
+
+        private void AddDateSeparator(DateTime ts)
+        {
+            var pnl = new Panel { Width = _flowMessages.ClientSize.Width - 24, Height = 30, Margin = new Padding(0, 6, 0, 6), BackColor = Color.Transparent };
+            EnableDB(pnl);
+            pnl.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                string text = FormatMessengerDateDivider(ts);
+                using var font = new Font("Segoe UI", 8.5F, FontStyle.Bold);
+                using var brush = new SolidBrush(ThemeManager.IsDarkMode ? Color.FromArgb(160, 255, 255, 255) : Color.FromArgb(140, 0, 0, 0));
+                var size = g.MeasureString(text, font);
+                g.DrawString(text, font, brush, new PointF((pnl.Width - size.Width) / 2, (pnl.Height - size.Height) / 2));
+            };
+            _flowMessages.Controls.Add(pnl);
+            UpdateScrollBounds();
         }
 
         // ════════════════════════════════════════════════════════════════════════
         //  MESSAGE BUBBLES & MESSENGER DELIVERY STATUS ICONS
         // ════════════════════════════════════════════════════════════════════════
-        private void AddMessage(string text, bool isMine, DateTime time, MessageDeliveryState state = MessageDeliveryState.Delivered, string bubbleId = null)
+        private void AddMessage(string text, bool isMine, DateTime time, MessageDeliveryState state = MessageDeliveryState.Delivered, string bubbleId = null, bool isUnsent = false, bool isEdited = false, string reactionsJson = "{}")
         {
-            int maxW = Math.Max(200, _flowMessages.Width - 80);
-            int padH = 10, padV = 8;
+            // ── Horizontal inset: keeps bubbles away from the absolute container edges ──
+            const int hInset = 20;  // pixels of breathing room on each side
+            int maxW = Math.Max(200, _flowMessages.ClientSize.Width - 120);
+            int padH = 12, padV = 9;
+
+            if (isUnsent)
+                text = isMine ? "You unsent a message" : "This message was unsent";
 
             SizeF sz;
             using (var g = this.CreateGraphics())
-            using (var font = new Font("Segoe UI", 10.5F))
+            using (var font = isUnsent ? new Font("Segoe UI", 10.5F, FontStyle.Italic) : new Font("Segoe UI", 10.5F))
                 sz = g.MeasureString(text, font, maxW - padH * 2);
 
-            int bubbleW = (int)sz.Width + padH * 2 + 16;
-            int bubbleH = (int)sz.Height + padV * 2 + 4;
-
-            bubbleW = Math.Min(bubbleW, maxW);
-            bubbleH = Math.Max(bubbleH, 36);
+            int bubbleW = Math.Min((int)sz.Width + padH * 2 + 16, maxW);
+            int bubbleH = Math.Max((int)sz.Height + padV * 2 + 4, 38);
 
             var row = new Panel();
             EnableDB(row);
-            row.Width     = _flowMessages.Width - 24;
-            row.Height    = bubbleH + 24;
+            // Leave hInset on each side so bubbles never touch the scroll container walls
+            row.Width     = _flowMessages.ClientSize.Width - 24;
+            row.Height    = bubbleH + 32;  // extra bottom room for timestamp + delivery icon
             row.BackColor = Color.Transparent;
             row.Margin    = new Padding(0, 3, 0, 3);
 
-            var stateHolder = new[] { state };
-            if (isMine && bubbleId != null)
+            // ── Per-row hover & hitbox state ─────────────────────────────────
+            bool rowHovered      = false;
+            bool smileHovered    = false;
+            bool dotsHovered     = false;
+            bool rxPillHovered   = false;
+            Rectangle smileRect  = Rectangle.Empty;
+            Rectangle dotsRect   = Rectangle.Empty;
+            Rectangle rxPillRect = Rectangle.Empty;
+
+            // ── Dark-themed ContextMenuStrip ──────────────────────────────────
+            ContextMenuStrip BuildContextMenu()
             {
-                _bubbleRegistry[bubbleId] = (row, stateHolder);
+                var ctx = new ContextMenuStrip
+                {
+                    ShowImageMargin  = false,
+                    ShowCheckMargin  = false,
+                    BackColor        = Color.FromArgb(36, 37, 38),
+                    ForeColor        = Color.FromArgb(228, 230, 235),
+                    Font             = new Font("Segoe UI", 10F, FontStyle.Regular),
+                    RenderMode       = ToolStripRenderMode.Professional,
+                    Renderer         = new MessengerMenuRenderer()
+                };
+                if (!isUnsent && bubbleId != null)
+                {
+                    AddMenuItem(ctx, "↪  Forward",      ()=> ForwardMessageAction(bubbleId));
+                    AddMenuItem(ctx, "🗑  Remove for you", ()=> RemoveMessageAction(bubbleId));
+                    AddMenuItem(ctx, "😊  React",        ()=> ReactMessageAction(bubbleId));
+                    if (isMine)
+                        AddMenuItem(ctx, "↩  Unsend", ()=> UnsendMessageAction(bubbleId), isDestructive: true);
+                }
+                return ctx;
             }
+
+            var stateHolder = new[] { state };
+            if (bubbleId != null)
+                _bubbleRegistry[bubbleId] = (row, stateHolder);
+
+            // ── Mouse events: hover tracking + precise hitbox cursor ─────────
+            row.MouseEnter += (s, e) => { rowHovered = true;  row.Invalidate(); };
+            row.MouseLeave += (s, e) =>
+            {
+                rowHovered    = false;
+                smileHovered  = false;
+                dotsHovered   = false;
+                rxPillHovered = false;
+                row.Cursor    = Cursors.Default;
+                row.Invalidate();
+            };
+            row.MouseMove += (s, e) =>
+            {
+                if (isUnsent) return;
+                int scrollOffsetY = Math.Abs(this.AutoScrollPosition.Y) + Math.Abs(_flowMessages?.AutoScrollPosition.Y ?? 0);
+                Point mousePt = scrollOffsetY > 0 ? new Point(e.X, e.Y + scrollOffsetY) : e.Location;
+
+                bool newSmile  = smileRect  != Rectangle.Empty && (smileRect.Contains(e.Location) || smileRect.Contains(mousePt));
+                bool newDots   = dotsRect   != Rectangle.Empty && (dotsRect.Contains(e.Location) || dotsRect.Contains(mousePt));
+                bool newRxPill = rxPillRect != Rectangle.Empty && (rxPillRect.Contains(e.Location) || rxPillRect.Contains(mousePt));
+
+                if (newSmile != smileHovered || newDots != dotsHovered || newRxPill != rxPillHovered)
+                {
+                    smileHovered  = newSmile;
+                    dotsHovered   = newDots;
+                    rxPillHovered = newRxPill;
+                    row.Cursor    = (newSmile || newDots || newRxPill) ? Cursors.Hand : Cursors.Default;
+                    row.Invalidate();
+                }
+            };
+            row.MouseClick += (s, e) =>
+            {
+                if (isUnsent) return;
+                int scrollOffsetY = Math.Abs(this.AutoScrollPosition.Y) + Math.Abs(_flowMessages?.AutoScrollPosition.Y ?? 0);
+                Point mousePt = scrollOffsetY > 0 ? new Point(e.X, e.Y + scrollOffsetY) : e.Location;
+
+                if (smileRect != Rectangle.Empty && (smileRect.Contains(e.Location) || smileRect.Contains(mousePt)))
+                {
+                    ReactMessageAction(bubbleId);
+                    return;
+                }
+                if (dotsRect != Rectangle.Empty && (dotsRect.Contains(e.Location) || dotsRect.Contains(mousePt)))
+                {
+                    var ctx = BuildContextMenu();
+                    ctx.Show(row, e.Location);
+                    return;
+                }
+                if (rxPillRect != Rectangle.Empty && (rxPillRect.Contains(e.Location) || rxPillRect.Contains(mousePt)))
+                {
+                    ShowReactionDetails(reactionsJson, bubbleId);
+                }
+            };
 
             row.Paint += (s, e) =>
             {
                 var g = e.Graphics;
-                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.SmoothingMode     = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
-                int bx = isMine ? row.Width - bubbleW - 8 : 8;
+                // hInset (captured from outer scope) keeps bubbles away from the absolute row edges
+                int bx = isMine ? row.Width - bubbleW - hInset : hInset;
                 int by = 4;
                 var br = new Rectangle(bx, by, bubbleW, bubbleH);
 
-                if (isMine)
+                // ── Bubble body ───────────────────────────────────────────────
+                if (isUnsent)
                 {
-                    using var grad = new LinearGradientBrush(br, ThemeManager.CurrentPrimary, ThemeManager.CurrentPrimaryDark, LinearGradientMode.Vertical);
+                    using var path  = RR(br, 14);
+                    using var bg    = new SolidBrush(ThemeManager.CurrentBackground);
+                    using var pen   = new Pen(ThemeManager.CurrentBorder, 1f) { DashStyle = DashStyle.Dash };
+                    g.FillPath(bg, path);
+                    g.DrawPath(pen, path);
+                    using var font  = new Font("Segoe UI", 10.5F, FontStyle.Italic);
+                    g.DrawString(text, font, new SolidBrush(ThemeManager.CurrentSubText),
+                        new RectangleF(bx + padH, by + padV, bubbleW - padH * 2, bubbleH));
+                }
+                else if (isMine)
+                {
+                    using var grad = new LinearGradientBrush(br,
+                        ThemeManager.CurrentPrimary, ThemeManager.CurrentPrimaryDark,
+                        LinearGradientMode.Vertical);
                     using var path = RR(br, 14);
                     g.FillPath(grad, path);
-
                     var shineR = new Rectangle(br.X + 2, br.Y + 2, br.Width - 4, br.Height / 2);
                     if (!shineR.IsEmpty)
                     {
-                        using var shinePath = RR(shineR, 12);
-                        using var shine = new LinearGradientBrush(shineR, Color.FromArgb(40, 255, 255, 255), Color.FromArgb(0, 255, 255, 255), LinearGradientMode.Vertical);
-                        g.FillPath(shine, shinePath);
+                        using var sp    = RR(shineR, 12);
+                        using var shine = new LinearGradientBrush(shineR,
+                            Color.FromArgb(40, 255, 255, 255), Color.FromArgb(0, 255, 255, 255),
+                            LinearGradientMode.Vertical);
+                        g.FillPath(shine, sp);
                     }
-
                     using var font = new Font("Segoe UI", 10.5F);
-                    using var fmt  = new StringFormat { Alignment = StringAlignment.Near };
-                    g.DrawString(text, font, Brushes.White, new RectangleF(bx + padH, by + padV, bubbleW - padH * 2, bubbleH), fmt);
+                    g.DrawString(text, font, Brushes.White,
+                        new RectangleF(bx + padH, by + padV, bubbleW - padH * 2, bubbleH));
                 }
                 else
                 {
@@ -1096,28 +1641,212 @@ namespace DriveAndGo_Admin
                     using var pen  = new Pen(ThemeManager.CurrentBorder, 1f);
                     g.FillPath(bg, path);
                     g.DrawPath(pen, path);
-
                     using var font = new Font("Segoe UI", 10.5F);
-                    using var fmt  = new StringFormat { Alignment = StringAlignment.Near };
-                    g.DrawString(text, font, new SolidBrush(ThemeManager.CurrentText), new RectangleF(bx + padH, by + padV, bubbleW - padH * 2, bubbleH), fmt);
+                    g.DrawString(text, font, new SolidBrush(ThemeManager.CurrentText),
+                        new RectangleF(bx + padH, by + padV, bubbleW - padH * 2, bubbleH));
                 }
 
-                using var tFont = new Font("Segoe UI", 7.5F);
-                string ts = time.ToString("h:mm tt");
-                
-                if (isMine)
+                if (isEdited && !isUnsent)
                 {
-                    g.DrawString(ts, tFont, new SolidBrush(ThemeManager.CurrentSubText), new PointF(br.X - 54, br.Bottom - 14));
-                    var iconRect = new Rectangle(bx + bubbleW - 18, by + bubbleH + 2, 16, 16);
-                    DrawDeliveryIcon(g, iconRect, stateHolder[0]);
+                    using var efont = new Font("Segoe UI", 7F);
+                    // Align "(edited)" to the right edge of the bubble for sent, left for received
+                    float editX = isMine ? bx + bubbleW - 44 : bx + 2;
+                    g.DrawString("(edited)", efont, new SolidBrush(ThemeManager.CurrentSubText),
+                        new PointF(editX, by + bubbleH + 2));
+                }
+                
+                // ── Reaction pill (clickable) ────────────────────────────────
+                var rxDict = new Dictionary<string, string>();
+                if (!string.IsNullOrWhiteSpace(reactionsJson) && reactionsJson != "{}")
+                    try { rxDict = JsonSerializer.Deserialize<Dictionary<string, string>>(reactionsJson); } catch {}
+
+                rxPillRect = Rectangle.Empty;
+                if (rxDict != null && rxDict.Count > 0 && !isUnsent)
+                {
+                    string emoji = "";
+                    foreach (var kvp in rxDict) { emoji = kvp.Value; break; }
+                    string rxText  = rxDict.Count > 1 ? $"{emoji} {rxDict.Count}" : emoji;
+                    using var rxFont = new Font("Segoe UI Emoji", 9F);
+                    var rxSz = g.MeasureString(rxText, rxFont);
+                    var rxRect = new Rectangle(
+                        bx + bubbleW - (int)rxSz.Width - 14,
+                        by + bubbleH - 10,
+                        (int)rxSz.Width + 12, (int)rxSz.Height + 4);
+                    rxPillRect = rxRect;   // update hitbox
+
+                    Color pillBg = rxPillHovered
+                        ? Color.FromArgb(80, ThemeManager.CurrentPrimary)
+                        : ThemeManager.CurrentCard;
+                    using var rxBg   = new SolidBrush(pillBg);
+                    using var rxPen  = new Pen(ThemeManager.CurrentBorder, 1f);
+                    using var rxPath = RR(rxRect, 10);
+                    g.FillPath(rxBg,  rxPath);
+                    g.DrawPath(rxPen, rxPath);
+                    g.DrawString(rxText, rxFont, new SolidBrush(ThemeManager.CurrentText),
+                        new PointF(rxRect.X + 4, rxRect.Y + 1));
+                }
+
+                // ── Hover action icons (Smile + 3-dots) ───────────────────────
+                if (rowHovered && !isUnsent)
+                {
+                    int iconSize = 24;
+                    int iconY    = by + bubbleH / 2 - iconSize / 2;
+
+                    if (isMine)
+                    {
+                        // Smile left of bubble, Dots further left
+                        dotsRect  = new Rectangle(bx - iconSize - 4,        iconY, iconSize, iconSize);
+                        smileRect = new Rectangle(bx - iconSize * 2 - 8,    iconY, iconSize, iconSize);
+                    }
+                    else
+                    {
+                        // Smile right of bubble, Dots further right
+                        smileRect = new Rectangle(bx + bubbleW + 4,          iconY, iconSize, iconSize);
+                        dotsRect  = new Rectangle(bx + bubbleW + iconSize + 8, iconY, iconSize, iconSize);
+                    }
+
+                    DrawHoverIcon(g, smileRect, smileHovered, isSmile: true);
+                    DrawHoverIcon(g, dotsRect,  dotsHovered,  isSmile: false);
                 }
                 else
                 {
-                    g.DrawString(ts, tFont, new SolidBrush(ThemeManager.CurrentSubText), new PointF(br.Right + 6, br.Bottom - 14));
+                    smileRect = Rectangle.Empty;
+                    dotsRect  = Rectangle.Empty;
                 }
-            };
+
+                // ── Timestamp + delivery state ────────────────────────────────
+                // Both are rendered flush with the edge of the bubble (not the row edge)
+                // so they stay properly aligned in both fullscreen and split view.
+                using var tFont  = new Font("Segoe UI", 7.5F);
+                using var metaColor = new SolidBrush(ThemeManager.IsDarkMode
+                    ? Color.FromArgb(130, 200, 200, 200)
+                    : Color.FromArgb(130, 80, 80, 80));
+                string ts = time.ToString("h:mm tt");
+
+                if (isMine && !isUnsent)
+                {
+                    string statusLabel = stateHolder[0] switch
+                    {
+                        MessageDeliveryState.Sending   => "Sending",
+                        MessageDeliveryState.Sent      => "Sent",
+                        MessageDeliveryState.Delivered => "Delivered",
+                        MessageDeliveryState.Seen      => "Seen",
+                        _                              => ""
+                    };
+                    using var lblFont = new Font("Segoe UI", 7F);
+
+                    // Metadata baseline: sits 4px below the bubble bottom, right-aligned to bubble right edge
+                    float metaY    = by + bubbleH + 5;
+                    int   iconSize = 14;
+
+                    // Delivery icon — right-aligned to bubble right edge
+                    var iconRect = new Rectangle(bx + bubbleW - iconSize, (int)metaY + 1, iconSize, iconSize);
+                    DrawDeliveryIcon(g, iconRect, stateHolder[0]);
+
+                    // Status label — sits left of the icon, with a 3px gap
+                    var lblSz   = g.MeasureString(statusLabel, lblFont);
+                    float lblX  = iconRect.X - lblSz.Width - 3;
+                    Color lblColor = stateHolder[0] == MessageDeliveryState.Seen
+                        ? Color.FromArgb(200, ThemeManager.CurrentPrimary)
+                        : (ThemeManager.IsDarkMode ? Color.FromArgb(140, 200, 200, 200) : Color.FromArgb(140, 80, 80, 80));
+                    if (!string.IsNullOrEmpty(statusLabel))
+                        g.DrawString(statusLabel, lblFont, new SolidBrush(lblColor), new PointF(lblX, metaY + 1));
+
+                    // Timestamp — left of the status label, flush with bubble left
+                    var tsSz = g.MeasureString(ts, tFont);
+                    float tsX = bx;   // left-aligned to bubble left edge
+                    g.DrawString(ts, tFont, metaColor, new PointF(tsX, metaY));
+                }
+                else if (!isMine)
+                {
+                    // Timestamp below the received bubble, left-aligned to bubble left edge
+                    float metaY = by + bubbleH + 5;
+                    g.DrawString(ts, tFont, metaColor, new PointF(bx, metaY));
+                }
+            };  // end row.Paint
 
             _flowMessages.Controls.Add(row);
+            ScrollToBottom();
+        }
+
+        // ════════════════════════════════════════════════════════════════════════
+        //  VIRTUAL SCROLLING & BOUNDS CALCULATION
+        // ════════════════════════════════════════════════════════════════════════
+        public void UpdateScrollBounds()
+        {
+            int totalHeight = 0;
+            if (_flowMessages != null && _flowMessages.Controls.Count > 0)
+            {
+                foreach (Control ctrl in _flowMessages.Controls)
+                {
+                    if (ctrl != null && ctrl.Visible)
+                        totalHeight += ctrl.Height + ctrl.Margin.Top + ctrl.Margin.Bottom;
+                }
+                totalHeight += _flowMessages.Padding.Top + _flowMessages.Padding.Bottom;
+                _flowMessages.AutoScrollMinSize = new Size(0, totalHeight);
+            }
+            HideNativeScrollBars(_flowMessages);
+        }
+
+        private void ScrollToBottom()
+        {
+            UpdateScrollBounds();
+            if (_flowMessages != null && _flowMessages.Controls.Count > 0)
+            {
+                var lastControl = _flowMessages.Controls[_flowMessages.Controls.Count - 1];
+                _flowMessages.ScrollControlIntoView(lastControl);
+
+                int maxScroll = Math.Max(0, _flowMessages.VerticalScroll.Maximum - _flowMessages.ClientSize.Height);
+                _flowMessages.AutoScrollPosition = new Point(0, maxScroll);
+                _flowMessages.Invalidate();
+            }
+        }
+
+        // ── Draw one hover action icon (Smile or 3-dots) ─────────────────────
+        private void DrawHoverIcon(Graphics g, Rectangle r, bool hovered, bool isSmile)
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            Color bgColor = hovered
+                ? Color.FromArgb(60, 255, 255, 255)
+                : Color.FromArgb(25, 255, 255, 255);
+
+            using var bgBrush = new SolidBrush(bgColor);
+            using var bgPath  = new GraphicsPath();
+            bgPath.AddEllipse(r);
+            g.FillPath(bgBrush, bgPath);
+
+            using var iconPen = new Pen(ThemeManager.CurrentSubText, 1.4f)
+            {
+                StartCap = LineCap.Round,
+                EndCap   = LineCap.Round
+            };
+
+            float cx = r.X + r.Width / 2f;
+            float cy = r.Y + r.Height / 2f;
+            float rs = r.Width * 0.3f;
+
+            if (isSmile)
+            {
+                // Smiley circle
+                var innerR = new RectangleF(cx - rs, cy - rs, rs * 2, rs * 2);
+                g.DrawEllipse(iconPen, innerR);
+                // Eyes
+                g.FillEllipse(new SolidBrush(ThemeManager.CurrentSubText),
+                    cx - rs * 0.4f - 1, cy - rs * 0.25f, 2.5f, 2.5f);
+                g.FillEllipse(new SolidBrush(ThemeManager.CurrentSubText),
+                    cx + rs * 0.15f,    cy - rs * 0.25f, 2.5f, 2.5f);
+                // Smile arc
+                var smileArc = new RectangleF(cx - rs * 0.5f, cy, rs, rs * 0.6f);
+                g.DrawArc(iconPen, smileArc, 10, 160);
+            }
+            else
+            {
+                // Three horizontal dots
+                float dotR = 2f;
+                for (int i = -1; i <= 1; i++)
+                    g.FillEllipse(new SolidBrush(ThemeManager.CurrentSubText),
+                        cx + i * (dotR * 2.4f) - dotR, cy - dotR, dotR * 2, dotR * 2);
+            }
         }
 
         private void DrawDeliveryIcon(Graphics g, Rectangle rect, MessageDeliveryState state)
@@ -1228,17 +1957,37 @@ namespace DriveAndGo_Admin
             {
                 var payload = new
                 {
-                    senderId = "admin",
-                    receiverId = _activeConvId,
+                    senderId    = "admin",
+                    receiverId  = _activeConvId,
                     messageBody = text,
                     isGroupChat = _activeConvIsGroup
                 };
                 var res = await ApiService.PostAsync("messages", payload);
                 if (res.Success)
                 {
+                    // ── Sent: message is in the DB ──────────────────────────────────
                     UpdateBubbleState(bubbleId, MessageDeliveryState.Sent);
-                    await Task.Delay(350);
-                    UpdateBubbleState(bubbleId, MessageDeliveryState.Delivered);
+
+                    // Tag the bubble row with the real DB messageId so
+                    // MessageStatusChanged can find it by tag later
+                    if (!string.IsNullOrWhiteSpace(res.Body))
+                    {
+                        try
+                        {
+                            using var doc = System.Text.Json.JsonDocument.Parse(res.Body);
+                            if (doc.RootElement.TryGetProperty("messageId", out var midElem))
+                            {
+                                string msgId = midElem.GetInt32().ToString();
+                                if (_bubbleRegistry.TryGetValue(bubbleId, out var entry))
+                                {
+                                    entry.row.Tag = msgId;
+                                    _bubbleRegistry[bubbleId] = entry;
+                                }
+                            }
+                        }
+                        catch { /* non-critical */ }
+                    }
+                    // Delivered / Seen will now come from real SignalR MessageStatusChanged events
                 }
                 else
                 {
@@ -1253,10 +2002,96 @@ namespace DriveAndGo_Admin
             }
         }
 
+        // ════════════════════════════════════════════════════════════════════════
+        //  DELIVERY STATUS HELPERS
+        // ════════════════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Fire-and-forget: tells the backend this message was delivered to us.
+        /// Called as soon as we receive a message via SignalR.
+        /// </summary>
+        private async Task AckDeliveredAsync(int messageId)
+        {
+            try
+            {
+                await ApiService.PostAsync($"messages/{messageId}/delivered", new { });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ChatOverlayPanel] AckDelivered failed for {messageId}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Called when admin opens a conversation thread.
+        /// Uses the new bulk /thread/{contactId}/seen endpoint to mark all messages
+        /// from that contact as 'seen' in a single DB query.
+        /// Backend fires SignalR MessageStatusChanged("seen") back to the sender.
+        /// </summary>
+        private async Task MarkConversationSeenAsync(string contactId)
+        {
+            try
+            {
+                await ApiService.PostAsync(
+                    $"messages/thread/{contactId}/seen",
+                    new { viewerId = "admin" });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ChatOverlayPanel] MarkThreadSeen failed for {contactId}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Displays a Windows system-tray balloon tip notification.
+        /// The icon is made briefly visible, the tip is shown, then the icon
+        /// hides itself again after the standard balloon timeout.
+        /// </summary>
+        private void ShowBalloonNotification(string title, string body)
+        {
+            try
+            {
+                if (_notifyIcon == null || this.IsDisposed) return;
+
+                // Truncate long messages so the balloon doesn't overflow
+                string tipText = body?.Length > 100 ? body.Substring(0, 97) + "..." : (body ?? "");
+
+                _notifyIcon.Visible = true;
+                _notifyIcon.ShowBalloonTip(
+                    timeout : 4000,
+                    tipTitle: title,
+                    tipText : tipText,
+                    tipIcon : ToolTipIcon.Info);
+
+                // Auto-hide the icon after the balloon expires
+                // (prevents persistent ghost icon in system tray)
+                var hideTimer = new System.Windows.Forms.Timer { Interval = 5000 };
+                hideTimer.Tick += (s, e) =>
+                {
+                    if (_notifyIcon != null)
+                    {
+                        try { _notifyIcon.Visible = false; } catch { }
+                    }
+                    hideTimer.Stop();
+                    hideTimer.Dispose();
+                };
+                hideTimer.Start();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ChatOverlayPanel] ShowBalloonNotification failed: {ex.Message}");
+            }
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
+                if (_notifyIcon != null)
+                {
+                    _notifyIcon.Visible = false;
+                    _notifyIcon.Dispose();
+                }
                 try { _hubConnection?.DisposeAsync().AsTask().Wait(); } catch { }
             }
             base.Dispose(disposing);
@@ -1288,5 +2123,444 @@ namespace DriveAndGo_Admin
                 BindingFlags.SetProperty | BindingFlags.Instance | BindingFlags.NonPublic,
                 null, c, new object[] { true });
         }
+        private async void ForwardMessageAction(string bubbleId)
+        {
+            using var dlg = new ForwardMessageDialog();
+            if (dlg.ShowDialog(this) == DialogResult.OK && dlg.SelectedContactId != null)
+            {
+                int.TryParse(bubbleId, out int origId);
+                var req = new { OriginalMessageId = origId, SenderId = "admin", NewReceiverId = dlg.SelectedContactId };
+                await ApiService.PostAsync("messages/forward", req);
+            }
+        }
+
+        private async void RemoveMessageAction(string bubbleId)
+        {
+            using var dlg = new RemoveConfirmationDialog();
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+            var req = new { UserId = "admin" };
+            var res = await ApiService.PostAsync($"messages/{bubbleId}/remove", req);
+            if (res.Success)
+            {
+                if (_bubbleRegistry.ContainsKey(bubbleId))
+                {
+                    _flowMessages.Controls.Remove(_bubbleRegistry[bubbleId].row);
+                    _bubbleRegistry.Remove(bubbleId);
+                }
+            }
+        }
+
+        private async void ReactMessageAction(string bubbleId)
+        {
+            // Open emoji picker via a small context menu
+            var ctx = new ContextMenuStrip
+            {
+                ShowImageMargin = false,
+                ShowCheckMargin = false,
+                BackColor       = Color.FromArgb(36, 37, 38),
+                ForeColor       = Color.FromArgb(228, 230, 235),
+                Font            = new Font("Segoe UI Emoji", 13F),
+                RenderMode      = ToolStripRenderMode.Professional,
+                Renderer        = new MessengerMenuRenderer()
+            };
+
+            foreach (var emoji in new[] { "👍", "❤️", "😂", "😮", "😢", "😡" })
+            {
+                string captured = emoji;
+                var item = new ToolStripMenuItem(captured)
+                {
+                    Font = new Font("Segoe UI Emoji", 14F)
+                };
+                item.Click += async (s, e) =>
+                {
+                    var req = new { UserId = "admin", Emoji = captured };
+                    await ApiService.PostAsync($"messages/{bubbleId}/react", req);
+                };
+                ctx.Items.Add(item);
+            }
+
+            // Show inline below the flow panel
+            if (_flowMessages.Controls.Count > 0)
+                ctx.Show(_flowMessages, _flowMessages.PointToClient(Cursor.Position));
+        }
+
+        private async void UnsendMessageAction(string bubbleId)
+        {
+            await ApiService.DeleteAsync($"messages/{bubbleId}/unsend");
+        }
+
+        /// <summary>Opens the ReactionDetailsDialog for a given reactions JSON string.
+        /// If the current user clicks their own reaction row the reaction is removed via the API.</summary>
+        private async void ShowReactionDetails(string reactionsJson, string messageId)
+        {
+            var rxDict = new Dictionary<string, string>();
+            if (!string.IsNullOrWhiteSpace(reactionsJson) && reactionsJson != "{}")
+                try { rxDict = JsonSerializer.Deserialize<Dictionary<string, string>>(reactionsJson); } catch {}
+
+            if (rxDict.Count == 0) return;
+
+            // "admin" is the logged-in user ID in this context
+            const string currentUserId = "admin";
+
+            using var dlg = new ReactionDetailsDialog(rxDict, currentUserId);
+            dlg.ShowDialog(this);
+
+            // ── Undo Reaction ─────────────────────────────────────────────────
+            // If the user clicked their own reaction row, delete it via the API.
+            // SignalR's MessageReactionChanged event will propagate the UI update automatically.
+            if (dlg.RemoveMyReaction && !string.IsNullOrWhiteSpace(messageId))
+            {
+                try
+                {
+                    await ApiService.PostAsync($"messages/{messageId}/react", new { UserId = currentUserId, Emoji = "" });
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ShowReactionDetails] Remove reaction error: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>Helper: adds a styled item to a dark ContextMenuStrip.</summary>
+        private static void AddMenuItem(ContextMenuStrip ctx, string text, Action action, bool isDestructive = false)
+        {
+            var item = new ToolStripMenuItem(text)
+            {
+                ForeColor = isDestructive ? Color.FromArgb(255, 107, 107) : Color.FromArgb(228, 230, 235),
+                BackColor = Color.FromArgb(36, 37, 38),
+                Font      = new Font("Segoe UI", 10F)
+            };
+            item.Click += (s, e) => action();
+            ctx.Items.Add(item);
+        }
+    }  // end class ChatOverlayPanel
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  MESSENGER DARK CONTEXT MENU RENDERER
+    //  Eliminates the default white Windows chrome on ContextMenuStrip.
+    // ══════════════════════════════════════════════════════════════════════════
+    internal sealed class MessengerMenuRenderer : ToolStripProfessionalRenderer
+    {
+        private static readonly Color BgColor      = Color.FromArgb(36, 37, 38);
+        private static readonly Color HoverBg      = Color.FromArgb(58, 59, 60);
+        private static readonly Color BorderColor  = Color.FromArgb(70, 255, 255, 255);
+        private static readonly Color SeparatorCol = Color.FromArgb(50, 255, 255, 255);
+
+        public MessengerMenuRenderer() : base(new MessengerColorTable()) { }
+
+        // ── Whole drop-down background ────────────────────────────────────────
+        protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            var r = new Rectangle(0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
+            using var path = RR(r, 10);
+            g.FillPath(new SolidBrush(BgColor), path);
+            g.DrawPath(new Pen(BorderColor, 1f), path);
+        }
+
+        // ── Drop-down border (suppress default) ──────────────────────────────
+        protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e) { /* suppressed */ }
+
+        // ── Image margin strip (left gutter) — hide it ────────────────────────
+        protected override void OnRenderImageMargin(ToolStripRenderEventArgs e) { /* suppressed */ }
+
+        // ── Item background + hover highlight ────────────────────────────────
+        protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            var r = new Rectangle(4, 1, e.Item.Width - 8, e.Item.Height - 2);
+
+            if (e.Item.Selected)
+            {
+                using var path = RR(r, 8);
+                g.FillPath(new SolidBrush(HoverBg), path);
+            }
+        }
+
+        // ── Item text ─────────────────────────────────────────────────────────
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+        {
+            e.TextColor = e.Item.ForeColor != Color.Empty ? e.Item.ForeColor : Color.FromArgb(228, 230, 235);
+            e.TextFont  = e.Item.Font ?? new Font("Segoe UI", 10F);
+            base.OnRenderItemText(e);
+        }
+
+        // ── Separator ─────────────────────────────────────────────────────────
+        protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
+        {
+            e.Graphics.DrawLine(new Pen(SeparatorCol, 1f),
+                8, e.Item.Height / 2,
+                e.Item.Width - 8, e.Item.Height / 2);
+        }
+
+        // ── Arrow (sub-menu indicator) ────────────────────────────────────────
+        protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
+        {
+            e.ArrowColor = Color.FromArgb(176, 179, 184);
+            base.OnRenderArrow(e);
+        }
+
+        private static System.Drawing.Drawing2D.GraphicsPath RR(Rectangle r, int radius)
+        {
+            int d = radius * 2;
+            var arc  = new Rectangle(r.Location, new Size(d, d));
+            var path = new System.Drawing.Drawing2D.GraphicsPath();
+            path.AddArc(arc, 180, 90); arc.X = r.Right - d;
+            path.AddArc(arc, 270, 90); arc.Y = r.Bottom - d;
+            path.AddArc(arc, 0,   90); arc.X = r.Left;
+            path.AddArc(arc, 90,  90); path.CloseFigure();
+            return path;
+        }
     }
-}
+
+    internal sealed class MessengerColorTable : ProfessionalColorTable
+    {
+        private static readonly Color Bg     = Color.FromArgb(36, 37, 38);
+        private static readonly Color Hover  = Color.FromArgb(58, 59, 60);
+        private static readonly Color Border = Color.FromArgb(70, 255, 255, 255);
+
+        public override Color MenuItemSelected           => Hover;
+        public override Color MenuItemBorder             => Border;
+        public override Color MenuBorder                 => Border;
+        public override Color MenuItemSelectedGradientBegin => Hover;
+        public override Color MenuItemSelectedGradientEnd   => Hover;
+        public override Color MenuItemPressedGradientBegin  => Hover;
+        public override Color MenuItemPressedGradientEnd    => Hover;
+        public override Color ToolStripDropDownBackground   => Bg;
+        public override Color ImageMarginGradientBegin      => Bg;
+        public override Color ImageMarginGradientMiddle     => Bg;
+        public override Color ImageMarginGradientEnd        => Bg;
+        public override Color SeparatorDark                 => Color.FromArgb(50, 255, 255, 255);
+        public override Color SeparatorLight                => Color.FromArgb(50, 255, 255, 255);
+    }
+
+    internal class DarkScrollFlowLayoutPanel : FlowLayoutPanel
+    {
+        private bool _isHovered = false;
+        private bool _isDragging = false;
+        private int  _dragStartY = 0;
+        private int  _dragStartScrollY = 0;
+
+        public DarkScrollFlowLayoutPanel()
+        {
+            this.DoubleBuffered = true;
+            this.SetStyle(ControlStyles.OptimizedDoubleBuffer |
+                           ControlStyles.AllPaintingInWmPaint |
+                           ControlStyles.UserPaint, true);
+            this.UpdateStyles();
+
+            this.MouseEnter += (s, e) => { _isHovered = true;  this.Invalidate(); };
+            this.MouseLeave += (s, e) => { _isHovered = false; _isDragging = false; this.Invalidate(); };
+            this.MouseDown  += OnThumbMouseDown;
+            this.MouseMove  += OnThumbMouseMove;
+            this.MouseUp    += (s, e) => { _isDragging = false; };
+            this.Scroll     += (s, e) => this.Invalidate();
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool ShowScrollBar(IntPtr hWnd, int wBar, bool bShow);
+
+        protected override void WndProc(ref Message m)
+        {
+            base.WndProc(ref m);
+            if (m.Msg == 0x000F || m.Msg == 0x0085 || m.Msg == 0x0005 || m.Msg == 0x0115 || m.Msg == 0x0114)
+            {
+                if (this.IsHandleCreated)
+                {
+                    ShowScrollBar(this.Handle, 1, false);
+                    ShowScrollBar(this.Handle, 0, false);
+                }
+            }
+        }
+
+        private Rectangle GetThumbRectangle()
+        {
+            int clientH  = this.ClientSize.Height;
+            int displayH = this.DisplayRectangle.Height;
+            if (displayH <= clientH || clientH <= 0) return Rectangle.Empty;
+
+            int thumbH   = Math.Max(28, (clientH * clientH) / displayH);
+            int scrollY  = -this.AutoScrollPosition.Y;
+            int maxScrollY = displayH - clientH;
+            int thumbY   = (maxScrollY > 0) ? (scrollY * (clientH - thumbH)) / maxScrollY : 0;
+
+            return new Rectangle(this.Width - 8, thumbY + 3, 5, thumbH - 6);
+        }
+
+        private void OnThumbMouseDown(object sender, MouseEventArgs e)
+        {
+            var thumb = GetThumbRectangle();
+            if (thumb != Rectangle.Empty && e.X >= this.Width - 14)
+            {
+                _isDragging = true;
+                _dragStartY = e.Y;
+                _dragStartScrollY = -this.AutoScrollPosition.Y;
+            }
+        }
+
+        private void OnThumbMouseMove(object sender, MouseEventArgs e)
+        {
+            if (_isDragging)
+            {
+                int clientH  = this.ClientSize.Height;
+                int displayH = this.DisplayRectangle.Height;
+                int maxScrollY = displayH - clientH;
+                int thumbH   = Math.Max(28, (clientH * clientH) / displayH);
+                int trackH   = clientH - thumbH;
+
+                if (trackH > 0)
+                {
+                    int deltaY = e.Y - _dragStartY;
+                    int newScrollY = _dragStartScrollY + (deltaY * maxScrollY) / trackH;
+                    newScrollY = Math.Max(0, Math.Min(maxScrollY, newScrollY));
+                    this.AutoScrollPosition = new Point(0, newScrollY);
+                    this.Invalidate();
+                }
+            }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            var thumb = GetThumbRectangle();
+            if (thumb != Rectangle.Empty)
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+                Color thumbColor = (_isDragging || _isHovered)
+                    ? Color.FromArgb(200, ThemeManager.CurrentPrimary)
+                    : Color.FromArgb(65, 255, 255, 255);
+
+                using var brush = new SolidBrush(thumbColor);
+                int r = 2;
+                int d = r * 2;
+                var path = new System.Drawing.Drawing2D.GraphicsPath();
+                var arc = new Rectangle(thumb.Location, new Size(d, d));
+                path.AddArc(arc, 180, 90); arc.X = thumb.Right - d;
+                path.AddArc(arc, 270, 90); arc.Y = thumb.Bottom - d;
+                path.AddArc(arc, 0,   90); arc.X = thumb.Left;
+                path.AddArc(arc, 90,  90); path.CloseFigure();
+
+                g.FillPath(brush, path);
+            }
+        }
+    }
+
+    internal class DarkScrollPanel : Panel
+    {
+        private bool _isHovered = false;
+        private bool _isDragging = false;
+        private int  _dragStartY = 0;
+        private int  _dragStartScrollY = 0;
+
+        public DarkScrollPanel()
+        {
+            this.DoubleBuffered = true;
+            this.SetStyle(ControlStyles.OptimizedDoubleBuffer |
+                           ControlStyles.AllPaintingInWmPaint |
+                           ControlStyles.UserPaint, true);
+            this.UpdateStyles();
+
+            this.MouseEnter += (s, e) => { _isHovered = true;  this.Invalidate(); };
+            this.MouseLeave += (s, e) => { _isHovered = false; _isDragging = false; this.Invalidate(); };
+            this.MouseDown  += OnThumbMouseDown;
+            this.MouseMove  += OnThumbMouseMove;
+            this.MouseUp    += (s, e) => { _isDragging = false; };
+            this.Scroll     += (s, e) => this.Invalidate();
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool ShowScrollBar(IntPtr hWnd, int wBar, bool bShow);
+
+        protected override void WndProc(ref Message m)
+        {
+            base.WndProc(ref m);
+            if (m.Msg == 0x000F || m.Msg == 0x0085 || m.Msg == 0x0005 || m.Msg == 0x0115 || m.Msg == 0x0114)
+            {
+                if (this.IsHandleCreated)
+                {
+                    ShowScrollBar(this.Handle, 1, false);
+                    ShowScrollBar(this.Handle, 0, false);
+                }
+            }
+        }
+
+        private Rectangle GetThumbRectangle()
+        {
+            int clientH  = this.ClientSize.Height;
+            int displayH = this.DisplayRectangle.Height;
+            if (displayH <= clientH || clientH <= 0) return Rectangle.Empty;
+
+            int thumbH   = Math.Max(28, (clientH * clientH) / displayH);
+            int scrollY  = -this.AutoScrollPosition.Y;
+            int maxScrollY = displayH - clientH;
+            int thumbY   = (maxScrollY > 0) ? (scrollY * (clientH - thumbH)) / maxScrollY : 0;
+
+            return new Rectangle(this.Width - 8, thumbY + 3, 5, thumbH - 6);
+        }
+
+        private void OnThumbMouseDown(object sender, MouseEventArgs e)
+        {
+            var thumb = GetThumbRectangle();
+            if (thumb != Rectangle.Empty && e.X >= this.Width - 14)
+            {
+                _isDragging = true;
+                _dragStartY = e.Y;
+                _dragStartScrollY = -this.AutoScrollPosition.Y;
+            }
+        }
+
+        private void OnThumbMouseMove(object sender, MouseEventArgs e)
+        {
+            if (_isDragging)
+            {
+                int clientH  = this.ClientSize.Height;
+                int displayH = this.DisplayRectangle.Height;
+                int maxScrollY = displayH - clientH;
+                int thumbH   = Math.Max(28, (clientH * clientH) / displayH);
+                int trackH   = clientH - thumbH;
+
+                if (trackH > 0)
+                {
+                    int deltaY = e.Y - _dragStartY;
+                    int newScrollY = _dragStartScrollY + (deltaY * maxScrollY) / trackH;
+                    newScrollY = Math.Max(0, Math.Min(maxScrollY, newScrollY));
+                    this.AutoScrollPosition = new Point(0, newScrollY);
+                    this.Invalidate();
+                }
+            }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            var thumb = GetThumbRectangle();
+            if (thumb != Rectangle.Empty)
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+                Color thumbColor = (_isDragging || _isHovered)
+                    ? Color.FromArgb(200, ThemeManager.CurrentPrimary)
+                    : Color.FromArgb(65, 255, 255, 255);
+
+                using var brush = new SolidBrush(thumbColor);
+                int r = 2;
+                int d = r * 2;
+                var path = new System.Drawing.Drawing2D.GraphicsPath();
+                var arc = new Rectangle(thumb.Location, new Size(d, d));
+                path.AddArc(arc, 180, 90); arc.X = thumb.Right - d;
+                path.AddArc(arc, 270, 90); arc.Y = thumb.Bottom - d;
+                path.AddArc(arc, 0,   90); arc.X = thumb.Left;
+                path.AddArc(arc, 90,  90); path.CloseFigure();
+
+                g.FillPath(brush, path);
+            }
+        }
+    }
+
+}  // end namespace DriveAndGo_Admin

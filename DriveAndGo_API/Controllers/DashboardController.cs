@@ -10,7 +10,6 @@ using System.Threading.Tasks;
 namespace DriveAndGo_API.Controllers
 {
     [ApiController]
-    [Route("api/admin/dashboard")]
     [Route("api/dashboard")]
     public class DashboardController : ControllerBase
     {

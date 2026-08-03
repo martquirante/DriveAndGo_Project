@@ -412,7 +412,7 @@ namespace DriveAndGo_Admin.Panels
                         UpdateStats();
                     }));
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     this.Invoke((MethodInvoker)(() =>
                     {

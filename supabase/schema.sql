@@ -125,3 +125,36 @@ VALUES
     ('System Admin', 'admin@driveandgo.com', 'admin123', 'admin'),
     ('Test Customer', 'customer@driveandgo.com', 'customer123', 'customer')
 ON CONFLICT (email) DO NOTHING;
+
+-- ============================================================
+-- AI COPILOT ENGINE TABLES (Phase 1)
+-- Run in Supabase Dashboard → SQL Editor if not auto-created
+-- ============================================================
+
+-- 10. AI COPILOT SESSIONS
+CREATE TABLE IF NOT EXISTS ai_copilot_sessions (
+    session_id    SERIAL PRIMARY KEY,
+    admin_user_id INT NOT NULL,
+    title         TEXT NOT NULL DEFAULT 'New Conversation',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 11. AI COPILOT MESSAGES
+CREATE TABLE IF NOT EXISTS ai_copilot_messages (
+    copilot_msg_id    BIGSERIAL PRIMARY KEY,
+    session_id        INT NOT NULL REFERENCES ai_copilot_sessions(session_id) ON DELETE CASCADE,
+    sender_id         VARCHAR(100) NOT NULL DEFAULT 'bot_copilot',
+    llm_role          VARCHAR(20)  NOT NULL DEFAULT 'user',
+    content           TEXT         NOT NULL,
+    ui_component_type VARCHAR(30)  NULL,   -- 'BarChart' | 'PieChart' | 'MetricCard' | 'DataGrid'
+    ui_payload        TEXT         NULL,   -- JSON array string for chart data
+    tool_name         VARCHAR(100) NULL,   -- tool name if llm_role='tool'
+    provider_used     VARCHAR(50)  NULL,   -- 'Groq' | 'Cohere' | 'Gemini' | 'OpenRouter' | 'LocalFallback'
+    tokens_used       INT          NULL,
+    sent_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_msgs_session
+    ON ai_copilot_messages(session_id, sent_at ASC);
+

@@ -386,12 +386,12 @@ namespace DriveAndGo_Admin.Panels
             pb.Invalidate();
             if (!string.IsNullOrWhiteSpace(url))
             {
-                Task.Run(() =>
+                Task.Run(async () =>
                 {
                     try
                     {
-                        using var client = new System.Net.WebClient();
-                        var bytes = client.DownloadData(url);
+                        using var client = new System.Net.Http.HttpClient();
+                        var bytes = await client.GetByteArrayAsync(url);
                         using var ms = new System.IO.MemoryStream(bytes);
                         var img = Image.FromStream(ms);
                         this.BeginInvoke(() => { pb.Image = img; });

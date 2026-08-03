@@ -13,6 +13,9 @@
     <Compile Update="ChatOverlayPanel.cs">
       <SubType>UserControl</SubType>
     </Compile>
+    <Compile Update="ForwardMessageDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Update="LoginForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -62,6 +65,12 @@
       <SubType>Form</SubType>
     </Compile>
     <Compile Update="PromoCodesForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="ReactionDetailsDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="RemoveConfirmationDialog.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Update="ReplayMapForm.cs">

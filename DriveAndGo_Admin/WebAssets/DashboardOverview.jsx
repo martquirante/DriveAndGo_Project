@@ -734,7 +734,7 @@ export default function DashboardOverview({
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, paddingRight: 4 }}>
               {fetchStatus === 'error'
-                ? <span style={{ color: '#f87171' }}>⚠ Error: {fetchError}</span>
+                ? <span style={{ color: '#f87171' }}>⚠ Error: {apiError}</span>
                 : <>Synced {lastSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</>
               }
             </span>

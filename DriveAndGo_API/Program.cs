@@ -11,11 +11,9 @@ using Microsoft.OpenApi.Models;
 // ─────────────────────────────────────────────────────────────
 //  1.  Load .env file (before anything else reads configuration)
 // ─────────────────────────────────────────────────────────────
-var envPath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
-if (File.Exists(envPath))
-{
-    DotNetEnv.Env.Load(envPath);
-}
+// TraversePath() searches upwards from the current directory to find the .env file.
+// This is more robust for Visual Studio, IIS Express, and testing scenarios.
+DotNetEnv.Env.TraversePath().Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -58,9 +56,17 @@ builder.Services.AddSwaggerGen(c =>
 // ─────────────────────────────────────────────────────────────
 //  3.  PostgreSQL / EF Core (Supabase / local Docker)
 // ─────────────────────────────────────────────────────────────
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? Environment.GetEnvironmentVariable("SUPABASE_CONNECTION_STRING")
-    ?? throw new InvalidOperationException("No database connection string found.");
+// Smart Environment-Based Database Routing
+var connectionString = builder.Environment.IsDevelopment()
+    ? (Environment.GetEnvironmentVariable("LOCAL_DB_CONNECTION") 
+       ?? builder.Configuration.GetConnectionString("DefaultConnection"))
+    : (Environment.GetEnvironmentVariable("SUPABASE_CONNECTION_STRING") 
+       ?? builder.Configuration.GetConnectionString("DefaultConnection"));
+
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException("No database connection string found in .env or appsettings.");
+}
 
 // Initialize Database Tables
 DatabaseInitializer.Initialize(connectionString);
@@ -87,6 +93,22 @@ builder.Services.AddHttpClient();
 builder.Services.AddScoped<IStorageService, StorageService>();
 builder.Services.AddScoped<DriveAndGo_API.Services.AuditService>();
 builder.Services.AddHostedService<DriveAndGo_API.Services.RentalComplianceWorker>();
+
+// ── Fleet & Driver Operations Service (Phase 3) ──────────────────────
+builder.Services.AddScoped<DriveAndGo_API.Services.Operations.IFleetOperationsService,
+                           DriveAndGo_API.Services.Operations.FleetOperationsService>();
+
+// ── Risk & Security Services (Phase 4) ──────────────────────────────
+builder.Services.AddScoped<DriveAndGo_API.Services.Risk.IAiVisionService,
+                           DriveAndGo_API.Services.Risk.AiVisionService>();
+builder.Services.AddScoped<DriveAndGo_API.Services.Risk.IFinanceRiskService,
+                           DriveAndGo_API.Services.Risk.FinanceRiskService>();
+
+// ── AI Copilot Engine ──────────────────────────────────────────────
+builder.Services.AddScoped<DriveAndGo_API.Services.Ai.AiToolsService>();
+builder.Services.AddScoped<DriveAndGo_API.Services.Ai.IAiOrchestrationService,
+                           DriveAndGo_API.Services.Ai.AiOrchestrationService>();
+
 
 // ─────────────────────────────────────────────────────────────
 //  5.  JWT Authentication

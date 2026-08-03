@@ -83,7 +83,7 @@ namespace DriveAndGo_API.Controllers
                 // Request to Groq Llama 3
                 try
                 {
-                    using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+                    using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(20) };
                     client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", groqKey);
 
                     var requestBody = new

@@ -1,2 +1,11 @@
 [Bb]in/
 [Oo]bj/
+.env
+node_modules/
+build_check_*/
+Test.cs
+fix.js
+CMD Comand.txt
+package.json
+package-lock.json
+*.user

@@ -1,6 +1,8 @@
+using DriveAndGo_API.Data;
 using DriveAndGo_API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace DriveAndGo_API.Controllers;
 
@@ -10,11 +12,13 @@ public class AdminDashboardController : ControllerBase
 {
     private readonly IAdminDashboardService _dashboardService;
     private readonly IConfiguration _configuration;
+    private readonly AppDbContext _db;
 
-    public AdminDashboardController(IAdminDashboardService dashboardService, IConfiguration configuration)
+    public AdminDashboardController(IAdminDashboardService dashboardService, IConfiguration configuration, AppDbContext db)
     {
         _dashboardService = dashboardService;
         _configuration = configuration;
+        _db = db;
     }
 
     [HttpGet("summary")]
@@ -25,6 +29,28 @@ public class AdminDashboardController : ControllerBase
         try
         {
             var summary = await _dashboardService.GetSummaryAsync();
+
+            var recentBookingsRaw = await _db.Rentals
+                .AsNoTracking()
+                .OrderByDescending(r => r.StartDate)
+                .Take(6)
+                .Select(r => new
+                {
+                    bookingId    = r.RentalId,
+                    customerName = _db.Users
+                                     .Where(u => u.UserId == r.CustomerId)
+                                     .Select(u => u.FullName)
+                                     .FirstOrDefault() ?? "Unknown Customer",
+                    vehicleInfo  = _db.Vehicles
+                                     .Where(v => v.VehicleId == r.VehicleId)
+                                     .Select(v => v.Brand + " " + v.Model)
+                                     .FirstOrDefault() ?? "Unknown Vehicle",
+                    date         = r.StartDate,
+                    status       = r.Status,
+                    amount       = r.TotalAmount
+                })
+                .ToListAsync();
+
             return Ok(new
             {
                 totalFleet          = summary.TotalVehicles,
@@ -53,7 +79,7 @@ public class AdminDashboardController : ControllerBase
                 topDriverName       = summary.TopDriverName,
                 topDriverRating     = summary.TopDriverRating,
                 dueToday            = summary.DueToday,
-                recentBookings      = new object[0]
+                recentBookings      = recentBookingsRaw
             });
         }
         catch (Exception ex)
@@ -120,15 +146,17 @@ public class AdminDashboardController : ControllerBase
             ?? _configuration["AiConfig:GeminiApiKey"] 
             ?? string.Empty;
         string groqKey         = Environment.GetEnvironmentVariable("GROQ_API_KEY") 
-            ?? _configuration["AiConfig:GroqApiKey"] 
-            ?? string.Empty;
+            ?? _configuration["AiConfig:GroqApiKey"];
+        string sambaNovaKey    = Environment.GetEnvironmentVariable("SAMBANOVA_API_KEY") 
+            ?? _configuration["AiConfig:SambaNovaApiKey"];
 
         // Define provider invocation tasks
         var providers = new List<(string SourceName, Func<Task<string>> Call)>
         {
             ("AI Engine (OpenRouter - Gemini)", () => TryOpenRouter(prompt, openRouterKey)),
             ("AI Engine (Google AI Studio Direct)", () => TryGeminiDirect(prompt, geminiDirectKey)),
-            ("AI Engine (Groq - Llama)", () => TryGroq(prompt, groqKey))
+            ("AI Engine (Groq - Llama)", () => TryGroq(prompt, groqKey)),
+            ("AI Engine (SambaNova - Llama)", () => TrySambaNova(prompt, sambaNovaKey))
         };
 
         // Shuffle providers to achieve automatic load-balancing
@@ -193,7 +221,7 @@ public class AdminDashboardController : ControllerBase
     private async Task<string> TryOpenRouter(string prompt, string key)
     {
         if (string.IsNullOrEmpty(key)) return null;
-        using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(7) };
+        using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
         client.DefaultRequestHeaders.Add("HTTP-Referer", "http://driveandgo.com");
         client.DefaultRequestHeaders.Add("X-Title", "DriveAndGo Admin Portal");
@@ -220,7 +248,7 @@ public class AdminDashboardController : ControllerBase
     private async Task<string> TryGeminiDirect(string prompt, string key)
     {
         if (string.IsNullOrEmpty(key)) return null;
-        using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(7) };
+        using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         var requestBody = new
         {
             contents = new[]
@@ -245,7 +273,7 @@ public class AdminDashboardController : ControllerBase
     private async Task<string> TryGroq(string prompt, string key)
     {
         if (string.IsNullOrEmpty(key)) return null;
-        using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(7) };
+        using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
 
         var requestBody = new
@@ -258,6 +286,31 @@ public class AdminDashboardController : ControllerBase
         using var content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
         var response = await client.PostAsync("https://api.groq.com/openai/v1/chat/completions", content);
+        if (response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            return doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString();
+        }
+        return null;
+    }
+
+    private async Task<string> TrySambaNova(string prompt, string key)
+    {
+        if (string.IsNullOrEmpty(key)) return null;
+        using var client = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
+
+        var requestBody = new
+        {
+            model = "Meta-Llama-3.3-70B-Instruct",
+            messages = new[] { new { role = "user", content = prompt } }
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(requestBody);
+        using var content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+        var response = await client.PostAsync("https://api.sambanova.ai/v1/chat/completions", content);
         if (response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync();
