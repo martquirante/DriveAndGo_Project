@@ -768,7 +768,7 @@ function GenUiBubble({ message }) {
           (() => {
             const txtToRender = (displayText && displayText.trim().length > 0)
               ? displayText
-              : (hasChart ? '' : 'I retrieved the data from the system. Could you please clarify your request if you need additional details?');
+              : '';
             return txtToRender ? React.createElement('div',{style:{
               background:'var(--bubble-ai)',
               border:'1px solid var(--border)',

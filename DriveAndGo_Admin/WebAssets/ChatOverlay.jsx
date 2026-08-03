@@ -53,7 +53,7 @@ function ChatOverlay({ initialQuery = '' }) {
     if (!text || typeof text !== 'string') return text;
     const lower = text.toLowerCase();
     if (lower.includes('.env') || lower.includes('api key') || lower.includes('groq') || lower.includes('gemini api') || lower.includes('quotaexhausted') || lower.includes('rate limit') || lower.includes('limitasyon sa sistema')) {
-      return 'Sorry, this data is temporarily unavailable right now. Please try asking your question again in a moment.';
+      return 'Drive&Go AI is currently processing a high volume of requests. Please try asking your question again in a moment, and I\'ll be happy to assist you!';
     }
     return text;
   }

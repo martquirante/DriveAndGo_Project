@@ -327,9 +327,20 @@ public class AiOrchestrationService : IAiOrchestrationService
             }
         }
 
-        // 4. Return friendly non-technical business notice
+        // 4. OFFLINE FALLBACK: Only trigger local database engine when completely offline (no internet)
+        if (!await IsInternetAvailableAsync())
+        {
+            string? localDbAnswer = await TryLocalDatabaseAnswerAsync(sessionId, messages.LastOrDefault()?.ToString() ?? string.Empty);
+            if (!string.IsNullOrWhiteSpace(localDbAnswer))
+            {
+                _logger.LogInformation("Served offline response via Local Database Engine.");
+                return (localDbAnswer, "OfflineLocalEngine");
+            }
+        }
+
+        // 5. Return friendly natural executive fallback notice
         _logger.LogWarning("All cloud AI models failed or were unconfigured.");
-        return ("⚠️ **Drive&Go AI is temporarily busy**: Our AI system is currently experiencing high request volume. Please try asking your question again in a moment! ☕", "QuotaExhausted");
+        return ("Drive&Go AI is currently processing a high volume of requests. Please try asking your question again in a moment, and I'll be happy to assist you!", "QuotaExhausted");
     }
 
     private async Task<bool> IsInternetAvailableAsync()
@@ -699,15 +710,13 @@ public class AiOrchestrationService : IAiOrchestrationService
 
         string[] fallbackChain = new[]
         {
-            "meta-llama/llama-3.3-70b-instruct:free",
-            "qwen/qwen-2.5-72b-instruct:free",
-            "mistralai/mistral-small-24b-instruct-2501:free",
-            "deepseek/deepseek-r1:free",
-            "google/gemma-4-31b-it:free",
-            "google/gemma-4-26b-a4b-it:free",
-            "nvidia/nemotron-nano-9b-v2:free",
-            "inclusionai/ling-3.0-flash:free",
-            "cohere/north-mini-code:free"
+            "openrouter/auto",
+            "meta-llama/llama-3.3-70b-instruct",
+            "qwen/qwen-2.5-72b-instruct",
+            "mistralai/mistral-7b-instruct",
+            "google/gemma-2-9b-it",
+            "meta-llama/llama-3.1-8b-instruct",
+            "deepseek/deepseek-r1-distill-llama-70b"
         };
 
         using var client = _httpFactory.CreateClient();
@@ -821,6 +830,9 @@ public class AiOrchestrationService : IAiOrchestrationService
                 await PersistMessageAsync(sessionId, "bot_copilot", "assistant", message.GetRawText(), null, null, null, provider, null);
 
                 // Execute each tool call
+                string? lastExecutedTool = null;
+                string? lastExecutedResult = null;
+
                 foreach (var tc in toolCallsEl.EnumerateArray())
                 {
                     string? tcId      = tc.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
@@ -848,10 +860,13 @@ public class AiOrchestrationService : IAiOrchestrationService
                         toolResult = $"{{\"error\": \"Tool '{toolName}' encountered an internal error: {toolEx.Message.Replace("\"", "'")}. Please inform the user the data is temporarily unavailable.\"}}";
                     }
 
+                    lastExecutedTool = toolName;
+                    lastExecutedResult = toolResult;
+
                     mutableMessages.Add(new
                     {
                         role         = "tool",
-                        tool_call_id = tcId ?? toolName,
+                        tool_call_id = string.IsNullOrWhiteSpace(tcId) ? $"call_{Guid.NewGuid():N}" : tcId,
                         content      = toolResult,
                         name         = toolName
                     });
@@ -865,15 +880,21 @@ public class AiOrchestrationService : IAiOrchestrationService
                 // Re-submit with tool results — second pass
                 string reBody = await ResubmitWithToolResultsAsync(mutableMessages, provider);
                 if (!string.IsNullOrEmpty(reBody))
-                    return await ProcessOpenAiCompatibleResponseAsync(reBody, sessionId, mutableMessages, provider, depth + 1);
+                {
+                    string? secondPassResult = await ProcessOpenAiCompatibleResponseAsync(reBody, sessionId, mutableMessages, provider, depth + 1);
+                    if (!string.IsNullOrWhiteSpace(secondPassResult))
+                        return secondPassResult;
+                }
 
-                return null;
+                // Fail-safe: If second pass yielded empty narrative, format tool results directly
+                string fallbackText = FormatFallbackToolSummary(lastExecutedTool ?? "data_query", lastExecutedResult ?? string.Empty);
+                await PersistMessageAsync(sessionId, "bot_copilot", "assistant", fallbackText, null, null, lastExecutedTool, provider, null);
+                return fallbackText;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[{Provider}] CRITICAL TOOL EXECUTION FAILURE. Model likely hallucinated invalid tool JSON.", provider);
-                // Instead of crashing, override the response text
-                return "I'm sorry, but I encountered an error while trying to process that specific data request. Is there something else I can help you with?";
+                return "I'm sorry, but I encountered an issue retrieving that specific data. Please try asking your question again in a moment!";
             }
         }
 
@@ -1718,5 +1739,87 @@ public class AiOrchestrationService : IAiOrchestrationService
         }
 
         return result.ToArray();
+    }
+
+    private static string FormatFallbackToolSummary(string toolName, string toolResult)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(toolResult))
+                return "Data requested was retrieved successfully from system records.";
+
+            using var doc = JsonDocument.Parse(toolResult);
+            var root = doc.RootElement;
+
+            if (toolName.Contains("overdue", StringComparison.OrdinalIgnoreCase))
+            {
+                if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
+                {
+                    var sb = new System.Text.StringBuilder();
+                    sb.AppendLine("📋 **Overdue Rentals Report**\n");
+                    sb.AppendLine("| Customer | Vehicle | Days Overdue | Estimated Penalty |");
+                    sb.AppendLine("| :--- | :--- | :---: | :---: |");
+
+                    foreach (var item in root.EnumerateArray())
+                    {
+                        string name    = item.TryGetProperty("customerName", out var n) ? n.GetString() ?? "Customer" : "Customer";
+                        string vehicle = item.TryGetProperty("vehicleName", out var v) ? v.GetString() ?? "Vehicle" : "Vehicle";
+                        int days       = item.TryGetProperty("daysOverdue", out var d) ? d.GetInt32() : 1;
+                        decimal fee    = item.TryGetProperty("estimatedPenalty", out var p) ? p.GetDecimal() : (days * 500m);
+
+                        sb.AppendLine($"| **{name}** | {vehicle} | {days} day(s) | **₱{fee:N2}** |");
+                    }
+
+                    sb.AppendLine("\n⚠️ *Note: Penalty amounts are estimates based on standard daily late fees.*");
+                    return sb.ToString();
+                }
+                return "📋 **Overdue Rentals Report**\n\nGreat news! There are currently **no overdue rentals** in the system.";
+            }
+        }
+        catch { /* ignore */ }
+
+        return "System records retrieved successfully. Please let me know if you would like specific filters or summary breakdowns!";
+    }
+
+    private async Task<string?> TryLocalDatabaseAnswerAsync(int sessionId, string userMessage)
+    {
+        if (string.IsNullOrWhiteSpace(userMessage)) return null;
+        string q = userMessage.ToLowerInvariant().Trim();
+
+        try
+        {
+            string? toolName = null;
+            if (q.Contains("overdue") || q.Contains("multa") || q.Contains("late"))
+                toolName = AiToolsService.ToolGetOverdueRentals;
+            else if (q.Contains("today") || q.Contains("ngayong araw") || q.Contains("daily revenue"))
+                toolName = AiToolsService.ToolGetTodayRevenue;
+            else if (q.Contains("monthly") || q.Contains("buwan") || q.Contains("last 6 months"))
+                toolName = AiToolsService.ToolGetMonthlyRevenue;
+            else if (q.Contains("active rentals") || q.Contains("pending") || q.Contains("how many active"))
+                toolName = AiToolsService.ToolGetPendingBookings;
+            else if (q.Contains("fleet") || q.Contains("available") || q.Contains("sasakyan"))
+                toolName = AiToolsService.ToolGetFleetCount;
+            else if (q.Contains("top drivers") || q.Contains("drayber") || q.Contains("rating"))
+                toolName = AiToolsService.ToolGetTopDrivers;
+            else if (q.Contains("surge") || q.Contains("pricing"))
+                toolName = AiToolsService.ToolCheckSurgePricing;
+            else if (q.Contains("maintenance") || q.Contains("alerts") || q.Contains("sira"))
+                toolName = AiToolsService.ToolGetMaintenanceAlerts;
+
+            if (!string.IsNullOrEmpty(toolName))
+            {
+                _logger.LogInformation("[LocalDatabaseEngine] Intercepted query '{UserMessage}' -> Executing tool '{ToolName}'", userMessage, toolName);
+                string toolResult = await _tools.DispatchAsync(toolName, null);
+                string summary = FormatFallbackToolSummary(toolName, toolResult);
+                await PersistMessageAsync(sessionId, "bot_copilot", "assistant", summary, null, null, toolName, "LocalDatabaseEngine", null);
+                return summary;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[LocalDatabaseEngine] Failed to answer query directly from database.");
+        }
+
+        return null;
     }
 }
