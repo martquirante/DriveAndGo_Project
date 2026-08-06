@@ -138,7 +138,8 @@ public class FirebaseService : IFirebaseService
     {
         if (FirebaseApp.DefaultInstance != null) return;
 
-        var credentialPath = _configuration["Firebase:CredentialPath"];
+        var credentialPath = Environment.GetEnvironmentVariable("FIREBASE_CREDENTIAL_PATH")
+            ?? _configuration["Firebase:CredentialPath"];
 
         GoogleCredential credential;
 
@@ -153,10 +154,13 @@ public class FirebaseService : IFirebaseService
             credential = GoogleCredential.GetApplicationDefault();
         }
 
+        var projectId = Environment.GetEnvironmentVariable("FIREBASE_PROJECT_ID")
+            ?? _configuration["Firebase:ProjectId"];
+
         FirebaseApp.Create(new AppOptions
         {
             Credential = credential,
-            ProjectId  = _configuration["Firebase:ProjectId"]
+            ProjectId  = projectId
         });
     }
 }

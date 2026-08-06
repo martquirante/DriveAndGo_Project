@@ -56,16 +56,15 @@ builder.Services.AddSwaggerGen(c =>
 // ─────────────────────────────────────────────────────────────
 //  3.  PostgreSQL / EF Core (Supabase / local Docker)
 // ─────────────────────────────────────────────────────────────
-// Smart Environment-Based Database Routing
-var connectionString = builder.Environment.IsDevelopment()
-    ? (Environment.GetEnvironmentVariable("LOCAL_DB_CONNECTION") 
-       ?? builder.Configuration.GetConnectionString("DefaultConnection"))
-    : (Environment.GetEnvironmentVariable("SUPABASE_CONNECTION_STRING") 
-       ?? builder.Configuration.GetConnectionString("DefaultConnection"));
+// Smart Environment-Based Database Routing (.env DEFAULT_CONNECTION prioritized)
+var connectionString = Environment.GetEnvironmentVariable("DEFAULT_CONNECTION")
+    ?? Environment.GetEnvironmentVariable("SUPABASE_CONNECTION_STRING")
+    ?? Environment.GetEnvironmentVariable("LOCAL_DB_CONNECTION")
+    ?? builder.Configuration.GetConnectionString("DefaultConnection");
 
-if (string.IsNullOrWhiteSpace(connectionString))
+if (string.IsNullOrWhiteSpace(connectionString) || connectionString.Contains("YOUR_DB_PASSWORD"))
 {
-    throw new InvalidOperationException("No database connection string found in .env or appsettings.");
+    throw new InvalidOperationException("No valid database connection string found in .env or appsettings.");
 }
 
 // Initialize Database Tables
@@ -114,11 +113,15 @@ builder.Services.AddScoped<DriveAndGo_API.Services.Ai.IAiOrchestrationService,
 // ─────────────────────────────────────────────────────────────
 //  5.  JWT Authentication
 // ─────────────────────────────────────────────────────────────
-var jwtKey     = builder.Configuration["Jwt:SecretKey"]
-    ?? Environment.GetEnvironmentVariable("JWT_SECRET_KEY")
+var jwtKey     = Environment.GetEnvironmentVariable("JWT_SECRET_KEY")
+    ?? builder.Configuration["Jwt:SecretKey"]
     ?? "DriveAndGo-FallbackKey-MustChangeInProduction!";
-var jwtIssuer  = builder.Configuration["Jwt:Issuer"]   ?? "DriveAndGoAPI";
-var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "DriveAndGoClients";
+var jwtIssuer  = Environment.GetEnvironmentVariable("JWT_ISSUER")
+    ?? builder.Configuration["Jwt:Issuer"]
+    ?? "DriveAndGoAPI";
+var jwtAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE")
+    ?? builder.Configuration["Jwt:Audience"]
+    ?? "DriveAndGoClients";
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

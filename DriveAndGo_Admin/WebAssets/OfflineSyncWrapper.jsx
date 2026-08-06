@@ -19,15 +19,27 @@ export default function OfflineSyncWrapper({ children }) {
     }
   }, []);
 
+  const [wasOffline, setWasOffline] = useState(false);
+  const [showRestored, setShowRestored] = useState(false);
+
   // Update status indicators and listeners
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
+      if (wasOffline) {
+        setShowRestored(true);
+        setTimeout(() => {
+          setShowRestored(false);
+          setWasOffline(false);
+        }, 3500);
+      }
       triggerBackgroundSync();
     };
 
     const handleOffline = () => {
       setIsOnline(false);
+      setWasOffline(true);
+      setShowRestored(false);
     };
 
     window.addEventListener('online', handleOnline);
@@ -37,7 +49,7 @@ export default function OfflineSyncWrapper({ children }) {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [queue]);
+  }, [queue, wasOffline]);
 
   // Method to manually queue logs (used by hooks/controllers)
   const queueOfflineLog = (type, payload) => {
@@ -88,17 +100,32 @@ export default function OfflineSyncWrapper({ children }) {
   return (
     <div className="relative w-full h-full min-h-screen bg-[#07070e] text-slate-100">
       
-      {/* Dynamic Offline Status Banner */}
+      {/* 🔴 OFFLINE WARNING BANNER */}
       {!isOnline && (
-        <div className="sticky top-0 z-50 bg-amber-500/10 border-b border-amber-500/20 px-6 py-2.5 flex items-center justify-between shadow-[0_4px_15px_rgba(245,158,11,0.1)] animate-pulse">
+        <div className="sticky top-0 z-50 bg-red-600 border-b border-red-500 px-6 py-2.5 flex items-center justify-between shadow-[0_4px_15px_rgba(220,38,38,0.3)] animate-pulse">
           <div className="flex items-center gap-2">
-            <i className="fa-solid fa-cloud-slash text-amber-500 text-sm"></i>
-            <span className="text-xs font-bold text-slate-200">
-              Working Offline — Changes are being saved locally ({queue.length} pending logs)
+            <i className="fa-solid fa-cloud-slash text-white text-sm"></i>
+            <span className="text-xs font-bold text-white">
+              ⚠️ Working Offline — Changes are being saved locally ({queue.length} pending logs)
             </span>
           </div>
-          <span className="text-[9px] bg-amber-500/20 text-amber-400 font-extrabold px-2.5 py-0.5 rounded-full uppercase">
-            Local Mode
+          <span className="text-[9px] bg-white/20 text-white font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+            Offline Mode
+          </span>
+        </div>
+      )}
+
+      {/* 🟢 INTERNET RESTORED BANNER (Spotify Style) */}
+      {isOnline && showRestored && (
+        <div className="sticky top-0 z-50 bg-emerald-600 border-b border-emerald-500 px-6 py-2.5 flex items-center justify-between shadow-[0_4px_15px_rgba(16,185,129,0.3)] transition-all duration-300">
+          <div className="flex items-center gap-2">
+            <i className="fa-solid fa-wifi text-white text-sm"></i>
+            <span className="text-xs font-bold text-white">
+              📶 Internet Connection Restored! You are back online.
+            </span>
+          </div>
+          <span className="text-[9px] bg-white/20 text-white font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+            Connected
           </span>
         </div>
       )}

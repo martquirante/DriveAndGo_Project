@@ -223,22 +223,25 @@ namespace DriveAndGo_Admin
         private Panel _pnlOfflineWarning;
         private Label _lblOfflineWarningText;
         private System.Windows.Forms.Timer _netCheckTimer;
+        private System.Windows.Forms.Timer _restoreBannerTimer;
+        private bool _wasOffline = false;
 
         private void InitializeNetworkMonitoring()
         {
             _pnlOfflineWarning = new Panel
             {
-                Height = 32,
+                Height = 36,
                 Dock = DockStyle.Top,
-                BackColor = Color.FromArgb(185, 28, 28),
-                Visible = false
+                BackColor = Color.FromArgb(220, 38, 38), // Red default
+                Visible = false,
+                Padding = new Padding(12, 0, 12, 0)
             };
 
             _lblOfflineWarningText = new Label
             {
-                Text = "⚠️ Offline: No active internet connection. An internet connection is required to access AI services and live features.",
+                Text = "⚠️ No Internet Connection. Working offline — Live features & AI Copilot are paused.",
                 ForeColor = Color.White,
-                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.MiddleCenter
             };
@@ -247,13 +250,39 @@ namespace DriveAndGo_Admin
             this.Controls.Add(_pnlOfflineWarning);
             this.Controls.SetChildIndex(_pnlOfflineWarning, 0);
 
-            _netCheckTimer = new System.Windows.Forms.Timer { Interval = 4000 };
+            _restoreBannerTimer = new System.Windows.Forms.Timer { Interval = 3500 };
+            _restoreBannerTimer.Tick += (s, e) =>
+            {
+                _restoreBannerTimer.Stop();
+                if (!_wasOffline)
+                {
+                    _pnlOfflineWarning.Visible = false;
+                }
+            };
+
+            _netCheckTimer = new System.Windows.Forms.Timer { Interval = 3000 };
             _netCheckTimer.Tick += async (s, e) =>
             {
                 bool isOnline = await CheckInternetConnectionAsync();
-                if (_pnlOfflineWarning.Visible != !isOnline)
+                
+                if (!isOnline)
                 {
-                    _pnlOfflineWarning.Visible = !isOnline;
+                    // 🔴 State: OFFLINE (Spotify Red Banner)
+                    _wasOffline = true;
+                    _restoreBannerTimer.Stop();
+                    _pnlOfflineWarning.BackColor = Color.FromArgb(220, 38, 38); // Rich Crimson Red
+                    _lblOfflineWarningText.Text = "⚠️ No Internet Connection. Working offline — Live features & AI Copilot are paused.";
+                    _pnlOfflineWarning.Visible = true;
+                }
+                else if (_wasOffline)
+                {
+                    // 🟢 State: JUST RESTORED (Spotify Emerald Green Banner)
+                    _wasOffline = false;
+                    _pnlOfflineWarning.BackColor = Color.FromArgb(16, 185, 129); // Vibrant Spotify Emerald Green
+                    _lblOfflineWarningText.Text = "📶 Internet Connection Restored! You are back online.";
+                    _pnlOfflineWarning.Visible = true;
+                    _restoreBannerTimer.Stop();
+                    _restoreBannerTimer.Start(); // Display green banner for 3.5s then auto-hide
                 }
             };
             _netCheckTimer.Start();
