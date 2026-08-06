@@ -355,21 +355,104 @@ function ChartFullscreenModal({ componentType, data, onClose }) {
 /* ══════════════════════════════════════════════════════════════════════════
    CHART / UI HELPERS (unchanged from original)
 ══════════════════════════════════════════════════════════════════════════ */
+function parseInlineMarkdown(str) {
+  if (!str) return '';
+  return str
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g,   '<em>$1</em>')
+    .replace(/`(.*?)`/g, '<code style="background:rgba(255,255,255,0.1);padding:1px 4px;border-radius:4px;color:#fb923c;font-size:10px">$1</code>');
+}
+
 function renderMarkdown(text) {
   if (!text) return null;
-  return text.split('\n').map((line, i) => {
-    const html = line
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/g,   '<em>$1</em>')
-      .replace(/`(.*?)`/g, '<code style="background:rgba(255,255,255,0.1);padding:1px 4px;border-radius:4px;color:#fb923c;font-size:10px">$1</code>');
-    if (line.startsWith('### ')) return React.createElement('h3', { key: i, style:{color:'#fb923c',fontSize:'11px',fontWeight:700,marginTop:6}, dangerouslySetInnerHTML:{__html:html.slice(4)} });
-    if (line.startsWith('## '))  return React.createElement('h2', { key: i, style:{color:'#e2e8f0',fontSize:'12px',fontWeight:700,marginTop:6}, dangerouslySetInnerHTML:{__html:html.slice(3)} });
-    if (line.startsWith('- ') || line.startsWith('• ')) {
-      return React.createElement('li', { key: i, style:{fontSize:'11.5px',color:'var(--text-main)',lineHeight:1.6,marginLeft:8,listStyle:'disc'}, dangerouslySetInnerHTML:{__html:html.slice(2)} });
+  const lines = text.split('\n');
+  const elements = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const rawLine = lines[i];
+    const trimmed = rawLine.trim();
+
+    // Markdown Table block detection (| col1 | col2 |)
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      const tableLines = [];
+      while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+        tableLines.push(lines[i].trim());
+        i++;
+      }
+
+      if (tableLines.length >= 2) {
+        const headerCols = tableLines[0].split('|').slice(1, -1).map(c => c.trim());
+        const startDataIdx = (tableLines.length > 1 && tableLines[1].includes('---')) ? 2 : 1;
+        const dataRows = tableLines.slice(startDataIdx).map(r => r.split('|').slice(1, -1).map(c => c.trim()));
+
+        elements.push(
+          React.createElement('div', {
+            key: `tbl-${i}`,
+            style: {
+              overflowX: 'auto',
+              margin: '8px 0',
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              background: 'rgba(15, 23, 42, 0.4)'
+            }
+          },
+            React.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' } },
+              React.createElement('thead', {},
+                React.createElement('tr', { style: { background: 'rgba(249, 115, 22, 0.18)', borderBottom: '1px solid var(--border)' } },
+                  headerCols.map((col, cIdx) =>
+                    React.createElement('th', {
+                      key: cIdx,
+                      style: { padding: '6px 10px', color: '#fb923c', fontWeight: 700, whiteSpace: 'nowrap' },
+                      dangerouslySetInnerHTML: { __html: parseInlineMarkdown(col) }
+                    })
+                  )
+                )
+              ),
+              React.createElement('tbody', {},
+                dataRows.map((row, rIdx) =>
+                  React.createElement('tr', {
+                    key: rIdx,
+                    style: {
+                      borderBottom: '1px solid rgba(255,255,255,0.05)',
+                      background: rIdx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)'
+                    }
+                  },
+                    row.map((cell, cIdx) =>
+                      React.createElement('td', {
+                        key: cIdx,
+                        style: { padding: '6px 10px', color: 'var(--text-main)', whiteSpace: 'nowrap' },
+                        dangerouslySetInnerHTML: { __html: parseInlineMarkdown(cell) }
+                      })
+                    )
+                  )
+                )
+              )
+            )
+          )
+        );
+        continue;
+      }
     }
-    if (line.trim() === '') return null;
-    return React.createElement('p', { key: i, style:{fontSize:'11.5px',color:'var(--text-main)',lineHeight:1.6,marginBottom:6}, dangerouslySetInnerHTML:{__html:html} });
-  });
+
+    const html = parseInlineMarkdown(rawLine);
+
+    if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
+      elements.push(React.createElement('hr', { key: i, style: { border: 'none', borderTop: '1px solid var(--border)', margin: '8px 0', opacity: 0.5 } }));
+    } else if (rawLine.startsWith('### ')) {
+      elements.push(React.createElement('h3', { key: i, style:{color:'#fb923c',fontSize:'11px',fontWeight:700,marginTop:6}, dangerouslySetInnerHTML:{__html:html.slice(4)} }));
+    } else if (rawLine.startsWith('## ')) {
+      elements.push(React.createElement('h2', { key: i, style:{color:'#e2e8f0',fontSize:'12px',fontWeight:700,marginTop:6}, dangerouslySetInnerHTML:{__html:html.slice(3)} }));
+    } else if (rawLine.startsWith('- ') || rawLine.startsWith('• ')) {
+      elements.push(React.createElement('li', { key: i, style:{fontSize:'11.5px',color:'var(--text-main)',lineHeight:1.6,marginLeft:8,listStyle:'disc'}, dangerouslySetInnerHTML:{__html:html.slice(2)} }));
+    } else if (trimmed !== '') {
+      elements.push(React.createElement('p', { key: i, style:{fontSize:'11.5px',color:'var(--text-main)',lineHeight:1.6,marginBottom:6}, dangerouslySetInnerHTML:{__html:html} }));
+    }
+
+    i++;
+  }
+
+  return elements;
 }
 
 function SvgBarChart({ data, isLarge }) {
@@ -641,6 +724,14 @@ function GenUiBubble({ message }) {
   let dynamicUiComponent = ui_component;
   let dynamicData = [];
   try { dynamicData = typeof data === 'string' ? JSON.parse(data) : (data || []); } catch { dynamicData = []; }
+
+  if (displayText && typeof displayText === 'string') {
+    displayText = displayText
+      .replace(/---*\s*UI_COMPONENT\s*---*/gi, '')
+      .replace(/^(?:[\s\r\n]*---+\s*)+/g, '')
+      .replace(/(?:[\s\r\n]*---+\s*)+$/g, '')
+      .trim();
+  }
 
   // ── FIX 3: HIDE RAW JSON FROM UI ─────────────────────────────────────────
   // If body is a raw JSON string (e.g., starts with '{' and contains 'text' or 'ui_component'),

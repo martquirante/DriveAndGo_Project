@@ -26,6 +26,7 @@ public class AiOrchestrationService : IAiOrchestrationService
 
     // ── Provider API Keys ───────────────────────────────────────────
     private readonly string _groqKey;
+    private readonly string _huggingFaceKey;
     private readonly string _cohereKey;
     private readonly string _geminiKey;
     private readonly string _mistralKey;
@@ -33,12 +34,13 @@ public class AiOrchestrationService : IAiOrchestrationService
     private readonly string _sambaNovaKey;
 
     // ── Provider API Endpoints ──────────────────────────────────────
-    private const string GroqUrl       = "https://api.groq.com/openai/v1/chat/completions";
-    private const string CohereUrl     = "https://api.cohere.com/v1/chat";
-    private const string GeminiUrl     = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
-    private const string MistralUrl    = "https://api.mistral.ai/v1/chat/completions";
-    private const string OpenRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
-    private const string SambaNovaUrl  = "https://api.sambanova.ai/v1/chat/completions";
+    private const string GroqUrl        = "https://api.groq.com/openai/v1/chat/completions";
+    private const string HuggingFaceUrl = "https://router.huggingface.co/v1/chat/completions";
+    private const string CohereUrl      = "https://api.cohere.com/v1/chat";
+    private const string GeminiUrl      = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+    private const string MistralUrl     = "https://api.mistral.ai/v1/chat/completions";
+    private const string OpenRouterUrl  = "https://openrouter.ai/api/v1/chat/completions";
+    private const string SambaNovaUrl   = "https://api.sambanova.ai/v1/chat/completions";
 
     // ── Config ──────────────────────────────────────────────────────
     private const int  MaxHistoryTurns    = 20;   // messages loaded from DB for context
@@ -58,26 +60,40 @@ public class AiOrchestrationService : IAiOrchestrationService
         _configuration= configuration;
         _logger       = logger;
 
-        _groqKey       = GetKey("GROQ_API_KEY");
-        _cohereKey     = GetKey("COHERE_API_KEY");
-        _geminiKey     = GetKey("GEMINI_API_KEY");
-        _mistralKey    = GetKey("MISTRAL_API_KEY");
-        _openRouterKey = GetKey("OPENROUTER_API_KEY");
-        _sambaNovaKey  = GetKey("SAMBANOVA_API_KEY");
+        _groqKey        = GetKey("GROQ_API_KEY");
+        _huggingFaceKey = GetKey("HUGGINGFACE_API_KEY");
+        if (string.IsNullOrWhiteSpace(_huggingFaceKey)) _huggingFaceKey = GetKey("HF_API_KEY");
+        _cohereKey      = GetKey("COHERE_API_KEY");
+        _geminiKey      = GetKey("GEMINI_API_KEY");
+        _mistralKey     = GetKey("MISTRAL_API_KEY");
+        _openRouterKey  = GetKey("OPENROUTER_API_KEY");
+        _sambaNovaKey   = GetKey("SAMBANOVA_API_KEY");
     }
 
     private string GetKey(string keyName)
     {
+        // 1. Prioritize real environment variables (populated by DotNetEnv from .env file)
+        string? envVal = Environment.GetEnvironmentVariable(keyName);
+        if (IsValidApiKey(envVal)) return envVal!.Trim();
+
+        // 2. Fallback to appsettings.json root level
         string? val = _configuration[keyName];
-        if (!string.IsNullOrWhiteSpace(val)) return val;
+        if (IsValidApiKey(val)) return val!.Trim();
 
+        // 3. Fallback to AiKeys section in appsettings.json
         val = _configuration[$"AiKeys:{keyName}"];
-        if (!string.IsNullOrWhiteSpace(val)) return val;
-
-        val = Environment.GetEnvironmentVariable(keyName);
-        if (!string.IsNullOrWhiteSpace(val)) return val;
+        if (IsValidApiKey(val)) return val!.Trim();
 
         return string.Empty;
+    }
+
+    private static bool IsValidApiKey(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return false;
+        if (key.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase)) return false;
+        if (key.StartsWith("your-", StringComparison.OrdinalIgnoreCase)) return false;
+        if (key.Contains("PLACEHOLDER", StringComparison.OrdinalIgnoreCase)) return false;
+        return true;
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -283,12 +299,13 @@ public class AiOrchestrationService : IAiOrchestrationService
 
         var tiers = new List<(string provider, string key, Func<CancellationToken, Task<(string result, string provider)?>> action)>
         {
-            ("Groq",       _groqKey,       ct => TryGroqAsync(sessionId, messages, ct)),
-            ("Cohere",     _cohereKey,     ct => TryCohereAsync(sessionId, messages, ct)),
-            ("Gemini",     _geminiKey,     ct => TryGeminiAsync(sessionId, messages, ct)),
-            ("Mistral",    _mistralKey,    ct => TryMistralAsync(sessionId, messages, ct)),
-            ("SambaNova",  _sambaNovaKey,  ct => TrySambaNovaAsync(sessionId, messages, ct)),
-            ("OpenRouter", _openRouterKey, ct => TryOpenRouterAsync(sessionId, messages, ct))
+            ("Groq",        _groqKey,        ct => TryGroqAsync(sessionId, messages, ct)),
+            ("HuggingFace",  _huggingFaceKey, ct => TryHuggingFaceAsync(sessionId, messages, ct)),
+            ("Cohere",       _cohereKey,      ct => TryCohereAsync(sessionId, messages, ct)),
+            ("Gemini",       _geminiKey,      ct => TryGeminiAsync(sessionId, messages, ct)),
+            ("Mistral",      _mistralKey,     ct => TryMistralAsync(sessionId, messages, ct)),
+            ("SambaNova",    _sambaNovaKey,   ct => TrySambaNovaAsync(sessionId, messages, ct)),
+            ("OpenRouter",   _openRouterKey,  ct => TryOpenRouterAsync(sessionId, messages, ct))
         };
 
         foreach (var p in tiers)
@@ -296,6 +313,7 @@ public class AiOrchestrationService : IAiOrchestrationService
             // 1. SKIP EMPTY KEYS
             if (string.IsNullOrWhiteSpace(p.key))
             {
+                Console.WriteLine($"[AI Pipeline Info] Skipping AI provider '{p.provider}' because its API key is unconfigured/empty.");
                 _logger.LogInformation("Skipping AI provider '{ProviderName}' because its API key is empty.", p.provider);
                 continue;
             }
@@ -305,16 +323,20 @@ public class AiOrchestrationService : IAiOrchestrationService
 
             try
             {
+                Console.WriteLine($"[AI Pipeline Attempt] Trying provider '{p.provider}'...");
                 var result = await p.action(cts.Token);
 
                 // 3. SUCCESS CONDITION
                 if (result != null && !string.IsNullOrWhiteSpace(result.Value.result))
                 {
+                    Console.WriteLine($"[AI Pipeline Success] Provider '{p.provider}' succeeded with model '{result.Value.provider}'.");
                     return result.Value;
                 }
+                Console.WriteLine($"[AI Pipeline Warning] Provider '{p.provider}' returned null/empty response. Falling through to next tier.");
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException ex)
             {
+                Console.WriteLine($"[AI Pipeline Timeout] Provider '{p.provider}' timed out after 18s: {ex.Message}");
                 _logger.LogWarning(
                     "AI provider '{ProviderName}' timed out after 18s. Falling through to next tier.",
                     p.provider);
@@ -322,6 +344,7 @@ public class AiOrchestrationService : IAiOrchestrationService
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"[AI Pipeline Exception] Provider '{p.provider}' failed with exception: {ex.GetType().Name}: {ex.Message}");
                 _logger.LogWarning(ex, "AI provider '{ProviderName}' failed. Continuing to next fallback...", p.provider);
                 continue;
             }
@@ -401,14 +424,14 @@ public class AiOrchestrationService : IAiOrchestrationService
                         503 => "model overloaded",
                         _   => $"HTTP {statusCode}"
                     };
-                    _logger.LogWarning("[Groq] Model '{Model}' skipped — {Reason}.", modelName, reason);
-                    // On 429/403/503: continue trying remaining Groq models in fallbackChain (mixtral, gemma2)
+                    Console.WriteLine($"[AI Pipeline Error] Groq ({modelName}) returned Status {statusCode}: {errorBody}");
+                    _logger.LogWarning("[Groq] Model '{Model}' skipped — {Reason}. Body: {Body}", modelName, reason, errorBody);
                     continue;
                 }
 
                 var raw = await response.Content.ReadAsStringAsync(ct);
                 var processed = await ProcessOpenAiCompatibleResponseAsync(raw, sessionId, messages, $"Groq ({modelName})");
-                if (processed != null) return (processed, modelName);
+                if (!string.IsNullOrWhiteSpace(processed)) return (processed, modelName);
             }
             catch (OperationCanceledException) { throw; } // bubble up to pipeline
             catch (Exception ex)
@@ -418,6 +441,75 @@ public class AiOrchestrationService : IAiOrchestrationService
         }
         return null;
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  TIER 2 — HUGGING FACE (OpenAI-compatible Router)
+    // ═══════════════════════════════════════════════════════════════════
+    private async Task<(string result, string provider)?> TryHuggingFaceAsync(
+        int sessionId, List<object> messages, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(_huggingFaceKey)) return null;
+
+        string[] fallbackModels = {
+            "meta-llama/Llama-3.3-70B-Instruct",
+            "Qwen/Qwen2.5-72B-Instruct",
+            "deepseek-ai/DeepSeek-R1",
+            "Qwen/Qwen2.5-Coder-32B-Instruct"
+        };
+
+        using var client = _httpFactory.CreateClient();
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveAndGo/1.0");
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _huggingFaceKey);
+
+        foreach (var modelName in fallbackModels)
+        {
+            try
+            {
+                var body = new
+                {
+                    model       = modelName,
+                    messages,
+                    tools       = AiToolsService.GetToolDefinitions(),
+                    tool_choice = "auto",
+                    temperature = 0.0,
+                    max_tokens  = 2000
+                };
+
+                var json = JsonSerializer.Serialize(body);
+                using var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var response = await client.PostAsync(HuggingFaceUrl, content, ct);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorBody = await response.Content.ReadAsStringAsync(ct);
+                    int statusCode = (int)response.StatusCode;
+                    string reason = statusCode switch
+                    {
+                        413 => "context limit exceeded",
+                        429 => "rate limit exceeded — cascading to next HuggingFace model",
+                        403 => "forbidden/unauthorized model",
+                        503 => "model overloaded",
+                        _   => $"HTTP {statusCode}"
+                    };
+                    Console.WriteLine($"[AI Pipeline Error] HuggingFace ({modelName}) returned Status {statusCode}: {errorBody}");
+                    _logger.LogWarning("[HuggingFace] Model '{Model}' skipped — {Reason}. Body: {Body}", modelName, reason, errorBody);
+                    continue;
+                }
+
+                var raw = await response.Content.ReadAsStringAsync(ct);
+                var processed = await ProcessOpenAiCompatibleResponseAsync(raw, sessionId, messages, $"HuggingFace ({modelName})");
+                if (!string.IsNullOrWhiteSpace(processed)) return (processed, $"HuggingFace ({modelName})");
+            }
+            catch (OperationCanceledException) { throw; } // bubble up to pipeline hard timeout
+            catch (Exception ex)
+            {
+                _logger.LogWarning("[HuggingFace] Model '{Model}' failed: {Msg}. Trying next model...", modelName, ex.Message);
+            }
+        }
+        return null;
+    }
+
 
     // ═══════════════════════════════════════════════════════════════════
     //  TIER 1.5 — SAMBANOVA (OpenAI-compatible)
@@ -452,6 +544,7 @@ public class AiOrchestrationService : IAiOrchestrationService
             {
                 var errorBody = await response.Content.ReadAsStringAsync(ct);
                 int statusCode = (int)response.StatusCode;
+                Console.WriteLine($"[AI Pipeline Error] SambaNova returned Status {statusCode}: {errorBody}");
                 _logger.LogWarning("[SambaNova] HTTP {Status}: {Body}", statusCode, errorBody);
                 if (statusCode == 429 || statusCode == 403)
                 {
@@ -462,7 +555,7 @@ public class AiOrchestrationService : IAiOrchestrationService
 
             var raw = await response.Content.ReadAsStringAsync(ct);
             var processed = await ProcessOpenAiCompatibleResponseAsync(raw, sessionId, messages, "SambaNova (Meta-Llama-3.3-70B)");
-            if (processed != null) return (processed, "SambaNova");
+            if (!string.IsNullOrWhiteSpace(processed)) return (processed, "SambaNova");
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -511,6 +604,7 @@ public class AiOrchestrationService : IAiOrchestrationService
             {
                 var errorBody = await response.Content.ReadAsStringAsync(ct);
                 int statusCode = (int)response.StatusCode;
+                Console.WriteLine($"[AI Pipeline Error] Cohere returned Status {statusCode}: {errorBody}");
                 _logger.LogWarning("[Cohere] HTTP {Status} — {Body}", statusCode, errorBody);
                 if (statusCode == 429 || statusCode == 403)
                 {
@@ -521,7 +615,7 @@ public class AiOrchestrationService : IAiOrchestrationService
 
             var raw = await response.Content.ReadAsStringAsync(ct);
             var processed = await ProcessCohereResponseAsync(raw, sessionId, messages);
-            if (processed != null) return (processed, "command-r-plus");
+            if (!string.IsNullOrWhiteSpace(processed)) return (processed, "command-r-plus");
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -539,7 +633,7 @@ public class AiOrchestrationService : IAiOrchestrationService
     {
         if (string.IsNullOrWhiteSpace(_geminiKey)) return null;
 
-        string[] models = { "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro" };
+        string[] models = { "gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-flash-latest" };
 
         foreach (var modelName in models)
         {
@@ -568,8 +662,9 @@ public class AiOrchestrationService : IAiOrchestrationService
                 {
                     var errorBody = await response.Content.ReadAsStringAsync(ct);
                     int statusCode = (int)response.StatusCode;
+                    Console.WriteLine($"[AI Pipeline Error] Gemini ({modelName}) returned Status {statusCode}: {errorBody}");
                     _logger.LogWarning("[Gemini] ({Model}) HTTP {Status} — {Body}", modelName, statusCode, errorBody);
-                    if (statusCode == 429) return null;
+                    if (statusCode == 429) continue;
                     continue;
                 }
 
@@ -683,13 +778,14 @@ public class AiOrchestrationService : IAiOrchestrationService
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorBody = await response.Content.ReadAsStringAsync(ct);
+                    Console.WriteLine($"[AI Pipeline Error] Mistral ({modelName}) returned Status {(int)response.StatusCode}: {errorBody}");
                     _logger.LogWarning("[Mistral] ({Model}) HTTP {Status} — {Body}", modelName, (int)response.StatusCode, errorBody);
                     continue;
                 }
 
                 var raw = await response.Content.ReadAsStringAsync(ct);
                 var processed = await ProcessOpenAiCompatibleResponseAsync(raw, sessionId, messages, $"Mistral ({modelName})");
-                if (processed != null) return (processed, $"Mistral ({modelName})");
+                if (!string.IsNullOrWhiteSpace(processed)) return (processed, $"Mistral ({modelName})");
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
@@ -710,13 +806,12 @@ public class AiOrchestrationService : IAiOrchestrationService
 
         string[] fallbackChain = new[]
         {
-            "openrouter/auto",
-            "meta-llama/llama-3.3-70b-instruct",
-            "qwen/qwen-2.5-72b-instruct",
-            "mistralai/mistral-7b-instruct",
-            "google/gemma-2-9b-it",
-            "meta-llama/llama-3.1-8b-instruct",
-            "deepseek/deepseek-r1-distill-llama-70b"
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "qwen/qwen-2.5-72b-instruct:free",
+            "google/gemma-2-9b-it:free",
+            "meta-llama/llama-3.1-8b-instruct:free",
+            "mistralai/mistral-7b-instruct:free",
+            "openrouter/auto"
         };
 
         using var client = _httpFactory.CreateClient();
@@ -736,7 +831,7 @@ public class AiOrchestrationService : IAiOrchestrationService
                     tools       = AiToolsService.GetToolDefinitions(),
                     tool_choice = "auto",
                     temperature = 0.0,
-                    max_tokens  = 2000
+                    max_tokens  = 1000
                 };
 
                 var json     = JsonSerializer.Serialize(body);
@@ -752,15 +847,16 @@ public class AiOrchestrationService : IAiOrchestrationService
                         503 => "model overloaded",
                         _   => $"HTTP {(int)response.StatusCode}"
                     };
+                    Console.WriteLine($"[AI Pipeline Error] OpenRouter ({modelName}) returned Status {(int)response.StatusCode}: {errorBody}");
                     _logger.LogWarning(
-                        "[OpenRouter] Model '{Model}' skipped — {Reason}. Trying next model...",
-                        modelName, reason);
+                        "[OpenRouter] Model '{Model}' skipped — {Reason}. Body: {Body}. Trying next model...",
+                        modelName, reason, errorBody);
                     continue;
                 }
 
                 var raw = await response.Content.ReadAsStringAsync();
                 var processed = await ProcessOpenAiCompatibleResponseAsync(raw, sessionId, messages, $"OpenRouter ({modelName})");
-                if (processed != null) 
+                if (!string.IsNullOrWhiteSpace(processed)) 
                 {
                     // Clean up the model name for a cleaner UI tag (e.g., "via llama-3.3-70b-instruct")
                     string cleanModelName = modelName.Contains("/") ? modelName.Split('/')[1] : modelName;
@@ -899,11 +995,24 @@ public class AiOrchestrationService : IAiOrchestrationService
         }
 
 
-        var intercepted = await InterceptTextToolCallAsync(sessionId, content!, messages, provider, depth);
-        if (!string.IsNullOrWhiteSpace(intercepted))
-            return intercepted;
+        // ── Plain Text Response Handling (No tool_calls) ───────────────────
+        if (!string.IsNullOrWhiteSpace(content))
+        {
+            try
+            {
+                var intercepted = await InterceptTextToolCallAsync(sessionId, content, messages, provider, depth);
+                if (!string.IsNullOrWhiteSpace(intercepted))
+                    return intercepted;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[{Provider}] Text tool call interception encountered an error. Returning raw text.", provider);
+            }
 
-        return content;
+            return content;
+        }
+
+        return null;
     }
 
     private async Task<string?> InterceptTextToolCallAsync(
@@ -1105,7 +1214,7 @@ public class AiOrchestrationService : IAiOrchestrationService
             // ── Question-aware: Drivers / Top Drivers / Driver Ratings focus ────
             if (q.Contains("driver") || q.Contains("rating") || q.Contains("top driver") || q.Contains("best driver") || q.Contains("chaffeur"))
             {
-                var topD = await _tools.GetTopDriversAsync(5);
+                var topD = await _tools.GetTopDriversAsync(null, 5);
                 var sb = new StringBuilder();
                 sb.AppendLine("Here are the **top 5 drivers by rating** from live database records:");
                 sb.AppendLine();
@@ -1347,21 +1456,18 @@ public class AiOrchestrationService : IAiOrchestrationService
         string textPart = rawText;
         string jsonPart = "{}";
         
-        var parts = rawText.Split("---UI_COMPONENT---");
-        if (parts.Length == 2)
+        // Regex split on delimiter variations like ---UI_COMPONENT---, --- UI_COMPONENT ---, UI_COMPONENT---, etc.
+        var splitRegex = new System.Text.RegularExpressions.Regex(@"\r?\n?---*\s*UI_COMPONENT\s*---*\r?\n?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var parts = splitRegex.Split(rawText);
+        if (parts.Length >= 2)
         {
             textPart = parts[0].Trim();
-            jsonPart = parts[1].Trim();
-        }
-        else if (parts.Length > 2)
-        {
-            textPart = parts[0].Trim();
-            jsonPart = parts.Last().Trim();
+            jsonPart = string.Join("\n", parts.Skip(1)).Trim();
         }
         else
         {
             // If the model missed the delimiter but included markdown JSON at the end
-            int jsonStart = rawText.LastIndexOf("```json");
+            int jsonStart = rawText.LastIndexOf("```json", StringComparison.OrdinalIgnoreCase);
             if (jsonStart == -1) jsonStart = rawText.IndexOf('{');
             
             if (jsonStart >= 0)
@@ -1371,10 +1477,18 @@ public class AiOrchestrationService : IAiOrchestrationService
             }
         }
 
+        // Clean out any leftover delimiter text or artifacts that might remain in textPart
+        textPart = System.Text.RegularExpressions.Regex.Replace(textPart, @"---*\s*UI_COMPONENT\s*---*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
+
+        // Clean thinking narration
         textPart = CleanThinkingNarration(textPart);
 
+        // Strip leading or trailing horizontal rule lines (--- or *** or ___) that surround textPart
+        textPart = System.Text.RegularExpressions.Regex.Replace(textPart, @"^(?:[\s\r\n]*---+\s*)+", "").Trim();
+        textPart = System.Text.RegularExpressions.Regex.Replace(textPart, @"(?:[\s\r\n]*---+\s*)+$", "").Trim();
+
         // Clean jsonPart
-        if (jsonPart.StartsWith("```json")) jsonPart = jsonPart[7..];
+        if (jsonPart.StartsWith("```json", StringComparison.OrdinalIgnoreCase)) jsonPart = jsonPart[7..];
         if (jsonPart.StartsWith("```"))     jsonPart = jsonPart[3..];
         if (jsonPart.EndsWith("```"))       jsonPart = jsonPart[..^3];
         jsonPart = jsonPart.Trim();
@@ -1751,21 +1865,203 @@ public class AiOrchestrationService : IAiOrchestrationService
             using var doc = JsonDocument.Parse(toolResult);
             var root = doc.RootElement;
 
-            if (toolName.Contains("overdue", StringComparison.OrdinalIgnoreCase))
+            decimal GetDec(JsonElement el, string pascal, string camel)
             {
-                if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
+                if (el.TryGetProperty(pascal, out var p) && p.ValueKind == JsonValueKind.Number) return p.GetDecimal();
+                if (el.TryGetProperty(camel, out var c) && c.ValueKind == JsonValueKind.Number) return c.GetDecimal();
+                return 0m;
+            }
+
+            int GetInt(JsonElement el, string pascal, string camel)
+            {
+                if (el.TryGetProperty(pascal, out var p) && p.ValueKind == JsonValueKind.Number) return p.GetInt32();
+                if (el.TryGetProperty(camel, out var c) && c.ValueKind == JsonValueKind.Number) return c.GetInt32();
+                return 0;
+            }
+
+            string GetStr(JsonElement el, string pascal, string camel, string defaultVal = "")
+            {
+                if (el.TryGetProperty(pascal, out var p) && p.ValueKind == JsonValueKind.String) return p.GetString() ?? defaultVal;
+                if (el.TryGetProperty(camel, out var c) && c.ValueKind == JsonValueKind.String) return c.GetString() ?? defaultVal;
+                return defaultVal;
+            }
+
+            JsonElement? GetProp(JsonElement el, string pascal, string camel)
+            {
+                if (el.TryGetProperty(pascal, out var p)) return p;
+                if (el.TryGetProperty(camel, out var c)) return c;
+                return null;
+            }
+
+            string lowerTool = toolName.ToLowerInvariant();
+
+            // 1. WEEKLY ANALYTICS
+            if (lowerTool.Contains("weekly"))
+            {
+                var dailyProp = GetProp(root, "DailyBreakdown", "dailyBreakdown");
+                decimal total = GetDec(root, "WeekTotal", "weekTotal");
+                int rentals = GetInt(root, "WeekRentals", "weekRentals");
+
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("📊 **Weekly Revenue Analytics**\n");
+                sb.AppendLine($"• **Total Revenue (Last 7 Days):** **₱{total:N2}**");
+                sb.AppendLine($"• **Total Completed Rentals:** **{rentals}**\n");
+
+                if (dailyProp.HasValue && dailyProp.Value.ValueKind == JsonValueKind.Array && dailyProp.Value.GetArrayLength() > 0)
+                {
+                    sb.AppendLine("| Date / Day | Revenue | Rentals |");
+                    sb.AppendLine("| :--- | :---: | :---: |");
+                    foreach (var day in dailyProp.Value.EnumerateArray())
+                    {
+                        string label = GetStr(day, "DayLabel", "dayLabel", "Day");
+                        decimal rev = GetDec(day, "Revenue", "revenue");
+                        int count = GetInt(day, "Rentals", "rentals");
+                        sb.AppendLine($"| **{label}** | ₱{rev:N2} | {count} |");
+                    }
+                }
+                return sb.ToString();
+            }
+
+            // 2. TODAY REVENUE
+            if (lowerTool.Contains("today") || lowerTool.Contains("daily"))
+            {
+                decimal todayRev = GetDec(root, "TodayRevenue", "todayRevenue");
+                int todayTxns = GetInt(root, "TodayTransactions", "todayTransactions");
+                decimal weekRev = GetDec(root, "WeekRevenue", "weekRevenue");
+                decimal monthRev = GetDec(root, "MonthRevenue", "monthRevenue");
+
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("💰 **Today's Revenue Summary**\n");
+                sb.AppendLine($"• **Today's Revenue:** **₱{todayRev:N2}** ({todayTxns} transaction(s))");
+                sb.AppendLine($"• **This Week's Total:** **₱{weekRev:N2}**");
+                sb.AppendLine($"• **This Month's Total:** **₱{monthRev:N2}**");
+                return sb.ToString();
+            }
+
+            // 3. MONTHLY REVENUE
+            if (lowerTool.Contains("monthly"))
+            {
+                decimal grandTotal = GetDec(root, "GrandTotal", "grandTotal");
+                var monthsProp = GetProp(root, "Months", "months");
+
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("📈 **Monthly Revenue Breakdown**\n");
+                sb.AppendLine($"• **Cumulative Revenue:** **₱{grandTotal:N2}**\n");
+
+                if (monthsProp.HasValue && monthsProp.Value.ValueKind == JsonValueKind.Array && monthsProp.Value.GetArrayLength() > 0)
+                {
+                    sb.AppendLine("| Month | Revenue | Transactions |");
+                    sb.AppendLine("| :--- | :---: | :---: |");
+                    foreach (var m in monthsProp.Value.EnumerateArray())
+                    {
+                        string label = GetStr(m, "MonthLabel", "monthLabel", "Month");
+                        decimal rev = GetDec(m, "Revenue", "revenue");
+                        int txns = GetInt(m, "Transactions", "transactions");
+                        sb.AppendLine($"| **{label}** | ₱{rev:N2} | {txns} |");
+                    }
+                }
+                return sb.ToString();
+            }
+
+            // 4. FLEET COUNT / STATUS
+            if (lowerTool.Contains("fleet"))
+            {
+                int total = GetInt(root, "TotalVehicles", "totalVehicles");
+                int available = GetInt(root, "Available", "available");
+                int onRent = GetInt(root, "OnRent", "onRent");
+                int maintenance = GetInt(root, "Maintenance", "maintenance");
+                double util = root.TryGetProperty("UtilizationPct", out var u) ? u.GetDouble() : (root.TryGetProperty("utilizationPct", out var u2) ? u2.GetDouble() : 0.0);
+
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("🚗 **Drive&Go Fleet Status Summary**\n");
+                sb.AppendLine($"• **Total Fleet Count:** **{total} vehicles**");
+                sb.AppendLine($"• **Available for Rent:** **{available}**");
+                sb.AppendLine($"• **Currently On Rent:** **{onRent}**");
+                sb.AppendLine($"• **Under Maintenance:** **{maintenance}**");
+                sb.AppendLine($"• **Fleet Utilization:** **{util:F1}%**");
+                return sb.ToString();
+            }
+
+            // 5. PENDING BOOKINGS
+            if (lowerTool.Contains("pending"))
+            {
+                int count = GetInt(root, "PendingCount", "pendingCount");
+                var itemsProp = GetProp(root, "Items", "items");
+
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("⌛ **Pending Booking Requests**\n");
+                sb.AppendLine($"• **Total Pending Bookings:** **{count}**\n");
+
+                if (itemsProp.HasValue && itemsProp.Value.ValueKind == JsonValueKind.Array && itemsProp.Value.GetArrayLength() > 0)
+                {
+                    sb.AppendLine("| ID | Customer | Vehicle | Start Date | Amount |");
+                    sb.AppendLine("| :---: | :--- | :--- | :---: | :---: |");
+                    foreach (var item in itemsProp.Value.EnumerateArray())
+                    {
+                        int id = GetInt(item, "RentalId", "rentalId");
+                        string cust = GetStr(item, "CustomerName", "customerName", "Customer");
+                        string veh = GetStr(item, "VehicleName", "vehicleName", "Vehicle");
+                        string date = GetStr(item, "StartDate", "startDate", "");
+                        decimal amt = GetDec(item, "TotalAmount", "totalAmount");
+                        sb.AppendLine($"| #{id} | **{cust}** | {veh} | {date} | ₱{amt:N2} |");
+                    }
+                }
+                return sb.ToString();
+            }
+
+            // 6. TOP DRIVERS & EMPLOYEES
+            if (lowerTool.Contains("driver") || lowerTool.Contains("employee"))
+            {
+                string period = GetStr(root, "Period", "period", "all_time");
+                string periodLabel = period.ToLowerInvariant() switch
+                {
+                    "july" => "July 2026",
+                    "august" => "August 2026",
+                    "this_month" => "This Month",
+                    "last_month" => "Last Month",
+                    _ => "Overall All-Time"
+                };
+
+                var driversProp = GetProp(root, "Drivers", "drivers");
+                if (driversProp.HasValue && driversProp.Value.ValueKind == JsonValueKind.Array && driversProp.Value.GetArrayLength() > 0)
+                {
+                    var sb = new System.Text.StringBuilder();
+                    sb.AppendLine($"🏆 **Top Employees & Drivers Performance Report** ({periodLabel})\n");
+                    sb.AppendLine("| Employee / Driver | Rating | Completed Trips | Revenue Generated |");
+                    sb.AppendLine("| :--- | :---: | :---: | :---: |");
+                    foreach (var d in driversProp.Value.EnumerateArray())
+                    {
+                        string name = GetStr(d, "FullName", "fullName", "Driver");
+                        decimal rating = GetDec(d, "RatingAvg", "ratingAvg");
+                        int pTrips = GetInt(d, "PeriodTrips", "periodTrips");
+                        if (pTrips == 0) pTrips = GetInt(d, "TotalTrips", "totalTrips");
+                        decimal pRev = GetDec(d, "PeriodRevenue", "periodRevenue");
+                        string revText = pRev > 0 ? $"**₱{pRev:N2}**" : "N/A";
+                        sb.AppendLine($"| **{name}** | ⭐ {rating:F1} | {pTrips} trip(s) | {revText} |");
+                    }
+                    return sb.ToString();
+                }
+            }
+
+            // 7. OVERDUE RENTALS
+            if (lowerTool.Contains("overdue"))
+            {
+                var itemsProp = GetProp(root, "Items", "items");
+                var arrayEl = itemsProp.HasValue && itemsProp.Value.ValueKind == JsonValueKind.Array ? itemsProp.Value : (root.ValueKind == JsonValueKind.Array ? root : (JsonElement?)null);
+
+                if (arrayEl.HasValue && arrayEl.Value.GetArrayLength() > 0)
                 {
                     var sb = new System.Text.StringBuilder();
                     sb.AppendLine("📋 **Overdue Rentals Report**\n");
                     sb.AppendLine("| Customer | Vehicle | Days Overdue | Estimated Penalty |");
                     sb.AppendLine("| :--- | :--- | :---: | :---: |");
 
-                    foreach (var item in root.EnumerateArray())
+                    foreach (var item in arrayEl.Value.EnumerateArray())
                     {
-                        string name    = item.TryGetProperty("customerName", out var n) ? n.GetString() ?? "Customer" : "Customer";
-                        string vehicle = item.TryGetProperty("vehicleName", out var v) ? v.GetString() ?? "Vehicle" : "Vehicle";
-                        int days       = item.TryGetProperty("daysOverdue", out var d) ? d.GetInt32() : 1;
-                        decimal fee    = item.TryGetProperty("estimatedPenalty", out var p) ? p.GetDecimal() : (days * 500m);
+                        string name    = GetStr(item, "CustomerName", "customerName", "Customer");
+                        string vehicle = GetStr(item, "VehicleName", "vehicleName", "Vehicle");
+                        int days       = GetInt(item, "DaysOverdue", "daysOverdue");
+                        decimal fee    = GetDec(item, "PenaltyEst", "penaltyEst");
 
                         sb.AppendLine($"| **{name}** | {vehicle} | {days} day(s) | **₱{fee:N2}** |");
                     }
@@ -1775,51 +2071,92 @@ public class AiOrchestrationService : IAiOrchestrationService
                 }
                 return "📋 **Overdue Rentals Report**\n\nGreat news! There are currently **no overdue rentals** in the system.";
             }
-        }
-        catch { /* ignore */ }
 
-        return "System records retrieved successfully. Please let me know if you would like specific filters or summary breakdowns!";
+            // 8. CUSTOMER INSIGHTS
+            if (lowerTool.Contains("customer"))
+            {
+                int totalCust = GetInt(root, "total_customers", "totalCustomers");
+                int newThisMonth = GetInt(root, "new_customers_this_month", "newCustomersThisMonth");
+                var topCustProp = GetProp(root, "top_customers", "topCustomers");
+
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("👥 **Customer Insights & Top Spenders**\n");
+                sb.AppendLine($"• **Total Customer Base:** **{totalCust} registered customers**");
+                sb.AppendLine($"• **New Signups This Month:** **{newThisMonth}**\n");
+
+                if (topCustProp.HasValue && topCustProp.Value.ValueKind == JsonValueKind.Array && topCustProp.Value.GetArrayLength() > 0)
+                {
+                    sb.AppendLine("| Customer Name | Contact | Total Bookings | Total Spent |");
+                    sb.AppendLine("| :--- | :---: | :---: | :---: |");
+                    foreach (var c in topCustProp.Value.EnumerateArray())
+                    {
+                        string name = GetStr(c, "customer_name", "customerName", "Customer");
+                        string phone = GetStr(c, "phone_masked", "phoneMasked", "N/A");
+                        int bookings = GetInt(c, "total_bookings", "totalBookings");
+                        decimal spent = GetDec(c, "total_spent", "totalSpent");
+                        sb.AppendLine($"| **{name}** | {phone} | {bookings} booking(s) | **₱{spent:N2}** |");
+                    }
+                }
+                return sb.ToString();
+            }
+
+            // 9. SEARCH VEHICLES
+            if (lowerTool.Contains("search_vehicles") || lowerTool.Contains("vehicle_utilization"))
+            {
+                var vehiclesProp = GetProp(root, "vehicles", "Vehicles");
+                if (vehiclesProp.HasValue && vehiclesProp.Value.ValueKind == JsonValueKind.Array && vehiclesProp.Value.GetArrayLength() > 0)
+                {
+                    var sb = new System.Text.StringBuilder();
+                    sb.AppendLine("🚘 **Fleet Vehicles Overview**\n");
+                    sb.AppendLine("| Vehicle | Plate No | Status | Daily Rate | Total Revenue |");
+                    sb.AppendLine("| :--- | :---: | :---: | :---: | :---: |");
+                    foreach (var v in vehiclesProp.Value.EnumerateArray())
+                    {
+                        string brand = GetStr(v, "brand", "brand", "");
+                        string model = GetStr(v, "model", "model", "");
+                        string vName = GetStr(v, "VehicleName", "vehicleName", $"{brand} {model}".Trim());
+                        string plate = GetStr(v, "plate_no", "plateNo", "PlateNo");
+                        string status = GetStr(v, "status", "status", "Available");
+                        decimal rate = GetDec(v, "rate_per_day", "ratePerDay");
+                        decimal rev = GetDec(v, "Revenue", "revenue");
+                        sb.AppendLine($"| **{vName}** | {plate} | `{status}` | ₱{rate:N2} | ₱{rev:N2} |");
+                    }
+                    return sb.ToString();
+                }
+            }
+
+            // 10. TRANSACTION SUMMARY
+            if (lowerTool.Contains("transaction"))
+            {
+                var breakdownProp = GetProp(root, "breakdown_by_method", "breakdownByMethod");
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("💳 **Transaction Summary**\n");
+
+                if (breakdownProp.HasValue && breakdownProp.Value.ValueKind == JsonValueKind.Array && breakdownProp.Value.GetArrayLength() > 0)
+                {
+                    sb.AppendLine("| Payment Method | Status | Transactions | Total Amount |");
+                    sb.AppendLine("| :--- | :---: | :---: | :---: |");
+                    foreach (var b in breakdownProp.Value.EnumerateArray())
+                    {
+                        string method = GetStr(b, "method", "method", "Method");
+                        string status = GetStr(b, "status", "status", "Status");
+                        int count = GetInt(b, "txn_count", "txnCount");
+                        decimal total = GetDec(b, "total_amount", "totalAmount");
+                        sb.AppendLine($"| **{method.ToUpper()}** | `{status}` | {count} | **₱{total:N2}** |");
+                    }
+                }
+                return sb.ToString();
+            }
+        }
+        catch { /* ignore parsing errors */ }
+
+        return "System records retrieved successfully. Database data is loaded and ready.";
     }
 
     private async Task<string?> TryLocalDatabaseAnswerAsync(int sessionId, string userMessage)
     {
-        if (string.IsNullOrWhiteSpace(userMessage)) return null;
-        string q = userMessage.ToLowerInvariant().Trim();
-
-        try
-        {
-            string? toolName = null;
-            if (q.Contains("overdue") || q.Contains("multa") || q.Contains("late"))
-                toolName = AiToolsService.ToolGetOverdueRentals;
-            else if (q.Contains("today") || q.Contains("ngayong araw") || q.Contains("daily revenue"))
-                toolName = AiToolsService.ToolGetTodayRevenue;
-            else if (q.Contains("monthly") || q.Contains("buwan") || q.Contains("last 6 months"))
-                toolName = AiToolsService.ToolGetMonthlyRevenue;
-            else if (q.Contains("active rentals") || q.Contains("pending") || q.Contains("how many active"))
-                toolName = AiToolsService.ToolGetPendingBookings;
-            else if (q.Contains("fleet") || q.Contains("available") || q.Contains("sasakyan"))
-                toolName = AiToolsService.ToolGetFleetCount;
-            else if (q.Contains("top drivers") || q.Contains("drayber") || q.Contains("rating"))
-                toolName = AiToolsService.ToolGetTopDrivers;
-            else if (q.Contains("surge") || q.Contains("pricing"))
-                toolName = AiToolsService.ToolCheckSurgePricing;
-            else if (q.Contains("maintenance") || q.Contains("alerts") || q.Contains("sira"))
-                toolName = AiToolsService.ToolGetMaintenanceAlerts;
-
-            if (!string.IsNullOrEmpty(toolName))
-            {
-                _logger.LogInformation("[LocalDatabaseEngine] Intercepted query '{UserMessage}' -> Executing tool '{ToolName}'", userMessage, toolName);
-                string toolResult = await _tools.DispatchAsync(toolName, null);
-                string summary = FormatFallbackToolSummary(toolName, toolResult);
-                await PersistMessageAsync(sessionId, "bot_copilot", "assistant", summary, null, null, toolName, "LocalDatabaseEngine", null);
-                return summary;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[LocalDatabaseEngine] Failed to answer query directly from database.");
-        }
-
-        return null;
+        // Local keyword interception removed as requested.
+        // All queries are handled directly by cloud AI models with native function calling.
+        return await Task.FromResult<string?>(null);
     }
 }

@@ -28,7 +28,7 @@ public class DriversController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+            return StatusCode(500, new { Message = DriveAndGo_API.Services.UserFriendlyErrorMessage.Clean(ex.Message) });
         }
     }
 
@@ -41,7 +41,7 @@ public class DriversController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+            return StatusCode(500, new { Message = DriveAndGo_API.Services.UserFriendlyErrorMessage.Clean(ex.Message) });
         }
     }
 
@@ -57,7 +57,7 @@ public class DriversController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+            return StatusCode(500, new { Message = DriveAndGo_API.Services.UserFriendlyErrorMessage.Clean(ex.Message) });
         }
     }
 
@@ -73,7 +73,7 @@ public class DriversController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+            return StatusCode(500, new { Message = DriveAndGo_API.Services.UserFriendlyErrorMessage.Clean(ex.Message) });
         }
     }
 
@@ -155,7 +155,7 @@ public class DriversController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+            return StatusCode(500, new { Message = DriveAndGo_API.Services.UserFriendlyErrorMessage.Clean(ex.Message) });
         }
     }
 
@@ -251,7 +251,7 @@ public class DriversController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+            return StatusCode(500, new { Message = DriveAndGo_API.Services.UserFriendlyErrorMessage.Clean(ex.Message) });
         }
     }
 
@@ -296,7 +296,7 @@ public class DriversController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+            return StatusCode(500, new { Message = DriveAndGo_API.Services.UserFriendlyErrorMessage.Clean(ex.Message) });
         }
     }
 
@@ -359,7 +359,7 @@ public class DriversController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+            return StatusCode(500, new { Message = DriveAndGo_API.Services.UserFriendlyErrorMessage.Clean(ex.Message) });
         }
     }
 
@@ -414,7 +414,7 @@ public class DriversController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+            return StatusCode(500, new { Message = DriveAndGo_API.Services.UserFriendlyErrorMessage.Clean(ex.Message) });
         }
     }
 
@@ -495,7 +495,7 @@ public class DriversController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+            return StatusCode(500, new { Message = DriveAndGo_API.Services.UserFriendlyErrorMessage.Clean(ex.Message) });
         }
     }
 
@@ -533,7 +533,7 @@ public class DriversController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+            return StatusCode(500, new { Message = DriveAndGo_API.Services.UserFriendlyErrorMessage.Clean(ex.Message) });
         }
     }
 

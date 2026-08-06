@@ -91,11 +91,31 @@ namespace DriveAndGo_API.Services
                     cmd.ExecuteNonQuery();
                 }
 
-                // 7. users lockout columns migration
+                // 7. users lockout & security columns migration
                 using (var cmd = new NpgsqlCommand(@"
                     ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INT DEFAULT 0;
                     ALTER TABLE users ADD COLUMN IF NOT EXISTS lockout_enabled BOOLEAN DEFAULT FALSE;
                     ALTER TABLE users ADD COLUMN IF NOT EXISTS lockout_end TIMESTAMP;
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN DEFAULT FALSE;
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS login_alerts_enabled BOOLEAN DEFAULT TRUE;
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS pin_required BOOLEAN DEFAULT FALSE;
+                ", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 7b. otp_codes table creation
+                using (var cmd = new NpgsqlCommand(@"
+                    CREATE TABLE IF NOT EXISTS otp_codes (
+                        otp_id SERIAL PRIMARY KEY,
+                        email VARCHAR(255) NOT NULL,
+                        otp_code VARCHAR(10) NOT NULL,
+                        purpose VARCHAR(50) NOT NULL,
+                        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                        expires_at TIMESTAMP NOT NULL,
+                        is_used BOOLEAN NOT NULL DEFAULT FALSE
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_otp_email_purpose ON otp_codes(email, purpose, is_used);
                 ", conn))
                 {
                     cmd.ExecuteNonQuery();

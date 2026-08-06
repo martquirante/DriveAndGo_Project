@@ -738,9 +738,24 @@ namespace DriveAndGo_Admin
             SetDoubleBuffer(wrapper);
 
             int y = 8;
-            AddToggleRow(wrapper, "🔑 Two-Factor Auth (2FA)", "Requires OTP code on login", _is2FAEnabled, (v) => _is2FAEnabled = v, ref y);
-            AddToggleRow(wrapper, "🔔 New Device Login Alerts", "Get emails for unknown devices", _isAlertsEnabled, (v) => _isAlertsEnabled = v, ref y);
-            AddToggleRow(wrapper, "📌 Dispatch PIN Requirement", "Require 4-digit PIN for bookings", _isPinReqEnabled, (v) => _isPinReqEnabled = v, ref y);
+            AddToggleRow(wrapper, "🔑 Two-Factor Auth (2FA)", "Requires OTP code on login", _is2FAEnabled, async (v) =>
+            {
+                _is2FAEnabled = v;
+                int uid = SessionManager.UserId > 0 ? SessionManager.UserId : 1;
+                await ApiService.UpdateSecuritySettingsAsync(uid, _is2FAEnabled, _isAlertsEnabled, _isPinReqEnabled);
+            }, ref y);
+            AddToggleRow(wrapper, "🔔 New Device Login Alerts", "Get emails for unknown devices", _isAlertsEnabled, async (v) =>
+            {
+                _isAlertsEnabled = v;
+                int uid = SessionManager.UserId > 0 ? SessionManager.UserId : 1;
+                await ApiService.UpdateSecuritySettingsAsync(uid, _is2FAEnabled, _isAlertsEnabled, _isPinReqEnabled);
+            }, ref y);
+            AddToggleRow(wrapper, "📌 Dispatch PIN Requirement", "Require 4-digit PIN for bookings", _isPinReqEnabled, async (v) =>
+            {
+                _isPinReqEnabled = v;
+                int uid = SessionManager.UserId > 0 ? SessionManager.UserId : 1;
+                await ApiService.UpdateSecuritySettingsAsync(uid, _is2FAEnabled, _isAlertsEnabled, _isPinReqEnabled);
+            }, ref y);
 
             var div = new Panel { Location = new Point(2, y + 6), Size = new Size(250, 1), BackColor = ThemeManager.CurrentBorder };
             wrapper.Controls.Add(div);
@@ -772,7 +787,7 @@ namespace DriveAndGo_Admin
             };
             btnPassSave.FlatAppearance.BorderColor = ThemeManager.CurrentBorder;
             SetRoundRegion(btnPassSave, 8);
-            btnPassSave.Click += (s, e) =>
+            btnPassSave.Click += async (s, e) =>
             {
                 string curr = txtCurr.Text.Trim();
                 string newP = txtNew.Text.Trim();
@@ -806,11 +821,51 @@ namespace DriveAndGo_Admin
                     return;
                 }
 
-                AddActivityLogEntry("🔑", "Password updated successfully", ThemeManager.CurrentPrimary);
-                MessageBox.Show("Password updated successfully!", "Security Alert", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                txtCurr.Text = "";
-                txtNew.Text = "";
-                txtConf.Text = "";
+                btnPassSave.Enabled = false;
+                btnPassSave.Text = "Sending OTP...";
+
+                int uid = SessionManager.UserId > 0 ? SessionManager.UserId : 1;
+                var (otpSent, reqMsg) = await ApiService.RequestPasswordChangeOtpAsync(uid, curr);
+
+                btnPassSave.Enabled = true;
+                btnPassSave.Text = "🔒 Update Password";
+
+                if (!otpSent)
+                {
+                    MessageBox.Show(reqMsg, "Authentication Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                string userEm = !string.IsNullOrWhiteSpace(SessionManager.Email) ? SessionManager.Email : _userEmail;
+                using var otpDlg = new OtpVerificationDialog(
+                    userEm, 
+                    "Confirm Password Change", 
+                    resendCallback: async () =>
+                    {
+                        var (s2, m2) = await ApiService.RequestPasswordChangeOtpAsync(uid, curr);
+                        return s2;
+                    },
+                    verifyCallback: async (code) =>
+                    {
+                        var (changeOk, changeMsg) = await ApiService.ChangePasswordWithOtpAsync(uid, curr, newP, code);
+                        return (changeOk, changeMsg ?? "Invalid or expired OTP code.");
+                    }
+                );
+
+                // Subscribe to ResendRequested event
+                otpDlg.ResendRequested += async (senderEvt, argsEvt) =>
+                {
+                    await ApiService.RequestPasswordChangeOtpAsync(uid, curr);
+                };
+
+                if (otpDlg.ShowDialog(this) == DialogResult.OK)
+                {
+                    AddActivityLogEntry("🔑", "Password updated successfully", ThemeManager.CurrentPrimary);
+                    MessageBox.Show("Password updated successfully!", "Security Alert", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    txtCurr.Text = "";
+                    txtNew.Text = "";
+                    txtConf.Text = "";
+                }
             };
             wrapper.Controls.Add(btnPassSave);
             y += 48;

@@ -1542,13 +1542,19 @@ namespace DriveAndGo_Admin
                     _chatFloatHost.Controls.Add(_chatOverlay);
                 }
 
-                // Position: bottom-right, start offscreen below
-                int hostX = this.ClientSize.Width  - 560 - FabMargin;
-                int hostY = this.ClientSize.Height;        // start below viewport
-                _chatFloatHost.Location = new Point(hostX, hostY);
-                this.Controls.Add(_chatFloatHost);
+                _chatFloatHost.Visible = true;
+                _chatOverlay.Visible   = true;
+
+                if (!this.Controls.Contains(_chatFloatHost))
+                {
+                    int initialX = this.ClientSize.Width - 560 - FabMargin;
+                    int initialY = this.ClientSize.Height; // start below viewport
+                    _chatFloatHost.Location = new Point(initialX, initialY);
+                    this.Controls.Add(_chatFloatHost);
+                }
+
                 _chatFloatHost.BringToFront();
-                _fabPanel.BringToFront();
+                _fabPanel?.BringToFront();
 
                 _chatFloatHost?.Focus();
                 _chatOverlay?.Focus();
@@ -1591,8 +1597,8 @@ namespace DriveAndGo_Admin
                     float diff = targetY - host.Top;
                     if (Math.Abs(diff) < 2f || host.Top >= targetY)
                     {
-                        try { this.Controls.Remove(host); host.Dispose(); } catch { }
-                        _chatFloatHost = null;
+                        // Keep host & WebView2 ALIVE in background so AI processing continues!
+                        host.Visible = false;
                         t.Stop(); t.Dispose();
                     }
                     else
@@ -2792,23 +2798,201 @@ namespace DriveAndGo_Admin
             base.Dispose(disposing);
         }
         // ══════════════════════════════════════════════════════════════════════════
-        //  GLOBAL KEYBOARD & MOUSE NAVIGATION (ESC / XBUTTON1 / XBUTTON2)
+        //  GLOBAL KEYBOARD NAVIGATION ENGINE
         // ══════════════════════════════════════════════════════════════════════════
+        private readonly Type[] _sidebarNavTypes = new Type[]
+        {
+            typeof(DashboardPanel),
+            typeof(FleetPanel),
+            typeof(RentalsPanel),
+            typeof(DriversPanel),
+            typeof(TransactionsPanel),
+            typeof(ReportsPanel),
+            typeof(CalendarPanel),
+            typeof(DocumentVaultPanel),
+            typeof(ExpensesPanel),
+            typeof(SplitPaymentsPanel),
+            typeof(AccountsPanel)
+        };
+
+        private void NavigateNextSidebarTab()
+        {
+            if (_activePanel == null) { NavigateTo<DashboardPanel>(); return; }
+            int idx = Array.IndexOf(_sidebarNavTypes, _activePanel.GetType());
+            if (idx < 0) idx = 0;
+            else idx = (idx + 1) % _sidebarNavTypes.Length;
+            NavigateToType(_sidebarNavTypes[idx]);
+        }
+
+        private void NavigatePreviousSidebarTab()
+        {
+            if (_activePanel == null) { NavigateTo<DashboardPanel>(); return; }
+            int idx = Array.IndexOf(_sidebarNavTypes, _activePanel.GetType());
+            if (idx <= 0) idx = _sidebarNavTypes.Length - 1;
+            else idx = idx - 1;
+            NavigateToType(_sidebarNavTypes[idx]);
+        }
+
+        private void FocusActivePanelSearch()
+        {
+            if (_activePanel == null)
+            {
+                ToggleChatFloat();
+                return;
+            }
+
+            Control searchControl = FindSearchControl(_activePanel);
+            if (searchControl != null)
+            {
+                searchControl.Focus();
+                if (searchControl is TextBox tb) tb.SelectAll();
+            }
+            else
+            {
+                ToggleChatFloat();
+            }
+        }
+
+        private Control FindSearchControl(Control parent)
+        {
+            if (parent == null) return null;
+            foreach (Control c in parent.Controls)
+            {
+                if (c is TextBox && (!string.IsNullOrEmpty(c.Name) && (c.Name.Contains("Search", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Filter", StringComparison.OrdinalIgnoreCase))))
+                    return c;
+
+                var child = FindSearchControl(c);
+                if (child != null) return child;
+            }
+            return null;
+        }
+
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            // Check if user is currently typing in an editable input box
+            bool isEditingText = ActiveControl is TextBoxBase || ActiveControl is ComboBox;
+
+            // 1. ESC key: Close flyouts -> Close AI chat -> Navigate Back
             if (keyData == Keys.Escape)
             {
+                if (_notifFlyout != null && _notifFlyout.Visible)
+                {
+                    _notifFlyout.Hide();
+                    return true;
+                }
+                if (_profileFlyout != null && _profileFlyout.Visible)
+                {
+                    _profileFlyout.Hide();
+                    return true;
+                }
                 if (_chatVisible)
                 {
                     ToggleChatFloat();
                     return true;
                 }
-                else if (_backStack.Count > 0)
+                if (_backStack.Count > 0)
                 {
                     NavigateBack();
                     return true;
                 }
             }
+
+            // 2. Navigation Back (Alt + Left or Backspace when not typing)
+            if (keyData == (Keys.Alt | Keys.Left) || (!isEditingText && keyData == Keys.Back))
+            {
+                if (_backStack.Count > 0)
+                {
+                    NavigateBack();
+                    return true;
+                }
+            }
+
+            // 3. Navigation Forward (Alt + Right)
+            if (keyData == (Keys.Alt | Keys.Right))
+            {
+                if (_forwardStack.Count > 0)
+                {
+                    NavigateForward();
+                    return true;
+                }
+            }
+
+            // 4. Drive&Go AI Copilot Chat Toggle (F1, Ctrl+Shift+C, Ctrl+Space)
+            if (keyData == Keys.F1 || keyData == (Keys.Control | Keys.Shift | Keys.C) || keyData == (Keys.Control | Keys.Space))
+            {
+                ToggleChatFloat();
+                return true;
+            }
+
+            // 5. Refresh Active Panel (F5 or Ctrl+R)
+            if (keyData == Keys.F5 || keyData == (Keys.Control | Keys.R))
+            {
+                if (_activePanel != null)
+                {
+                    Type currentType = _activePanel.GetType();
+                    _activePanel = null; // force re-sync
+                    NavigateToType(currentType);
+                    return true;
+                }
+            }
+
+            // 6. Global Search Focus (Ctrl+F, F3)
+            if (keyData == (Keys.Control | Keys.F) || keyData == Keys.F3)
+            {
+                FocusActivePanelSearch();
+                return true;
+            }
+
+            // 7. Toggle Sidebar Collapse (Ctrl+B)
+            if (keyData == (Keys.Control | Keys.B))
+            {
+                OnToggleSidebar(this, EventArgs.Empty);
+                return true;
+            }
+
+            // 8. Direct Jump to Tabs (Ctrl + 1..9 or Alt + 1..9)
+            Keys keyMask = keyData & Keys.KeyCode;
+            bool isCtrl = (keyData & Keys.Control) == Keys.Control;
+            bool isAlt = (keyData & Keys.Alt) == Keys.Alt;
+
+            if (isCtrl || isAlt)
+            {
+                switch (keyMask)
+                {
+                    case Keys.D1: case Keys.NumPad1: NavigateTo<DashboardPanel>(); return true;
+                    case Keys.D2: case Keys.NumPad2: NavigateTo<FleetPanel>(); return true;
+                    case Keys.D3: case Keys.NumPad3: NavigateTo<RentalsPanel>(); return true;
+                    case Keys.D4: case Keys.NumPad4: NavigateTo<DriversPanel>(); return true;
+                    case Keys.D5: case Keys.NumPad5: NavigateTo<TransactionsPanel>(); return true;
+                    case Keys.D6: case Keys.NumPad6: NavigateTo<ReportsPanel>(); return true;
+                    case Keys.D7: case Keys.NumPad7: NavigateTo<CalendarPanel>(); return true;
+                    case Keys.D8: case Keys.NumPad8: NavigateTo<DocumentVaultPanel>(); return true;
+                    case Keys.D9: case Keys.NumPad9: NavigateTo<ExpensesPanel>(); return true;
+                }
+            }
+
+            // 9. Cycle Sidebar Tabs (Ctrl + Up / Ctrl + Down or Alt + Up / Alt + Down)
+            if ((isCtrl || isAlt) && keyMask == Keys.Up)
+            {
+                NavigatePreviousSidebarTab();
+                return true;
+            }
+            if ((isCtrl || isAlt) && keyMask == Keys.Down)
+            {
+                NavigateNextSidebarTab();
+                return true;
+            }
+
+            // 10. F11 Fullscreen / Maximize Toggle
+            if (keyData == Keys.F11)
+            {
+                if (this.WindowState == FormWindowState.Maximized)
+                    this.WindowState = FormWindowState.Normal;
+                else
+                    this.WindowState = FormWindowState.Maximized;
+                return true;
+            }
+
             return base.ProcessCmdKey(ref msg, keyData);
         }
 

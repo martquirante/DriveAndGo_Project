@@ -1,5 +1,7 @@
+using BCryptNet = BCrypt.Net.BCrypt;
 using DriveAndGo_API.Contracts;
 using DriveAndGo_API.Models;
+using DriveAndGo_API.Services;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 
@@ -10,10 +12,12 @@ namespace DriveAndGo_API.Controllers;
 public class UsersController : ControllerBase
 {
     private readonly string _connectionString;
+    private readonly IEmailService _emailService;
 
-    public UsersController(IConfiguration configuration)
+    public UsersController(IConfiguration configuration, IEmailService emailService)
     {
         _connectionString = configuration.GetConnectionString("DefaultConnection")!;
+        _emailService = emailService;
         EnsureColumnsExist();
     }
 
@@ -244,6 +248,164 @@ public class UsersController : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+        }
+    }
+
+    [HttpPost("request-password-change-otp")]
+    public async Task<IActionResult> RequestPasswordChangeOtp([FromBody] RequestPasswordChangeOtpRequest request)
+    {
+        if (request.UserId <= 0 || string.IsNullOrWhiteSpace(request.CurrentPassword))
+        {
+            return BadRequest(new { Message = "UserId and current password are required." });
+        }
+
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            string email = "";
+            string storedHash = "";
+
+            using (var userCmd = new NpgsqlCommand("SELECT email, password_hash FROM users WHERE user_id = @id", connection))
+            {
+                userCmd.Parameters.AddWithValue("@id", request.UserId);
+                using var reader = userCmd.ExecuteReader();
+                if (!reader.Read())
+                {
+                    return NotFound(new { Message = "User account not found." });
+                }
+                email = reader["email"]?.ToString() ?? "";
+                storedHash = reader["password_hash"]?.ToString() ?? "";
+            }
+
+            bool isValid = false;
+            try
+            {
+                isValid = BCryptNet.Verify(request.CurrentPassword, storedHash);
+            }
+            catch
+            {
+                isValid = string.Equals(request.CurrentPassword, storedHash, StringComparison.Ordinal);
+            }
+
+            if (!isValid && !string.Equals(request.CurrentPassword, storedHash, StringComparison.Ordinal))
+            {
+                return BadRequest(new { Message = "Current password is incorrect." });
+            }
+
+            // Invalidate previous unused PASSWORD_CHANGE codes
+            using (var invCmd = new NpgsqlCommand("UPDATE otp_codes SET is_used = true WHERE email = @email AND purpose = 'PASSWORD_CHANGE' AND is_used = false", connection))
+            {
+                invCmd.Parameters.AddWithValue("@email", email.Trim());
+                invCmd.ExecuteNonQuery();
+            }
+
+            string otpCode = Random.Shared.Next(100000, 999999).ToString();
+            using (var insCmd = new NpgsqlCommand(@"
+                INSERT INTO otp_codes (email, otp_code, purpose, expires_at)
+                VALUES (@email, @code, 'PASSWORD_CHANGE', NOW() + INTERVAL '2 minutes')", connection))
+            {
+                insCmd.Parameters.AddWithValue("@email", email.Trim());
+                insCmd.Parameters.AddWithValue("@code", otpCode);
+                insCmd.ExecuteNonQuery();
+            }
+
+            await _emailService.SendOtpEmailAsync(email.Trim(), otpCode, "PASSWORD_CHANGE");
+
+            return Ok(new { Success = true, Email = email.Trim(), Message = "Password change verification OTP code sent to your email." });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "Failed to request password change OTP: " + ex.Message });
+        }
+    }
+
+    [HttpPost("change-password-with-otp")]
+    public IActionResult ChangePasswordWithOtp([FromBody] ChangePasswordWithOtpRequest request)
+    {
+        if (request.UserId <= 0 || string.IsNullOrWhiteSpace(request.CurrentPassword) || string.IsNullOrWhiteSpace(request.NewPassword) || string.IsNullOrWhiteSpace(request.Otp))
+        {
+            return BadRequest(new { Message = "UserId, current password, new password, and OTP code are required." });
+        }
+
+        if (request.NewPassword.Trim().Length < 6)
+        {
+            return BadRequest(new { Message = "New password must be at least 6 characters long." });
+        }
+
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            string email = "";
+            string storedHash = "";
+
+            using (var userCmd = new NpgsqlCommand("SELECT email, password_hash FROM users WHERE user_id = @id", connection))
+            {
+                userCmd.Parameters.AddWithValue("@id", request.UserId);
+                using var reader = userCmd.ExecuteReader();
+                if (!reader.Read())
+                {
+                    return NotFound(new { Message = "User account not found." });
+                }
+                email = reader["email"]?.ToString() ?? "";
+                storedHash = reader["password_hash"]?.ToString() ?? "";
+            }
+
+            bool isValid = false;
+            try
+            {
+                isValid = BCryptNet.Verify(request.CurrentPassword, storedHash);
+            }
+            catch
+            {
+                isValid = string.Equals(request.CurrentPassword, storedHash, StringComparison.Ordinal);
+            }
+
+            if (!isValid && !string.Equals(request.CurrentPassword, storedHash, StringComparison.Ordinal))
+            {
+                return BadRequest(new { Message = "Current password is incorrect." });
+            }
+
+            int otpId = 0;
+            using (var checkCmd = new NpgsqlCommand(@"
+                SELECT otp_id FROM otp_codes 
+                WHERE email = @email AND otp_code = @code AND purpose = 'PASSWORD_CHANGE' AND is_used = false AND expires_at > NOW() 
+                ORDER BY otp_id DESC LIMIT 1", connection))
+            {
+                checkCmd.Parameters.AddWithValue("@email", email.Trim());
+                checkCmd.Parameters.AddWithValue("@code", request.Otp.Trim());
+
+                var result = checkCmd.ExecuteScalar();
+                if (result == null || result == DBNull.Value)
+                {
+                    return BadRequest(new { Message = "Invalid or expired OTP code." });
+                }
+                otpId = Convert.ToInt32(result);
+            }
+
+            // Mark OTP as used
+            using (var useCmd = new NpgsqlCommand("UPDATE otp_codes SET is_used = true WHERE otp_id = @id", connection))
+            {
+                useCmd.Parameters.AddWithValue("@id", otpId);
+                useCmd.ExecuteNonQuery();
+            }
+
+            string newHash = BCryptNet.HashPassword(request.NewPassword.Trim());
+            using (var updateCmd = new NpgsqlCommand("UPDATE users SET password_hash = @hash WHERE user_id = @id", connection))
+            {
+                updateCmd.Parameters.AddWithValue("@hash", newHash);
+                updateCmd.Parameters.AddWithValue("@id", request.UserId);
+                updateCmd.ExecuteNonQuery();
+            }
+
+            return Ok(new { Success = true, Message = "Password updated successfully!" });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "Failed to update password: " + ex.Message });
         }
     }
 }

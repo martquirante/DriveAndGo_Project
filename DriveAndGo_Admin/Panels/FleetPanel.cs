@@ -2889,12 +2889,12 @@ namespace DriveAndGo_Admin.Panels
                     }
                     else
                     {
-                        MessageBox.Show("API Error: " + (res.Error ?? res.Body), "Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show(ApiService.CleanErrorMessage(res.Error ?? res.Body), "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show("Save Error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(ApiService.CleanErrorMessage(ex.Message), "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 finally
                 {
@@ -3192,7 +3192,7 @@ namespace DriveAndGo_Admin.Panels
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Suggestion failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(ApiService.CleanErrorMessage(ex.Message), "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             }
 

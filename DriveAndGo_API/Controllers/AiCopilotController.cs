@@ -144,10 +144,10 @@ public class AiCopilotController : ControllerBase
             return StatusCode(500, new
             {
                 sessionId    = req.SessionId,
-                text         = "An internal error occurred. Please try again.",
+                text         = Services.UserFriendlyErrorMessage.Clean(ex.Message),
                 ui_component = "Text Only",
                 data         = Array.Empty<object>(),
-                Message      = ex.Message
+                Message      = Services.UserFriendlyErrorMessage.Clean(ex.Message)
             });
         }
     }

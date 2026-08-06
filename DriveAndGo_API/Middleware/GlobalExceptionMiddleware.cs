@@ -36,35 +36,36 @@ namespace DriveAndGo_API.Middleware
         {
             context.Response.ContentType = "application/problem+json";
             
+            string friendlyDetail = Services.UserFriendlyErrorMessage.Clean(exception.Message);
+
             var problem = new ProblemDetails
             {
                 Status = StatusCodes.Status500InternalServerError,
-                Title = "An error occurred while processing your request",
+                Title = "System Notice",
                 Instance = context.Request.Path,
-                Detail = "Internal Server Error"
+                Detail = friendlyDetail
             };
 
             // Custom validations or standard client errors
             if (exception is ArgumentException || exception is InvalidOperationException)
             {
                 problem.Status = StatusCodes.Status400BadRequest;
-                problem.Title = "Bad Request";
-                problem.Detail = exception.Message;
+                problem.Title = "Information Required";
+                problem.Detail = friendlyDetail;
             }
             else if (exception is PostgresException pgEx)
             {
-                // Mask detailed database error details in production-grade releases
                 if (pgEx.SqlState == "23505") // Unique key violation (e.g. duplicate booking / plate number)
                 {
                     problem.Status = StatusCodes.Status409Conflict;
-                    problem.Title = "Conflict";
-                    problem.Detail = "The resource already exists or conflicts with another record.";
+                    problem.Title = "Duplicate Record Detected";
+                    problem.Detail = "A record with the same details (such as plate number, email, or booking) already exists. Please review your input.";
                 }
                 else
                 {
                     problem.Status = StatusCodes.Status500InternalServerError;
-                    problem.Title = "Database Execution Error";
-                    problem.Detail = "A database operation failed.";
+                    problem.Title = "Database Service Notice";
+                    problem.Detail = "Our database service is temporarily unreachable. Please check your connection and try again.";
                 }
             }
 

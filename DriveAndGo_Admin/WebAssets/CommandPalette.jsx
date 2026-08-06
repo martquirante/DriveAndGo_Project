@@ -104,7 +104,26 @@ function CommandPalette({ isOpen, onClose, onOpenAiCopilot, onNavigate }) {
           display: 'flex', alignItems: 'center', gap: 12
         }
       },
-        React.createElement('span', { style: { fontSize: 18, opacity: 0.7 } }, '🔍'),
+        React.createElement('svg', {
+          width: 18,
+          height: 18,
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          stroke: 'url(#searchIconGlow)',
+          strokeWidth: 2.2,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          style: { flexShrink: 0, opacity: 0.95 }
+        },
+          React.createElement('defs', null,
+            React.createElement('linearGradient', { id: 'searchIconGlow', x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+              React.createElement('stop', { offset: '0%', stopColor: '#f97316' }),
+              React.createElement('stop', { offset: '100%', stopColor: '#a855f7' })
+            )
+          ),
+          React.createElement('circle', { cx: 11, cy: 11, r: 7.5 }),
+          React.createElement('path', { d: 'M21 21l-4.35-4.35' })
+        ),
         React.createElement('input', {
           ref: inputRef,
           type: 'text',

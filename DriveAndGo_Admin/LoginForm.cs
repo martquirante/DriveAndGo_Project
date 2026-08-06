@@ -528,6 +528,27 @@ namespace DriveAndGo_Admin
             _rightPanel.Controls.Add(_btnShowPass);
             _btnShowPass.BringToFront();
 
+            // Forgot Password Button
+            var btnForgotPass = new Button
+            {
+                Text      = "Forgot Password?",
+                Font      = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+                ForeColor = ThemeManager.CurrentPrimary,
+                BackColor = Color.Transparent,
+                FlatStyle = FlatStyle.Flat,
+                Size      = new Size(130, 24),
+                Location  = new Point(_txtPasswordWrap.Right - 130, 375),
+                Cursor    = Cursors.Hand
+            };
+            btnForgotPass.FlatAppearance.BorderSize = 0;
+            btnForgotPass.Click += (s, e) =>
+            {
+                string em = _txtEmail?.Text?.Trim() ?? "";
+                using var resetDlg = new ResetPasswordDialog(em);
+                resetDlg.ShowDialog(this);
+            };
+            _rightPanel.Controls.Add(btnForgotPass);
+
             _lblError = new Label
             {
                 AutoSize  = false,
@@ -865,30 +886,76 @@ namespace DriveAndGo_Admin
                         ShowError("⚠  " + (apiError ?? "Login failed. Check API server."));
                         return;
                     }
-                    if (!string.Equals(result.Role, "admin", StringComparison.OrdinalIgnoreCase))
+
+                    if (result.Requires2FA)
                     {
-                        ShowError("⚠  Access denied — Admin accounts only.");
-                        SessionManager.Clear();
+                        using var otpDlg = new OtpVerificationDialog(
+                            email, 
+                            "2FA Login Verification", 
+                            resendCallback: async () =>
+                            {
+                                var (res, err) = await ApiService.LoginAsync(email, pass);
+                                return res != null && res.Requires2FA;
+                            },
+                            verifyCallback: async (code) =>
+                            {
+                                var (vResp, vErr) = await ApiService.Verify2FaAsync(email, code);
+                                if (vResp == null)
+                                {
+                                    return (false, vErr ?? "Invalid or expired 2FA code.");
+                                }
+                                if (!string.Equals(vResp.Role, "admin", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    SessionManager.Clear();
+                                    return (false, "Access denied — Admin accounts only.");
+                                }
+                                return (true, null);
+                            }
+                        );
+
+                        otpDlg.ResendRequested += async (senderEvt, argsEvt) =>
+                        {
+                            await ApiService.LoginAsync(email, pass);
+                        };
+
+                        if (otpDlg.ShowDialog(this) == DialogResult.OK)
+                        {
+                            ProceedToDashboard();
+                        }
                         return;
                     }
-
-                    var loader = new PostLoginLoaderForm();
-                    loader.Show();
-
-                    var fadeOut = new System.Windows.Forms.Timer { Interval = 16 };
-                    fadeOut.Tick += (s2, e2) =>
+                    else
                     {
-                        this.Opacity -= 0.08f;
-                        if (this.Opacity <= 0)
+                        if (!string.Equals(result.Role, "admin", StringComparison.OrdinalIgnoreCase))
                         {
-                            fadeOut.Stop();
-                            fadeOut.Dispose();
-                            this.Hide();
+                            ShowError("⚠  Access denied — Admin accounts only.");
+                            SessionManager.Clear();
+                            return;
                         }
-                    };
-                    fadeOut.Start();
+
+                        ProceedToDashboard();
+                    }
                 }));
             });
+        }
+
+        private void ProceedToDashboard()
+        {
+            var loader = new PostLoginLoaderForm();
+            loader.Show();
+
+            var fadeOut = new System.Windows.Forms.Timer { Interval = 16 };
+            fadeOut.Tick += (s2, e2) =>
+            {
+                this.Opacity -= 0.08f;
+                if (this.Opacity <= 0)
+                {
+                    fadeOut.Stop();
+                    fadeOut.Dispose();
+                    this.Hide();
+                }
+            };
+            fadeOut.Start();
         }
 
         private void ShowError(string message)

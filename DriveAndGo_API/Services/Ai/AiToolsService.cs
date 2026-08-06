@@ -1,3 +1,4 @@
+using DriveAndGo_API.Models;
 using DriveAndGo_API.Models.AiCopilot;
 using DriveAndGo_API.Models.Operations;
 using DriveAndGo_API.Data;
@@ -59,6 +60,8 @@ public class AiToolsService
     public const string ToolGetReportedIssues     = "get_reported_issues";
     public const string ToolGetRatingsFeedback    = "get_ratings_feedback";
     public const string ToolGetTransactionSummary = "get_transaction_summary";
+    public const string ToolGetTableRecords       = "get_table_records";
+    public const string ToolGetRentalExtensions   = "get_rental_extensions";
 
     public AiToolsService(
         NpgsqlDataSource ds,
@@ -107,7 +110,9 @@ public class AiToolsService
                 ToolGetOverdueRentals    => Serialize(await GetOverdueRentalsAsync()),
                 ToolGetFleetCount        => Serialize(await GetAvailableFleetCountAsync()),
                 ToolGetPendingBookings   => Serialize(await GetPendingBookingsAsync()),
-                ToolGetTopDrivers        => Serialize(await GetTopDriversAsync(ParseLimit(arguments))),
+                ToolGetTopDrivers        => Serialize(await GetTopDriversAsync(
+                                               ParseStringArg(arguments, "period"),
+                                               ParseLimit(arguments))),
                 ToolGetMonthlyRevenue    => Serialize(await GetMonthlyRevenueBreakdownAsync()),
                 ToolPredictNextYearSales => Serialize(await PredictNextYearSalesToolAsync()),
                 ToolGetVehicleUtil       => Serialize(await GetVehicleUtilizationAsync(
@@ -149,6 +154,14 @@ public class AiToolsService
                                                ParseStringArg(arguments, "method"),
                                                ParseStringArg(arguments, "status"),
                                                ParseLimit(arguments, defaultVal: 20))),
+                ToolGetTableRecords       => Serialize(await GetTableRecordsAsync(
+                                               ParseStringArg(arguments, "tableName") ?? "vehicles",
+                                               ParseStringArg(arguments, "search"),
+                                               ParseStringArg(arguments, "status"),
+                                               ParseLimit(arguments, defaultVal: 20))),
+                ToolGetRentalExtensions   => Serialize(await GetRentalExtensionsAsync(
+                                               ParseStringArg(arguments, "status"),
+                                               ParseLimit(arguments, defaultVal: 15))),
 
                 _                        => $"{{\"error\": \"Unknown tool: {toolName}\"}}"
             };
@@ -171,16 +184,44 @@ public class AiToolsService
             var today = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
             var startOfWeek = today.AddDays(-(int)today.DayOfWeek);
             var startOfMonth = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-            var validStatuses = new[] { "confirmed", "paid", "verified" };
+            var validStatuses = new[] { "confirmed", "paid", "verified", "completed", "success", "approved", "active", "in-use", "successful", "settled" };
 
             var recentTxns = await _dbContext.Transactions
-                .Where(t => validStatuses.Contains(t.Status.ToLower()) && t.PaidAt >= startOfMonth)
+                .Where(t => validStatuses.Contains(t.Status.ToLower()))
                 .ToListAsync();
 
-            result.TodayRevenue      = recentTxns.Where(t => t.PaidAt >= today).Sum(t => t.Amount);
-            result.TodayTransactions = recentTxns.Count(t => t.PaidAt >= today);
-            result.WeekRevenue       = recentTxns.Where(t => t.PaidAt >= startOfWeek).Sum(t => t.Amount);
-            result.MonthRevenue      = recentTxns.Sum(t => t.Amount);
+            if (recentTxns.Any())
+            {
+                Func<Transaction, DateTime> getDate = t => t.PaidAt ?? DateTime.MinValue;
+                result.TodayRevenue      = recentTxns.Where(t => getDate(t) >= today).Sum(t => t.Amount);
+                result.TodayTransactions = recentTxns.Count(t => getDate(t) >= today);
+                result.WeekRevenue       = recentTxns.Where(t => getDate(t) >= startOfWeek).Sum(t => t.Amount);
+                result.MonthRevenue      = recentTxns.Where(t => getDate(t) >= startOfMonth).Sum(t => t.Amount);
+            }
+
+            // Fallback: If EF transactions yield 0 revenue, calculate directly from rentals table
+            if (result.TodayRevenue == 0 && result.WeekRevenue == 0 && result.MonthRevenue == 0)
+            {
+                await using var conn = await _ds.OpenConnectionAsync();
+                await using var cmd = new NpgsqlCommand(@"
+                    SELECT 
+                        COALESCE(SUM(CASE WHEN start_date >= CURRENT_DATE THEN total_amount ELSE 0 END), 0) AS today_rev,
+                        COUNT(CASE WHEN start_date >= CURRENT_DATE THEN 1 END) AS today_txns,
+                        COALESCE(SUM(CASE WHEN start_date >= DATE_TRUNC('week', CURRENT_DATE) THEN total_amount ELSE 0 END), 0) AS week_rev,
+                        COALESCE(SUM(CASE WHEN start_date >= DATE_TRUNC('month', CURRENT_DATE) THEN total_amount ELSE 0 END), 0) AS month_rev
+                    FROM rentals
+                    WHERE LOWER(status) IN ('approved', 'active', 'completed', 'in-use', 'confirmed', 'paid')", conn);
+
+                await using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    result.TodayRevenue      = reader.GetDecimal(0);
+                    result.TodayTransactions = (int)reader.GetInt64(1);
+                    result.WeekRevenue       = reader.GetDecimal(2);
+                    result.MonthRevenue      = reader.GetDecimal(3);
+                }
+            }
+
             return result;
         }
         catch (Exception ex)
@@ -199,29 +240,66 @@ public class AiToolsService
         {
             var result = new WeeklyAnalyticsResult();
             var startDate = DateTime.SpecifyKind(DateTime.UtcNow.Date.AddDays(-7), DateTimeKind.Utc);
-            var validStatuses = new[] { "confirmed", "paid", "verified" };
+            var validStatuses = new[] { "confirmed", "paid", "verified", "completed", "success", "approved", "active", "in-use", "successful", "settled" };
 
             var transactions = await _dbContext.Transactions
-                .Where(t => validStatuses.Contains(t.Status.ToLower()) && t.PaidAt >= startDate)
+                .Where(t => validStatuses.Contains(t.Status.ToLower()))
                 .ToListAsync();
 
-            var dailyGroups = transactions
-                .GroupBy(t => t.PaidAt.Value.Date)
-                .OrderBy(g => g.Key)
-                .ToList();
-
-            foreach (var g in dailyGroups)
+            if (transactions.Any())
             {
-                var day = new WeeklyDayData
+                Func<Transaction, DateTime> getDate = t => t.PaidAt ?? DateTime.MinValue;
+                var filtered = transactions.Where(t => getDate(t) >= startDate).ToList();
+
+                var dailyGroups = filtered
+                    .GroupBy(t => getDate(t).Date)
+                    .OrderBy(g => g.Key)
+                    .ToList();
+
+                foreach (var g in dailyGroups)
                 {
-                    DayLabel = g.Key.ToString("ddd dd MMM"),
-                    Revenue  = g.Sum(t => t.Amount),
-                    Rentals  = g.Count()
-                };
-                result.DailyBreakdown.Add(day);
-                result.WeekTotal   += day.Revenue;
-                result.WeekRentals += day.Rentals;
+                    var day = new WeeklyDayData
+                    {
+                        DayLabel = g.Key.ToString("ddd dd MMM"),
+                        Revenue  = g.Sum(t => t.Amount),
+                        Rentals  = g.Count()
+                    };
+                    result.DailyBreakdown.Add(day);
+                    result.WeekTotal   += day.Revenue;
+                    result.WeekRentals += day.Rentals;
+                }
             }
+
+            // Fallback: If EF transactions yield 0 weekly breakdown, calculate directly from rentals table
+            if (result.DailyBreakdown.Count == 0)
+            {
+                await using var conn = await _ds.OpenConnectionAsync();
+                await using var cmd = new NpgsqlCommand(@"
+                    SELECT 
+                        TO_CHAR(start_date, 'Mon DD') AS day_label,
+                        COALESCE(SUM(total_amount), 0) AS rev,
+                        COUNT(*) AS cnt
+                    FROM rentals
+                    WHERE LOWER(status) IN ('approved', 'active', 'completed', 'in-use', 'confirmed', 'paid')
+                      AND start_date >= CURRENT_DATE - INTERVAL '7 days'
+                    GROUP BY TO_CHAR(start_date, 'Mon DD'), start_date::date
+                    ORDER BY start_date::date ASC", conn);
+
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var day = new WeeklyDayData
+                    {
+                        DayLabel = reader.GetString(0),
+                        Revenue  = reader.GetDecimal(1),
+                        Rentals  = (int)reader.GetInt64(2)
+                    };
+                    result.DailyBreakdown.Add(day);
+                    result.WeekTotal   += day.Revenue;
+                    result.WeekRentals += day.Rentals;
+                }
+            }
+
             return result;
         }
         catch (Exception ex)
@@ -367,34 +445,103 @@ public class AiToolsService
     }
 
     // ─────────────────────────────────────────────────────────────────
-    //  TOOL: Top Drivers
+    //  TOOL: Top Drivers / Employees (supports period filter e.g. July, August, this_month)
     // ─────────────────────────────────────────────────────────────────
-    public async Task<TopDriversResult> GetTopDriversAsync(int limit = 5)
+    public async Task<TopDriversResult> GetTopDriversAsync(string? period = null, int limit = 5)
     {
         if (limit < 1 || limit > 20) limit = 5;
-        var result = new TopDriversResult();
+        var result = new TopDriversResult { Period = string.IsNullOrWhiteSpace(period) ? "all_time" : period };
         await using var conn = await _ds.OpenConnectionAsync();
 
-        await using var cmd = new NpgsqlCommand(@"
-            SELECT d.driver_id, u.full_name, d.rating_avg, d.total_trips
-            FROM drivers d
-            JOIN users u ON u.user_id = d.user_id
-            WHERE d.total_trips > 0
-            ORDER BY d.rating_avg DESC, d.total_trips DESC
-            LIMIT @limit", conn);
-        cmd.Parameters.AddWithValue("@limit", limit);
+        string dateClause = "";
+        string pLower = (period ?? "").ToLowerInvariant().Trim();
 
-        await using var reader = await cmd.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
+        if (pLower.Contains("july") || pLower.Contains("jul"))
         {
-            result.Drivers.Add(new TopDriverItem
-            {
-                DriverId   = reader.GetInt32(0),
-                FullName   = reader.GetString(1),
-                RatingAvg  = reader.GetDecimal(2),
-                TotalTrips = reader.GetInt32(3)
-            });
+            dateClause = "AND (EXTRACT(MONTH FROM COALESCE(r.start_date, r.created_at)) = 7 OR TO_CHAR(COALESCE(r.start_date, r.created_at), 'Mon') ILIKE 'Jul')";
         }
+        else if (pLower.Contains("august") || pLower.Contains("aug"))
+        {
+            dateClause = "AND (EXTRACT(MONTH FROM COALESCE(r.start_date, r.created_at)) = 8 OR TO_CHAR(COALESCE(r.start_date, r.created_at), 'Mon') ILIKE 'Aug')";
+        }
+        else if (pLower.Contains("this_month"))
+        {
+            dateClause = "AND COALESCE(r.start_date, r.created_at) >= DATE_TRUNC('month', NOW())";
+        }
+        else if (pLower.Contains("last_month"))
+        {
+            dateClause = "AND COALESCE(r.start_date, r.created_at) >= DATE_TRUNC('month', NOW() - INTERVAL '1 month') AND COALESCE(r.start_date, r.created_at) < DATE_TRUNC('month', NOW())";
+        }
+
+        if (!string.IsNullOrEmpty(dateClause))
+        {
+            try
+            {
+                await using var cmdPeriod = new NpgsqlCommand($@"
+                    SELECT
+                        d.driver_id,
+                        u.full_name,
+                        d.rating_avg,
+                        d.total_trips,
+                        COUNT(r.rental_id)               AS period_trips,
+                        COALESCE(SUM(r.total_amount), 0) AS period_revenue
+                    FROM drivers d
+                    JOIN users u ON u.user_id = d.user_id
+                    JOIN rentals r ON r.driver_id = d.driver_id
+                    WHERE LOWER(r.status) IN ('completed', 'active', 'in-use', 'approved', 'paid', 'confirmed', 'verified', 'settled')
+                      {dateClause}
+                    GROUP BY d.driver_id, u.full_name, d.rating_avg, d.total_trips
+                    ORDER BY period_trips DESC, period_revenue DESC, d.rating_avg DESC
+                    LIMIT @limit", conn);
+                cmdPeriod.Parameters.AddWithValue("@limit", limit);
+
+                await using var readerPeriod = await cmdPeriod.ExecuteReaderAsync();
+                while (await readerPeriod.ReadAsync())
+                {
+                    result.Drivers.Add(new TopDriverItem
+                    {
+                        DriverId      = readerPeriod.GetInt32(0),
+                        FullName      = readerPeriod.GetString(1),
+                        RatingAvg     = readerPeriod.GetDecimal(2),
+                        TotalTrips    = readerPeriod.GetInt32(3),
+                        PeriodTrips   = (int)readerPeriod.GetInt64(4),
+                        PeriodRevenue = readerPeriod.GetDecimal(5)
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Tool] Period query for GetTopDriversAsync failed, falling back to overall");
+            }
+        }
+
+        if (!result.Drivers.Any())
+        {
+            await using var cmdAll = new NpgsqlCommand(@"
+                SELECT d.driver_id, u.full_name, d.rating_avg, d.total_trips
+                FROM drivers d
+                JOIN users u ON u.user_id = d.user_id
+                WHERE d.total_trips > 0 OR LOWER(d.status) IN ('available', 'active', 'assigned')
+                ORDER BY d.rating_avg DESC, d.total_trips DESC
+                LIMIT @limit", conn);
+            cmdAll.Parameters.AddWithValue("@limit", limit);
+
+            await using var readerAll = await cmdAll.ExecuteReaderAsync();
+            while (await readerAll.ReadAsync())
+            {
+                int trips = readerAll.GetInt32(3);
+                result.Drivers.Add(new TopDriverItem
+                {
+                    DriverId      = readerAll.GetInt32(0),
+                    FullName      = readerAll.GetString(1),
+                    RatingAvg     = readerAll.GetDecimal(2),
+                    TotalTrips    = trips,
+                    PeriodTrips   = trips,
+                    PeriodRevenue = 0m
+                });
+            }
+        }
+
         return result;
     }
 
@@ -404,30 +551,85 @@ public class AiToolsService
     public async Task<MonthlyRevenueResult> GetMonthlyRevenueBreakdownAsync()
     {
         var result = new MonthlyRevenueResult();
-        var startDate = DateTime.SpecifyKind(DateTime.UtcNow.Date.AddMonths(-12), DateTimeKind.Utc);
-        var validStatuses = new[] { "confirmed", "paid", "verified" };
 
-        var transactions = await _dbContext.Transactions
-            .Where(t => validStatuses.Contains(t.Status.ToLower()) && t.PaidAt >= startDate)
-            .ToListAsync();
-
-        var monthlyGroups = transactions
-            .GroupBy(t => new { t.PaidAt.Value.Year, t.PaidAt.Value.Month })
-            .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
-            .ToList();
-
-        foreach (var g in monthlyGroups)
+        try
         {
-            var date = new DateTime(g.Key.Year, g.Key.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-            var item = new MonthlyRevenueItem
+            await using var conn = await _ds.OpenConnectionAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT
+                    TO_CHAR(COALESCE(t.paid_at, r.created_at, NOW()), 'Mon YYYY') AS month_label,
+                    SUM(COALESCE(t.amount, r.total_amount, 0)) AS revenue,
+                    COUNT(DISTINCT COALESCE(t.transaction_id, r.rental_id)) AS txns,
+                    TO_CHAR(COALESCE(t.paid_at, r.created_at, NOW()), 'YYYY-MM') AS month_key
+                FROM transactions t
+                FULL OUTER JOIN rentals r ON r.rental_id = t.rental_id
+                WHERE LOWER(COALESCE(t.status, r.status)) IN ('confirmed', 'paid', 'verified', 'completed', 'success', 'approved', 'active', 'in-use', 'successful', 'settled')
+                GROUP BY TO_CHAR(COALESCE(t.paid_at, r.created_at, NOW()), 'Mon YYYY'),
+                         TO_CHAR(COALESCE(t.paid_at, r.created_at, NOW()), 'YYYY-MM')
+                ORDER BY month_key ASC", conn);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
             {
-                MonthLabel = date.ToString("MMM yyyy"),
-                Revenue = g.Sum(t => t.Amount),
-                Transactions = g.Count()
-            };
-            result.Months.Add(item);
-            result.GrandTotal += item.Revenue;
+                var item = new MonthlyRevenueItem
+                {
+                    MonthLabel   = reader.GetString(0),
+                    Revenue      = reader.GetDecimal(1),
+                    Transactions = (int)reader.GetInt64(2)
+                };
+                result.Months.Add(item);
+                result.GrandTotal += item.Revenue;
+            }
         }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Tool] SQL GetMonthlyRevenueBreakdownAsync failed; falling back to EF");
+        }
+
+        if (!result.Months.Any())
+        {
+            var startDate = DateTime.SpecifyKind(DateTime.UtcNow.Date.AddMonths(-12), DateTimeKind.Utc);
+            var validStatuses = new[] { "confirmed", "paid", "verified", "completed", "success", "approved", "active", "in-use", "successful", "settled" };
+
+            var transactions = await _dbContext.Transactions
+                .Where(t => validStatuses.Contains(t.Status.ToLower()) && t.PaidAt >= startDate)
+                .ToListAsync();
+
+            var monthlyGroups = transactions
+                .GroupBy(t => new { t.PaidAt.Value.Year, t.PaidAt.Value.Month })
+                .OrderBy(g => g.Key.Year).ThenBy(g => g.Key.Month)
+                .ToList();
+
+            foreach (var g in monthlyGroups)
+            {
+                var date = new DateTime(g.Key.Year, g.Key.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+                var item = new MonthlyRevenueItem
+                {
+                    MonthLabel   = date.ToString("MMM yyyy"),
+                    Revenue      = g.Sum(t => t.Amount),
+                    Transactions = g.Count()
+                };
+                result.Months.Add(item);
+                result.GrandTotal += item.Revenue;
+            }
+        }
+
+        string currentLabel = DateTime.UtcNow.ToString("MMM yyyy");
+        result.CurrentMonthLabel = currentLabel;
+
+        var currentItem = result.Months.FirstOrDefault(m => string.Equals(m.MonthLabel, currentLabel, StringComparison.OrdinalIgnoreCase));
+        if (currentItem == null)
+        {
+            currentItem = new MonthlyRevenueItem
+            {
+                MonthLabel   = currentLabel,
+                Revenue      = 0m,
+                Transactions = 0
+            };
+            result.Months.Add(currentItem);
+        }
+        result.CurrentMonthRevenue = currentItem.Revenue;
+
         return result;
     }
 
@@ -1010,6 +1212,142 @@ public class AiToolsService
     }
 
     // ─────────────────────────────────────────────────────────────────
+    //  TOOL: Universal Database Reader (PII-safe, secure column whitelisting)
+    // ─────────────────────────────────────────────────────────────────
+    public async Task<object> GetTableRecordsAsync(
+        string tableName, string? search = null, string? status = null, int limit = 20)
+    {
+        if (limit < 1 || limit > 50) limit = 20;
+
+        var allowedTables = new Dictionary<string, (string selectCols, string defaultOrder)>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "users",             ("user_id, full_name, phone, role, created_at", "created_at DESC") },
+            { "drivers",           ("driver_id, user_id, license_no, status, rating_avg, total_trips", "rating_avg DESC") },
+            { "vehicles",          ("vehicle_id, plate_no, brand, model, type, cc, status, rate_per_day, rate_with_driver, seat_capacity, transmission, in_garage", "brand, model") },
+            { "rentals",           ("rental_id, customer_id, vehicle_id, driver_id, start_date, end_date, destination, status, total_amount, payment_method, payment_status, created_at", "created_at DESC") },
+            { "transactions",      ("transaction_id, rental_id, amount, type, method, status, paid_at", "paid_at DESC") },
+            { "extensions",        ("extension_id, rental_id, extra_days, additional_cost, reason, status, requested_at, approved_at", "requested_at DESC") },
+            { "issues",            ("issue_id, rental_id, reporter_id, issue_type, description, status, reported_at", "reported_at DESC") },
+            { "ratings",           ("rating_id, rental_id, customer_id, vehicle_id, driver_id, vehicle_score, driver_score, comment, rated_at", "rated_at DESC") },
+            { "notifications",     ("notification_id, title, message, type, is_read, created_at", "created_at DESC") },
+            { "app_notifications", ("notification_id, title, message, type, is_read, created_at", "created_at DESC") },
+            { "location_logs",     ("log_id, vehicle_id, latitude, longitude, speed, recorded_at", "recorded_at DESC") },
+            { "gps_logs",          ("log_id, vehicle_id, latitude, longitude, speed, timestamp", "timestamp DESC") },
+            { "messages",          ("message_id, sender_id, receiver_id, message_body, timestamp, delivery_status", "timestamp DESC") },
+            { "chat_messages",     ("message_id, sender_id, receiver_id, message_body, timestamp, delivery_status", "timestamp DESC") },
+            { "ai_copilot_sessions", ("session_id, admin_user_id, title, created_at, updated_at", "updated_at DESC") },
+            { "ai_copilot_messages", ("copilot_msg_id, session_id, sender_id, llm_role, content, sent_at", "sent_at DESC") }
+        };
+
+        string cleanTable = (tableName ?? "").Trim().ToLowerInvariant();
+        if (!allowedTables.ContainsKey(cleanTable))
+        {
+            return new { error = $"Table '{tableName}' is restricted or does not exist. Accessible tables: {string.Join(", ", allowedTables.Keys)}" };
+        }
+
+        var (cols, defaultOrder) = allowedTables[cleanTable];
+        try
+        {
+            await using var conn = await _ds.OpenConnectionAsync();
+            var conditions = new List<string>();
+            var cmd = new NpgsqlCommand();
+
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                conditions.Add("LOWER(status) = @status");
+                cmd.Parameters.AddWithValue("@status", status.ToLower().Trim());
+            }
+
+            string whereClause = conditions.Any() ? "WHERE " + string.Join(" AND ", conditions) : "";
+            cmd.CommandText = $@"
+                SELECT {cols}
+                FROM {cleanTable}
+                {whereClause}
+                ORDER BY {defaultOrder}
+                LIMIT @limit";
+            cmd.Parameters.AddWithValue("@limit", limit);
+            cmd.Connection = conn;
+
+            var records = new List<Dictionary<string, object?>>();
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var row = new Dictionary<string, object?>();
+                for (int i = 0; i < reader.FieldCount; i++)
+                {
+                    string colName = reader.GetName(i);
+                    row[colName] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                }
+                records.Add(row);
+            }
+
+            return new { table = cleanTable, total_returned = records.Count, limit_applied = limit, records };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Tool] GetTableRecordsAsync failed for table '{Table}'", tableName);
+            return new { error = $"Failed to query table '{tableName}': {ex.Message}" };
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    //  TOOL: Rental Extensions
+    // ─────────────────────────────────────────────────────────────────
+    public async Task<object> GetRentalExtensionsAsync(string? status = null, int limit = 15)
+    {
+        if (limit < 1 || limit > 50) limit = 15;
+        try
+        {
+            await using var conn = await _ds.OpenConnectionAsync();
+            string statusClause = "";
+            var cmd = new NpgsqlCommand();
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                statusClause = "AND LOWER(e.status) = @status";
+                cmd.Parameters.AddWithValue("@status", status.ToLower().Trim());
+            }
+
+            cmd.CommandText = $@"
+                SELECT e.extension_id, e.rental_id, u.full_name AS customer_name,
+                       v.brand || ' ' || v.model AS vehicle_name,
+                       e.extra_days, e.additional_cost, e.reason, e.status, e.requested_at::text
+                FROM extensions e
+                JOIN rentals r ON r.rental_id = e.rental_id
+                JOIN users u ON u.user_id = r.customer_id
+                JOIN vehicles v ON v.vehicle_id = r.vehicle_id
+                WHERE 1=1 {statusClause}
+                ORDER BY e.requested_at DESC
+                LIMIT @limit";
+            cmd.Parameters.AddWithValue("@limit", limit);
+            cmd.Connection = conn;
+
+            var extensions = new List<object>();
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                extensions.Add(new
+                {
+                    extension_id    = reader.GetInt32(0),
+                    rental_id       = reader.GetInt32(1),
+                    customer_name   = reader.GetString(2),
+                    vehicle_name    = reader.GetString(3),
+                    extra_days      = reader.GetInt32(4),
+                    additional_cost = reader.GetDecimal(5),
+                    reason          = reader.IsDBNull(6) ? null : reader.GetString(6),
+                    status          = reader.GetString(7),
+                    requested_at    = reader.GetString(8)
+                });
+            }
+            return new { total_returned = extensions.Count, limit_applied = limit, extensions };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Tool] GetRentalExtensionsAsync failed");
+            return new { error = $"Failed to get extensions: {ex.Message}" };
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
     //  TOOL SCHEMA BUILDERS — For all three LLM provider formats
     // ─────────────────────────────────────────────────────────────────
 
@@ -1070,10 +1408,13 @@ public class AiToolsService
         }),
 
         // ── Customer & People Tools ───────────────────────────────────────────────
-        Tool(ToolGetTopDrivers, "Get the top-performing drivers sorted by rating and total trips.", new
+        Tool(ToolGetTopDrivers, "Get top-performing drivers and staff sorted by rating, trips, and revenue. Supports period filtering.", new
         {
             type       = "object",
-            properties = new { limit = new { type = "integer", description = "Number of drivers to return. Default: 5. Max: 20." } },
+            properties = new {
+                period = new { type = "string", description = "Time period filter: 'july', 'august', 'this_month', 'last_month', or 'all_time' (default: all_time)" },
+                limit  = new { type = "integer", description = "Number of drivers to return. Default: 5. Max: 20." }
+            },
             required   = Array.Empty<string>()
         }),
         Tool(ToolGetCustomerInsights, "Get customer insights: top customers by spend, new signups this month, total customer count. PII-safe.", new
@@ -1146,6 +1487,28 @@ public class AiToolsService
             },
             required   = new[] { "vehicleId", "amount", "distance" }
         }),
+        Tool(ToolGetTableRecords, "Query any database table (users, drivers, vehicles, rentals, transactions, extensions, issues, ratings, notifications, location_logs) for PII-safe operational records.", new
+        {
+            type = "object",
+            properties = new
+            {
+                tableName = new { type = "string", description = "Table name: 'users', 'drivers', 'vehicles', 'rentals', 'transactions', 'extensions', 'issues', 'ratings', 'notifications', 'location_logs'" },
+                search    = new { type = "string", description = "Optional search query" },
+                status    = new { type = "string", description = "Optional status filter" },
+                limit     = new { type = "integer", description = "Max records (default: 20, max: 50)" }
+            },
+            required = new[] { "tableName" }
+        }),
+        Tool(ToolGetRentalExtensions, "Get list of rental extension requests with extra days, additional costs, reasons, and status.", new
+        {
+            type = "object",
+            properties = new
+            {
+                status = new { type = "string", description = "Extension status: 'pending', 'approved', 'rejected'" },
+                limit  = new { type = "integer", description = "Max records (default: 15, max: 50)" }
+            },
+            required = Array.Empty<string>()
+        }),
     };
 
     /// <summary>
@@ -1178,8 +1541,9 @@ public class AiToolsService
                 GeminiParams(("status", "string",  "Rental status filter"),
                              ("limit",  "integer", "Max results (default: 15)"),
                              ("offset", "integer", "Pagination offset (default: 0)"))),
-            GeminiTool("get_top_drivers", "Get top-performing drivers by rating and total trips.",
-                GeminiParams(("limit", "integer", "Number of drivers (default: 5, max: 20)"))),
+            GeminiTool("get_top_drivers", "Get top-performing drivers and staff by rating, trips, and revenue.",
+                GeminiParams(("period", "string",  "Period filter: 'july', 'august', 'this_month', 'last_month', 'all_time'"),
+                             ("limit",  "integer", "Number of drivers (default: 5, max: 20)"))),
             GeminiTool("get_customer_insights", "Get top customers by spend and new signups this month (PII-safe).",
                 GeminiParams(("limit", "integer", "Max top customers (default: 10, max: 30)"))),
             GeminiTool("get_ratings_feedback", "Get vehicle and driver ratings with comments and score averages.",
@@ -1197,6 +1561,14 @@ public class AiToolsService
                 GeminiParams(("vehicleId", "integer", "Vehicle ID"),
                              ("amount",    "number",  "Fuel expense in PHP"),
                              ("distance",  "number",  "Distance in km"))),
+            GeminiTool("get_table_records", "Query any database table (users, drivers, vehicles, rentals, transactions, extensions, issues, ratings, notifications, location_logs) for PII-safe operational records.",
+                GeminiParams(("tableName", "string",  "Table name: 'users', 'drivers', 'vehicles', 'rentals', 'transactions', 'extensions', 'issues', 'ratings', 'notifications', 'location_logs'"),
+                             ("search",    "string",  "Optional search string"),
+                             ("status",    "string",  "Optional status filter"),
+                             ("limit",     "integer", "Max records (default: 20)"))),
+            GeminiTool("get_rental_extensions", "Get list of rental extension requests with extra days, additional costs, reasons, and status.",
+                GeminiParams(("status", "string",  "Extension status: 'pending', 'approved', 'rejected'"),
+                             ("limit",  "integer", "Max records (default: 15)"))),
         }
     };
 
@@ -1224,8 +1596,9 @@ public class AiToolsService
             new { status = new { type = "string", description = "Rental status" },
                   limit  = new { type = "integer", description = "Max results (default: 15)" },
                   offset = new { type = "integer", description = "Pagination offset (default: 0)" } }),
-        CohereToolDef("get_top_drivers", "Get top-performing drivers by rating and trips.",
-            new { limit = new { type = "integer", description = "Number of drivers. Default 5." } }),
+        CohereToolDef("get_top_drivers", "Get top-performing drivers and staff by rating, trips, and revenue.",
+            new { period = new { type = "string", description = "Period filter: july, august, this_month, last_month, all_time" },
+                  limit  = new { type = "integer", description = "Number of drivers. Default 5." } }),
         CohereToolDef("get_customer_insights", "Get top customers by spend and new signups (PII-safe).",
             new { limit = new { type = "integer", description = "Max top customers (default: 10)" } }),
         CohereToolDef("get_ratings_feedback", "Get vehicle and driver ratings with comments.",
@@ -1246,6 +1619,14 @@ public class AiToolsService
             new { vehicleId = new { type = "integer", description = "Vehicle ID" },
                   amount    = new { type = "float",   description = "Fuel expense in PHP" },
                   distance  = new { type = "float",   description = "Distance in km" } }),
+        CohereToolDef("get_table_records", "Query any database table (users, drivers, vehicles, rentals, transactions, extensions, issues, ratings, notifications, location_logs).",
+            new { tableName = new { type = "string", description = "Table name" },
+                  search    = new { type = "string", description = "Search query" },
+                  status    = new { type = "string", description = "Status filter" },
+                  limit     = new { type = "integer", description = "Max records (default: 20)" } }),
+        CohereToolDef("get_rental_extensions", "Get rental extension requests.",
+            new { status = new { type = "string", description = "Extension status" },
+                  limit  = new { type = "integer", description = "Max records (default: 15)" } }),
     };
 
     // ─────────────────────────────────────────────────────────────────

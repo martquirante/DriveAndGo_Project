@@ -1,6 +1,7 @@
 using BCryptNet = BCrypt.Net.BCrypt;
 using DriveAndGo_API.Contracts;
 using DriveAndGo_API.Models;
+using DriveAndGo_API.Services;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 
@@ -11,10 +12,12 @@ namespace DriveAndGo_API.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly string _connectionString;
+    private readonly IEmailService _emailService;
 
-    public AuthController(IConfiguration configuration)
+    public AuthController(IConfiguration configuration, IEmailService emailService)
     {
         _connectionString = configuration.GetConnectionString("DefaultConnection")!;
+        _emailService = emailService;
     }
 
     [HttpPost("register")]
@@ -106,6 +109,7 @@ public class AuthController : ControllerBase
                     u.failed_login_attempts,
                     u.lockout_enabled,
                     u.lockout_end,
+                    u.two_factor_enabled,
                     d.driver_id
                   FROM users u
                   LEFT JOIN drivers d ON d.user_id = u.user_id
@@ -126,6 +130,7 @@ public class AuthController : ControllerBase
             int failedAttempts = reader["failed_login_attempts"] != DBNull.Value ? Convert.ToInt32(reader["failed_login_attempts"]) : 0;
             bool lockoutEnabled = reader["lockout_enabled"] != DBNull.Value && Convert.ToBoolean(reader["lockout_enabled"]);
             var lockoutEnd = reader["lockout_end"] != DBNull.Value ? (DateTime?)Convert.ToDateTime(reader["lockout_end"]) : null;
+            bool twoFactorEnabled = reader["two_factor_enabled"] != DBNull.Value && Convert.ToBoolean(reader["two_factor_enabled"]);
 
             if (lockoutEnabled && lockoutEnd.HasValue && lockoutEnd.Value > DateTime.UtcNow)
             {
@@ -170,7 +175,7 @@ public class AuthController : ControllerBase
                 }
             }
 
-            // Reset failed login attempts on successful login
+            // Reset failed login attempts on successful credentials match
             reader.Close();
             if (failedAttempts > 0 || lockoutEnabled)
             {
@@ -181,7 +186,36 @@ public class AuthController : ControllerBase
                 }
             }
 
-            // Re-open reader to fetch the results or query again (simpler to query again or read variables)
+            // ── 2FA ENFORCEMENT CHECK ──
+            if (twoFactorEnabled)
+            {
+                // Invalidate any existing unused 2FA OTP codes for this email
+                using (var invCmd = new NpgsqlCommand("UPDATE otp_codes SET is_used = true WHERE email = @email AND purpose = '2FA' AND is_used = false", connection))
+                {
+                    invCmd.Parameters.AddWithValue("@email", request.Email.Trim());
+                    invCmd.ExecuteNonQuery();
+                }
+
+                string otpCode = Random.Shared.Next(100000, 999999).ToString();
+                using (var insCmd = new NpgsqlCommand(@"
+                    INSERT INTO otp_codes (email, otp_code, purpose, expires_at)
+                    VALUES (@email, @code, '2FA', NOW() + INTERVAL '2 minutes')", connection))
+                {
+                    insCmd.Parameters.AddWithValue("@email", request.Email.Trim());
+                    insCmd.Parameters.AddWithValue("@code", otpCode);
+                    insCmd.ExecuteNonQuery();
+                }
+
+                _ = _emailService.SendOtpEmailAsync(request.Email.Trim(), otpCode, "2FA");
+
+                return Ok(new
+                {
+                    Requires2FA = true,
+                    Email = request.Email.Trim(),
+                    Message = "2FA verification required. Verification code sent to your email."
+                });
+            }
+
             string fullName = "";
             string email = "";
             string phone = "";
@@ -222,6 +256,234 @@ public class AuthController : ControllerBase
         }
     }
 
+    [HttpPost("verify-2fa")]
+    public IActionResult Verify2Fa([FromBody] Verify2FaRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Otp))
+        {
+            return BadRequest(new { Message = "Email and OTP code are required." });
+        }
+
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            int otpId = 0;
+            using (var checkCmd = new NpgsqlCommand(@"
+                SELECT otp_id FROM otp_codes 
+                WHERE email = @email AND otp_code = @code AND purpose = '2FA' AND is_used = false AND expires_at > NOW() 
+                ORDER BY otp_id DESC LIMIT 1", connection))
+            {
+                checkCmd.Parameters.AddWithValue("@email", request.Email.Trim());
+                checkCmd.Parameters.AddWithValue("@code", request.Otp.Trim());
+
+                var result = checkCmd.ExecuteScalar();
+                if (result == null || result == DBNull.Value)
+                {
+                    return BadRequest(new { Message = "Invalid or expired 2FA OTP code." });
+                }
+                otpId = Convert.ToInt32(result);
+            }
+
+            // Mark OTP as used
+            using (var useCmd = new NpgsqlCommand("UPDATE otp_codes SET is_used = true WHERE otp_id = @id", connection))
+            {
+                useCmd.Parameters.AddWithValue("@id", otpId);
+                useCmd.ExecuteNonQuery();
+            }
+
+            // Fetch user info for auth response
+            string fullName = "";
+            string email = "";
+            string phone = "";
+            string role = "";
+            int userId = 0;
+            int? driverId = null;
+
+            using (var userCmd = new NpgsqlCommand(
+                @"SELECT u.user_id, u.full_name, u.email, u.phone, u.role, d.driver_id 
+                  FROM users u LEFT JOIN drivers d ON d.user_id = u.user_id 
+                  WHERE u.email = @email LIMIT 1", connection))
+            {
+                userCmd.Parameters.AddWithValue("@email", request.Email.Trim());
+                using var reader = userCmd.ExecuteReader();
+                if (reader.Read())
+                {
+                    userId = Convert.ToInt32(reader["user_id"]);
+                    fullName = reader["full_name"]?.ToString() ?? string.Empty;
+                    email = reader["email"]?.ToString() ?? string.Empty;
+                    phone = reader["phone"]?.ToString() ?? string.Empty;
+                    role = reader["role"]?.ToString() ?? "customer";
+                    driverId = reader["driver_id"] == DBNull.Value ? null : (int?)Convert.ToInt32(reader["driver_id"]);
+                }
+            }
+
+            return Ok(new AuthResponse
+            {
+                Message  = "2FA Authentication successful.",
+                UserId   = userId,
+                DriverId = driverId,
+                FullName = fullName,
+                Email    = email,
+                Phone    = phone,
+                Role     = role
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "2FA Verification failed: " + ex.Message });
+        }
+    }
+
+    [HttpPost("send-reset-otp")]
+    public async Task<IActionResult> SendResetOtp([FromBody] SendResetOtpRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email))
+        {
+            return BadRequest(new { Message = "Email address is required." });
+        }
+
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            // Verify user exists
+            using (var userCheck = new NpgsqlCommand("SELECT COUNT(*) FROM users WHERE email = @email", connection))
+            {
+                userCheck.Parameters.AddWithValue("@email", request.Email.Trim());
+                if (Convert.ToInt32(userCheck.ExecuteScalar()) == 0)
+                {
+                    return NotFound(new { Message = "No account found with this email address." });
+                }
+            }
+
+            // Invalidate previous unused PASSWORD_RESET codes
+            using (var invCmd = new NpgsqlCommand("UPDATE otp_codes SET is_used = true WHERE email = @email AND purpose = 'PASSWORD_RESET' AND is_used = false", connection))
+            {
+                invCmd.Parameters.AddWithValue("@email", request.Email.Trim());
+                invCmd.ExecuteNonQuery();
+            }
+
+            string otpCode = Random.Shared.Next(100000, 999999).ToString();
+            using (var insCmd = new NpgsqlCommand(@"
+                INSERT INTO otp_codes (email, otp_code, purpose, expires_at)
+                VALUES (@email, @code, 'PASSWORD_RESET', NOW() + INTERVAL '2 minutes')", connection))
+            {
+                insCmd.Parameters.AddWithValue("@email", request.Email.Trim());
+                insCmd.Parameters.AddWithValue("@code", otpCode);
+                insCmd.ExecuteNonQuery();
+            }
+
+            await _emailService.SendOtpEmailAsync(request.Email.Trim(), otpCode, "PASSWORD_RESET");
+
+            return Ok(new { Success = true, Message = "Password reset OTP verification code sent to your email." });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "Failed to send reset OTP: " + ex.Message });
+        }
+    }
+
+    [HttpPost("reset-password-with-otp")]
+    public IActionResult ResetPasswordWithOtp([FromBody] ResetPasswordWithOtpRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Otp) || string.IsNullOrWhiteSpace(request.NewPassword))
+        {
+            return BadRequest(new { Message = "Email, OTP code, and new password are required." });
+        }
+
+        if (request.NewPassword.Trim().Length < 6)
+        {
+            return BadRequest(new { Message = "New password must be at least 6 characters long." });
+        }
+
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            int otpId = 0;
+            using (var checkCmd = new NpgsqlCommand(@"
+                SELECT otp_id FROM otp_codes 
+                WHERE email = @email AND otp_code = @code AND purpose = 'PASSWORD_RESET' AND is_used = false AND expires_at > NOW() 
+                ORDER BY otp_id DESC LIMIT 1", connection))
+            {
+                checkCmd.Parameters.AddWithValue("@email", request.Email.Trim());
+                checkCmd.Parameters.AddWithValue("@code", request.Otp.Trim());
+
+                var result = checkCmd.ExecuteScalar();
+                if (result == null || result == DBNull.Value)
+                {
+                    return BadRequest(new { Message = "Invalid or expired password reset OTP code." });
+                }
+                otpId = Convert.ToInt32(result);
+            }
+
+            // Mark OTP as used
+            using (var useCmd = new NpgsqlCommand("UPDATE otp_codes SET is_used = true WHERE otp_id = @id", connection))
+            {
+                useCmd.Parameters.AddWithValue("@id", otpId);
+                useCmd.ExecuteNonQuery();
+            }
+
+            // Hash new password and update user's record
+            string newHashedPassword = BCryptNet.HashPassword(request.NewPassword.Trim());
+            using (var updateCmd = new NpgsqlCommand(@"
+                UPDATE users 
+                SET password_hash = @hash, failed_login_attempts = 0, lockout_enabled = false, lockout_end = NULL 
+                WHERE email = @email", connection))
+            {
+                updateCmd.Parameters.AddWithValue("@hash", newHashedPassword);
+                updateCmd.Parameters.AddWithValue("@email", request.Email.Trim());
+                updateCmd.ExecuteNonQuery();
+            }
+
+            return Ok(new { Success = true, Message = "Password reset successful! You can now log in with your new password." });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "Failed to reset password: " + ex.Message });
+        }
+    }
+
+    [HttpPost("verify-reset-otp")]
+    public IActionResult VerifyResetOtp([FromBody] VerifyResetOtpRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Otp))
+        {
+            return BadRequest(new { Message = "Email and OTP code are required." });
+        }
+
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            using (var checkCmd = new NpgsqlCommand(@"
+                SELECT otp_id FROM otp_codes 
+                WHERE email = @email AND otp_code = @code AND purpose = 'PASSWORD_RESET' AND is_used = false AND expires_at > NOW() 
+                ORDER BY otp_id DESC LIMIT 1", connection))
+            {
+                checkCmd.Parameters.AddWithValue("@email", request.Email.Trim());
+                checkCmd.Parameters.AddWithValue("@code", request.Otp.Trim());
+
+                var result = checkCmd.ExecuteScalar();
+                if (result == null || result == DBNull.Value)
+                {
+                    return BadRequest(new { Message = "Invalid or expired password reset OTP code." });
+                }
+            }
+
+            return Ok(new { Success = true, Message = "OTP code verified successfully." });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "OTP verification failed: " + ex.Message });
+        }
+    }
+
     [HttpGet("check-email")]
     public IActionResult CheckEmail([FromQuery] string email)
     {
@@ -247,4 +509,10 @@ public class AuthController : ControllerBase
             return StatusCode(500, new { Message = ex.Message });
         }
     }
+}
+
+public class VerifyResetOtpRequest
+{
+    public string Email { get; set; } = string.Empty;
+    public string Otp { get; set; } = string.Empty;
 }

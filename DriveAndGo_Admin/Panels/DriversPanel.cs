@@ -410,7 +410,7 @@ namespace DriveAndGo_Admin.Panels
                     this.Invoke(new Action(() =>
                     {
                         RefreshGrid(new DataTable());
-                        MessageBox.Show($"Error loading drivers:\n{ex.Message}", "Load Drivers", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        MessageBox.Show(ApiService.CleanErrorMessage(ex.Message), "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }));
                 }
             });
@@ -601,15 +601,15 @@ namespace DriveAndGo_Admin.Panels
                         }
                         else
                         {
-                            string err = result.Error ?? result.Body ?? "Unknown error";
-                            MessageBox.Show($"API Error: {err}", "Update Status", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            string err = result.Error ?? result.Body ?? "";
+                            MessageBox.Show(ApiService.CleanErrorMessage(err), "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         }
                     }));
                 }
                 catch (Exception ex)
                 {
                     this.Invoke(new Action(() =>
-                        MessageBox.Show("Error: " + ex.Message, "Update Status", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                        MessageBox.Show(ApiService.CleanErrorMessage(ex.Message), "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information)));
                 }
             });
         }
@@ -652,15 +652,15 @@ namespace DriveAndGo_Admin.Panels
                         }
                         else
                         {
-                            string err = result.Error ?? result.Body ?? "Unknown error";
-                            MessageBox.Show($"API Error: {err}", "Delete Driver", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            string err = result.Error ?? result.Body ?? "";
+                            MessageBox.Show(ApiService.CleanErrorMessage(err), "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         }
                     }));
                 }
                 catch (Exception ex)
                 {
                     this.Invoke(new Action(() =>
-                        MessageBox.Show("Error: " + ex.Message, "Delete Driver", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+                        MessageBox.Show(ApiService.CleanErrorMessage(ex.Message), "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information)));
                 }
             });
         }

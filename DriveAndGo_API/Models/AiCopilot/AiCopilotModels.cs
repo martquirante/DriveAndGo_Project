@@ -180,21 +180,26 @@ public class PendingRentalItem
 
 public class TopDriversResult
 {
+    public string Period { get; set; } = "all_time";
     public List<TopDriverItem> Drivers { get; set; } = new();
 }
 
 public class TopDriverItem
 {
-    public int     DriverId    { get; set; }
-    public string  FullName    { get; set; } = string.Empty;
-    public decimal RatingAvg   { get; set; }
-    public int     TotalTrips  { get; set; }
+    public int     DriverId      { get; set; }
+    public string  FullName      { get; set; } = string.Empty;
+    public decimal RatingAvg     { get; set; }
+    public int     TotalTrips    { get; set; }
+    public int     PeriodTrips   { get; set; }
+    public decimal PeriodRevenue { get; set; }
 }
 
 public class MonthlyRevenueResult
 {
-    public List<MonthlyRevenueItem> Months { get; set; } = new();
-    public decimal                  GrandTotal { get; set; }
+    public string                   CurrentMonthLabel   { get; set; } = string.Empty;
+    public decimal                  CurrentMonthRevenue { get; set; }
+    public List<MonthlyRevenueItem> Months              { get; set; } = new();
+    public decimal                  GrandTotal          { get; set; }
 }
 
 public class MonthlyRevenueItem

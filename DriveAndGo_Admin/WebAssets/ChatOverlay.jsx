@@ -55,7 +55,11 @@ function ChatOverlay({ initialQuery = '' }) {
     if (lower.includes('.env') || lower.includes('api key') || lower.includes('groq') || lower.includes('gemini api') || lower.includes('quotaexhausted') || lower.includes('rate limit') || lower.includes('limitasyon sa sistema')) {
       return 'Drive&Go AI is currently processing a high volume of requests. Please try asking your question again in a moment, and I\'ll be happy to assist you!';
     }
-    return text;
+    return text
+      .replace(/---*\s*UI_COMPONENT\s*---*/gi, '')
+      .replace(/^(?:[\s\r\n]*---+\s*)+/g, '')
+      .replace(/(?:[\s\r\n]*---+\s*)+$/g, '')
+      .trim();
   }
 
   useEffect(() => {
@@ -144,6 +148,49 @@ function ChatOverlay({ initialQuery = '' }) {
       } catch (err) {}
     }
     initAi();
+
+    const handleFocusSync = () => {
+      fetch(`${apiBase}/api/messages?senderId=admin&receiverId=ai_copilot`)
+        .then(res => res.ok ? res.json() : null)
+        .then(chatList => {
+          if (chatList && chatList.length > 0) {
+            const formatted = chatList.map(m => {
+              let bodyText = m.messageBody || '';
+              let uiComp = 'Text Only';
+              let uiData = [];
+              if (bodyText && typeof bodyText === 'string' && bodyText.trim().startsWith('{')) {
+                try {
+                  const pJson = JSON.parse(bodyText.trim());
+                  if (pJson && typeof pJson === 'object') {
+                    if (pJson.text !== undefined) bodyText = pJson.text;
+                    if (pJson.ui_component) uiComp = pJson.ui_component;
+                    if (pJson.data) uiData = pJson.data;
+                  }
+                } catch (e) {}
+              }
+              bodyText = sanitizeNonTechText(bodyText);
+              return {
+                id: m.messageId,
+                sender: m.senderId === 'admin' ? 'Admin' : 'Drive&Go AI',
+                body: bodyText,
+                isMine: m.senderId === 'admin',
+                time: formatLocalTime(m.timestamp),
+                ui_component: uiComp,
+                data: uiData
+              };
+            });
+            setAiMessages(formatted);
+          }
+        })
+        .catch(() => {});
+    };
+
+    window.addEventListener('focus', handleFocusSync);
+    document.addEventListener('visibilitychange', handleFocusSync);
+    return () => {
+      window.removeEventListener('focus', handleFocusSync);
+      document.removeEventListener('visibilitychange', handleFocusSync);
+    };
   }, []);
 
 

@@ -90,6 +90,7 @@ builder.Services.AddScoped<NotificationWriter>();
 builder.Services.AddScoped<IFirebaseService, FirebaseService>();
 builder.Services.AddScoped<IAdminDashboardService, AdminDashboardService>();
 builder.Services.AddHttpClient();
+builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IStorageService, StorageService>();
 builder.Services.AddScoped<DriveAndGo_API.Services.AuditService>();
 builder.Services.AddHostedService<DriveAndGo_API.Services.RentalComplianceWorker>();
