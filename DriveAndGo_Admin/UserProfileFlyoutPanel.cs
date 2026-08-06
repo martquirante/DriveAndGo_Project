@@ -135,10 +135,6 @@ namespace DriveAndGo_Admin
                             _userContact = ph.GetString();
                         }
 
-                        if (root.TryGetProperty("twoFactorEnabled", out var tf)) _is2FAEnabled = tf.GetBoolean();
-                        if (root.TryGetProperty("loginAlertsEnabled", out var la)) _isAlertsEnabled = la.GetBoolean();
-                        if (root.TryGetProperty("pinRequired", out var pr)) _isPinReqEnabled = pr.GetBoolean();
-
                         if (root.TryGetProperty("avatarBase64", out var av) && !string.IsNullOrWhiteSpace(av.GetString()))
                         {
                             try
@@ -155,6 +151,12 @@ namespace DriveAndGo_Admin
                     catch { }
                 }
 
+                // ── Retrieve User Security Settings from API ──
+                var (tf, la, pr) = await ApiService.GetUserSecuritySettingsAsync(uid);
+                _is2FAEnabled = tf;
+                _isAlertsEnabled = la;
+                _isPinReqEnabled = pr;
+
                 if (string.IsNullOrWhiteSpace(_userEmail))
                 {
                     _userEmail = !string.IsNullOrEmpty(SessionManager.Email)
@@ -163,26 +165,7 @@ namespace DriveAndGo_Admin
                 }
 
                 // ── Fetch real activity logs from DB API ──
-                var res = await ApiService.GetAsync($"activity-logs?userId={uid}");
-                if (res.Success && !string.IsNullOrWhiteSpace(res.Body))
-                {
-                    var root = JsonDocument.Parse(res.Body).RootElement;
-                    _activityLogs.Clear();
-                    foreach (var item in root.EnumerateArray())
-                    {
-                        string title = item.GetProperty("title").GetString();
-                        string rawTime = item.TryGetProperty("createdAt", out var ca) ? ca.GetString() : (item.TryGetProperty("time", out var tm) ? tm.GetString() : "");
-                        string formattedTime = DateTime.TryParse(rawTime, out var dt) ? dt.ToString("h:mm tt") : DateTime.Now.ToString("h:mm tt");
-                        string icon = item.TryGetProperty("icon", out var ic) ? ic.GetString() : "📋";
-                        _activityLogs.Add(new ActivityLogItem
-                        {
-                            Icon = icon,
-                            Title = title,
-                            Time = formattedTime,
-                            DotColor = ThemeManager.CurrentPrimary
-                        });
-                    }
-                }
+                await RefreshActivityLogsAsync(uid);
             }
             catch { }
 
@@ -190,6 +173,48 @@ namespace DriveAndGo_Admin
             {
                 this.Invoke((Action)(() => { BuildPanels(); _parent?.RefreshHeaderUserInfo(); }));
             }
+        }
+
+        private async Task RefreshActivityLogsAsync(int uid)
+        {
+            try
+            {
+                var rawLogs = await ApiService.GetActivityLogsAsync(uid);
+                _activityLogs.Clear();
+                foreach (var log in rawLogs)
+                {
+                    string icon = log.ActionType switch
+                    {
+                        "USER_LOGIN" => "🚪",
+                        "SECURITY_UPDATE" => "🛡️",
+                        "PASSWORD_CHANGE" => "🔑",
+                        _ => "📋"
+                    };
+                    string relativeTime = GetRelativeTimeString(log.Timestamp);
+                    _activityLogs.Add(new ActivityLogItem
+                    {
+                        Icon = icon,
+                        Title = string.IsNullOrWhiteSpace(log.Description) ? log.ActionType : log.Description,
+                        Time = relativeTime,
+                        DotColor = ThemeManager.CurrentPrimary
+                    });
+                }
+                if (this.IsHandleCreated && !this.IsDisposed)
+                {
+                    this.Invoke((Action)(() => BuildActivityView()));
+                }
+            }
+            catch { }
+        }
+
+        private static string GetRelativeTimeString(DateTime dt)
+        {
+            var span = DateTime.UtcNow - dt.ToUniversalTime();
+            if (span.TotalSeconds < 60) return "Just now";
+            if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes} mins ago";
+            if (span.TotalHours < 24) return $"{(int)span.TotalHours} hrs ago";
+            if (span.TotalDays < 7) return $"{(int)span.TotalDays} days ago";
+            return dt.ToLocalTime().ToString("MMM d, yyyy");
         }
 
         // ── Re-anchor positioning relative to topbar avatar button ──────────────
@@ -349,7 +374,8 @@ namespace DriveAndGo_Admin
 
                 var r = new Rectangle(2, 2, pnlAvatar.Width - 5, pnlAvatar.Height - 5);
 
-                if (_customAvatarImage != null)
+                var avatarImg = _customAvatarImage ?? SessionManager.CustomAvatar;
+                if (avatarImg != null)
                 {
                     try
                     {
@@ -357,7 +383,7 @@ namespace DriveAndGo_Admin
                         path.AddEllipse(r);
                         var oldClip = g.Clip;
                         g.SetClip(path);
-                        g.DrawImage(_customAvatarImage, r);
+                        g.DrawImage(avatarImg, r);
                         g.Clip = oldClip;
                     }
                     catch { }
@@ -743,18 +769,21 @@ namespace DriveAndGo_Admin
                 _is2FAEnabled = v;
                 int uid = SessionManager.UserId > 0 ? SessionManager.UserId : 1;
                 await ApiService.UpdateSecuritySettingsAsync(uid, _is2FAEnabled, _isAlertsEnabled, _isPinReqEnabled);
+                await RefreshActivityLogsAsync(uid);
             }, ref y);
             AddToggleRow(wrapper, "🔔 New Device Login Alerts", "Get emails for unknown devices", _isAlertsEnabled, async (v) =>
             {
                 _isAlertsEnabled = v;
                 int uid = SessionManager.UserId > 0 ? SessionManager.UserId : 1;
                 await ApiService.UpdateSecuritySettingsAsync(uid, _is2FAEnabled, _isAlertsEnabled, _isPinReqEnabled);
+                await RefreshActivityLogsAsync(uid);
             }, ref y);
             AddToggleRow(wrapper, "📌 Dispatch PIN Requirement", "Require 4-digit PIN for bookings", _isPinReqEnabled, async (v) =>
             {
                 _isPinReqEnabled = v;
                 int uid = SessionManager.UserId > 0 ? SessionManager.UserId : 1;
                 await ApiService.UpdateSecuritySettingsAsync(uid, _is2FAEnabled, _isAlertsEnabled, _isPinReqEnabled);
+                await RefreshActivityLogsAsync(uid);
             }, ref y);
 
             var div = new Panel { Location = new Point(2, y + 6), Size = new Size(250, 1), BackColor = ThemeManager.CurrentBorder };

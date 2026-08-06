@@ -52,8 +52,22 @@ namespace DriveAndGo_Admin
         private Button  _btnToggleExpand;
         private Panel   _pnlWelcomeState;
         private FlowLayoutPanel _flowMessages;
-        private TextBox _txtInput;
-        private Button  _btnSend;
+        private RichTextBox _txtInput;
+        private Label       _lblInputPlaceholder;
+        private bool        _isFormattingInputMention = false;
+        private Button      _btnSend;
+
+        private Panel   _pnlLinkPreview;
+        private PictureBox _pbLinkPreviewThumb;
+        private Label   _lblLinkPreviewTitle;
+        private Label   _lblLinkPreviewDesc;
+        private Button  _btnDismissLinkPreview;
+        private System.Windows.Forms.Timer _linkDebounceTimer;
+        private bool    _isLinkPreviewDismissed = false;
+        private string  _lastPreviewUrl = "";
+
+        private Panel   _pnlMentionPopup;
+        private Label   _lblMentionItem;
 
         // ── Data & State ─────────────────────────────────────────────────────────
         private string _activeConvId = null;
@@ -67,6 +81,7 @@ namespace DriveAndGo_Admin
 
         private readonly Dictionary<string, (Panel row, MessageDeliveryState[] stateHolder)> _bubbleRegistry = new();
         private string _lastSentBubbleId;
+        private readonly HashSet<string> _renderedAiMessageKeys = new HashSet<string>();
 
         // ── System Tray Notification Icon ────────────────────────────────────────
         // Shown when a new message arrives in a non-active conversation.
@@ -202,6 +217,49 @@ namespace DriveAndGo_Admin
                 _webView.CoreWebView2.Settings.IsZoomControlEnabled = false;
                 _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
 
+                _webView.CoreWebView2.WebMessageReceived += (s, e) =>
+                {
+                    try
+                    {
+                        string rawJson = e.TryGetWebMessageAsString();
+                        if (string.IsNullOrWhiteSpace(rawJson)) rawJson = e.WebMessageAsJson;
+                        if (string.IsNullOrWhiteSpace(rawJson)) return;
+
+                        using var doc = System.Text.Json.JsonDocument.Parse(rawJson);
+                        if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.String)
+                        {
+                            using var innerDoc = System.Text.Json.JsonDocument.Parse(doc.RootElement.GetString()!);
+                            if (innerDoc.RootElement.TryGetProperty("action", out var act) && act.GetString() == "TOGGLE_FULLSCREEN")
+                            {
+                                bool isFull = innerDoc.RootElement.TryGetProperty("enabled", out var en) && en.GetBoolean();
+                                this.BeginInvoke(new Action(() => OnToggleFullscreenRequested?.Invoke(isFull)));
+                            }
+                        }
+                        else if (doc.RootElement.TryGetProperty("action", out var act) && act.GetString() == "TOGGLE_FULLSCREEN")
+                        {
+                            bool isFull = doc.RootElement.TryGetProperty("enabled", out var en) && en.GetBoolean();
+                            this.BeginInvoke(new Action(() => OnToggleFullscreenRequested?.Invoke(isFull)));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[ChatOverlayPanel] WebMessageReceived parse error: {ex.Message}");
+                    }
+                };
+
+                _webView.CoreWebView2.NewWindowRequested += (s, e) =>
+                {
+                    e.Handled = true;
+                    if (!string.IsNullOrWhiteSpace(e.Uri))
+                    {
+                        try
+                        {
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri) { UseShellExecute = true });
+                        }
+                        catch { }
+                    }
+                };
+
                 _webView.CoreWebView2.NavigationCompleted += (s, e) =>
                 {
                     _isInitialized = true;
@@ -214,6 +272,9 @@ namespace DriveAndGo_Admin
                 System.Diagnostics.Debug.WriteLine($"[ChatOverlayPanel] WebView2 init error: {ex.Message}");
             }
         }
+
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public Action<bool> OnToggleFullscreenRequested { get; set; }
 
         // ════════════════════════════════════════════════════════════════════════
         //  THEME REFRESHER
@@ -462,10 +523,13 @@ namespace DriveAndGo_Admin
                 using var grad = new LinearGradientBrush(r, grad1, grad2, LinearGradientMode.ForwardDiagonal);
                 g.FillEllipse(grad, r);
 
+                string rawName = _lblConvName?.Text;
                 string init = _activeConvIsGroup ? "G"
-                    : (!string.IsNullOrEmpty(_lblConvName?.Text) && _lblConvName.Text != "Select a conversation"
-                        ? _lblConvName.Text[0].ToString().ToUpper() : "⚡");
-                using var font = new Font("Segoe UI", 14F, FontStyle.Bold);
+                    : (!string.IsNullOrWhiteSpace(rawName) && rawName != "Select a conversation"
+                        ? rawName.Trim()[0].ToString().ToUpper() : "D");
+                if (string.IsNullOrEmpty(init)) init = "D";
+
+                using var font = new Font("Segoe UI Emoji", 14F, FontStyle.Bold);
                 using var fmt  = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
                 g.DrawString(init, font, Brushes.White, new RectangleF(0, 0, 42, 42), fmt);
             };
@@ -534,7 +598,7 @@ namespace DriveAndGo_Admin
             // ── Input Bar ──
             var inputBar = new Panel();
             EnableDB(inputBar);
-            inputBar.Height = 72;
+            inputBar.Height = 62;
             inputBar.Dock   = DockStyle.Bottom;
             inputBar.BackColor = ThemeManager.CurrentSidebar;
             inputBar.Paint += (s, e) =>
@@ -543,27 +607,167 @@ namespace DriveAndGo_Admin
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.FillRectangle(new SolidBrush(ThemeManager.CurrentSidebar), inputBar.ClientRectangle);
 
-                var inputR = new Rectangle(14, 12, inputBar.Width - 76, 46);
-                using var path = RR(inputR, 22);
+                var inputR = new Rectangle(14, 8, inputBar.Width - 76, inputBar.Height - 16);
+                int radius = Math.Min(20, inputR.Height / 2);
+                using var path = RR(inputR, radius);
                 g.FillPath(new SolidBrush(ThemeManager.CurrentInputBg), path);
                 g.DrawPath(new Pen(ThemeManager.CurrentBorder, 1f), path);
             };
 
-            _txtInput = new TextBox
+            // Vector Media Button 🖼 (Sharp GDI+ Vector Paint)
+            var btnMedia = new Button
             {
-                BorderStyle = BorderStyle.None,
-                BackColor   = ThemeManager.CurrentInputBg,
-                ForeColor   = ThemeManager.CurrentText,
-                Font        = new Font("Segoe UI", 10.5F),
-                PlaceholderText = "Type a message...",
-                Size        = new Size(inputBar.Width - 96, 28),
-                Location    = new Point(28, 21),
-                Anchor      = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right
+                Size = new Size(32, 32),
+                Location = new Point(22, 15),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.Transparent,
+                Cursor = Cursors.Hand
+            };
+            btnMedia.FlatAppearance.BorderSize = 0;
+            btnMedia.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                bool hover = btnMedia.ClientRectangle.Contains(btnMedia.PointToClient(Cursor.Position));
+                using var pen = new Pen(hover ? ThemeManager.CurrentPrimary : Color.FromArgb(148, 163, 184), 1.8f);
+
+                // Draw Vector Frame (rounded box)
+                var rect = new Rectangle(5, 6, 21, 17);
+                using var path = RR(rect, 3);
+                g.DrawPath(pen, path);
+                // Sun dot
+                g.DrawEllipse(pen, 9, 9, 3, 3);
+                // Mountain slope lines
+                g.DrawLine(pen, 7, 21, 12, 14);
+                g.DrawLine(pen, 12, 14, 16, 21);
+                g.DrawLine(pen, 15, 21, 18, 17);
+                g.DrawLine(pen, 18, 17, 22, 21);
+            };
+            btnMedia.MouseEnter += (s, e) => btnMedia.Invalidate();
+            btnMedia.MouseLeave += (s, e) => btnMedia.Invalidate();
+            btnMedia.Click += (s, e) =>
+            {
+                using var ofd = new OpenFileDialog
+                {
+                    Title = "Select Photo or Video to Send",
+                    Filter = "Media Files (*.jpg;*.png;*.mp4;*.webm)|*.jpg;*.jpeg;*.png;*.gif;*.mp4;*.webm"
+                };
+                if (ofd.ShowDialog() == DialogResult.OK)
+                {
+                    UploadAndSendMedia(ofd.FileName);
+                }
+            };
+            inputBar.Controls.Add(btnMedia);
+
+            // Vector Voice Note Button 🎤 (Sharp GDI+ Vector Paint)
+            var btnMic = new Button
+            {
+                Size = new Size(32, 32),
+                Location = new Point(58, 15),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.Transparent,
+                Cursor = Cursors.Hand
+            };
+            btnMic.FlatAppearance.BorderSize = 0;
+            btnMic.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                bool hover = btnMic.ClientRectangle.Contains(btnMic.PointToClient(Cursor.Position));
+                using var pen = new Pen(hover ? ThemeManager.CurrentPrimary : Color.FromArgb(148, 163, 184), 1.8f);
+
+                // Mic capsule
+                var capsule = new Rectangle(12, 5, 8, 13);
+                using var capPath = RR(capsule, 4);
+                g.DrawPath(pen, capPath);
+                // Arch cup
+                g.DrawArc(pen, 8, 9, 16, 12, 0, 180);
+                // Stand & Base
+                g.DrawLine(pen, 16, 21, 16, 26);
+                g.DrawLine(pen, 11, 26, 21, 26);
+            };
+            btnMic.MouseEnter += (s, e) => btnMic.Invalidate();
+            btnMic.MouseLeave += (s, e) => btnMic.Invalidate();
+            btnMic.Click += (s, e) => StartVoiceRecordingBar(inputBar);
+            inputBar.Controls.Add(btnMic);
+
+            _txtInput = new RichTextBox
+            {
+                Multiline       = true,
+                AcceptsTab      = false,
+                BorderStyle     = BorderStyle.None,
+                BackColor       = ThemeManager.CurrentInputBg,
+                ForeColor       = ThemeManager.CurrentText,
+                Font            = new Font("Segoe UI", 10.5F),
+                ScrollBars      = RichTextBoxScrollBars.None,
+                WordWrap        = true,
+                DetectUrls      = false,
+                Size            = new Size(inputBar.Width - 162, 28),
+                Location        = new Point(96, 14),
+                Anchor          = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right
+            };
+
+            _lblInputPlaceholder = new Label
+            {
+                Text      = "Type a message...",
+                ForeColor = ThemeManager.CurrentSubText,
+                Font      = new Font("Segoe UI", 10.5F),
+                BackColor = Color.Transparent,
+                AutoSize  = true,
+                Location  = new Point(98, 14),
+                Cursor    = Cursors.IBeam
+            };
+            _lblInputPlaceholder.Click += (s, e) => _txtInput.Focus();
+            inputBar.Controls.Add(_lblInputPlaceholder);
+
+            _linkDebounceTimer = new System.Windows.Forms.Timer { Interval = 300 };
+            _linkDebounceTimer.Tick += (s, e) =>
+            {
+                _linkDebounceTimer.Stop();
+                CheckForInputLinkPreview();
+            };
+
+            _txtInput.TextChanged += (s, e) =>
+            {
+                _lblInputPlaceholder.Visible = string.IsNullOrEmpty(_txtInput.Text);
+                _linkDebounceTimer.Stop();
+                _linkDebounceTimer.Start();
+                CheckForMentionPopup();
+                HighlightInputMentions();
+
+                // Calculate required text height dynamically
+                using (var g = _txtInput.CreateGraphics())
+                {
+                    SizeF sz = g.MeasureString(_txtInput.Text + " ", _txtInput.Font, _txtInput.Width);
+                    int reqTxtH = Math.Min(80, Math.Max(28, (int)sz.Height + 4));
+                    if (_txtInput.Height != reqTxtH)
+                    {
+                        _txtInput.Height = reqTxtH;
+                        inputBar.Height  = reqTxtH + 28;
+                        if (_btnSend != null)
+                            _btnSend.Location = new Point(inputBar.Width - 54, (inputBar.Height - 40) / 2);
+                        inputBar.Invalidate();
+                    }
+                }
             };
             _txtInput.KeyDown += (s, e) =>
             {
+                if ((e.KeyCode == Keys.Tab || e.KeyCode == Keys.Enter) && _pnlMentionPopup != null && _pnlMentionPopup.Visible)
+                {
+                    e.SuppressKeyPress = true;
+                    ApplyMentionAutocomplete();
+                    return;
+                }
                 if (e.KeyCode == Keys.Enter && !e.Shift)
-                { e.SuppressKeyPress = true; SendMessage(); }
+                {
+                    e.SuppressKeyPress = true;
+                    SendMessage();
+                    _txtInput.Height = 28;
+                    inputBar.Height  = 62;
+                    if (_btnSend != null)
+                        _btnSend.Location = new Point(inputBar.Width - 54, 11);
+                    inputBar.Invalidate();
+                }
             };
             inputBar.Controls.Add(_txtInput);
 
@@ -583,6 +787,96 @@ namespace DriveAndGo_Admin
             SetRoundRegion(_btnSend, 20);
             _btnSend.Click += (s, e) => SendMessage();
             inputBar.Controls.Add(_btnSend);
+
+            // ── Mention Autocomplete Popup Panel ──
+            _pnlMentionPopup = new Panel
+            {
+                Height    = 42,
+                Dock      = DockStyle.Bottom,
+                BackColor = Color.FromArgb(30, 41, 59),
+                Visible   = false,
+                Padding   = new Padding(8, 6, 8, 6),
+                Cursor    = Cursors.Hand
+            };
+            EnableDB(_pnlMentionPopup);
+
+            _lblMentionItem = new Label
+            {
+                Text      = "✨  @Drive&Go AI   (In-Chat Assistant)",
+                Font      = new Font("Segoe UI", 9.5F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(56, 189, 248),
+                Dock      = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Cursor    = Cursors.Hand
+            };
+            _pnlMentionPopup.Controls.Add(_lblMentionItem);
+            _pnlMentionPopup.Click += (s, e) => ApplyMentionAutocomplete();
+            _lblMentionItem.Click  += (s, e) => ApplyMentionAutocomplete();
+            _rightPane.Controls.Add(_pnlMentionPopup);
+
+            // ── Live Link Preview Header Bar (positioned directly above inputBar) ──
+            _pnlLinkPreview = new Panel
+            {
+                Height    = 56,
+                Dock      = DockStyle.Bottom,
+                BackColor = Color.FromArgb(28, 30, 46),
+                Visible   = false,
+                Padding   = new Padding(8)
+            };
+            EnableDB(_pnlLinkPreview);
+
+            _pbLinkPreviewThumb = new PictureBox
+            {
+                Size      = new Size(42, 42),
+                Location  = new Point(8, 7),
+                SizeMode  = PictureBoxSizeMode.Zoom,
+                BackColor = Color.FromArgb(15, 16, 26)
+            };
+            _pnlLinkPreview.Controls.Add(_pbLinkPreviewThumb);
+
+            _lblLinkPreviewTitle = new Label
+            {
+                Font         = new Font("Segoe UI", 9.5F, FontStyle.Bold),
+                ForeColor    = Color.FromArgb(241, 245, 249),
+                Location     = new Point(56, 6),
+                Size         = new Size(inputBar.Width - 110, 18),
+                Anchor       = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right,
+                AutoEllipsis = true
+            };
+            _pnlLinkPreview.Controls.Add(_lblLinkPreviewTitle);
+
+            _lblLinkPreviewDesc = new Label
+            {
+                Font         = new Font("Segoe UI", 8F),
+                ForeColor    = Color.FromArgb(148, 163, 184),
+                Location     = new Point(56, 26),
+                Size         = new Size(inputBar.Width - 110, 16),
+                Anchor       = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right,
+                AutoEllipsis = true
+            };
+            _pnlLinkPreview.Controls.Add(_lblLinkPreviewDesc);
+
+            _btnDismissLinkPreview = new Button
+            {
+                Text      = "✕",
+                Font      = new Font("Segoe UI", 9F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(148, 163, 184),
+                BackColor = Color.Transparent,
+                FlatStyle = FlatStyle.Flat,
+                Size      = new Size(24, 24),
+                Location  = new Point(_pnlLinkPreview.Width - 30, 6),
+                Anchor    = AnchorStyles.Right | AnchorStyles.Top,
+                Cursor    = Cursors.Hand
+            };
+            _btnDismissLinkPreview.FlatAppearance.BorderSize = 0;
+            _btnDismissLinkPreview.Click += (s, e) =>
+            {
+                _isLinkPreviewDismissed = true;
+                _pnlLinkPreview.Visible = false;
+            };
+            _pnlLinkPreview.Controls.Add(_btnDismissLinkPreview);
+
+            _rightPane.Controls.Add(_pnlLinkPreview);
             _rightPane.Controls.Add(inputBar);
 
             // ── Messages Stream / Welcome State ──
@@ -661,15 +955,20 @@ namespace DriveAndGo_Admin
                         if (_activeConvId != null
                             && senderId != "admin"
                             && ((senderId == _activeConvId && receiverId == "admin")
-                               || (_activeConvIsGroup && receiverId == _activeConvId)))
+                               || (_activeConvIsGroup && receiverId == _activeConvId)
+                               || (senderId == "@Drive&Go AI" && receiverId == _activeConvId)))
                         {
-                            AddMessage(body, false, dt, MessageDeliveryState.Delivered);
-                            if (_flowMessages.Controls.Count > 0)
-                                _flowMessages.ScrollControlIntoView(
-                                    _flowMessages.Controls[_flowMessages.Controls.Count - 1]);
-
-                            // ACK seen (not just delivered) — user is actively watching
-                            _ = MarkConversationSeenAsync(senderId);
+                            if (senderId == "@Drive&Go AI")
+                            {
+                                TryAddAiMessageOnce(body, messageId, dt);
+                            }
+                            else
+                            {
+                                AddMessage(body, false, dt, MessageDeliveryState.Delivered);
+                                if (_flowMessages.Controls.Count > 0)
+                                    _flowMessages.ScrollControlIntoView(_flowMessages.Controls[_flowMessages.Controls.Count - 1]);
+                                _ = MarkConversationSeenAsync(senderId);
+                            }
                         }
                         // ── Case 2: Background message — user is in a different chat ──
                         else if (senderId != "admin")
@@ -929,6 +1228,12 @@ namespace DriveAndGo_Admin
                         string body = item.GetProperty("messageBody").GetString();
                         DateTime ts = item.GetProperty("timestamp").GetDateTime().ToLocalTime();
 
+                        // Read media fields (try both camelCase and PascalCase)
+                        string mType = item.TryGetProperty("mediaType",  out var mtP) ? mtP.GetString()
+                                     : item.TryGetProperty("MediaType",  out var mtP2) ? mtP2.GetString() : null;
+                        string mUrl  = item.TryGetProperty("mediaUrl",   out var muP) ? muP.GetString()
+                                     : item.TryGetProperty("MediaUrl",   out var muP2) ? muP2.GetString() : null;
+
                         if (lastTime == null || ts.Date != lastTime.Value.Date || (ts - lastTime.Value).TotalHours > 1)
                         {
                             AddDateSeparator(ts);
@@ -948,10 +1253,10 @@ namespace DriveAndGo_Admin
                         bool isMine  = sId == "admin";
                         string bId   = item.GetProperty("messageId").GetInt32().ToString();
                         bool isEdited  = item.TryGetProperty("isEdited",  out var eProp) && eProp.GetBoolean();
-                        bool isUnsent  = item.TryGetProperty("isUnsent",  out var uProp) && uProp.GetBoolean();
+                        bool isUnsent  = item.TryGetProperty("isUnsent",  out var uProp2) && uProp2.GetBoolean();
                         string rx      = item.TryGetProperty("reactions",  out var rProp) ? (rProp.GetString() ?? "{}") : "{}";
 
-                        AddMessage(body, isMine, ts, historyState, bId, isUnsent, isEdited, rx);
+                        AddMessage(body, isMine, ts, historyState, bId, isUnsent, isEdited, rx, mType, mUrl);
                         count++;
                     }
 
@@ -1142,23 +1447,26 @@ namespace DriveAndGo_Admin
                     LinearGradientMode.ForwardDiagonal);
                 g.FillEllipse(avGrad, av);
 
-                string init = conv.IsGroup ? "G" : (conv.Name.Length > 0 ? conv.Name[0].ToString().ToUpper() : "?");
-                using var initFont = new Font("Segoe UI", 13F, FontStyle.Bold);
+                string safeName = string.IsNullOrWhiteSpace(conv.Name) ? "Chat" : conv.Name.Trim();
+                string safeRole = string.IsNullOrWhiteSpace(conv.Role) ? "User" : conv.Role.Trim();
+                string init     = ExtractInitialLetter(safeName, conv.IsGroup);
+
+                using var initFont = new Font("Segoe UI Emoji", 13F, FontStyle.Bold);
                 using var fmt      = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
                 g.DrawString(init, initFont, Brushes.White, new RectangleF(av.X, av.Y, av.Width, av.Height), fmt);
 
                 // ── Name ───────────
-                using var nameFont = new Font("Segoe UI", 10F, FontStyle.Bold);
+                using var nameFont = new Font("Segoe UI Emoji", 10F, FontStyle.Bold);
                 using var nameFmt  = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap };
                 
                 string formattedTime = FormatDisplayTime(conv.Time);
                 float rightPadding = !string.IsNullOrWhiteSpace(formattedTime) ? 75f : 14f;
                 var nameRect = new RectangleF(68, 12, Math.Max(40, card.Width - 68 - rightPadding), 18);
                 Color nameColor = hasUnread ? Color.FromArgb(255, 255, 255) : ThemeManager.CurrentText;
-                g.DrawString(conv.Name, nameFont, new SolidBrush(nameColor), nameRect, nameFmt);
+                g.DrawString(safeName, nameFont, new SolidBrush(nameColor), nameRect, nameFmt);
 
-                using var roleFont = new Font("Segoe UI", 7.5F);
-                var roleText = "[" + conv.Role.ToUpper() + "]";
+                using var roleFont = new Font("Segoe UI Emoji", 7.5F);
+                var roleText = "[" + safeRole.ToUpper() + "]";
                 g.DrawString(roleText, roleFont, new SolidBrush(roleColor), new PointF(68, 30));
 
                 // ── Last message (bold + vibrant if unread, muted if read) ───────────
@@ -1292,7 +1600,7 @@ namespace DriveAndGo_Admin
                     g.DrawEllipse(pen, avRect.X - 4, avRect.Y - 4, avR + 8, avR + 8);
                 }
 
-                using (var font = new Font("Segoe UI", 32F, FontStyle.Bold))
+                using (var font = new Font("Segoe UI Emoji", 32F, FontStyle.Bold))
                 using (var fmt  = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
                 {
                     g.DrawString("⚡", font, Brushes.White, new RectangleF(avRect.X, avRect.Y, avRect.Width, avRect.Height), fmt);
@@ -1415,23 +1723,26 @@ namespace DriveAndGo_Admin
                     g.FillEllipse(grad, avRect);
                 }
 
-                string init = conv.IsGroup ? "G" : (conv.Name.Length > 0 ? conv.Name[0].ToString().ToUpper() : "?");
-                using (var initFont = new Font("Segoe UI", 22F, FontStyle.Bold))
+                string safeName = string.IsNullOrWhiteSpace(conv.Name) ? "Chat" : conv.Name.Trim();
+                string safeRole = string.IsNullOrWhiteSpace(conv.Role) ? "User" : conv.Role.Trim();
+                string init     = ExtractInitialLetter(safeName, conv.IsGroup);
+
+                using (var initFont = new Font("Segoe UI Emoji", 22F, FontStyle.Bold))
                 using (var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
                 {
                     g.DrawString(init, initFont, Brushes.White, new RectangleF(avRect.X, avRect.Y, avRect.Width, avRect.Height), fmt);
                 }
 
-                using (var nameFont = new Font("Segoe UI", 12.5F, FontStyle.Bold))
+                using (var nameFont = new Font("Segoe UI Emoji", 12.5F, FontStyle.Bold))
                 using (var fmt = new StringFormat { Alignment = StringAlignment.Center })
                 {
-                    g.DrawString(conv.Name, nameFont, new SolidBrush(ThemeManager.CurrentText), new PointF(cx, 88), fmt);
+                    g.DrawString(safeName, nameFont, new SolidBrush(ThemeManager.CurrentText), new PointF(cx, 88), fmt);
                 }
 
-                using (var subFont = new Font("Segoe UI", 9F))
+                using (var subFont = new Font("Segoe UI Emoji", 9F))
                 using (var fmt = new StringFormat { Alignment = StringAlignment.Center })
                 {
-                    g.DrawString($"{conv.Role.ToUpper()} • DriveAndGo Network", subFont, new SolidBrush(roleColor), new PointF(cx, 115), fmt);
+                    g.DrawString($"{safeRole.ToUpper()} • DriveAndGo Network", subFont, new SolidBrush(roleColor), new PointF(cx, 115), fmt);
                     g.DrawString("You're connected on DriveAndGo Dispatch", subFont, new SolidBrush(ThemeManager.CurrentSubText), new PointF(cx, 135), fmt);
                 }
             };
@@ -1475,19 +1786,30 @@ namespace DriveAndGo_Admin
         // ════════════════════════════════════════════════════════════════════════
         //  MESSAGE BUBBLES & MESSENGER DELIVERY STATUS ICONS
         // ════════════════════════════════════════════════════════════════════════
-        private void AddMessage(string text, bool isMine, DateTime time, MessageDeliveryState state = MessageDeliveryState.Delivered, string bubbleId = null, bool isUnsent = false, bool isEdited = false, string reactionsJson = "{}")
+        private void AddMessage(string text, bool isMine, DateTime time, MessageDeliveryState state = MessageDeliveryState.Delivered, string bubbleId = null, bool isUnsent = false, bool isEdited = false, string reactionsJson = "{}", string mediaType = null, string mediaUrl = null, string mediaMetadata = null)
         {
             // ── Horizontal inset: keeps bubbles away from the absolute container edges ──
             const int hInset = 20;  // pixels of breathing room on each side
             int maxW = Math.Max(200, _flowMessages.ClientSize.Width - 120);
             int padH = 12, padV = 9;
 
+            if (string.IsNullOrWhiteSpace(text)) text = " ";
+
             if (isUnsent)
                 text = isMine ? "You unsent a message" : "This message was unsent";
 
+            // ── Media bubble rendering (image / video / audio) ──────────────────
+            bool hasMedia = (!string.IsNullOrEmpty(mediaType) || !string.IsNullOrEmpty(mediaUrl))
+                            && mediaType != "file";
+            if (hasMedia)
+            {
+                AddMediaMessage(text, isMine, time, state, bubbleId, mediaType, mediaUrl, mediaMetadata);
+                return;
+            }
+
             SizeF sz;
             using (var g = this.CreateGraphics())
-            using (var font = isUnsent ? new Font("Segoe UI", 10.5F, FontStyle.Italic) : new Font("Segoe UI", 10.5F))
+            using (var font = isUnsent ? new Font("Segoe UI Emoji", 10.5F, FontStyle.Italic) : new Font("Segoe UI Emoji", 10.5F))
                 sz = g.MeasureString(text, font, maxW - padH * 2);
 
             int bubbleW = Math.Min((int)sz.Width + padH * 2 + 16, maxW);
@@ -1525,11 +1847,13 @@ namespace DriveAndGo_Admin
                 };
                 if (!isUnsent && bubbleId != null)
                 {
-                    AddMenuItem(ctx, "↪  Forward",      ()=> ForwardMessageAction(bubbleId));
+                    AddMenuItem(ctx, "↪  Forward",          ()=> ForwardMessageAction(bubbleId));
+                    if (isMine && !hasMedia)
+                        AddMenuItem(ctx, "✏️  Edit text",     ()=> EditMessageAction(bubbleId, text));
                     AddMenuItem(ctx, "🗑  Remove for you", ()=> RemoveMessageAction(bubbleId));
-                    AddMenuItem(ctx, "😊  React",        ()=> ReactMessageAction(bubbleId));
+                    AddMenuItem(ctx, "😊  React",           ()=> ReactMessageAction(bubbleId));
                     if (isMine)
-                        AddMenuItem(ctx, "↩  Unsend", ()=> UnsendMessageAction(bubbleId), isDestructive: true);
+                        AddMenuItem(ctx, "↩  Unsend",       ()=> UnsendMessageAction(bubbleId), isDestructive: true);
                 }
                 return ctx;
             }
@@ -1537,6 +1861,117 @@ namespace DriveAndGo_Admin
             var stateHolder = new[] { state };
             if (bubbleId != null)
                 _bubbleRegistry[bubbleId] = (row, stateHolder);
+
+            // ── Link Preview Rich Card Attachment ────────────────────────────
+            var urlMatch = System.Text.RegularExpressions.Regex.Match(text, @"(https?://[^\s]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (urlMatch.Success && !isUnsent)
+            {
+                string foundUrl = urlMatch.Groups[1].Value;
+                int cardW = Math.Min(320, row.Width - 40);
+                int cardH = 210;
+
+                var pnlCard = new Panel
+                {
+                    Size      = new Size(cardW, cardH),
+                    Location  = new Point(isMine ? row.Width - cardW - hInset : hInset, bubbleH + 6),
+                    BackColor = Color.FromArgb(28, 30, 46),
+                    Cursor    = Cursors.Hand,
+                    Visible   = false
+                };
+                EnableDB(pnlCard);
+                pnlCard.Region = Region.FromHrgn(CreateRoundRectRgn(0, 0, cardW, cardH, 14, 14));
+
+                var pbCover = new PictureBox
+                {
+                    Size      = new Size(cardW, 130),
+                    Location  = new Point(0, 0),
+                    SizeMode  = PictureBoxSizeMode.Zoom,
+                    BackColor = Color.FromArgb(15, 16, 26)
+                };
+                pnlCard.Controls.Add(pbCover);
+
+                var lblTitle = new Label
+                {
+                    Font         = new Font("Segoe UI", 9F, FontStyle.Bold),
+                    ForeColor    = Color.FromArgb(241, 245, 249),
+                    Location     = new Point(10, 134),
+                    Size         = new Size(cardW - 20, 20),
+                    AutoEllipsis = true
+                };
+                pnlCard.Controls.Add(lblTitle);
+
+                var lblDesc = new Label
+                {
+                    Font         = new Font("Segoe UI", 8F),
+                    ForeColor    = Color.FromArgb(148, 163, 184),
+                    Location     = new Point(10, 156),
+                    Size         = new Size(cardW - 20, 30),
+                    AutoEllipsis = true
+                };
+                pnlCard.Controls.Add(lblDesc);
+
+                var lblDomain = new Label
+                {
+                    Font         = new Font("Segoe UI", 7.5F),
+                    ForeColor    = Color.FromArgb(56, 189, 248),
+                    Location     = new Point(10, 188),
+                    Size         = new Size(cardW - 20, 16),
+                    AutoEllipsis = true
+                };
+                pnlCard.Controls.Add(lblDomain);
+
+                Action openUrl = () =>
+                {
+                    try
+                    {
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(foundUrl) { UseShellExecute = true });
+                    }
+                    catch { }
+                };
+
+                pnlCard.Click   += (s, e) => openUrl();
+                pbCover.Click   += (s, e) => openUrl();
+                lblTitle.Click  += (s, e) => openUrl();
+                lblDesc.Click   += (s, e) => openUrl();
+                lblDomain.Click += (s, e) => openUrl();
+
+                row.Controls.Add(pnlCard);
+
+                // Fetch metadata asynchronously
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var res = await ApiService.GetAsync($"media/link-preview?url={Uri.EscapeDataString(foundUrl)}");
+                        if (res.Success && !string.IsNullOrEmpty(res.Body) && !this.IsDisposed)
+                        {
+                            var linkDto = System.Text.Json.JsonSerializer.Deserialize<LinkPreviewDto>(res.Body,
+                                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                            if (linkDto != null)
+                            {
+                                this.BeginInvoke((Action)(() =>
+                                {
+                                    if (this.IsDisposed || pnlCard.IsDisposed) return;
+                                    lblTitle.Text  = !string.IsNullOrEmpty(linkDto.Title) ? linkDto.Title : linkDto.Domain;
+                                    lblDesc.Text   = !string.IsNullOrEmpty(linkDto.Description) ? linkDto.Description : (!string.IsNullOrEmpty(linkDto.SiteName) ? linkDto.SiteName : linkDto.Domain);
+                                    lblDomain.Text = linkDto.Domain;
+
+                                    if (!string.IsNullOrEmpty(linkDto.Image))
+                                    {
+                                        try { pbCover.LoadAsync(linkDto.Image); } catch { }
+                                    }
+
+                                    row.Height += cardH + 4;
+                                    pnlCard.Visible = true;
+                                    pnlCard.BringToFront();
+                                }));
+                            }
+                        }
+                    }
+                    catch { }
+                });
+            }
 
             // ── Mouse events: hover tracking + precise hitbox cursor ─────────
             row.MouseEnter += (s, e) => { rowHovered = true;  row.Invalidate(); };
@@ -1588,6 +2023,21 @@ namespace DriveAndGo_Admin
                 if (rxPillRect != Rectangle.Empty && (rxPillRect.Contains(e.Location) || rxPillRect.Contains(mousePt)))
                 {
                     ShowReactionDetails(reactionsJson, bubbleId);
+                    return;
+                }
+                if (urlMatch.Success && !isUnsent)
+                {
+                    int bx = isMine ? row.Width - bubbleW - hInset : hInset;
+                    var br = new Rectangle(bx, 4, bubbleW, bubbleH);
+                    if (br.Contains(e.Location) || br.Contains(mousePt))
+                    {
+                        try
+                        {
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(urlMatch.Groups[1].Value) { UseShellExecute = true });
+                            return;
+                        }
+                        catch { }
+                    }
                 }
             };
 
@@ -1611,8 +2061,9 @@ namespace DriveAndGo_Admin
                     g.FillPath(bg, path);
                     g.DrawPath(pen, path);
                     using var font  = new Font("Segoe UI", 10.5F, FontStyle.Italic);
-                    g.DrawString(text, font, new SolidBrush(ThemeManager.CurrentSubText),
-                        new RectangleF(bx + padH, by + padV, bubbleW - padH * 2, bubbleH));
+                    DrawMessageTextWithMentions(g, text, font,
+                        new RectangleF(bx + padH, by + padV, bubbleW - padH * 2, bubbleH),
+                        isMine: false, isUnsent: true);
                 }
                 else if (isMine)
                 {
@@ -1630,29 +2081,41 @@ namespace DriveAndGo_Admin
                             LinearGradientMode.Vertical);
                         g.FillPath(shine, sp);
                     }
-                    using var font = new Font("Segoe UI", 10.5F);
-                    g.DrawString(text, font, Brushes.White,
-                        new RectangleF(bx + padH, by + padV, bubbleW - padH * 2, bubbleH));
+                    using var font = new Font("Segoe UI Emoji", 10.5F);
+                    DrawMessageTextWithMentions(g, text, font,
+                        new RectangleF(bx + padH, by + padV, bubbleW - padH * 2, bubbleH),
+                        isMine: true, isUnsent: false);
                 }
                 else
                 {
                     using var path = RR(br, 14);
                     using var bg   = new SolidBrush(ThemeManager.CurrentCard);
-                    using var pen  = new Pen(ThemeManager.CurrentBorder, 1f);
+                    using var pen  = (bubbleId != null && bubbleId.StartsWith("ai_")) 
+                                     ? new Pen(Color.FromArgb(56, 189, 248), 1.5f) 
+                                     : new Pen(ThemeManager.CurrentBorder, 1f);
                     g.FillPath(bg, path);
                     g.DrawPath(pen, path);
-                    using var font = new Font("Segoe UI", 10.5F);
-                    g.DrawString(text, font, new SolidBrush(ThemeManager.CurrentText),
-                        new RectangleF(bx + padH, by + padV, bubbleW - padH * 2, bubbleH));
+                    using var font = new Font("Segoe UI Emoji", 10.5F);
+                    DrawMessageTextWithMentions(g, text, font,
+                        new RectangleF(bx + padH, by + padV, bubbleW - padH * 2, bubbleH),
+                        isMine: false, isUnsent: false);
+                }
+
+                // Show Drive&Go AI sender tag above bubble ONLY for AI responses
+                if (bubbleId != null && bubbleId.StartsWith("ai_") && by >= 16)
+                {
+                    using var mfont = new Font("Segoe UI", 7.5F, FontStyle.Bold);
+                    using var mbrush = new SolidBrush(Color.FromArgb(56, 189, 248)); // Bright Cyan / Messenger Blue
+                    g.DrawString("✨ Drive&Go AI", mfont, mbrush, new PointF(bx + 4, by - 14));
                 }
 
                 if (isEdited && !isUnsent)
                 {
-                    using var efont = new Font("Segoe UI", 7F);
-                    // Align "(edited)" to the right edge of the bubble for sent, left for received
-                    float editX = isMine ? bx + bubbleW - 44 : bx + 2;
-                    g.DrawString("(edited)", efont, new SolidBrush(ThemeManager.CurrentSubText),
-                        new PointF(editX, by + bubbleH + 2));
+                    using var efont = new Font("Segoe UI", 7.5F, FontStyle.Bold);
+                    using var ebrush = new SolidBrush(Color.FromArgb(56, 189, 248)); // Messenger Blue
+                    // Draw "Edited" above the top of the bubble
+                    float editX = isMine ? bx + bubbleW - 42 : bx + 4;
+                    g.DrawString("Edited", efont, ebrush, new PointF(editX, Math.Max(2, by - 14)));
                 }
                 
                 // ── Reaction pill (clickable) ────────────────────────────────
@@ -1924,6 +2387,784 @@ namespace DriveAndGo_Admin
             });
         }
 
+        /// <summary>
+        /// Renders an image, video, or audio message as a real visual bubble
+        /// (PictureBox for images, process-launch for video, HTML5 audio player for audio).
+        /// </summary>
+        private void AddMediaMessage(string caption, bool isMine, DateTime time, MessageDeliveryState state, string bubbleId, string mediaType, string mediaUrl, string mediaMetadata = null)
+        {
+            // Static files are served from the server ROOT (no /api prefix)
+            // e.g.  ApiService.BaseUrl = "http://localhost:5233/api"
+            //  -->  serverRoot           = "http://localhost:5233"
+            string serverRoot = ApiService.BaseUrl.TrimEnd('/')
+                                    .Replace("/api", "", StringComparison.OrdinalIgnoreCase)
+                                    .TrimEnd('/');
+            string fullUrl = (mediaUrl ?? "").StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                ? mediaUrl
+                : serverRoot + mediaUrl;
+
+            // ── Row container ─────────────────────────────────────────────────
+            int rowH   = mediaType == "image" ? 220 : mediaType == "video" ? 190 : 62;
+            int bubbleW = Math.Min(260, _flowMessages.ClientSize.Width - 80);
+
+            var row = new Panel
+            {
+                Width     = _flowMessages.ClientSize.Width - 24,
+                Height    = rowH + 28,
+                BackColor = Color.Transparent,
+                Margin    = new Padding(0, 4, 0, 4)
+            };
+            EnableDB(row);
+
+            int bx = isMine ? (row.Width - bubbleW - 10) : 10;
+
+            // ── Wrapper with rounded region ───────────────────────────────────
+            var wrapper = new Panel
+            {
+                Size      = new Size(bubbleW, rowH),
+                Location  = new Point(bx, 2),
+                BackColor = Color.FromArgb(25, 25, 30)
+            };
+            wrapper.Region = System.Drawing.Region.FromHrgn(
+                CreateRoundRectRgn(0, 0, wrapper.Width, wrapper.Height, 16, 16));
+            EnableDB(wrapper);
+
+            // ─────────────────────────────────────────────────────────────────
+            if (mediaType == "image")
+            {
+                var pb = new PictureBox
+                {
+                    Dock      = DockStyle.Fill,
+                    SizeMode  = PictureBoxSizeMode.Zoom,
+                    BackColor = Color.FromArgb(20, 20, 26),
+                    Cursor    = Cursors.Hand
+                };
+
+                // Download image bytes on background thread then marshal back to UI thread
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+                        var bytes = await client.GetByteArrayAsync(fullUrl);
+                        using var ms = new MemoryStream(bytes);
+                        var bmp = new Bitmap(ms);
+                        if (!pb.IsDisposed)
+                            pb.BeginInvoke((Action)(() =>
+                            {
+                                if (!pb.IsDisposed) pb.Image = bmp;
+                            }));
+                    }
+                    catch { /* show broken image silently */ }
+                });
+
+                pb.Click += (s, e) => ShowMediaFullscreen(fullUrl);
+                wrapper.Controls.Add(pb);
+            }
+            else if (mediaType == "video")
+            {
+                var pnl = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(12, 12, 18) };
+                EnableDB(pnl);
+
+                pnl.Paint += (s, e) =>
+                {
+                    var g = e.Graphics;
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.Clear(Color.FromArgb(18, 18, 24));
+
+                    int cx = pnl.Width / 2, cy = pnl.Height / 2;
+                    // Orange glow circle
+                    using var circleBrush = new SolidBrush(Color.FromArgb(200, 234, 88, 12));
+                    g.FillEllipse(circleBrush, cx - 30, cy - 30, 60, 60);
+                    // White play triangle
+                    using var playBrush = new SolidBrush(Color.White);
+                    g.FillPolygon(playBrush, new PointF[] { new(cx - 10, cy - 16), new(cx + 18, cy), new(cx - 10, cy + 16) });
+                    // Label
+                    using var font = new Font("Segoe UI", 9F);
+                    using var textBrush = new SolidBrush(Color.FromArgb(160, 255, 255, 255));
+                    string lbl = "📹 Video — click to play";
+                    var sz = g.MeasureString(lbl, font);
+                    g.DrawString(lbl, font, textBrush, (pnl.Width - sz.Width) / 2f, pnl.Height - 24f);
+                };
+                pnl.Click += (s, e) => ShowMediaFullscreen(fullUrl);
+                pnl.Cursor = Cursors.Hand;
+                wrapper.Controls.Add(pnl);
+            }
+            else if (mediaType == "audio")
+            {
+                rowH = 50;
+                row.Height = 78;
+                wrapper.Size      = new Size(bubbleW, 50);
+                wrapper.BackColor = isMine ? Color.FromArgb(234, 88, 12) : Color.FromArgb(30, 41, 59); // Drive&Go Orange vs Dark Slate
+                wrapper.Region    = System.Drawing.Region.FromHrgn(
+                    CreateRoundRectRgn(0, 0, wrapper.Width, 50, 22, 22));
+                EnableDB(wrapper);
+
+                var tbl = new TableLayoutPanel
+                {
+                    Dock        = DockStyle.Fill,
+                    ColumnCount = 3,
+                    RowCount    = 1,
+                    BackColor   = Color.Transparent,
+                    Padding     = new Padding(4, 2, 8, 2)
+                };
+                tbl.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 38)); // Play btn
+                tbl.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); // Waveform
+                tbl.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 42)); // Duration
+                tbl.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+                // ── Equalizer Waveform Canvas (Uses real recorded mic data if available) ──
+                var pnlWave = new Panel
+                {
+                    Dock      = DockStyle.Fill,
+                    BackColor = Color.Transparent,
+                    Margin    = new Padding(2, 4, 2, 4)
+                };
+                EnableDB(pnlWave);
+
+                int[] samplePattern = null;
+                if (!string.IsNullOrEmpty(mediaMetadata))
+                {
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(mediaMetadata);
+                        if (doc.RootElement.TryGetProperty("waveform", out var wfElem) && wfElem.ValueKind == JsonValueKind.Array)
+                        {
+                            var list = new List<int>();
+                            foreach (var item in wfElem.EnumerateArray()) list.Add(item.GetInt32());
+                            if (list.Count > 0) samplePattern = list.ToArray();
+                        }
+                    }
+                    catch { }
+                }
+                if (samplePattern == null || samplePattern.Length == 0)
+                {
+                    samplePattern = new int[] { 8, 14, 10, 20, 14, 24, 10, 18, 24, 10, 20, 14, 22, 8, 16, 20, 12, 18, 10, 14 };
+                }
+                tbl.Controls.Add(pnlWave, 1, 0);
+
+                // ── Play/Pause Circle Button ──
+                var btnPlay = new Button
+                {
+                    Dock      = DockStyle.Fill,
+                    FlatStyle = FlatStyle.Flat,
+                    BackColor = Color.White,
+                    ForeColor = isMine ? Color.FromArgb(234, 88, 12) : Color.FromArgb(30, 41, 59),
+                    Text      = "▶",
+                    Font      = new Font("Segoe UI Symbol", 10F, FontStyle.Bold),
+                    Cursor    = Cursors.Hand,
+                    Margin    = new Padding(4, 7, 4, 7)
+                };
+                btnPlay.FlatAppearance.BorderSize = 0;
+                tbl.Controls.Add(btnPlay, 0, 0);
+
+                // ── Duration Label ──
+                string durStr = caption.Contains("Voice Note")
+                    ? caption.Replace("[Voice Note ", "").Replace("]", "").Trim()
+                    : "0:05";
+
+                int totalDurationSecs = 5;
+                if (!string.IsNullOrEmpty(durStr) && durStr.Contains(":"))
+                {
+                    var parts = durStr.Split(':');
+                    if (parts.Length == 2 && int.TryParse(parts[0], out int mm) && int.TryParse(parts[1], out int ss))
+                    {
+                        totalDurationSecs = Math.Max(1, mm * 60 + ss);
+                    }
+                }
+
+                var lblDur = new Label
+                {
+                    Text      = string.IsNullOrWhiteSpace(durStr) ? "0:05" : durStr,
+                    Font      = new Font("Segoe UI", 8F, FontStyle.Bold),
+                    ForeColor = Color.White,
+                    Dock      = DockStyle.Fill,
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    BackColor = Color.Transparent,
+                    Margin    = new Padding(0, 4, 2, 4)
+                };
+                tbl.Controls.Add(lblDur, 2, 0);
+
+                float playbackProgress = 0f;
+                System.Windows.Forms.Timer playTimer = null;
+                bool playing = false;
+
+                Action stopThisBubble = () =>
+                {
+                    playing = false;
+                    playbackProgress = 0f;
+                    playTimer?.Stop();
+                    playTimer?.Dispose();
+                    playTimer = null;
+                    if (!btnPlay.IsDisposed) btnPlay.Text = "▶";
+                    if (!lblDur.IsDisposed) lblDur.Text = durStr;
+                    if (!pnlWave.IsDisposed) pnlWave.Invalidate();
+                };
+
+                btnPlay.Click += (s, e) =>
+                {
+                    if (playing)
+                    {
+                        StopCurrentAudioPlayback();
+                        return;
+                    }
+
+                    // Stop any other currently playing voice note in the app!
+                    StopCurrentAudioPlayback();
+
+                    playing = true;
+                    btnPlay.Text = "⏸";
+                    playbackProgress = 0f;
+
+                    string alias = "voice_" + Guid.NewGuid().ToString("N");
+                    _currentPlayingAlias = alias;
+                    _stopCurrentPlaybackAction = stopThisBubble;
+
+                    int elapsedMs = 0;
+                    int totalMs = totalDurationSecs * 1000;
+
+                    playTimer = new System.Windows.Forms.Timer { Interval = 100 };
+                    playTimer.Tick += (st, et) =>
+                    {
+                        elapsedMs += 100;
+                        playbackProgress = Math.Min(1.0f, (float)elapsedMs / totalMs);
+
+                        int curSec = Math.Min(totalDurationSecs, elapsedMs / 1000);
+                        if (!lblDur.IsDisposed)
+                            lblDur.Text = $"{curSec / 60}:{curSec % 60:D2}";
+
+                        if (!pnlWave.IsDisposed)
+                            pnlWave.Invalidate();
+
+                        if (elapsedMs >= totalMs)
+                        {
+                            StopCurrentAudioPlayback();
+                        }
+                    };
+                    playTimer.Start();
+
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            string localPath = mediaUrl;
+                            string cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DriveAndGo", "AudioCache");
+                            Directory.CreateDirectory(cacheDir);
+
+                            if (string.IsNullOrEmpty(localPath) || !File.Exists(localPath))
+                            {
+                                string fileName = !string.IsNullOrEmpty(fullUrl) ? Path.GetFileName(fullUrl) : $"{alias}.wav";
+                                string cachedPath = Path.Combine(cacheDir, fileName);
+
+                                if (File.Exists(cachedPath))
+                                {
+                                    localPath = cachedPath;
+                                }
+                                else if (fullUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+                                    var bytes = await client.GetByteArrayAsync(fullUrl);
+                                    await File.WriteAllBytesAsync(cachedPath, bytes);
+                                    localPath = cachedPath;
+                                }
+                            }
+
+                            if (!string.IsNullOrEmpty(localPath) && File.Exists(localPath))
+                            {
+                                using var sp = new System.Media.SoundPlayer(localPath);
+                                sp.Play();
+                            }
+                            else if (!string.IsNullOrEmpty(localPath))
+                            {
+                                mciSendString($"open \"{localPath}\" alias {alias}", null, 0, IntPtr.Zero);
+                                mciSendString($"play {alias}", null, 0, IntPtr.Zero);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine("Audio play error: " + ex.Message);
+                        }
+                    });
+                };
+
+                // ── Paint Waveform with Progress Highlight ──
+                pnlWave.Paint += (s, e) =>
+                {
+                    var g = e.Graphics;
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    int midY = pnlWave.Height / 2;
+                    int spacing = 5;
+                    int startX = 4;
+
+                    using var activeBrush = new SolidBrush(Color.White);
+                    using var mutedBrush  = new SolidBrush(Color.FromArgb(140, 255, 255, 255));
+
+                    for (int i = 0; i < samplePattern.Length; i++)
+                    {
+                        int x = startX + (i * spacing);
+                        if (x > pnlWave.Width - 4) break;
+                        int h = samplePattern[i];
+
+                        float barRatio = (float)i / Math.Max(1, samplePattern.Length - 1);
+                        Brush b = (playing && barRatio <= playbackProgress) ? activeBrush : mutedBrush;
+
+                        g.FillRectangle(b, new Rectangle(x, midY - h / 2, 3, Math.Max(3, h)));
+                    }
+                };
+
+                wrapper.Controls.Add(tbl);
+            }
+
+            row.Controls.Add(wrapper);
+
+            // Register bubble for status updates
+            var stateHolder = new MessageDeliveryState[] { state };
+            if (!string.IsNullOrEmpty(bubbleId))
+            {
+                row.Tag = bubbleId;
+                _bubbleRegistry[bubbleId] = (row, stateHolder);
+            }
+
+            // ── Mouse tracking & Hover Action Bar for Media ──────────────────
+            bool rowHovered   = false;
+            bool smileHovered = false;
+            bool dotsHovered  = false;
+            Rectangle smileRect = Rectangle.Empty;
+            Rectangle dotsRect  = Rectangle.Empty;
+
+            ContextMenuStrip BuildMediaContextMenu()
+            {
+                var ctx = new ContextMenuStrip
+                {
+                    ShowImageMargin  = false,
+                    ShowCheckMargin  = false,
+                    BackColor        = Color.FromArgb(36, 37, 38),
+                    ForeColor        = Color.FromArgb(228, 230, 235),
+                    Font             = new Font("Segoe UI", 10F, FontStyle.Regular),
+                    RenderMode       = ToolStripRenderMode.Professional,
+                    Renderer         = new MessengerMenuRenderer()
+                };
+                if (bubbleId != null)
+                {
+                    AddMenuItem(ctx, "↪  Forward",          ()=> ForwardMessageAction(bubbleId));
+                    AddMenuItem(ctx, "🗑  Remove for you", ()=> RemoveMessageAction(bubbleId));
+                    AddMenuItem(ctx, "😊  React",           ()=> ReactMessageAction(bubbleId));
+                    if (isMine)
+                        AddMenuItem(ctx, "↩  Unsend",       ()=> UnsendMessageAction(bubbleId), isDestructive: true);
+                }
+                return ctx;
+            }
+
+            row.MouseEnter += (s, e) => { rowHovered = true;  row.Invalidate(); };
+            row.MouseLeave += (s, e) =>
+            {
+                rowHovered   = false;
+                smileHovered = false;
+                dotsHovered  = false;
+                row.Cursor   = Cursors.Default;
+                row.Invalidate();
+            };
+            row.MouseMove += (s, e) =>
+            {
+                int scrollOffsetY = Math.Abs(this.AutoScrollPosition.Y) + Math.Abs(_flowMessages?.AutoScrollPosition.Y ?? 0);
+                Point mousePt = scrollOffsetY > 0 ? new Point(e.X, e.Y + scrollOffsetY) : e.Location;
+
+                bool newSmile = smileRect != Rectangle.Empty && (smileRect.Contains(e.Location) || smileRect.Contains(mousePt));
+                bool newDots  = dotsRect  != Rectangle.Empty && (dotsRect.Contains(e.Location) || dotsRect.Contains(mousePt));
+
+                if (newSmile != smileHovered || newDots != dotsHovered)
+                {
+                    smileHovered = newSmile;
+                    dotsHovered  = newDots;
+                    row.Cursor   = (newSmile || newDots) ? Cursors.Hand : Cursors.Default;
+                    row.Invalidate();
+                }
+            };
+            row.MouseClick += (s, e) =>
+            {
+                int scrollOffsetY = Math.Abs(this.AutoScrollPosition.Y) + Math.Abs(_flowMessages?.AutoScrollPosition.Y ?? 0);
+                Point mousePt = scrollOffsetY > 0 ? new Point(e.X, e.Y + scrollOffsetY) : e.Location;
+
+                if (smileRect != Rectangle.Empty && (smileRect.Contains(e.Location) || smileRect.Contains(mousePt)))
+                {
+                    ReactMessageAction(bubbleId);
+                    return;
+                }
+                if (dotsRect != Rectangle.Empty && (dotsRect.Contains(e.Location) || dotsRect.Contains(mousePt)))
+                {
+                    var ctx = BuildMediaContextMenu();
+                    ctx.Show(row, e.Location);
+                    return;
+                }
+            };
+
+            // Status and Timestamp below the media bubble
+            row.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+
+                if (rowHovered)
+                {
+                    int iconSize = 24;
+                    int iconY = 2 + (rowH / 2) - (iconSize / 2);
+
+                    if (isMine)
+                    {
+                        dotsRect  = new Rectangle(bx - iconSize - 4,     iconY, iconSize, iconSize);
+                        smileRect = new Rectangle(bx - iconSize * 2 - 8, iconY, iconSize, iconSize);
+                    }
+                    else
+                    {
+                        smileRect = new Rectangle(bx + bubbleW + 4,            iconY, iconSize, iconSize);
+                        dotsRect  = new Rectangle(bx + bubbleW + iconSize + 8, iconY, iconSize, iconSize);
+                    }
+
+                    DrawHoverIcon(g, smileRect, smileHovered, isSmile: true);
+                    DrawHoverIcon(g, dotsRect,  dotsHovered,  isSmile: false);
+                }
+                else
+                {
+                    smileRect = Rectangle.Empty;
+                    dotsRect  = Rectangle.Empty;
+                }
+
+                string ts = time.ToString("h:mm tt");
+                using var tFont = new Font("Segoe UI", 8F);
+                using var metaColor = new SolidBrush(ThemeManager.IsDarkMode ? Color.FromArgb(140, 200, 200, 200) : Color.FromArgb(140, 80, 80, 80));
+
+                float metaY = 2 + rowH + 4;
+
+                if (isMine)
+                {
+                    string statusLabel = stateHolder[0] switch
+                    {
+                        MessageDeliveryState.Sending   => "Sending",
+                        MessageDeliveryState.Sent      => "Sent",
+                        MessageDeliveryState.Delivered => "Delivered",
+                        MessageDeliveryState.Seen      => "Seen",
+                        _                              => ""
+                    };
+                    using var lblFont = new Font("Segoe UI", 7.5F);
+
+                    int iconSize = 14;
+                    var iconRect = new Rectangle(bx + bubbleW - iconSize, (int)metaY + 1, iconSize, iconSize);
+                    DrawDeliveryIcon(g, iconRect, stateHolder[0]);
+
+                    var lblSz = g.MeasureString(statusLabel, lblFont);
+                    float lblX = iconRect.X - lblSz.Width - 3;
+                    Color lblColor = stateHolder[0] == MessageDeliveryState.Seen
+                        ? Color.FromArgb(200, ThemeManager.CurrentPrimary)
+                        : (ThemeManager.IsDarkMode ? Color.FromArgb(140, 200, 200, 200) : Color.FromArgb(140, 80, 80, 80));
+                    if (!string.IsNullOrEmpty(statusLabel))
+                        g.DrawString(statusLabel, lblFont, new SolidBrush(lblColor), new PointF(lblX, metaY + 1));
+
+                    var tsSz = g.MeasureString(ts, tFont);
+                    float tsX = bx;
+                    g.DrawString(ts, tFont, metaColor, new PointF(tsX, metaY));
+                }
+                else
+                {
+                    g.DrawString(ts, tFont, metaColor, new PointF(bx, metaY));
+                }
+            };
+
+            _flowMessages.Controls.Add(row);
+        }
+
+        private void ShowMediaFullscreen(string url)
+        {
+            var mediaForm = new Form
+            {
+                Text            = "Drive&Go — Media Viewer",
+                StartPosition   = FormStartPosition.CenterParent,
+                Size            = new Size(960, 680),
+                MinimumSize     = new Size(500, 400),
+                BackColor       = Color.FromArgb(10, 12, 20),
+                ShowIcon        = false,
+                FormBorderStyle = FormBorderStyle.None,
+                KeyPreview      = true
+            };
+
+            // Rounded corners for the modal form
+            mediaForm.Shown += (s, e) =>
+            {
+                if (mediaForm.Width > 0 && mediaForm.Height > 0)
+                {
+                    mediaForm.Region = System.Drawing.Region.FromHrgn(
+                        CreateRoundRectRgn(0, 0, mediaForm.Width, mediaForm.Height, 16, 16));
+                }
+            };
+            mediaForm.SizeChanged += (s, e) =>
+            {
+                if (mediaForm.Width > 0 && mediaForm.Height > 0)
+                {
+                    mediaForm.Region = System.Drawing.Region.FromHrgn(
+                        CreateRoundRectRgn(0, 0, mediaForm.Width, mediaForm.Height, 16, 16));
+                }
+            };
+
+            mediaForm.KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape) mediaForm.Close(); };
+
+            // ── Top Header Toolbar (Dark Glass Panel with Title & Action Buttons) ──
+            var pnlHeader = new Panel
+            {
+                Dock      = DockStyle.Top,
+                Height    = 48,
+                BackColor = Color.FromArgb(18, 19, 32),
+                Padding   = new Padding(16, 0, 16, 0)
+            };
+            EnableDB(pnlHeader);
+
+            // Allow dragging window by header panel
+            pnlHeader.MouseDown += (s, e) =>
+            {
+                if (e.Button == MouseButtons.Left)
+                {
+                    ReleaseCapture();
+                    SendMessage(mediaForm.Handle, 0xA1, 0x2, 0);
+                }
+            };
+
+            var lblTitle = new Label
+            {
+                Text      = "🖼  Media Viewer",
+                Font      = new Font("Segoe UI", 10.5F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(241, 245, 249),
+                AutoSize  = true,
+                Location  = new Point(16, 13),
+                BackColor = Color.Transparent
+            };
+            pnlHeader.Controls.Add(lblTitle);
+
+            // Action Buttons Panel (Copy, Save, Close) on the right
+            var pnlActions = new FlowLayoutPanel
+            {
+                Dock         = DockStyle.Right,
+                AutoSize     = true,
+                FlowDirection= FlowDirection.LeftToRight,
+                BackColor    = Color.Transparent,
+                Padding      = new Padding(0, 7, 0, 0)
+            };
+
+            // Copy Button
+            var btnCopy = new Button
+            {
+                Text      = "📋 Copy Image",
+                Font      = new Font("Segoe UI", 9F, FontStyle.Bold),
+                ForeColor = Color.White,
+                BackColor = Color.FromArgb(234, 88, 12), // Drive&Go Signature Orange
+                FlatStyle = FlatStyle.Flat,
+                Height    = 34,
+                AutoSize  = true,
+                Cursor    = Cursors.Hand,
+                Margin    = new Padding(0, 0, 8, 0)
+            };
+            btnCopy.FlatAppearance.BorderSize = 0;
+            btnCopy.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, 120, 34, 12, 12));
+
+            // Save / Download Button
+            var btnSave = new Button
+            {
+                Text      = "💾 Save",
+                Font      = new Font("Segoe UI", 9F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(226, 232, 240),
+                BackColor = Color.FromArgb(45, 55, 72),
+                FlatStyle = FlatStyle.Flat,
+                Height    = 34,
+                AutoSize  = true,
+                Cursor    = Cursors.Hand,
+                Margin    = new Padding(0, 0, 8, 0)
+            };
+            btnSave.FlatAppearance.BorderSize = 0;
+            btnSave.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, 80, 34, 12, 12));
+
+            // Close Button
+            var btnClose = new Button
+            {
+                Text      = "✕",
+                Font      = new Font("Segoe UI", 11F, FontStyle.Bold),
+                ForeColor = Color.White,
+                BackColor = Color.FromArgb(220, 38, 38),
+                FlatStyle = FlatStyle.Flat,
+                Size      = new Size(34, 34),
+                Cursor    = Cursors.Hand,
+                Margin    = new Padding(0, 0, 0, 0)
+            };
+            btnClose.FlatAppearance.BorderSize = 0;
+            btnClose.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, 34, 34, 34, 34));
+            btnClose.Click += (s, e) => mediaForm.Close();
+
+            pnlActions.Controls.Add(btnCopy);
+            pnlActions.Controls.Add(btnSave);
+            pnlActions.Controls.Add(btnClose);
+            pnlHeader.Controls.Add(pnlActions);
+
+            // Floating Toast Notification Panel ("Copied image to clipboard! 📋")
+            var pnlToast = new Panel
+            {
+                Size      = new Size(240, 38),
+                BackColor = Color.FromArgb(234, 88, 12),
+                Visible   = false,
+                Anchor    = AnchorStyles.Bottom
+            };
+            pnlToast.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, 240, 38, 18, 18));
+            var lblToast = new Label
+            {
+                Text      = "Copied image to clipboard! 📋",
+                Font      = new Font("Segoe UI", 9.5F, FontStyle.Bold),
+                ForeColor = Color.White,
+                Dock      = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleCenter,
+                BackColor = Color.Transparent
+            };
+            pnlToast.Controls.Add(lblToast);
+
+            System.Windows.Forms.Timer toastTimer = new System.Windows.Forms.Timer { Interval = 2500 };
+            toastTimer.Tick += (st, et) =>
+            {
+                toastTimer.Stop();
+                pnlToast.Visible = false;
+            };
+
+            Action showToast = () =>
+            {
+                pnlToast.Location = new Point((mediaForm.ClientSize.Width - pnlToast.Width) / 2, mediaForm.ClientSize.Height - 60);
+                pnlToast.Visible = true;
+                pnlToast.BringToFront();
+                toastTimer.Stop();
+                toastTimer.Start();
+            };
+
+            string ext = Path.GetExtension(url).ToLowerInvariant();
+            bool isVideo = ext == ".mp4" || ext == ".mov" || ext == ".avi" || url.Contains("video");
+
+            var pnlBody = new Panel
+            {
+                Dock      = DockStyle.Fill,
+                BackColor = Color.FromArgb(10, 12, 20)
+            };
+
+            if (!isVideo)
+            {
+                var pb = new PictureBox
+                {
+                    Dock      = DockStyle.Fill,
+                    SizeMode  = PictureBoxSizeMode.Zoom,
+                    BackColor = Color.FromArgb(10, 12, 20),
+                    Cursor    = Cursors.Hand
+                };
+
+                // Tooltip explaining click to copy
+                var toolTip = new ToolTip();
+                toolTip.SetToolTip(pb, "Click anywhere on image to copy to clipboard");
+
+                Action copyAction = () =>
+                {
+                    if (pb.Image != null)
+                    {
+                        try
+                        {
+                            Clipboard.SetImage(pb.Image);
+                            showToast();
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show("Could not copy image to clipboard: " + ex.Message, "Copy Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        }
+                    }
+                };
+
+                // Copy on Image Click
+                pb.Click += (s, e) => copyAction();
+                btnCopy.Click += (s, e) => copyAction();
+
+                // Save action
+                btnSave.Click += (s, e) =>
+                {
+                    if (pb.Image != null)
+                    {
+                        using var sfd = new SaveFileDialog
+                        {
+                            Filter   = "PNG Image|*.png|JPEG Image|*.jpg|Bitmap Image|*.bmp",
+                            FileName = $"DriveAndGo_Media_{DateTime.Now:yyyyMMdd_HHmmss}.png"
+                        };
+                        if (sfd.ShowDialog() == DialogResult.OK)
+                        {
+                            pb.Image.Save(sfd.FileName);
+                            MessageBox.Show("Image saved successfully!", "Saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
+                    }
+                };
+
+                // Context menu on right click
+                var cms = new ContextMenuStrip();
+                var itemCopy = cms.Items.Add("📋 Copy Image");
+                itemCopy.Click += (s, e) => copyAction();
+                var itemSave = cms.Items.Add("💾 Save Image As...");
+                itemSave.Click += (s, e) => btnSave.PerformClick();
+                pb.ContextMenuStrip = cms;
+
+                pnlBody.Controls.Add(pb);
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+                        var bytes = await client.GetByteArrayAsync(url);
+                        using var ms = new MemoryStream(bytes);
+                        var bmp = new Bitmap(ms);
+                        if (!pb.IsDisposed)
+                            pb.BeginInvoke((Action)(() => { if (!pb.IsDisposed) pb.Image = bmp; }));
+                    }
+                    catch { }
+                });
+            }
+            else
+            {
+                btnCopy.Visible = false; // Copy image button not needed for video
+                var webView = new Microsoft.Web.WebView2.WinForms.WebView2
+                {
+                    Dock = DockStyle.Fill
+                };
+                pnlBody.Controls.Add(webView);
+
+                mediaForm.Shown += async (s, e) =>
+                {
+                    try
+                    {
+                        await webView.EnsureCoreWebView2Async();
+                        string html = $@"
+                        <html>
+                          <body style='margin:0;background:#0a0c12;display:flex;align-items:center;justify-content:center;height:100vh;'>
+                            <video src='{url}' controls autoplay style='max-width:100%;max-height:100%;border-radius:12px;'></video>
+                          </body>
+                        </html>";
+                        webView.CoreWebView2.NavigateToString(html);
+                    }
+                    catch { }
+                };
+            }
+
+            mediaForm.Controls.Add(pnlBody);
+            mediaForm.Controls.Add(pnlHeader);
+            mediaForm.Controls.Add(pnlToast);
+
+            pnlToast.Location = new Point((mediaForm.ClientSize.Width - pnlToast.Width) / 2, mediaForm.ClientSize.Height - 60);
+
+            mediaForm.ShowDialog(this);
+        }
+
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool ReleaseCapture();
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
+
+        [System.Runtime.InteropServices.DllImport("Gdi32.dll", EntryPoint = "CreateRoundRectRgn")]
+        private static extern IntPtr CreateRoundRectRgn(int nLeftRect, int nTopRect, int nRightRect, int nBottomRect, int nWidthEllipse, int nHeightEllipse);
+
         private void UpdateBubbleState(string bubbleId, MessageDeliveryState newState)
         {
             if (string.IsNullOrEmpty(bubbleId) || !_bubbleRegistry.ContainsKey(bubbleId)) return;
@@ -1944,6 +3185,9 @@ namespace DriveAndGo_Admin
             string text = _txtInput.Text.Trim();
             if (string.IsNullOrWhiteSpace(text) || _activeConvId == null) return;
             _txtInput.Clear();
+            if (_pnlLinkPreview != null) _pnlLinkPreview.Visible = false;
+            _isLinkPreviewDismissed = false;
+            _lastPreviewUrl = "";
 
             string bubbleId = Guid.NewGuid().ToString();
             _lastSentBubbleId = bubbleId;
@@ -1952,6 +3196,13 @@ namespace DriveAndGo_Admin
             AddMessage(text, true, now, MessageDeliveryState.Sending, bubbleId);
             if (_flowMessages.Controls.Count > 0)
                 _flowMessages.ScrollControlIntoView(_flowMessages.Controls[_flowMessages.Controls.Count - 1]);
+
+            if (text.Contains("@Drive&Go AI", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("@DriveAndGo AI", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("@AI", StringComparison.OrdinalIgnoreCase))
+            {
+                TriggerInChatAiMention(text, _activeConvId, _activeConvIsGroup);
+            }
 
             try
             {
@@ -2000,6 +3251,520 @@ namespace DriveAndGo_Admin
                 MessageBox.Show("Messaging Exception: " + ex.Message, "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private async void UploadAndSendMedia(string filePath)
+        {
+            if (string.IsNullOrEmpty(filePath) || _activeConvId == null) return;
+            
+            string tempBubbleId = Guid.NewGuid().ToString();
+            string ext = Path.GetExtension(filePath).ToLowerInvariant();
+            string tempMType = (ext == ".jpg" || ext == ".png" || ext == ".jpeg" || ext == ".gif" || ext == ".webp") ? "image"
+                             : (ext == ".mp4" || ext == ".mov" || ext == ".avi") ? "video" : "file";
+
+            // 1. Optimistic bubble: show immediately with "Sending" (•) state
+            AddMessage(tempMType == "image" ? "[Photo]" : tempMType == "video" ? "[Video]" : "[File]",
+                       true, DateTime.Now, MessageDeliveryState.Sending, tempBubbleId, false, false, "{}", tempMType, filePath);
+            if (_flowMessages.Controls.Count > 0)
+                _flowMessages.ScrollControlIntoView(_flowMessages.Controls[_flowMessages.Controls.Count - 1]);
+
+            try
+            {
+                using var client = new HttpClient();
+                using var content = new MultipartFormDataContent();
+                using var stream = File.OpenRead(filePath);
+                content.Add(new StreamContent(stream), "file", Path.GetFileName(filePath));
+
+                var apiBase = ApiService.BaseUrl.TrimEnd('/');
+                var res = await client.PostAsync($"{apiBase}/messages/upload", content);
+                if (res.IsSuccessStatusCode)
+                {
+                    var json = await res.Content.ReadAsStringAsync();
+                    using var doc = JsonDocument.Parse(json);
+                    var root = doc.RootElement;
+                    string url = root.TryGetProperty("Url", out var uPropU) ? uPropU.GetString()
+                               : root.TryGetProperty("url", out var uPropL) ? uPropL.GetString() : null;
+                    string mType = root.TryGetProperty("MediaType", out var mPropU2) ? mPropU2.GetString()
+                                 : root.TryGetProperty("mediaType", out var mPropL2) ? mPropL2.GetString() : tempMType;
+
+                    var payload = new
+                    {
+                        senderId = "admin",
+                        receiverId = _activeConvId,
+                        messageBody = mType == "image" ? "[Photo]" : mType == "video" ? "[Video]" : "[File]",
+                        isGroupChat = _activeConvIsGroup,
+                        senderName = SessionManager.FullName,
+                        mediaType = mType,
+                        mediaUrl = url
+                    };
+
+                    var sendRes = await ApiService.PostAsync("messages", payload);
+                    if (sendRes.Success)
+                    {
+                        // 2. Sent: update state to Sent (✓)
+                        UpdateBubbleState(tempBubbleId, MessageDeliveryState.Sent);
+
+                        if (!string.IsNullOrWhiteSpace(sendRes.Body))
+                        {
+                            try
+                            {
+                                using var doc2 = JsonDocument.Parse(sendRes.Body);
+                                int realId = 0;
+                                if (doc2.RootElement.TryGetProperty("messageId", out var mid1)) realId = mid1.GetInt32();
+                                else if (doc2.RootElement.TryGetProperty("MessageId", out var mid2)) realId = mid2.GetInt32();
+
+                                if (realId > 0 && _bubbleRegistry.TryGetValue(tempBubbleId, out var entry))
+                                {
+                                    entry.row.Tag = realId.ToString();
+                                    _bubbleRegistry[tempBubbleId] = entry;
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Media Upload Error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private Panel _pnlVoiceRecorderBar;
+        private Label _lblVoiceTimer;
+        private System.Windows.Forms.Timer _voiceTimer;
+        private System.Windows.Forms.Timer _voiceWaveTimer;
+        private int _voiceSecs = 0;
+        private RealAudioMicrophoneTracker _micTracker;
+        private List<int> _waveHeights = new List<int>();
+
+        private void StartVoiceRecordingBar(Panel parentInputBar)
+        {
+            if (_pnlVoiceRecorderBar != null)
+                StopVoiceRecordingBar(parentInputBar);
+
+            _voiceSecs = 0;
+            _waveHeights.Clear();
+
+            // ── Root container: Dock = Fill over the inputBar ─────────────────
+            _pnlVoiceRecorderBar = new Panel
+            {
+                Dock      = DockStyle.Fill,
+                BackColor = ThemeManager.CurrentSidebar,
+                Padding   = new Padding(6, 6, 6, 6)
+            };
+
+            var tbl = new TableLayoutPanel
+            {
+                Dock        = DockStyle.Fill,
+                ColumnCount = 3,
+                RowCount    = 1,
+                BackColor   = Color.Transparent
+            };
+            tbl.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 40));   // Col0: Circular Trash btn (40px)
+            tbl.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));   // Col1: Orange pill
+            tbl.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 40));   // Col2: Circular Send btn (40px)
+            tbl.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+            // ── Col 0: Trash / Cancel Button (Perfect 1:1 Circle) ───────────
+            var btnTrash = new Button
+            {
+                Size      = new Size(34, 34),
+                Anchor    = AnchorStyles.None,
+                Margin    = new Padding(1, 0, 1, 0),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(239, 68, 68),
+                ForeColor = Color.White,
+                Text      = "🗑",
+                Font      = new Font("Segoe UI Emoji", 9.5F, FontStyle.Bold),
+                Cursor    = Cursors.Hand
+            };
+            btnTrash.FlatAppearance.BorderSize = 0;
+            btnTrash.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, 34, 34, 34, 34));
+            btnTrash.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                var r = new Rectangle(0, 0, 34, 34);
+                using var grad = new LinearGradientBrush(r,
+                    Color.FromArgb(239, 68, 68), Color.FromArgb(185, 28, 28),
+                    LinearGradientMode.Vertical);
+                g.FillEllipse(grad, r);
+                TextRenderer.DrawText(g, "🗑", btnTrash.Font, r, Color.White,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            };
+            btnTrash.Click += (s, e) => StopVoiceRecordingBar(parentInputBar);
+            tbl.Controls.Add(btnTrash, 0, 0);
+
+            // ── Col 1: Orange Gradient Pill (Waveform + Timer) ───────────────
+            var pnlOrangePill = new Panel
+            {
+                Dock      = DockStyle.Fill,
+                Margin    = new Padding(3, 4, 3, 4),
+                BackColor = Color.Transparent
+            };
+            EnableDB(pnlOrangePill);
+
+            pnlOrangePill.SizeChanged += (s, e) =>
+            {
+                if (pnlOrangePill.Width > 0 && pnlOrangePill.Height > 0)
+                {
+                    int radius = Math.Min(pnlOrangePill.Height / 2, 18);
+                    pnlOrangePill.Region = System.Drawing.Region.FromHrgn(
+                        CreateRoundRectRgn(0, 0, pnlOrangePill.Width, pnlOrangePill.Height, radius * 2, radius * 2));
+                }
+            };
+
+            pnlOrangePill.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                using var grad = new LinearGradientBrush(
+                    pnlOrangePill.ClientRectangle,
+                    Color.FromArgb(234, 88, 12), Color.FromArgb(249, 115, 22),
+                    LinearGradientMode.Horizontal);
+                int radius = Math.Min(pnlOrangePill.Height / 2, 18);
+                using var path = RR(pnlOrangePill.ClientRectangle, radius);
+                g.FillPath(grad, path);
+            };
+
+            // Inner flex row: ⏸ icon | waveform | 0:00
+            var innerTbl = new TableLayoutPanel
+            {
+                Dock        = DockStyle.Fill,
+                ColumnCount = 3,
+                RowCount    = 1,
+                BackColor   = Color.Transparent,
+                Padding     = new Padding(4, 0, 8, 0)
+            };
+            innerTbl.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 32)); // ⏸ btn
+            innerTbl.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); // waveform
+            innerTbl.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 44)); // 0:00
+            innerTbl.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+            // ⏸ pause / recording pulse button (Perfect 1:1 Circle White Pill)
+            var btnPause = new Button
+            {
+                Size      = new Size(26, 26),
+                Anchor    = AnchorStyles.None,
+                Margin    = new Padding(2, 0, 2, 0),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.White,
+                ForeColor = Color.FromArgb(234, 88, 12),
+                Text      = "⏹",
+                Font      = new Font("Segoe UI Symbol", 8F, FontStyle.Bold),
+                Cursor    = Cursors.Hand
+            };
+            btnPause.FlatAppearance.BorderSize = 0;
+            btnPause.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, 26, 26, 26, 26));
+            btnPause.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                var r = new Rectangle(0, 0, 26, 26);
+                using var bgBrush = new SolidBrush(Color.White);
+                g.FillEllipse(bgBrush, r);
+                TextRenderer.DrawText(g, "⏹", btnPause.Font, r, Color.FromArgb(234, 88, 12),
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            };
+            innerTbl.Controls.Add(btnPause, 0, 0);
+
+            // Waveform canvas — REAL mic amplitude bars with rounded capsules
+            var pnlWaveform = new Panel
+            {
+                Dock      = DockStyle.Fill,
+                BackColor = Color.Transparent,
+                Margin    = new Padding(2, 4, 2, 4)
+            };
+            EnableDB(pnlWaveform);
+
+            pnlWaveform.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                int spacing = 5, barWidth = 3, midY = pnlWaveform.Height / 2;
+                
+                int maxVisibleBars = (pnlWaveform.Width - 10) / spacing;
+                int count = Math.Min(_waveHeights.Count, maxVisibleBars);
+                int startIndex = Math.Max(0, _waveHeights.Count - maxVisibleBars);
+
+                for (int i = 0; i < count; i++)
+                {
+                    int h = _waveHeights[startIndex + i];
+                    int x = pnlWaveform.Width - 10 - ((count - 1 - i) * spacing);
+                    int barH = Math.Max(4, h);
+                    
+                    var barRect = new Rectangle(x, midY - barH / 2, barWidth, barH);
+                    using var path = RR(barRect, 2);
+                    g.FillPath(Brushes.White, path);
+                }
+            };
+            innerTbl.Controls.Add(pnlWaveform, 1, 0);
+
+            // Timer label
+            _lblVoiceTimer = new Label
+            {
+                Text      = "0:00",
+                Font      = new Font("Segoe UI", 9F, FontStyle.Bold),
+                ForeColor = Color.White,
+                Dock      = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleCenter,
+                BackColor = Color.Transparent,
+                Margin    = new Padding(0, 2, 2, 2)
+            };
+            innerTbl.Controls.Add(_lblVoiceTimer, 2, 0);
+            pnlOrangePill.Controls.Add(innerTbl);
+            tbl.Controls.Add(pnlOrangePill, 1, 0);
+
+            // ── Col 2: Send Voice Button (Perfect 1:1 Circle) ───────────────
+            var btnSendVoice = new Button
+            {
+                Size      = new Size(34, 34),
+                Anchor    = AnchorStyles.None,
+                Margin    = new Padding(1, 0, 1, 0),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(234, 88, 12),
+                ForeColor = Color.White,
+                Text      = "➤",
+                Font      = new Font("Segoe UI Symbol", 9.5F, FontStyle.Bold),
+                Cursor    = Cursors.Hand
+            };
+            btnSendVoice.FlatAppearance.BorderSize = 0;
+            btnSendVoice.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, 34, 34, 34, 34));
+            btnSendVoice.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                var r = new Rectangle(0, 0, 34, 34);
+                using var grad = new LinearGradientBrush(r,
+                    Color.FromArgb(234, 88, 12), Color.FromArgb(249, 115, 22),
+                    LinearGradientMode.Vertical);
+                g.FillEllipse(grad, r);
+                TextRenderer.DrawText(g, "➤", btnSendVoice.Font, r, Color.White,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            };
+            btnSendVoice.Click += (s, e) =>
+            {
+                string durationStr = _lblVoiceTimer?.Text ?? "0:05";
+                UploadAndSendVoiceNoteCustom(durationStr, parentInputBar);
+            };
+            tbl.Controls.Add(btnSendVoice, 2, 0);
+
+            _pnlVoiceRecorderBar.Controls.Add(tbl);
+
+            // ── 1-second counter ─────────────────────────────────────────────
+            _voiceTimer?.Stop();
+            _voiceTimer = new System.Windows.Forms.Timer { Interval = 1000 };
+            _voiceTimer.Tick += (s, e) =>
+            {
+                _voiceSecs++;
+                int m = _voiceSecs / 60, sec = _voiceSecs % 60;
+                if (_lblVoiceTimer != null && !_lblVoiceTimer.IsDisposed)
+                    _lblVoiceTimer.Text = $"{m}:{sec:D2}";
+            };
+            _voiceTimer.Start();
+
+            // ── REAL HARDWARE MIC TRACKER (WinMM WaveIn RMS) ─────────────────
+            _micTracker?.Dispose();
+            _micTracker = new RealAudioMicrophoneTracker();
+            _micTracker.Start();
+
+            _voiceWaveTimer?.Stop();
+            _voiceWaveTimer = new System.Windows.Forms.Timer { Interval = 40 }; // Faster tick for smoother live response
+            _voiceWaveTimer.Tick += (s, e) =>
+            {
+                float amp = _micTracker?.CurrentAmplitude ?? 0f;
+                int maxBars = 150; // Max history length
+                
+                if (amp <= 0.005f) {
+                    _waveHeights.Add(3); // Silence
+                } else {
+                    int h = (int)(amp * 160f); // Scale amplitude significantly to match visualizer
+                    _waveHeights.Add(Math.Max(3, Math.Min(50, h)));
+                }
+
+                if (_waveHeights.Count > maxBars) {
+                    _waveHeights.RemoveAt(0);
+                }
+
+                if (pnlWaveform != null && !pnlWaveform.IsDisposed)
+                    pnlWaveform.Invalidate();
+            };
+            _voiceWaveTimer.Start();
+
+            parentInputBar.Controls.Add(_pnlVoiceRecorderBar);
+            _pnlVoiceRecorderBar.BringToFront();
+        }
+
+        private void StopVoiceRecordingBar(Panel parentInputBar)
+        {
+            _voiceTimer?.Stop();
+            _voiceWaveTimer?.Stop();
+            _micTracker?.Stop();
+            _micTracker?.Dispose();
+            _micTracker = null;
+
+            if (_pnlVoiceRecorderBar != null)
+            {
+                if (parentInputBar != null && parentInputBar.Controls.Contains(_pnlVoiceRecorderBar))
+                {
+                    parentInputBar.Controls.Remove(_pnlVoiceRecorderBar);
+                }
+                _pnlVoiceRecorderBar.Dispose();
+                _pnlVoiceRecorderBar = null;
+            }
+        }
+
+        [System.Runtime.InteropServices.DllImport("winmm.dll", EntryPoint = "mciSendStringA", CharSet = System.Runtime.InteropServices.CharSet.Ansi)]
+        private static extern int mciSendString(string command, System.Text.StringBuilder buffer, int bufferSize, IntPtr hwndCallback);
+
+        private static string _currentPlayingAlias = null;
+        private static Action _stopCurrentPlaybackAction = null;
+
+        private static void StopCurrentAudioPlayback()
+        {
+            if (_stopCurrentPlaybackAction != null)
+            {
+                var stop = _stopCurrentPlaybackAction;
+                _stopCurrentPlaybackAction = null;
+                try { stop.Invoke(); } catch { }
+            }
+            if (!string.IsNullOrEmpty(_currentPlayingAlias))
+            {
+                try
+                {
+                    mciSendString($"stop {_currentPlayingAlias}", null, 0, IntPtr.Zero);
+                    mciSendString($"close {_currentPlayingAlias}", null, 0, IntPtr.Zero);
+                }
+                catch { }
+                _currentPlayingAlias = null;
+            }
+        }
+
+        private async void UploadAndSendVoiceNoteCustom(string durationStr, Panel parentInputBar = null)
+        {
+            if (_activeConvId == null) return;
+            
+            string cacheFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DriveAndGo", "AudioCache");
+            Directory.CreateDirectory(cacheFolder);
+            string voiceFilePath = Path.Combine(cacheFolder, $"voice_{Guid.NewGuid():N}.wav");
+
+            bool hasSavedFile = _micTracker?.SaveWav(voiceFilePath) ?? false;
+            int[] recordedWaveform = GetNormalizedWaveform(20);
+            string metadataJson = JsonSerializer.Serialize(new { waveform = recordedWaveform, duration = durationStr });
+
+            // Now stop the recorder UI & mic tracker
+            if (parentInputBar != null)
+                StopVoiceRecordingBar(parentInputBar);
+
+            string tempBubbleId = Guid.NewGuid().ToString();
+
+            // Optimistic bubble: show immediately with "Sending" (•) state
+            AddMessage($"[Voice Note {durationStr}]", true, DateTime.Now, MessageDeliveryState.Sending, tempBubbleId, false, false, "{}", "audio", voiceFilePath, metadataJson);
+            if (_flowMessages.Controls.Count > 0)
+                _flowMessages.ScrollControlIntoView(_flowMessages.Controls[_flowMessages.Controls.Count - 1]);
+
+            try
+            {
+
+                string uploadedUrl = $"/uploads/chat/voice_{Guid.NewGuid():N}.wav";
+                if (hasSavedFile && File.Exists(voiceFilePath))
+                {
+                    try
+                    {
+                        using var client = new HttpClient();
+                        using var content = new MultipartFormDataContent();
+                        await using var fs = File.OpenRead(voiceFilePath);
+                        var fileContent = new StreamContent(fs);
+                        fileContent.Headers.ContentType =
+                            new System.Net.Http.Headers.MediaTypeHeaderValue("audio/wav");
+                        content.Add(fileContent, "file", Path.GetFileName(voiceFilePath));
+
+                        string apiBase = ApiService.BaseUrl.TrimEnd('/');
+                        var res = await client.PostAsync($"{apiBase}/messages/upload", content);
+                        if (res.IsSuccessStatusCode)
+                        {
+                            var json = await res.Content.ReadAsStringAsync();
+                            using var doc = JsonDocument.Parse(json);
+                            var root = doc.RootElement;
+                            if (root.TryGetProperty("url", out var u) || root.TryGetProperty("Url", out u))
+                                uploadedUrl = u.GetString() ?? uploadedUrl;
+                        }
+                    }
+                    catch { }
+                }
+
+                var payload = new
+                {
+                    senderId   = "admin",
+                    receiverId = _activeConvId,
+                    messageBody = $"[Voice Note {durationStr}]",
+                    isGroupChat = _activeConvIsGroup,
+                    senderName  = SessionManager.FullName,
+                    mediaType   = "audio",
+                    mediaUrl    = uploadedUrl,
+                    mediaMetadata = metadataJson
+                };
+
+                var postRes = await ApiService.PostAsync("messages", payload);
+                if (postRes.Success)
+                {
+                    // 2. Sent: update state to Sent (✓)
+                    UpdateBubbleState(tempBubbleId, MessageDeliveryState.Sent);
+
+                    if (!string.IsNullOrWhiteSpace(postRes.Body))
+                    {
+                        try
+                        {
+                            using var doc2 = JsonDocument.Parse(postRes.Body);
+                            int realId = 0;
+                            if (doc2.RootElement.TryGetProperty("messageId", out var mid1)) realId = mid1.GetInt32();
+                            else if (doc2.RootElement.TryGetProperty("MessageId", out var mid2)) realId = mid2.GetInt32();
+
+                            if (realId > 0 && _bubbleRegistry.TryGetValue(tempBubbleId, out var entry))
+                            {
+                                entry.row.Tag = realId.ToString();
+                                _bubbleRegistry[tempBubbleId] = entry;
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Voice Note Error: " + ex.Message, "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private int[] GetNormalizedWaveform(int targetCount)
+        {
+            int[] fallback = new int[] { 6, 16, 10, 24, 14, 26, 12, 18, 24, 8, 22, 14, 20, 8, 16, 22, 10, 18, 12, 16 };
+            if (_waveHeights == null || _waveHeights.Count == 0)
+                return fallback;
+
+            int maxAmp = 0;
+            foreach (var h in _waveHeights) if (h > maxAmp) maxAmp = h;
+
+            int[] result = new int[targetCount];
+            float step = (float)_waveHeights.Count / targetCount;
+            for (int i = 0; i < targetCount; i++)
+            {
+                int idx = Math.Min(_waveHeights.Count - 1, (int)(i * step));
+                int val = _waveHeights[idx];
+                
+                if (maxAmp > 5)
+                {
+                    float norm = (float)val / maxAmp;
+                    result[i] = Math.Max(4, (int)(norm * 24f));
+                }
+                else
+                {
+                    result[i] = fallback[i % fallback.Length];
+                }
+            }
+            return result;
         }
 
         // ════════════════════════════════════════════════════════════════════════
@@ -2112,9 +3877,310 @@ namespace DriveAndGo_Admin
             return path;
         }
 
+        private static string ExtractInitialLetter(string name, bool isGroup)
+        {
+            if (isGroup) return "G";
+            if (string.IsNullOrWhiteSpace(name)) return "C";
+
+            string trimmed = name.Trim();
+            foreach (char ch in trimmed)
+            {
+                if (char.IsLetterOrDigit(ch))
+                    return char.ToUpperInvariant(ch).ToString();
+            }
+            foreach (char ch in trimmed)
+            {
+                if (!char.IsWhiteSpace(ch))
+                    return ch.ToString();
+            }
+            return "C";
+        }
+
         private void SetRoundRegion(Control c, int r)
         {
             c.Region = new Region(RR(new Rectangle(0, 0, c.Width, c.Height), r));
+        }
+
+        private void HighlightInputMentions()
+        {
+            if (_txtInput == null || _isFormattingInputMention || !_txtInput.IsHandleCreated) return;
+            _isFormattingInputMention = true;
+
+            int origSelStart = _txtInput.SelectionStart;
+            int origSelLen   = _txtInput.SelectionLength;
+
+            SendMessage(_txtInput.Handle, 0x000B, 0, 0);
+
+            try
+            {
+                _txtInput.SelectAll();
+                _txtInput.SelectionColor     = ThemeManager.CurrentText;
+                _txtInput.SelectionFont      = new Font("Segoe UI", 10.5F, FontStyle.Regular);
+                _txtInput.SelectionBackColor = _txtInput.BackColor;
+
+                string txt = _txtInput.Text;
+                if (!string.IsNullOrEmpty(txt))
+                {
+                    var regex = new System.Text.RegularExpressions.Regex(@"(@Drive&Go AI|@DriveAndGo AI|@[a-zA-Z0-9_&]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    var matches = regex.Matches(txt);
+
+                    foreach (System.Text.RegularExpressions.Match m in matches)
+                    {
+                        _txtInput.Select(m.Index, m.Length);
+                        _txtInput.SelectionColor     = Color.FromArgb(56, 189, 248); // #38bdf8 - Bright Cyan/Blue
+                        _txtInput.SelectionFont      = new Font("Segoe UI", 10.5F, FontStyle.Bold);
+                        _txtInput.SelectionBackColor = _txtInput.BackColor; // Clean background, no solid block
+                    }
+                }
+
+                _txtInput.Select(origSelStart, origSelLen);
+                _txtInput.SelectionColor     = ThemeManager.CurrentText;
+                _txtInput.SelectionFont      = new Font("Segoe UI", 10.5F, FontStyle.Regular);
+                _txtInput.SelectionBackColor = _txtInput.BackColor;
+            }
+            catch { }
+            finally
+            {
+                SendMessage(_txtInput.Handle, 0x000B, 1, 0);
+                _txtInput.Invalidate();
+                _isFormattingInputMention = false;
+            }
+        }
+
+        private void DrawMessageTextWithMentions(Graphics g, string text, Font normalFont, RectangleF bounds, bool isMine, bool isUnsent)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+
+            try
+            {
+                var mentionRegex = new System.Text.RegularExpressions.Regex(@"(@Drive&Go AI|@DriveAndGo AI|@[a-zA-Z0-9_&]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (!mentionRegex.IsMatch(text))
+                {
+                    using var brush = isUnsent 
+                        ? new SolidBrush(ThemeManager.CurrentSubText)
+                        : isMine ? (Brush)Brushes.White : new SolidBrush(ThemeManager.CurrentText);
+                    g.DrawString(text, normalFont, brush, bounds.Location);
+                    return;
+                }
+
+                using var boldFont   = new Font(normalFont.FontFamily, normalFont.Size, FontStyle.Bold);
+                using var italicFont = new Font(normalFont.FontFamily, normalFont.Size, FontStyle.Italic);
+
+                Color defaultTextColor = isUnsent ? ThemeManager.CurrentSubText : (isMine ? Color.White : ThemeManager.CurrentText);
+                Color mentionTextColor = Color.FromArgb(56, 189, 248); // #38bdf8 - Bright Cyan/Blue Font (Bold)
+                Color mentionBgColor   = isMine ? Color.FromArgb(190, 15, 23, 42) : Color.FromArgb(45, 56, 189, 248); // Dark navy pill on orange bubble, soft blue pill on card
+
+                string[] lines = text.Replace("\r\n", "\n").Split('\n');
+                float curY = bounds.Y;
+                float lineHeight = normalFont.GetHeight(g) + 2f;
+                TextFormatFlags flags = TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine;
+
+                foreach (string line in lines)
+                {
+                    if (curY + lineHeight > bounds.Bottom + lineHeight) break;
+
+                    var tokens = TokenizeMessageLine(line, mentionRegex);
+                    float curX = bounds.X;
+
+                    foreach (var token in tokens)
+                    {
+                        Font tokenFont = token.IsMention ? boldFont : (isUnsent ? italicFont : normalFont);
+                        Size sz = TextRenderer.MeasureText(g, token.Text, tokenFont, new Size(1000, 100), flags);
+                        int tokenW = sz.Width;
+
+                        if (curX + tokenW > bounds.Right && curX > bounds.X)
+                        {
+                            curX = bounds.X;
+                            curY += lineHeight;
+                            if (curY + lineHeight > bounds.Bottom + lineHeight) break;
+                        }
+
+                        if (token.IsMention)
+                        {
+                            var pillRect = new Rectangle((int)curX - 2, (int)curY, tokenW + 4, (int)lineHeight - 1);
+                            using var pillPath = RR(pillRect, 5);
+                            using var pillBrush = new SolidBrush(mentionBgColor);
+                            g.FillPath(pillBrush, pillPath);
+
+                            TextRenderer.DrawText(g, token.Text, boldFont, new Point((int)curX, (int)curY), mentionTextColor, flags);
+                        }
+                        else
+                        {
+                            TextRenderer.DrawText(g, token.Text, tokenFont, new Point((int)curX, (int)curY), defaultTextColor, flags);
+                        }
+
+                        curX += tokenW;
+                    }
+
+                    curY += lineHeight;
+                }
+            }
+            catch
+            {
+                try
+                {
+                    using var fallbackBrush = isMine ? (Brush)Brushes.White : new SolidBrush(ThemeManager.CurrentText);
+                    g.DrawString(text ?? "", normalFont, fallbackBrush, bounds.Location);
+                }
+                catch { }
+            }
+        }
+
+        private struct MentionTextToken
+        {
+            public string Text;
+            public bool IsMention;
+        }
+
+        private static List<MentionTextToken> TokenizeMessageLine(string line, System.Text.RegularExpressions.Regex mentionRegex)
+        {
+            var list = new List<MentionTextToken>();
+            int lastIdx = 0;
+            var matches = mentionRegex.Matches(line);
+
+            foreach (System.Text.RegularExpressions.Match m in matches)
+            {
+                if (m.Index > lastIdx)
+                {
+                    string preceding = line.Substring(lastIdx, m.Index - lastIdx);
+                    AddWordsAndSpaces(list, preceding, false);
+                }
+
+                list.Add(new MentionTextToken { Text = m.Value, IsMention = true });
+                lastIdx = m.Index + m.Length;
+            }
+
+            if (lastIdx < line.Length)
+            {
+                string trailing = line.Substring(lastIdx);
+                AddWordsAndSpaces(list, trailing, false);
+            }
+
+            return list;
+        }
+
+        private static void AddWordsAndSpaces(List<MentionTextToken> list, string text, bool isMention)
+        {
+            var parts = System.Text.RegularExpressions.Regex.Split(text, @"(\s+)");
+            foreach (var p in parts)
+            {
+                if (string.IsNullOrEmpty(p)) continue;
+                list.Add(new MentionTextToken { Text = p, IsMention = isMention });
+            }
+        }
+
+        private void CheckForMentionPopup()
+        {
+            if (_txtInput == null || _pnlMentionPopup == null) return;
+            string txt = _txtInput.Text;
+            int sel = _txtInput.SelectionStart;
+            if (sel > 0 && txt.Length >= sel && (txt[sel - 1] == '@' || (sel >= 2 && txt.Substring(sel - 2, 2).Equals("@D", StringComparison.OrdinalIgnoreCase))))
+            {
+                _pnlMentionPopup.Visible = true;
+                _pnlMentionPopup.BringToFront();
+            }
+            else
+            {
+                _pnlMentionPopup.Visible = false;
+            }
+        }
+
+        private void ApplyMentionAutocomplete()
+        {
+            if (_txtInput == null) return;
+            string txt = _txtInput.Text;
+            int lastAt = txt.LastIndexOf('@');
+            if (lastAt >= 0)
+            {
+                _txtInput.Text = txt.Substring(0, lastAt) + "@Drive&Go AI ";
+            }
+            else
+            {
+                _txtInput.Text = "@Drive&Go AI ";
+            }
+            _txtInput.SelectionStart = _txtInput.Text.Length;
+            if (_pnlMentionPopup != null) _pnlMentionPopup.Visible = false;
+        }
+
+        private void TryAddAiMessageOnce(string body, string messageId, DateTime dt)
+        {
+            if (string.IsNullOrWhiteSpace(body)) return;
+            string key = !string.IsNullOrWhiteSpace(messageId) && messageId != "0" ? messageId : body.Trim();
+            if (_renderedAiMessageKeys.Contains(key)) return;
+            _renderedAiMessageKeys.Add(key);
+
+            AddMessage(body, false, dt, MessageDeliveryState.Delivered, bubbleId: "ai_" + Guid.NewGuid().ToString("N"));
+            if (_flowMessages.Controls.Count > 0)
+                _flowMessages.ScrollControlIntoView(_flowMessages.Controls[_flowMessages.Controls.Count - 1]);
+        }
+
+        private void TriggerInChatAiMention(string userPrompt, string conversationId, bool isGroupChat)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId)) return;
+
+            var pnlTyping = new Panel
+            {
+                Width     = Math.Max(200, _flowMessages.ClientSize.Width - 24),
+                Height    = 32,
+                BackColor = Color.Transparent,
+                Margin    = new Padding(0, 4, 0, 4)
+            };
+            var lblTyping = new Label
+            {
+                Text      = "✨ @Drive&Go AI is typing...",
+                Font      = new Font("Segoe UI", 9F, FontStyle.Italic),
+                ForeColor = Color.FromArgb(56, 189, 248),
+                Dock      = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+            pnlTyping.Controls.Add(lblTyping);
+            _flowMessages.Controls.Add(pnlTyping);
+            _flowMessages.ScrollControlIntoView(pnlTyping);
+
+            _ = Task.Run(async () =>
+            {
+                string aiReplyText = null;
+                string resMsgId = null;
+                try
+                {
+                    var req = new
+                    {
+                        conversationId = conversationId,
+                        senderId = "admin",
+                        userPrompt = userPrompt,
+                        isGroupChat = isGroupChat
+                    };
+                    var res = await ApiService.PostAsync("messages/mention-ai", req);
+                    if (res.Success && !string.IsNullOrWhiteSpace(res.Body))
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(res.Body);
+                        if (doc.RootElement.TryGetProperty("messageBody", out var mbElem))
+                        {
+                            aiReplyText = mbElem.GetString();
+                        }
+                        if (doc.RootElement.TryGetProperty("messageId", out var midElem))
+                        {
+                            resMsgId = midElem.GetInt32().ToString();
+                        }
+                    }
+                }
+                catch { }
+                finally
+                {
+                    this.BeginInvoke((Action)(() =>
+                    {
+                        if (!this.IsDisposed && pnlTyping.Parent != null)
+                        {
+                            _flowMessages.Controls.Remove(pnlTyping);
+                            pnlTyping.Dispose();
+                        }
+                        if (!this.IsDisposed && !string.IsNullOrWhiteSpace(aiReplyText) && _activeConvId == conversationId)
+                        {
+                            TryAddAiMessageOnce(aiReplyText, resMsgId, DateTime.Now);
+                        }
+                    }));
+                }
+            });
         }
 
         private static void EnableDB(Control c)
@@ -2132,6 +4198,71 @@ namespace DriveAndGo_Admin
                 var req = new { OriginalMessageId = origId, SenderId = "admin", NewReceiverId = dlg.SelectedContactId };
                 await ApiService.PostAsync("messages/forward", req);
             }
+        }
+
+        private void CheckForInputLinkPreview()
+        {
+            if (_txtInput == null || _pnlLinkPreview == null) return;
+            string text = _txtInput.Text;
+            var match = System.Text.RegularExpressions.Regex.Match(text, @"(https?://[^\s]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!match.Success)
+            {
+                _pnlLinkPreview.Visible = false;
+                _isLinkPreviewDismissed = false;
+                _lastPreviewUrl = "";
+                return;
+            }
+
+            string url = match.Groups[1].Value;
+            if (url == _lastPreviewUrl || _isLinkPreviewDismissed) return;
+
+            _lastPreviewUrl = url;
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var res = await ApiService.GetAsync($"media/link-preview?url={Uri.EscapeDataString(url)}");
+                    if (res.Success && !string.IsNullOrEmpty(res.Body) && !this.IsDisposed)
+                    {
+                        var linkDto = System.Text.Json.JsonSerializer.Deserialize<LinkPreviewDto>(res.Body,
+                            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                        if (linkDto != null)
+                        {
+                            this.BeginInvoke((Action)(() =>
+                            {
+                                if (this.IsDisposed || _isLinkPreviewDismissed) return;
+                                _lblLinkPreviewTitle.Text = !string.IsNullOrEmpty(linkDto.Title) ? linkDto.Title : linkDto.Domain;
+                                _lblLinkPreviewDesc.Text  = !string.IsNullOrEmpty(linkDto.Description) ? linkDto.Description : (!string.IsNullOrEmpty(linkDto.SiteName) ? linkDto.SiteName : linkDto.Domain);
+
+                                if (!string.IsNullOrEmpty(linkDto.Image))
+                                {
+                                    try { _pbLinkPreviewThumb.LoadAsync(linkDto.Image); } catch { }
+                                }
+                                else
+                                {
+                                    _pbLinkPreviewThumb.Image = null;
+                                }
+
+                                _pnlLinkPreview.Visible = true;
+                                _pnlLinkPreview.BringToFront();
+                            }));
+                        }
+                    }
+                }
+                catch { }
+            });
+        }
+
+        public class LinkPreviewDto
+        {
+            public string Url { get; set; } = "";
+            public string Title { get; set; } = "";
+            public string Description { get; set; } = "";
+            public string Domain { get; set; } = "";
+            public string Image { get; set; } = "";
+            public string SiteName { get; set; } = "";
         }
 
         private async void RemoveMessageAction(string bubbleId)
@@ -2188,6 +4319,144 @@ namespace DriveAndGo_Admin
         private async void UnsendMessageAction(string bubbleId)
         {
             await ApiService.DeleteAsync($"messages/{bubbleId}/unsend");
+        }
+
+        private void EditMessageAction(string bubbleId, string currentText)
+        {
+            using var inputForm = new Form
+            {
+                Text            = "Drive&Go — Edit Message",
+                Size            = new Size(440, 220),
+                StartPosition   = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox     = false,
+                MinimizeBox     = false,
+                BackColor       = Color.FromArgb(20, 22, 34),
+                ForeColor       = Color.White
+            };
+
+            var lbl = new Label { Text = "✏️ Edit your message:", Left = 16, Top = 14, AutoSize = true, Font = new Font("Segoe UI", 10F, FontStyle.Bold), ForeColor = Color.FromArgb(241, 245, 249) };
+            var txt = new TextBox { Text = currentText, Left = 16, Top = 42, Width = 390, Multiline = true, Height = 75, Font = new Font("Segoe UI", 10F), BackColor = Color.FromArgb(12, 14, 22), ForeColor = Color.White, BorderStyle = BorderStyle.FixedSingle };
+            
+            var btnSave = new Button { Text = "Save Changes", DialogResult = DialogResult.OK, Left = 246, Top = 130, Width = 105, Height = 34, BackColor = Color.FromArgb(234, 88, 12), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Font = new Font("Segoe UI", 9F, FontStyle.Bold) };
+            btnSave.FlatAppearance.BorderSize = 0;
+            btnSave.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, 105, 34, 10, 10));
+
+            var btnCancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Left = 357, Top = 130, Width = 50, Height = 34, BackColor = Color.FromArgb(50, 52, 68), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Font = new Font("Segoe UI", 9F) };
+            btnCancel.FlatAppearance.BorderSize = 0;
+            btnCancel.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, 50, 34, 10, 10));
+
+            inputForm.Controls.Add(lbl);
+            inputForm.Controls.Add(txt);
+            inputForm.Controls.Add(btnSave);
+            inputForm.Controls.Add(btnCancel);
+            inputForm.AcceptButton = btnSave;
+            inputForm.CancelButton = btnCancel;
+
+            if (inputForm.ShowDialog(this) == DialogResult.OK)
+            {
+                string editedText = txt.Text.Trim();
+                if (!string.IsNullOrEmpty(editedText) && editedText != currentText)
+                {
+                    _ = ExecuteMessageEdit(bubbleId, editedText);
+                }
+            }
+        }
+
+        private async Task ExecuteMessageEdit(string bubbleId, string newText)
+        {
+            try
+            {
+                await ApiService.PostAsync($"messages/{bubbleId}/edit", new { body = newText, text = newText });
+                if (!string.IsNullOrEmpty(_activeConvId))
+                {
+                    if (this.InvokeRequired)
+                        this.Invoke((Action)(() => LoadMessagesFromApi(_activeConvId)));
+                    else
+                        LoadMessagesFromApi(_activeConvId);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ExecuteMessageEdit] Error: {ex.Message}");
+            }
+        }
+
+        private void ShowEditHistoryModal(string historyJson)
+        {
+            var historyForm = new Form
+            {
+                Text            = "Drive&Go — Edit History",
+                StartPosition   = FormStartPosition.CenterParent,
+                Size            = new Size(440, 340),
+                BackColor       = Color.FromArgb(20, 22, 34),
+                ShowIcon        = false,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox     = false,
+                MinimizeBox     = false
+            };
+
+            var lblTitle = new Label { Text = "✏️ Edit History", Font = new Font("Segoe UI", 11F, FontStyle.Bold), ForeColor = Color.White, Left = 16, Top = 14, AutoSize = true };
+            
+            var pnlList = new FlowLayoutPanel
+            {
+                Left          = 16,
+                Top           = 46,
+                Width         = 390,
+                Height        = 220,
+                AutoScroll    = true,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents  = false,
+                BackColor     = Color.FromArgb(12, 14, 22),
+                Padding       = new Padding(8)
+            };
+
+            List<string> entries = new List<string>();
+            if (!string.IsNullOrEmpty(historyJson))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(historyJson);
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var el in doc.RootElement.EnumerateArray())
+                        {
+                            if (el.ValueKind == JsonValueKind.String)
+                                entries.Add(el.GetString());
+                            else if (el.TryGetProperty("text", out var t))
+                                entries.Add(t.GetString());
+                            else if (el.TryGetProperty("body", out var b))
+                                entries.Add(b.GetString());
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            if (entries.Count == 0)
+            {
+                pnlList.Controls.Add(new Label { Text = "No previous versions recorded.", ForeColor = Color.FromArgb(148, 163, 184), AutoSize = true, Font = new Font("Segoe UI", 9.5F, FontStyle.Italic), Padding = new Padding(8) });
+            }
+            else
+            {
+                foreach (var item in entries)
+                {
+                    var pnlItem = new Panel { Width = 350, Height = 56, BackColor = Color.FromArgb(28, 30, 46), Margin = new Padding(0, 0, 0, 8), Padding = new Padding(10) };
+                    pnlItem.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, 350, 56, 12, 12));
+                    var lblText = new Label { Text = item, ForeColor = Color.FromArgb(241, 245, 249), Font = new Font("Segoe UI", 9.5F), Dock = DockStyle.Fill };
+                    pnlItem.Controls.Add(lblText);
+                    pnlList.Controls.Add(pnlItem);
+                }
+            }
+
+            var btnClose = new Button { Text = "Close", DialogResult = DialogResult.OK, Left = 326, Top = 274, Width = 80, Height = 32, BackColor = Color.FromArgb(234, 88, 12), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Cursor = Cursors.Hand, Font = new Font("Segoe UI", 9F, FontStyle.Bold) };
+            btnClose.FlatAppearance.BorderSize = 0;
+            btnClose.Region = System.Drawing.Region.FromHrgn(CreateRoundRectRgn(0, 0, 80, 32, 10, 10));
+
+            historyForm.Controls.Add(lblTitle);
+            historyForm.Controls.Add(pnlList);
+            historyForm.Controls.Add(btnClose);
+            historyForm.ShowDialog(this);
         }
 
         /// <summary>Opens the ReactionDetailsDialog for a given reactions JSON string.
@@ -2560,6 +4829,225 @@ namespace DriveAndGo_Admin
 
                 g.FillPath(brush, path);
             }
+        }
+    }
+
+    /// <summary>
+    /// Real Audio Microphone Tracker — Captures physical PCM audio samples from Windows soundcard
+    /// via WinMM P/Invoke. Computes real Root Mean Square (RMS) volume amplitude.
+    /// Returns EXACTLY 0.0f on room silence!
+    /// </summary>
+    public class RealAudioMicrophoneTracker : IDisposable
+    {
+        private IntPtr _waveIn = IntPtr.Zero;
+        private bool _isRecording = false;
+        private float _currentAmplitude = 0f;
+
+        // PCM sample accumulator for WAV file export
+        private readonly System.IO.MemoryStream _pcmStream = new();
+        private readonly object _pcmLock = new();
+
+        // WinMM P/Invoke
+        [System.Runtime.InteropServices.DllImport("winmm.dll")]
+        private static extern int waveInOpen(out IntPtr phwi, int uDeviceID, ref WAVEFORMATEX pwfx, WaveInProc dwCallback, IntPtr dwInstance, int fdwOpen);
+        [System.Runtime.InteropServices.DllImport("winmm.dll")]
+        private static extern int waveInStart(IntPtr hwi);
+        [System.Runtime.InteropServices.DllImport("winmm.dll")]
+        private static extern int waveInStop(IntPtr hwi);
+        [System.Runtime.InteropServices.DllImport("winmm.dll")]
+        private static extern int waveInClose(IntPtr hwi);
+        [System.Runtime.InteropServices.DllImport("winmm.dll")]
+        private static extern int waveInAddBuffer(IntPtr hwi, ref WAVEHDR pwh, int cbwh);
+        [System.Runtime.InteropServices.DllImport("winmm.dll")]
+        private static extern int waveInPrepareHeader(IntPtr hwi, ref WAVEHDR pwh, int cbwh);
+        [System.Runtime.InteropServices.DllImport("winmm.dll")]
+        private static extern int waveInUnprepareHeader(IntPtr hwi, ref WAVEHDR pwh, int cbwh);
+
+        private delegate void WaveInProc(IntPtr hwi, int uMsg, IntPtr dwInstance, ref WAVEHDR dwParam1, IntPtr dwParam2);
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct WAVEFORMATEX
+        {
+            public ushort wFormatTag;
+            public ushort nChannels;
+            public uint   nSamplesPerSec;
+            public uint   nAvgBytesPerSec;
+            public ushort nBlockAlign;
+            public ushort wBitsPerSample;
+            public ushort cbSize;
+        }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct WAVEHDR
+        {
+            public IntPtr lpData;
+            public uint   dwBufferLength;
+            public uint   dwBytesRecorded;
+            public IntPtr dwUser;
+            public uint   dwFlags;
+            public uint   dwLoops;
+            public IntPtr lpNext;
+            public IntPtr reserved;
+        }
+
+        private const int SampleRate    = 16000;
+        private const int BitsPerSample = 16;
+        private const int Channels      = 1;
+
+        private WaveInProc _callback;
+        private WAVEHDR[]  _hdrs = new WAVEHDR[2];
+        private byte[][]   _buffers = new byte[2][];
+        private System.Runtime.InteropServices.GCHandle[] _bufferHandles = new System.Runtime.InteropServices.GCHandle[2];
+
+        public float CurrentAmplitude => _currentAmplitude;
+
+        public void Start()
+        {
+            if (_isRecording) return;
+            lock (_pcmLock) { _pcmStream.SetLength(0); }
+            try
+            {
+                var format = new WAVEFORMATEX
+                {
+                    wFormatTag     = 1, // PCM
+                    nChannels      = Channels,
+                    nSamplesPerSec = SampleRate,
+                    wBitsPerSample = BitsPerSample,
+                    nBlockAlign    = (ushort)(Channels * BitsPerSample / 8),
+                    nAvgBytesPerSec= (uint)(SampleRate * Channels * BitsPerSample / 8),
+                    cbSize         = 0
+                };
+
+                _callback = new WaveInProc(OnWaveInProc);
+                int res = waveInOpen(out _waveIn, -1, ref format, _callback, IntPtr.Zero, 0x00030000);
+                if (res == 0 && _waveIn != IntPtr.Zero)
+                {
+                    for (int i = 0; i < 2; i++)
+                    {
+                        _buffers[i] = new byte[3200]; // 100ms @ 16kHz 16-bit mono
+                        _bufferHandles[i] = System.Runtime.InteropServices.GCHandle.Alloc(
+                            _buffers[i], System.Runtime.InteropServices.GCHandleType.Pinned);
+                        _hdrs[i] = new WAVEHDR
+                        {
+                            lpData         = _bufferHandles[i].AddrOfPinnedObject(),
+                            dwBufferLength = (uint)_buffers[i].Length
+                        };
+                        waveInPrepareHeader(_waveIn, ref _hdrs[i], System.Runtime.InteropServices.Marshal.SizeOf(_hdrs[i]));
+                        waveInAddBuffer   (_waveIn, ref _hdrs[i], System.Runtime.InteropServices.Marshal.SizeOf(_hdrs[i]));
+                    }
+                    waveInStart(_waveIn);
+                    _isRecording = true;
+                }
+            }
+            catch { }
+        }
+
+        private void OnWaveInProc(IntPtr hwi, int uMsg, IntPtr dwInstance, ref WAVEHDR dwParam1, IntPtr dwParam2)
+        {
+            try
+            {
+                if (uMsg == 0x3C0 && dwParam1.dwBytesRecorded > 0 && dwParam1.lpData != IntPtr.Zero) // WIM_DATA
+                {
+                    int count = (int)dwParam1.dwBytesRecorded;
+                    byte[] tempBuf = new byte[count];
+                    System.Runtime.InteropServices.Marshal.Copy(dwParam1.lpData, tempBuf, 0, count);
+
+                    // ── Amplitude (RMS) ───────────────────────────────────────────
+                    long sum = 0;
+                    int samples = count / 2;
+                    for (int i = 0; i < samples; i++)
+                    {
+                        short s = (short)(tempBuf[i * 2] | (tempBuf[i * 2 + 1] << 8));
+                        sum += (long)s * s;
+                    }
+                    float rms = (float)Math.Sqrt((double)sum / Math.Max(1, samples));
+                    _currentAmplitude = Math.Min(1.0f, rms / 2500.0f);
+                    if (_currentAmplitude < 0.04f) _currentAmplitude = 0f;
+
+                    // ── Accumulate PCM for WAV file ───────────────────────────────
+                    lock (_pcmLock)
+                        _pcmStream.Write(tempBuf, 0, count);
+
+                    if (_isRecording && _waveIn != IntPtr.Zero)
+                        waveInAddBuffer(_waveIn, ref dwParam1,
+                            System.Runtime.InteropServices.Marshal.SizeOf(dwParam1));
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Writes the accumulated PCM samples to a valid WAV file.
+        /// Returns true if the file was written with audio data, false otherwise.
+        /// </summary>
+        public bool SaveWav(string filePath)
+        {
+            byte[] pcm;
+            lock (_pcmLock)
+                pcm = _pcmStream.ToArray();
+
+            if (pcm.Length == 0) return false;
+
+            using var fs  = new FileStream(filePath, FileMode.Create);
+            using var bw  = new System.IO.BinaryWriter(fs);
+
+            int byteRate  = SampleRate * Channels * BitsPerSample / 8;
+            int blockAlign= Channels * BitsPerSample / 8;
+
+            // RIFF header
+            bw.Write(System.Text.Encoding.ASCII.GetBytes("RIFF"));
+            bw.Write(36 + pcm.Length);                              // ChunkSize
+            bw.Write(System.Text.Encoding.ASCII.GetBytes("WAVE"));
+            // fmt  sub-chunk
+            bw.Write(System.Text.Encoding.ASCII.GetBytes("fmt "));
+            bw.Write(16);                                           // SubChunk1Size (PCM)
+            bw.Write((ushort)1);                                    // AudioFormat   (PCM)
+            bw.Write((ushort)Channels);
+            bw.Write(SampleRate);
+            bw.Write(byteRate);
+            bw.Write((ushort)blockAlign);
+            bw.Write((ushort)BitsPerSample);
+            // data sub-chunk
+            bw.Write(System.Text.Encoding.ASCII.GetBytes("data"));
+            bw.Write(pcm.Length);
+            bw.Write(pcm);
+            return true;
+        }
+
+        public void Stop()
+        {
+            if (!_isRecording) return;
+            _isRecording = false;
+            try
+            {
+                if (_waveIn != IntPtr.Zero)
+                {
+                    waveInStop(_waveIn);
+                    for (int i = 0; i < 2; i++)
+                    {
+                        try
+                        {
+                            waveInUnprepareHeader(_waveIn, ref _hdrs[i], System.Runtime.InteropServices.Marshal.SizeOf(_hdrs[i]));
+                        }
+                        catch { }
+                    }
+                    waveInClose(_waveIn);
+                    _waveIn = IntPtr.Zero;
+                }
+                for (int i = 0; i < 2; i++)
+                {
+                    if (_bufferHandles[i].IsAllocated)
+                        _bufferHandles[i].Free();
+                }
+            }
+            catch { }
+            _currentAmplitude = 0f;
+        }
+
+        public void Dispose()
+        {
+            Stop();
+            _pcmStream.Dispose();
         }
     }
 

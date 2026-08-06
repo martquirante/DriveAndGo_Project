@@ -1,4 +1,5 @@
 using Npgsql;
+using System;
 using System.Text.Json;
 using System.Threading.Tasks;
 
@@ -18,6 +19,7 @@ namespace DriveAndGo_API.Services
         /// </summary>
         public async Task LogActionAsync(
             int adminUserId,
+            string adminName,
             string actionType,
             int targetUserId,
             string ipAddress,
@@ -28,6 +30,7 @@ namespace DriveAndGo_API.Services
             {
                 var metadata = new
                 {
+                    adminName = string.IsNullOrWhiteSpace(adminName) ? "Admin" : adminName,
                     oldValues = oldValues,
                     newValues = newValues
                 };
@@ -36,12 +39,13 @@ namespace DriveAndGo_API.Services
                 await using var conn = await _ds.OpenConnectionAsync();
                 await using var cmd = new NpgsqlCommand(
                     @"INSERT INTO system_audit_logs 
-                        (admin_user_id, action_type, target_user_id, timestamp, ip_address, metadata_json)
+                        (admin_user_id, admin_name, action_type, target_user_id, timestamp, ip_address, metadata_json)
                       VALUES 
-                        (@admin_user_id, @action_type, @target_user_id, NOW(), @ip_address, @metadata_json)", 
+                        (@admin_user_id, @admin_name, @action_type, @target_user_id, NOW(), @ip_address, @metadata_json)", 
                     conn);
 
                 cmd.Parameters.AddWithValue("@admin_user_id", adminUserId == 0 ? DBNull.Value : adminUserId);
+                cmd.Parameters.AddWithValue("@admin_name", string.IsNullOrWhiteSpace(adminName) ? "Admin" : adminName);
                 cmd.Parameters.AddWithValue("@action_type", actionType);
                 cmd.Parameters.AddWithValue("@target_user_id", targetUserId);
                 cmd.Parameters.AddWithValue("@ip_address", string.IsNullOrEmpty(ipAddress) ? "127.0.0.1" : ipAddress);
@@ -51,9 +55,19 @@ namespace DriveAndGo_API.Services
             }
             catch (Exception ex)
             {
-                // Graceful fallback to console to prevent blocking critical auth/profile changes if logging fails
                 Console.WriteLine("Audit trail logging failed: " + ex.Message);
             }
+        }
+
+        public Task LogActionAsync(
+            int adminUserId,
+            string actionType,
+            int targetUserId,
+            string ipAddress,
+            object oldValues,
+            object newValues)
+        {
+            return LogActionAsync(adminUserId, "Admin", actionType, targetUserId, ipAddress, oldValues, newValues);
         }
     }
 }

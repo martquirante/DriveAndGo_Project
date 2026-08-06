@@ -132,8 +132,13 @@ namespace DriveAndGo_Admin
                                 $"if(window.setInsightsTheme) window.setInsightsTheme('{currentTheme}');" +
                                 $"else document.documentElement.setAttribute('data-theme', '{currentTheme}');");
 
+                            this.ShowSkeleton(SkeletonLayoutType.Custom);
                             var res = await ApiService.GetAsync("admin/dashboard/ai-insights");
-                            if (this.IsDisposed || !this.IsHandleCreated || _webView.IsDisposed || _webView.CoreWebView2 == null) return;
+                            if (this.IsDisposed || !this.IsHandleCreated || _webView.IsDisposed || _webView.CoreWebView2 == null)
+                            {
+                                this.HideSkeleton();
+                                return;
+                            }
 
                             if (res.Success)
                             {
@@ -148,12 +153,14 @@ namespace DriveAndGo_Admin
                                 byte[] bytes = System.Text.Encoding.UTF8.GetBytes(content);
                                 string base64 = Convert.ToBase64String(bytes);
                                 await _webView.CoreWebView2.ExecuteScriptAsync($"window.updateInsightsFromBase64('{base64}', false, {occupancy}, '{monthlyRevenue:N2}', '{totalRevenue:N2}', '{source}');");
+                                this.HideSkeleton();
                             }
                             else
                             {
                                 byte[] bytes = System.Text.Encoding.UTF8.GetBytes("Failed to load AI insights. Live server returned error.");
                                 string base64 = Convert.ToBase64String(bytes);
-                                await _webView.CoreWebView2.ExecuteScriptAsync($"window.updateInsightsFromBase64('{base64}', false, 0, '0.00', '0.00', 'Error');");
+                                await _webView.CoreWebView2.ExecuteScriptAsync($"window.updateInsightsFromBase64('{base64}', true, 0, '0.00', '0.00', 'system');");
+                                this.HideSkeleton();
                             }
                         }
                         catch (Exception ex)

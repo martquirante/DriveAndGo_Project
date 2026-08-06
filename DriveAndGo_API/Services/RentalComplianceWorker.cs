@@ -29,13 +29,7 @@ namespace DriveAndGo_API.Services
                     await EvaluateOverdueRentalsAsync();
                     
                     // Check compliance status every 5 minutes
-                    // C#
-if (stoppingToken.IsCancellationRequested)
-{
-    break;
-}
-
-await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+                    await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
                 }
                 catch (OperationCanceledException)
                 {
@@ -67,8 +61,7 @@ await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);await Task.Delay(TimeSp
             var overdueRentals = new List<dynamic>();
 
             string query = @"
-                SELECT r.rental_id, r.end_date, r.total_amount, r.penalty_fee, v.vehicle_id, v.brand, v.model, v.plate_no,
-                       COALESCE(r.total_amount / (EXTRACT(EPOCH FROM (r.end_date - r.start_date))/3600), 50.00) AS hourly_rate
+                SELECT r.rental_id, r.end_date, r.total_amount, r.penalty_fee, v.vehicle_id, v.brand, v.model, v.plate_no, r.start_date
                 FROM rentals r
                 JOIN vehicles v ON r.vehicle_id = v.vehicle_id
                 WHERE LOWER(r.status) IN ('approved', 'active', 'in-use') 
@@ -76,17 +69,25 @@ await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);await Task.Delay(TimeSp
 
             await using (var cmd = new NpgsqlCommand(query, conn))
             {
+                cmd.CommandTimeout = 5;
                 await using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
+                    var endDate = reader.GetDateTime(1);
+                    var startDate = reader.IsDBNull(8) ? endDate.AddHours(-24) : reader.GetDateTime(8);
+                    var totalAmt = reader.GetDecimal(2);
+                    double durationHours = Math.Max((endDate - startDate).TotalHours, 1.0);
+                    decimal hourlyRate = Math.Round(totalAmt / (decimal)durationHours, 2);
+                    if (hourlyRate <= 0) hourlyRate = 50.00m;
+
                     overdueRentals.Add(new {
                         RentalId = reader.GetInt32(0),
-                        EndDate = reader.GetDateTime(1),
-                        TotalAmount = reader.GetDecimal(2),
+                        EndDate = endDate,
+                        TotalAmount = totalAmt,
                         PenaltyFee = reader.IsDBNull(3) ? 0 : reader.GetDecimal(3),
                         VehicleId = reader.GetInt32(4),
                         VehicleName = $"{reader.GetString(5)} {reader.GetString(6)} ({reader.GetString(7)})",
-                        HourlyRate = Convert.ToDecimal(reader[8])
+                        HourlyRate = hourlyRate
                     });
                 }
             }

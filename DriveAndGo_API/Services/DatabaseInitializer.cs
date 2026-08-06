@@ -63,8 +63,11 @@ namespace DriveAndGo_API.Services
                         receiver_id VARCHAR(100) NOT NULL,
                         message_body TEXT NOT NULL,
                         timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
-                        is_group_chat BOOLEAN NOT NULL DEFAULT FALSE
-                    );", conn))
+                        is_group_chat BOOLEAN NOT NULL DEFAULT FALSE,
+                        sender_name VARCHAR(150)
+                    );
+                    ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS sender_name VARCHAR(150);
+                ", conn))
                 {
                     cmd.ExecuteNonQuery();
                 }
@@ -126,12 +129,15 @@ namespace DriveAndGo_API.Services
                     CREATE TABLE IF NOT EXISTS system_audit_logs (
                         audit_id SERIAL PRIMARY KEY,
                         admin_user_id INT,
+                        admin_name VARCHAR(150),
                         action_type VARCHAR(50) NOT NULL,
                         target_user_id INT,
                         timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
                         ip_address VARCHAR(45) NOT NULL,
                         metadata_json TEXT NOT NULL
-                    );", conn))
+                    );
+                    ALTER TABLE system_audit_logs ADD COLUMN IF NOT EXISTS admin_name VARCHAR(150);
+                ", conn))
                 {
                     cmd.ExecuteNonQuery();
                 }
@@ -224,23 +230,25 @@ namespace DriveAndGo_API.Services
                     cmd.ExecuteNonQuery();
                 }
 
-                // 16. Advanced Messenger Features columns
+                // 16. Advanced Messenger Features columns & Media Attachments
                 using (var cmd = new NpgsqlCommand(@"
                     ALTER TABLE chat_messages 
                         ADD COLUMN IF NOT EXISTS is_edited BOOLEAN NOT NULL DEFAULT false,
                         ADD COLUMN IF NOT EXISTS edit_history JSONB NOT NULL DEFAULT '[]',
                         ADD COLUMN IF NOT EXISTS is_unsent BOOLEAN NOT NULL DEFAULT false,
                         ADD COLUMN IF NOT EXISTS hidden_for JSONB NOT NULL DEFAULT '[]',
-                        ADD COLUMN IF NOT EXISTS reactions JSONB NOT NULL DEFAULT '{}';
+                        ADD COLUMN IF NOT EXISTS reactions JSONB NOT NULL DEFAULT '{}',
+                        ADD COLUMN IF NOT EXISTS media_type VARCHAR(50),
+                        ADD COLUMN IF NOT EXISTS media_url TEXT,
+                        ADD COLUMN IF NOT EXISTS media_metadata JSONB;
                 ", conn))
                 {
                     cmd.ExecuteNonQuery();
                 }
 
-                // 17. Fix legacy sender/receiver IDs for AI Copilot
+                // 18. Promote rayquirante@gmail.com to admin role
                 using (var cmd = new NpgsqlCommand(@"
-                    UPDATE chat_messages SET sender_id = 'admin' WHERE sender_id = '1';
-                    UPDATE chat_messages SET receiver_id = 'admin' WHERE receiver_id = '1';
+                    UPDATE users SET role = 'admin' WHERE LOWER(email) = 'rayquirante@gmail.com';
                 ", conn))
                 {
                     cmd.ExecuteNonQuery();

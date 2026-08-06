@@ -487,6 +487,8 @@ namespace DriveAndGo_Admin.Panels
             _vehicleData.Columns.Add("in_garage", typeof(bool));
             _vehicleData.Columns.Add("is_lost", typeof(int));
 
+            this.ShowSkeleton(SkeletonLayoutType.Grid);
+
             Task.Run(async () =>
             {
                 try
@@ -560,11 +562,14 @@ namespace DriveAndGo_Admin.Panels
                         UpdateCountLabel();
                         if (_mapReady) _ = PushAllMarkersAsync();
                         SetLiveLabel(true);
+                        this.HideSkeleton();
                     }));
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine("LoadVehicles error: " + ex.Message);
+                    if (this.IsHandleCreated && !this.IsDisposed)
+                        this.BeginInvoke((MethodInvoker)(() => this.HideSkeleton()));
                 }
             });
         }

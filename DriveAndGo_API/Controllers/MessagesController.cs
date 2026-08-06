@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Npgsql;
 using DriveAndGo_API.Hubs;
+using DriveAndGo_API.Services;
 using DriveAndGo_API.Services.Ai;
 using System.Text.Json;
 
@@ -25,13 +26,15 @@ public class MessagesController : ControllerBase
     private readonly IHubContext<AdminHub> _hubContext;
     private readonly IAiOrchestrationService _ai;
     private readonly ILogger<MessagesController> _logger;
+    private readonly AuditService _auditService;
 
-    public MessagesController(NpgsqlDataSource ds, IHubContext<AdminHub> hubContext, IAiOrchestrationService ai, ILogger<MessagesController> logger)
+    public MessagesController(NpgsqlDataSource ds, IHubContext<AdminHub> hubContext, IAiOrchestrationService ai, ILogger<MessagesController> logger, AuditService auditService)
     {
         _ds         = ds;
         _hubContext = hubContext;
         _ai         = ai;
         _logger     = logger;
+        _auditService = auditService;
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -55,14 +58,16 @@ public class MessagesController : ControllerBase
             string sql = isAiThread
                 ? @"SELECT message_id, sender_id, receiver_id, message_body,
                            timestamp, is_group_chat, delivery_status,
-                           is_edited, edit_history, is_unsent, hidden_for, reactions
+                           is_edited, edit_history, is_unsent, hidden_for, reactions, sender_name,
+                           media_type, media_url, media_metadata
                     FROM   chat_messages
                     WHERE  (sender_id = @sid AND receiver_id = @rid)
                         OR (sender_id = @rid AND receiver_id = @sid)
                     ORDER  BY timestamp ASC"
                 : @"SELECT message_id, sender_id, receiver_id, message_body,
                            timestamp, is_group_chat, delivery_status,
-                           is_edited, edit_history, is_unsent, hidden_for, reactions
+                           is_edited, edit_history, is_unsent, hidden_for, reactions, sender_name,
+                           media_type, media_url, media_metadata
                     FROM   chat_messages
                     WHERE  ((sender_id = @sid AND receiver_id = @rid)
                          OR (sender_id = @rid AND receiver_id = @sid)
@@ -78,11 +83,19 @@ public class MessagesController : ControllerBase
                 await using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
+                    int sNameIdx = reader.GetOrdinal("sender_name");
+                    string senderName = reader.IsDBNull(sNameIdx) ? "" : reader.GetString(sNameIdx);
+
+                    int mTypeIdx = reader.GetOrdinal("media_type");
+                    int mUrlIdx  = reader.GetOrdinal("media_url");
+                    int mMetaIdx = reader.GetOrdinal("media_metadata");
+
                     list.Add(new
                     {
                         messageId      = reader.GetInt32(reader.GetOrdinal("message_id")),
                         senderId       = reader["sender_id"].ToString(),
                         receiverId     = reader["receiver_id"].ToString(),
+                        senderName     = senderName,
                         messageBody    = SanitizeNonTechText(reader["message_body"].ToString()),
                         timestamp      = reader.GetDateTime(reader.GetOrdinal("timestamp")),
                         isGroupChat    = reader.GetBoolean(reader.GetOrdinal("is_group_chat")),
@@ -90,7 +103,10 @@ public class MessagesController : ControllerBase
                         isEdited       = reader.GetBoolean(reader.GetOrdinal("is_edited")),
                         editHistory    = reader["edit_history"].ToString(),
                         isUnsent       = reader.GetBoolean(reader.GetOrdinal("is_unsent")),
-                        reactions      = reader["reactions"].ToString()
+                        reactions      = reader["reactions"].ToString(),
+                        mediaType      = reader.IsDBNull(mTypeIdx) ? null : reader.GetString(mTypeIdx),
+                        mediaUrl       = reader.IsDBNull(mUrlIdx)  ? null : reader.GetString(mUrlIdx),
+                        mediaMetadata  = reader.IsDBNull(mMetaIdx) ? null : reader.GetString(mMetaIdx)
                     });
                 }
             }
@@ -150,20 +166,37 @@ public class MessagesController : ControllerBase
             await using var conn = await _ds.OpenConnectionAsync();
             await using var cmd  = new NpgsqlCommand(
                 @"INSERT INTO chat_messages
-                    (sender_id, receiver_id, message_body, timestamp, is_group_chat, delivery_status)
-                  VALUES (@sid, @rid, @body, NOW(), @group, 'sent')
+                    (sender_id, receiver_id, message_body, timestamp, is_group_chat, delivery_status, sender_name, media_type, media_url, media_metadata)
+                  VALUES (@sid, @rid, @body, NOW(), @group, 'sent', @sname, @mtype, @murl, CAST(@mdata AS JSONB))
                   RETURNING message_id, timestamp", conn);
 
             cmd.Parameters.AddWithValue("@sid",   req.SenderId);
             cmd.Parameters.AddWithValue("@rid",   req.ReceiverId);
             cmd.Parameters.AddWithValue("@body",  req.MessageBody);
             cmd.Parameters.AddWithValue("@group", req.IsGroupChat);
+            cmd.Parameters.AddWithValue("@sname", string.IsNullOrWhiteSpace(req.SenderName) ? (object)DBNull.Value : req.SenderName.Trim());
+            cmd.Parameters.AddWithValue("@mtype", string.IsNullOrWhiteSpace(req.MediaType) ? (object)DBNull.Value : req.MediaType);
+            cmd.Parameters.AddWithValue("@murl",  string.IsNullOrWhiteSpace(req.MediaUrl) ? (object)DBNull.Value : req.MediaUrl);
+            cmd.Parameters.AddWithValue("@mdata", string.IsNullOrWhiteSpace(req.MediaMetadata) ? (object)DBNull.Value : req.MediaMetadata);
 
             await using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
                 int      messageId = reader.GetInt32(0);
                 DateTime ts        = reader.GetDateTime(1);
+
+                // Log CHAT_REPLIED in system_audit_logs if sent by an Admin
+                string adminName = string.IsNullOrWhiteSpace(req.SenderName) ? "Admin" : req.SenderName.Trim();
+                string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+                _ = _auditService.LogActionAsync(
+                    adminUserId: 0,
+                    adminName: adminName,
+                    actionType: "CHAT_REPLIED",
+                    targetUserId: 0,
+                    ipAddress: clientIp,
+                    oldValues: new { recipient = req.ReceiverId },
+                    newValues: new { description = $"{adminName} sent a message to {req.ReceiverId}", preview = req.MessageBody }
+                );
 
                 // Broadcast so recipients can render the incoming message in real-time
                 // and can immediately ACK delivery (POST /api/messages/{id}/delivered)
@@ -356,14 +389,64 @@ public class MessagesController : ControllerBase
     }
 
     // ══════════════════════════════════════════════════════════════════
-    //  PUT /api/messages/{id} (Edit)
+    //  POST /api/messages/upload (Media / Voice Note Upload)
+    // ══════════════════════════════════════════════════════════════════
+    [HttpPost("upload")]
+    [Microsoft.AspNetCore.Mvc.DisableRequestSizeLimit]
+    [Microsoft.AspNetCore.Mvc.RequestFormLimits(MultipartBodyLengthLimit = 524_288_000)]
+    public async Task<IActionResult> UploadMedia([FromForm] IFormFile file)
+    {
+        try
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest(new { Message = "No file uploaded" });
+
+            var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "chat");
+            if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
+
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            var fileName = $"{Guid.NewGuid()}{ext}";
+            var filePath = Path.Combine(uploadsFolder, fileName);
+
+            using (var stream = new FileStream(filePath, FileMode.Create))
+            {
+                await file.CopyToAsync(stream);
+            }
+
+            string mediaType = "file";
+            if (ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".gif" || ext == ".webp") mediaType = "image";
+            else if (ext == ".mp4" || ext == ".webm" || ext == ".mov") mediaType = "video";
+            else if (ext == ".wav" || ext == ".mp3" || ext == ".ogg" || ext == ".m4a") mediaType = "audio";
+
+            string fileUrl = $"/uploads/chat/{fileName}";
+            return Ok(new
+            {
+                Url = fileUrl,
+                MediaType = mediaType,
+                Metadata = JsonSerializer.Serialize(new { fileName = file.FileName, fileSize = file.Length })
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = ex.Message });
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  PUT/POST /api/messages/{id} & /api/messages/{id}/edit (Edit)
     // ══════════════════════════════════════════════════════════════════
     [HttpPut("{id:int}")]
+    [HttpPut("{id:int}/edit")]
+    [HttpPost("{id:int}/edit")]
     public async Task<IActionResult> EditMessage(int id, [FromBody] EditMessageRequest req)
     {
         try
         {
             await using var conn = await _ds.OpenConnectionAsync();
+
+            string textToUse = req?.GetEffectiveText() ?? "";
+            if (string.IsNullOrWhiteSpace(textToUse))
+                return BadRequest(new { Message = "New text body cannot be empty" });
 
             // 1. Fetch current message and edit_history
             string currentBody = "";
@@ -394,17 +477,40 @@ public class MessagesController : ControllerBase
                       is_edited = true,
                       edit_history = CAST(@history AS JSONB)
                   WHERE message_id = @id", conn);
-            updateCmd.Parameters.AddWithValue("@newBody", req.NewText);
+            updateCmd.Parameters.AddWithValue("@newBody", textToUse);
             updateCmd.Parameters.AddWithValue("@history", newHistoryJson);
             updateCmd.Parameters.AddWithValue("@id", id);
             await updateCmd.ExecuteNonQueryAsync();
 
             // 4. Broadcast
-            await _hubContext.Clients.All.SendAsync("MessageEdited", id.ToString(), req.NewText, newHistoryJson, receiverId);
+            await _hubContext.Clients.All.SendAsync("MessageEdited", id.ToString(), textToUse, newHistoryJson, receiverId);
 
-            return Ok(new { Message = "Message edited" });
+            return Ok(new { Message = "Message edited successfully" });
         }
         catch (Exception ex) { return StatusCode(500, new { Message = ex.Message }); }
+    }
+
+    [HttpGet("{id:int}/history")]
+    public async Task<IActionResult> GetMessageHistory(int id)
+    {
+        try
+        {
+            await using var conn = await _ds.OpenConnectionAsync();
+            await using var cmd = new NpgsqlCommand("SELECT edit_history FROM chat_messages WHERE message_id = @id", conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            var result = await cmd.ExecuteScalarAsync();
+            if (result != null && result != DBNull.Value)
+            {
+                string json = result.ToString() ?? "[]";
+                var list = JsonSerializer.Deserialize<List<object>>(json) ?? new List<object>();
+                return Ok(list);
+            }
+            return Ok(new List<object>());
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = ex.Message });
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -856,10 +962,14 @@ public class MessagesController : ControllerBase
 // ══════════════════════════════════════════════════════════════════════
 public class MessageRequest
 {
-    public string SenderId    { get; set; } = string.Empty;
-    public string ReceiverId  { get; set; } = string.Empty;
-    public string MessageBody { get; set; } = string.Empty;
-    public bool   IsGroupChat { get; set; } = false;
+    public string SenderId      { get; set; } = string.Empty;
+    public string ReceiverId    { get; set; } = string.Empty;
+    public string MessageBody   { get; set; } = string.Empty;
+    public bool   IsGroupChat   { get; set; } = false;
+    public string SenderName    { get; set; } = string.Empty;
+    public string MediaType     { get; set; } = null;
+    public string MediaUrl      { get; set; } = null;
+    public string MediaMetadata { get; set; } = null;
 }
 
 /// <summary>Used by POST /api/messages/{id}/seen to identify who opened the chat.</summary>
@@ -872,6 +982,16 @@ public class SeenRequest
 public class EditMessageRequest
 {
     public string NewText { get; set; } = string.Empty;
+    public string Text { get; set; } = string.Empty;
+    public string Body { get; set; } = string.Empty;
+
+    public string GetEffectiveText()
+    {
+        if (!string.IsNullOrWhiteSpace(NewText)) return NewText;
+        if (!string.IsNullOrWhiteSpace(Text)) return Text;
+        if (!string.IsNullOrWhiteSpace(Body)) return Body;
+        return string.Empty;
+    }
 }
 
 public class RemoveMessageRequest

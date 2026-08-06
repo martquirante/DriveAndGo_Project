@@ -13,11 +13,20 @@ public class AuthController : ControllerBase
 {
     private readonly string _connectionString;
     private readonly IEmailService _emailService;
+    private readonly AuditService _auditService;
 
-    public AuthController(IConfiguration configuration, IEmailService emailService)
+    public AuthController(IConfiguration configuration, IEmailService emailService, AuditService auditService)
     {
-        _connectionString = configuration.GetConnectionString("DefaultConnection")!;
+        var connStr = configuration.GetConnectionString("DefaultConnection");
+        if (string.IsNullOrWhiteSpace(connStr) || connStr.Contains("YOUR_DB_PASSWORD"))
+        {
+            connStr = Environment.GetEnvironmentVariable("DEFAULT_CONNECTION")
+                ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
+                ?? connStr;
+        }
+        _connectionString = connStr!;
         _emailService = emailService;
+        _auditService = auditService;
     }
 
     [HttpPost("register")]
@@ -238,6 +247,17 @@ public class AuthController : ControllerBase
                     driverId = finalReader["driver_id"] == DBNull.Value ? null : (int?)Convert.ToInt32(finalReader["driver_id"]);
                 }
             }
+
+            // Log USER_LOGIN in audit logs asynchronously
+            string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+            _ = _auditService.LogActionAsync(
+                adminUserId: userId,
+                actionType: "USER_LOGIN",
+                targetUserId: userId,
+                ipAddress: clientIp,
+                oldValues: new { description = "Session Init" },
+                newValues: new { description = "Logged into system", email = email, role = role }
+            );
 
             return Ok(new AuthResponse
             {

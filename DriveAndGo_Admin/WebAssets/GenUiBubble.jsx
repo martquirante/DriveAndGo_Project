@@ -261,10 +261,56 @@ function ReactionDetailsModal({ reactions, onClose, onRemoveOwnReaction }) {
 
 /* ── Chart Fullscreen Modal ─────────────────────────────────────────────── */
 function ChartFullscreenModal({ componentType, data, onClose }) {
+  const [showToast, setShowToast] = React.useState(false);
+
+  const copyImage = async () => {
+    try {
+      if (componentType === 'image' && data) {
+        const response = await fetch(data);
+        const blob = await response.blob();
+        await navigator.clipboard.write([
+          new ClipboardItem({ [blob.type]: blob })
+        ]);
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 2500);
+      }
+    } catch (err) {
+      try {
+        await navigator.clipboard.writeText(data);
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 2500);
+      } catch (e) {}
+    }
+  };
+
+  const handleContext = (e) => {
+      if (componentType === 'image' || componentType === 'video') e.preventDefault();
+  };
+
   React.useEffect(() => {
-    const handleKeyDown = (e) => { if (e.key === 'Escape') onClose(); };
+    try {
+      if (window.chrome && window.chrome.webview && typeof window.chrome.webview.postMessage === 'function') {
+        window.chrome.webview.postMessage(JSON.stringify({ action: 'TOGGLE_FULLSCREEN', enabled: true }));
+      }
+    } catch(e) {}
+
+    const handleKeyDown = (e) => { if (e.key === 'Escape') {
+      try {
+        if (window.chrome && window.chrome.webview && typeof window.chrome.webview.postMessage === 'function') {
+          window.chrome.webview.postMessage(JSON.stringify({ action: 'TOGGLE_FULLSCREEN', enabled: false }));
+        }
+      } catch(e) {}
+      onClose();
+    }};
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      try {
+        if (window.chrome && window.chrome.webview && typeof window.chrome.webview.postMessage === 'function') {
+          window.chrome.webview.postMessage(JSON.stringify({ action: 'TOGGLE_FULLSCREEN', enabled: false }));
+        }
+      } catch(e) {}
+    };
   }, [onClose]);
 
   const modalContent = React.createElement('div', {
@@ -289,7 +335,7 @@ function ChartFullscreenModal({ componentType, data, onClose }) {
         boxShadow: '0 32px 96px rgba(0,0,0,0.9), 0 0 0 1px rgba(255,255,255,0.15)',
         border: '1px solid rgba(255,255,255,0.12)',
         display: 'flex', flexDirection: 'column', gap: 14,
-        overflow: 'hidden', boxSizing: 'border-box'
+        overflow: 'hidden', boxSizing: 'border-box', position: 'relative'
       },
       onClick: e => e.stopPropagation()
     },
@@ -306,24 +352,51 @@ function ChartFullscreenModal({ componentType, data, onClose }) {
           React.createElement('h3', { style: { color: '#f8fafc', fontSize: 16, fontWeight: 700, margin: 0, letterSpacing: '0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, componentType + ' — Fullscreen View'),
           React.createElement('span', { style: { fontSize: 10, color: '#ea580c', background: 'rgba(234,88,12,0.15)', border: '1px solid rgba(234,88,12,0.3)', borderRadius: 999, padding: '3px 10px', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 } }, 'HD Interactive')
         ),
-        React.createElement('button', {
-          onClick: onClose,
-          title: 'Close (ESC)',
-          style: {
-            background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
-            borderRadius: '50%', width: 34, height: 34, color: '#e4e6eb',
-            fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center',
-            justifyContent: 'center', transition: 'all 0.15s', flexShrink: 0
-          }
-        }, '×')
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+          componentType === 'image' && React.createElement('button', {
+            onClick: copyImage,
+            title: 'Copy image to clipboard',
+            style: {
+              background: '#ea580c', border: 'none', borderRadius: 8,
+              padding: '6px 14px', color: 'white', fontSize: 12, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
+            }
+          }, '📋 Copy Image'),
+          React.createElement('button', {
+            onClick: onClose,
+            title: 'Close (ESC)',
+            style: {
+              background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: '50%', width: 34, height: 34, color: '#e4e6eb',
+              fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', transition: 'all 0.15s', flexShrink: 0
+            }
+          }, '×')
+        )
       ),
-      // Expanded Chart Body
-      React.createElement('div', { style: { flex: 1, overflowY: 'auto', overflowX: 'auto', padding: '8px 4px' } },
+      // Expanded Chart/Media Body
+      React.createElement('div', { 
+        style: { flex: 1, overflowY: 'auto', overflowX: 'auto', padding: '8px 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' },
+        onContextMenu: handleContext
+      },
+        componentType === 'image'      && React.createElement('img', { src: data, onClick: copyImage, title: 'Click to copy image to clipboard', style: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 12, cursor: 'pointer' } }),
+        componentType === 'video'      && React.createElement('video', { src: data, controls: true, autoPlay: true, style: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 12 } }),
         componentType === 'BarChart'   && React.createElement(SvgBarChart,   { data, isLarge: true }),
         componentType === 'PieChart'   && React.createElement(SvgDonutChart, { data, isLarge: true }),
         componentType === 'MetricCard' && React.createElement(MetricCardGrid,{ data, isLarge: true }),
         componentType === 'DataGrid'   && React.createElement(DataGrid,      { data, isLarge: true })
       ),
+
+      showToast && React.createElement('div', {
+        style: {
+          position: 'absolute', bottom: 60, left: '50%', transform: 'translateX(-50%)',
+          background: 'linear-gradient(135deg,#ea580c,#d97706)', color: 'white',
+          padding: '8px 20px', borderRadius: 999, fontSize: 12, fontWeight: 700,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 100000,
+          animation: 'gub-fade-in 0.2s ease forwards'
+        }
+      }, 'Copied image to clipboard! 📋'),
+
       // Footer hint & Close button
       React.createElement('div', {
         style: {
@@ -331,7 +404,7 @@ function ChartFullscreenModal({ componentType, data, onClose }) {
           borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10, gap: 10
         }
       },
-        React.createElement('span', { style: { fontSize: 11, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, '💡 Press ESC or click outside to return'),
+        React.createElement('span', { style: { fontSize: 11, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, '💡 Click image or button to copy to clipboard • Press ESC to return'),
         React.createElement('button', {
           onClick: onClose,
           style: {
@@ -355,6 +428,221 @@ function ChartFullscreenModal({ componentType, data, onClose }) {
 /* ══════════════════════════════════════════════════════════════════════════
    CHART / UI HELPERS (unchanged from original)
 ══════════════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════════════
+   INTERACTIVE MARKDOWN TABLE WITH FULLSCREEN LIGHTBOX
+══════════════════════════════════════════════════════════════════════════ */
+function MarkdownTable({ headerCols, dataRows }) {
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState('');
+
+  React.useEffect(() => {
+    try {
+      if (window.chrome && window.chrome.webview && typeof window.chrome.webview.postMessage === 'function') {
+        window.chrome.webview.postMessage(JSON.stringify({ action: 'TOGGLE_FULLSCREEN', enabled: isFullscreen }));
+      }
+    } catch(e) {}
+
+    if (!isFullscreen) return;
+    const handleKeyDown = (e) => { if (e.key === 'Escape') setIsFullscreen(false); };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen]);
+
+  const filteredRows = React.useMemo(() => {
+    if (!searchQuery.trim()) return dataRows;
+    const q = searchQuery.toLowerCase();
+    return dataRows.filter(row => row.some(cell => String(cell).toLowerCase().includes(q)));
+  }, [dataRows, searchQuery]);
+
+  const modalContent = isFullscreen ? React.createElement('div', {
+    className: 'gub-overlay',
+    style: {
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      width: '100vw', height: '100vh', zIndex: 999999,
+      background: 'rgba(10, 15, 26, 0.95)',
+      backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '12px', boxSizing: 'border-box'
+    },
+    onClick: () => setIsFullscreen(false)
+  },
+    React.createElement('div', {
+      className: 'gub-modal',
+      style: {
+        background: '#131722',
+        borderRadius: 16,
+        padding: '16px 20px',
+        width: '98vw', maxWidth: 1250, maxHeight: '94vh',
+        boxShadow: '0 32px 96px rgba(0,0,0,0.95), 0 0 0 1px rgba(255,255,255,0.15)',
+        border: '1px solid rgba(255,255,255,0.14)',
+        display: 'flex', flexDirection: 'column', gap: 12,
+        overflow: 'hidden', boxSizing: 'border-box'
+      },
+      onClick: e => e.stopPropagation()
+    },
+      // Modal Header
+      React.createElement('div', {
+        style: {
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 10,
+          gap: 8, flexWrap: 'nowrap', width: '100%', overflow: 'hidden'
+        }
+      },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1, overflow: 'hidden' } },
+          React.createElement('span', { style: { width: 8, height: 8, borderRadius: '50%', background: '#ea580c', boxShadow: '0 0 8px #ea580c', flexShrink: 0 } }),
+          React.createElement('h3', { style: { color: '#f8fafc', fontSize: 13, fontWeight: 700, margin: 0, letterSpacing: '0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, 'Fleet Overview — Fullscreen HD View'),
+          React.createElement('span', { style: { fontSize: 9.5, color: '#ea580c', background: 'rgba(234,88,12,0.18)', border: '1px solid rgba(234,88,12,0.4)', borderRadius: 999, padding: '2px 8px', fontWeight: 700, flexShrink: 0, whiteSpace: 'nowrap' } }, `${filteredRows.length} Rows`)
+        ),
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 } },
+          React.createElement('input', {
+            type: 'text',
+            placeholder: '🔍 Search table data...',
+            value: searchQuery,
+            onChange: e => setSearchQuery(e.target.value),
+            style: {
+              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.18)',
+              borderRadius: 6, padding: '4px 10px', color: '#f8fafc', fontSize: 11,
+              outline: 'none', width: 140
+            }
+          }),
+          React.createElement('button', {
+            onClick: () => setIsFullscreen(false),
+            title: 'Close (ESC)',
+            style: {
+              background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
+              borderRadius: '50%', width: 28, height: 28, color: '#e4e6eb',
+              fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', transition: 'all 0.15s', flexShrink: 0
+            }
+          }, '×')
+        )
+      ),
+      // Table Content
+      React.createElement('div', { style: { flex: 1, overflowY: 'auto', overflowX: 'auto', borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)' } },
+        React.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' } },
+          React.createElement('thead', null,
+            React.createElement('tr', { style: { background: 'rgba(234, 88, 12, 0.2)', borderBottom: '1px solid rgba(255,255,255,0.12)', position: 'sticky', top: 0, zIndex: 1 } },
+              headerCols.map((col, cIdx) =>
+                React.createElement('th', {
+                  key: cIdx,
+                  style: { padding: '12px 16px', color: '#fb923c', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' },
+                  dangerouslySetInnerHTML: { __html: parseInlineMarkdown(col) }
+                })
+              )
+            )
+          ),
+          React.createElement('tbody', null,
+            filteredRows.length > 0 ? filteredRows.map((row, rIdx) =>
+              React.createElement('tr', {
+                key: rIdx,
+                style: {
+                  borderBottom: '1px solid rgba(255,255,255,0.05)',
+                  background: rIdx % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'rgba(255,255,255,0.04)'
+                }
+              },
+                row.map((cell, cIdx) =>
+                  React.createElement('td', {
+                    key: cIdx,
+                    style: { padding: '12px 16px', color: '#e2e8f0', whiteSpace: 'nowrap' },
+                    dangerouslySetInnerHTML: { __html: parseInlineMarkdown(cell) }
+                  })
+                )
+              )
+            ) : React.createElement('tr', null,
+              React.createElement('td', { colSpan: headerCols.length, style: { padding: 32, textAlign: 'center', color: '#64748b', fontStyle: 'italic' } }, 'No matching rows found.')
+            )
+          )
+        )
+      ),
+      // Footer
+      React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8 } },
+        React.createElement('span', { style: { fontSize: 11, color: '#64748b' } }, '💡 Press ESC or click Close to return'),
+        React.createElement('button', {
+          onClick: () => setIsFullscreen(false),
+          style: {
+            background: 'linear-gradient(135deg,#ea580c,#d97706)', color: 'white',
+            border: 'none', borderRadius: 8, padding: '8px 20px', fontWeight: 700,
+            fontSize: 12, cursor: 'pointer'
+          }
+        }, 'Close View')
+      )
+    )
+  ) : null;
+
+  const ReactDOMObj = (typeof window !== 'undefined' && window.ReactDOM) ? window.ReactDOM : null;
+  const renderedPortal = (isFullscreen && ReactDOMObj && typeof ReactDOMObj.createPortal === 'function' && document.body)
+    ? ReactDOMObj.createPortal(modalContent, document.body)
+    : modalContent;
+
+  return React.createElement(React.Fragment, null,
+    React.createElement('div', {
+      className: 'gub-chart-clickable',
+      onClick: () => setIsFullscreen(true),
+      title: 'Click to open in Fullscreen HD view',
+      style: {
+        overflowX: 'auto',
+        margin: '10px 0',
+        borderRadius: 12,
+        border: '1px solid rgba(234, 88, 12, 0.3)',
+        background: 'rgba(15, 23, 42, 0.6)',
+        cursor: 'pointer',
+        boxShadow: '0 4px 14px rgba(0,0,0,0.2)',
+        position: 'relative',
+        transition: 'all 0.2s'
+      }
+    },
+      React.createElement('div', {
+        style: {
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '8px 12px', background: 'rgba(234, 88, 12, 0.12)',
+          borderBottom: '1px solid rgba(234, 88, 12, 0.25)'
+        }
+      },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+          React.createElement('span', { style: { width: 6, height: 6, borderRadius: '50%', background: '#ea580c', boxShadow: '0 0 6px #ea580c' } }),
+          React.createElement('span', { style: { fontSize: 9.5, fontWeight: 700, color: '#fb923c', textTransform: 'uppercase', letterSpacing: '0.06em' } }, 'Fleet Overview')
+        ),
+        React.createElement('div', {
+          style: { fontSize: 8.5, fontWeight: 700, color: '#ea580c', background: 'rgba(234,88,12,0.18)', border: '1px solid rgba(234,88,12,0.4)', borderRadius: 6, padding: '2px 8px', display: 'flex', alignItems: 'center', gap: 4 }
+        }, '⛶ Fullscreen')
+      ),
+      React.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' } },
+        React.createElement('thead', null,
+          React.createElement('tr', { style: { background: 'rgba(255, 255, 255, 0.04)', borderBottom: '1px solid var(--border)' } },
+            headerCols.map((col, cIdx) =>
+              React.createElement('th', {
+                key: cIdx,
+                style: { padding: '6px 10px', color: '#fb923c', fontWeight: 700, whiteSpace: 'nowrap' },
+                dangerouslySetInnerHTML: { __html: parseInlineMarkdown(col) }
+              })
+            )
+          )
+        ),
+        React.createElement('tbody', null,
+          dataRows.map((row, rIdx) =>
+            React.createElement('tr', {
+              key: rIdx,
+              style: {
+                borderBottom: '1px solid rgba(255,255,255,0.05)',
+                background: rIdx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)'
+              }
+            },
+              row.map((cell, cIdx) =>
+                React.createElement('td', {
+                  key: cIdx,
+                  style: { padding: '6px 10px', color: 'var(--text-main)', whiteSpace: 'nowrap' },
+                  dangerouslySetInnerHTML: { __html: parseInlineMarkdown(cell) }
+                })
+              )
+            )
+          )
+        )
+      )
+    ),
+    renderedPortal
+  );
+}
+
 function parseInlineMarkdown(str) {
   if (!str) return '';
   return str
@@ -387,49 +675,11 @@ function renderMarkdown(text) {
         const dataRows = tableLines.slice(startDataIdx).map(r => r.split('|').slice(1, -1).map(c => c.trim()));
 
         elements.push(
-          React.createElement('div', {
+          React.createElement(MarkdownTable, {
             key: `tbl-${i}`,
-            style: {
-              overflowX: 'auto',
-              margin: '8px 0',
-              borderRadius: 8,
-              border: '1px solid var(--border)',
-              background: 'rgba(15, 23, 42, 0.4)'
-            }
-          },
-            React.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' } },
-              React.createElement('thead', {},
-                React.createElement('tr', { style: { background: 'rgba(249, 115, 22, 0.18)', borderBottom: '1px solid var(--border)' } },
-                  headerCols.map((col, cIdx) =>
-                    React.createElement('th', {
-                      key: cIdx,
-                      style: { padding: '6px 10px', color: '#fb923c', fontWeight: 700, whiteSpace: 'nowrap' },
-                      dangerouslySetInnerHTML: { __html: parseInlineMarkdown(col) }
-                    })
-                  )
-                )
-              ),
-              React.createElement('tbody', {},
-                dataRows.map((row, rIdx) =>
-                  React.createElement('tr', {
-                    key: rIdx,
-                    style: {
-                      borderBottom: '1px solid rgba(255,255,255,0.05)',
-                      background: rIdx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)'
-                    }
-                  },
-                    row.map((cell, cIdx) =>
-                      React.createElement('td', {
-                        key: cIdx,
-                        style: { padding: '6px 10px', color: 'var(--text-main)', whiteSpace: 'nowrap' },
-                        dangerouslySetInnerHTML: { __html: parseInlineMarkdown(cell) }
-                      })
-                    )
-                  )
-                )
-              )
-            )
-          )
+            headerCols: headerCols,
+            dataRows: dataRows
+          })
         );
         continue;
       }
@@ -665,11 +915,289 @@ function EmojiPicker({ onSelect, onClose, currentEmoji }) {
   );
 }
 
+/* ── Edit History Glassmorphism Modal ────────────────────────────────────── */
+function EditHistoryModal({ isOpen, onClose, historyJson }) {
+  if (!isOpen) return null;
+  let history = [];
+  try {
+    history = typeof historyJson === 'string' ? JSON.parse(historyJson) : (historyJson || []);
+  } catch (e) { history = []; }
+
+  return React.createElement('div', {
+    className: 'gub-overlay',
+    style: {
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
+      backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center',
+      justifyContent: 'center', zIndex: 1000, padding: 16
+    },
+    onClick: onClose
+  },
+    React.createElement('div', {
+      className: 'gub-modal',
+      style: {
+        background: 'rgba(18, 19, 36, 0.95)', border: '1px solid rgba(234, 88, 12, 0.4)',
+        borderRadius: 20, width: '100%', maxWidth: 440, padding: 20,
+        boxShadow: '0 16px 48px rgba(0,0,0,0.8)', display: 'flex', flexDirection: 'column', gap: 14
+      },
+      onClick: e => e.stopPropagation()
+    },
+      React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+          React.createElement('span', { style: { fontSize: 18 } }, '✏️'),
+          React.createElement('h3', { style: { margin: 0, fontSize: 14, fontWeight: 700, color: '#f1f5f9' } }, 'Edit History')
+        ),
+        React.createElement('button', {
+          onClick: onClose,
+          style: { background: 'rgba(255,255,255,0.08)', border: 'none', color: '#94a3b8', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+        }, '✕')
+      ),
+      React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 300, overflowY: 'auto' } },
+        history.length > 0 ? history.map((item, idx) =>
+          React.createElement('div', {
+            key: idx,
+            style: {
+              background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 12, padding: 12, display: 'flex', flexDirection: 'column', gap: 4
+            }
+          },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+              React.createElement('span', { style: { fontSize: 10, fontWeight: 700, color: '#ea580c' } }, idx === 0 ? 'Original Message' : `Revision #${idx}`),
+              React.createElement('span', { style: { fontSize: 9, color: '#64748b' } }, item.edited_at ? new Date(item.edited_at).toLocaleString() : '')
+            ),
+            React.createElement('p', { style: { margin: 0, fontSize: 12, color: '#e2e8f0', whiteSpace: 'pre-wrap' } }, item.text || item.messageBody || '')
+          )
+        ) : React.createElement('p', { style: { fontSize: 12, color: '#94a3b8', fontStyle: 'italic', textAlign: 'center' } }, 'No edit history available.')
+      )
+    )
+  );
+}
+
+/* ── Custom Audio Player for Voice Notes ───────────────────────────────── */
+function VoiceNotePlayer({ audioUrl, metadata }) {
+  const [isPlaying, setIsPlaying] = React.useState(false);
+  const [progress, setProgress]   = React.useState(0);
+  const [duration, setDuration]   = React.useState(0);
+  
+  // Extract real recorded waveform heights from metadata if present
+  const baseHeights = React.useMemo(() => {
+    if (metadata) {
+      try {
+        const obj = typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
+        if (obj && Array.isArray(obj.waveform) && obj.waveform.length > 0) {
+          return obj.waveform;
+        }
+      } catch (e) {}
+    }
+    return [8, 14, 10, 20, 14, 24, 10, 18, 26, 10, 20, 14, 22, 8, 16, 20, 12, 18, 10, 14];
+  }, [metadata]);
+
+  const [dynHeights, setDynHeights] = React.useState(baseHeights);
+  const audioRef = React.useRef(null);
+  const analyserRef = React.useRef(null);
+  const dataArrayRef = React.useRef(null);
+
+  const getAudio = () => {
+    if (!audioRef.current) {
+      const serverRoot = (window.API_BASE_URL || 'http://localhost:5233').replace(/\/api\/?$/i, '').replace(/\/$/, '');
+      let fullUrl = audioUrl || '';
+      if (!fullUrl.startsWith('http') && !fullUrl.startsWith('data:') && !fullUrl.startsWith('blob:')) {
+        fullUrl = serverRoot + (fullUrl.startsWith('/') ? '' : '/') + fullUrl;
+      }
+      const audio = new Audio(fullUrl);
+      audioRef.current = audio;
+
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (AudioContext) {
+          const ctx = new AudioContext();
+          const source = ctx.createMediaElementSource(audio);
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 64;
+          source.connect(analyser);
+          analyser.connect(ctx.destination);
+          analyserRef.current = analyser;
+          dataArrayRef.current = new Uint8Array(analyser.frequencyBinCount);
+        }
+      } catch (e) { /* ignore cors/context errors */ }
+
+      audio.onloadedmetadata = () => setDuration(audio.duration || 0);
+      audio.ontimeupdate = () => {
+        if (audio.duration) {
+          setProgress((audio.currentTime / audio.duration) * 100);
+        }
+      };
+      audio.onended = () => { setIsPlaying(false); setProgress(0); setDynHeights(baseHeights); };
+    }
+    return audioRef.current;
+  };
+
+  React.useEffect(() => {
+    let frameId;
+    const updateWaveform = () => {
+      if (isPlaying && analyserRef.current && dataArrayRef.current) {
+        analyserRef.current.getByteFrequencyData(dataArrayRef.current);
+        const newHeights = baseHeights.map((h, i) => {
+          // map index to frequency bin
+          const bin = Math.floor((i / baseHeights.length) * (dataArrayRef.current.length * 0.7));
+          const val = dataArrayRef.current[bin] / 255.0; // 0.0 to 1.0
+          return Math.max(3, h * 0.4 + (h * 1.5 * val));
+        });
+        setDynHeights(newHeights);
+      } else if (!isPlaying) {
+         setDynHeights(baseHeights);
+      }
+      frameId = requestAnimationFrame(updateWaveform);
+    };
+    frameId = requestAnimationFrame(updateWaveform);
+    return () => cancelAnimationFrame(frameId);
+  }, [isPlaying]);
+
+  const togglePlay = () => {
+    const audio = getAudio();
+    if (!audio) return;
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+    } else { 
+      if (analyserRef.current && analyserRef.current.context && analyserRef.current.context.state === 'suspended') {
+         analyserRef.current.context.resume().catch(() => {});
+      }
+      audio.play()
+        .then(() => setIsPlaying(true))
+        .catch((err) => {
+          console.error("Audio playback error:", err);
+          setIsPlaying(false);
+        });
+    }
+  };
+
+  const fmt = (s) => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+
+  return React.createElement('div', {
+    style: {
+      display: 'flex', alignItems: 'center', gap: 10,
+      background: 'linear-gradient(135deg, rgba(37,99,235,0.35), rgba(234,88,12,0.35))',
+      border: '1px solid rgba(255,255,255,0.2)',
+      borderRadius: 24, padding: '8px 14px', minWidth: 210, boxShadow: '0 4px 16px rgba(0,0,0,0.3)'
+    }
+  },
+    React.createElement('button', {
+      type: 'button', onClick: togglePlay,
+      style: {
+        width: 34, height: 34, borderRadius: '50%',
+        background: 'linear-gradient(135deg,#2563eb,#ea580c)',
+        border: 'none', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: 'pointer', fontSize: 14, boxShadow: '0 2px 10px rgba(37,99,235,0.5)', flexShrink: 0
+      }
+    }, isPlaying ? '⏸' : '▶'),
+    React.createElement('div', { style: { flex: 1, display: 'flex', alignItems: 'center', gap: 2.5, height: 28 } },
+      dynHeights.map((h, i) => {
+        const pct = (i / dynHeights.length) * 100;
+        const isActive = pct <= progress;
+        return React.createElement('div', {
+          key: i,
+          style: {
+            width: 3,
+            height: `${h}px`,
+            background: isActive ? '#60a5fa' : 'rgba(255,255,255,0.35)',
+            borderRadius: 2,
+            transition: 'height 0.05s ease, background 0.1s ease'
+          }
+        });
+      })
+    ),
+    React.createElement('span', {
+      style: { fontSize: 10.5, color: '#f8fafc', fontWeight: 700, flexShrink: 0 }
+    }, duration > 0 ? fmt(duration) : '—')
+  );
+}
+
+
+/* ── Rich Link Card Renderer ────────────────────────────────────────────── */
+/* ── Messenger-Style Rich Link Card Renderer ───────────────────────────── */
+function RichLinkCard({ url, previewData }) {
+  const [meta, setMeta] = React.useState(previewData || null);
+  const [loading, setLoading] = React.useState(!previewData);
+
+  const apiBase = (window.API_BASE_URL || 'http://localhost:5233').replace(/\/$/, '');
+
+  React.useEffect(() => {
+    if (previewData) {
+      setMeta(previewData);
+      setLoading(false);
+      return;
+    }
+    if (!url) return;
+    let isMounted = true;
+    async function fetchMeta() {
+      try {
+        const res = await fetch(`${apiBase}/api/media/link-preview?url=${encodeURIComponent(url)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted) setMeta(data);
+        }
+      } catch (e) {
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+    fetchMeta();
+    return () => { isMounted = false; };
+  }, [url, previewData]);
+
+  let domainName = meta?.domain || url;
+  try { domainName = new URL(url).hostname; } catch (e) {}
+
+  const cardTitle = meta?.title || domainName;
+  const cardDesc  = meta?.description || meta?.siteName || url;
+  const imageUrl  = meta?.image;
+
+  return React.createElement('a', {
+    href: url, target: '_blank', rel: 'noopener noreferrer',
+    style: { textDecoration: 'none', marginTop: 8, display: 'block', maxWidth: 360, width: '100%' }
+  },
+    React.createElement('div', {
+      style: {
+        background: '#1e202e', border: '1px solid rgba(255, 255, 255, 0.12)',
+        borderRadius: 14, overflow: 'hidden', display: 'flex', flexDirection: 'column',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.4)', transition: 'transform 0.2s, box-shadow 0.2s',
+        cursor: 'pointer'
+      }
+    },
+      imageUrl ? React.createElement('div', {
+        style: { width: '100%', height: 180, overflow: 'hidden', background: '#0f111a', position: 'relative' }
+      },
+        React.createElement('img', {
+          src: imageUrl,
+          alt: cardTitle,
+          style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' }
+        })
+      ) : null,
+      React.createElement('div', {
+        style: { padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4, background: '#1c1e2d' }
+      },
+        React.createElement('span', {
+          style: { fontSize: 13, fontWeight: 700, color: '#f8fafc', lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }
+        }, cardTitle),
+        cardDesc && React.createElement('span', {
+          style: { fontSize: 11, color: '#94a3b8', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }
+        }, cardDesc),
+        React.createElement('div', {
+          style: { display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }
+        },
+          React.createElement('span', { style: { fontSize: 10, color: '#64748b', textTransform: 'lowercase' } }, domainName)
+        )
+      )
+    )
+  );
+}
+
 /* ── 3-Dots Context Menu ────────────────────────────────────────────────── */
-function BubbleContextMenu({ isMine, onForward, onRemove, onReact, onUnsend, onClose }) {
+function BubbleContextMenu({ isMine, onForward, onRemove, onReact, onUnsend, onEdit, onClose }) {
   const items = [
     { label:'React', icon:'😊', action: onReact },
     { label:'Forward', icon:'↪️', action: onForward },
+    ...(isMine && onEdit ? [{ label:'Edit', icon:'✏️', action: onEdit }] : []),
     { label:'Remove for you', icon:'🗑️', action: onRemove },
     ...(isMine ? [{ label:'Unsend', icon:'↩️', action: onUnsend }] : [])
   ];
@@ -767,10 +1295,45 @@ function GenUiBubble({ message }) {
   const [showForwardModal,    setShowForwardModal]    = useState(false);
   const [showReactionModal,   setShowReactionModal]   = useState(false);
   const [showFullscreenChart, setShowFullscreenChart] = useState(false);
+  const [fullscreenMediaUrl,  setFullscreenMediaUrl]  = useState('');
+  const [fullscreenMediaType, setFullscreenMediaType] = useState('');
+  const [showEditHistoryModal,setShowEditHistoryModal]= useState(false);
+
+  const [showInlineEdits,     setShowInlineEdits]     = useState(false);
+  const [historyItems,        setHistoryItems]        = useState(() => {
+    let hist = message.editHistory || message.edit_history || [];
+    if (typeof hist === 'string') {
+      try { hist = JSON.parse(hist); } catch { hist = []; }
+    }
+    return Array.isArray(hist) ? hist : [];
+  });
+  const [isFetchingHistory, setIsFetchingHistory] = useState(false);
+
+  const toggleInlineEdits = async (e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    if (!showInlineEdits && historyItems.length === 0 && id) {
+      setIsFetchingHistory(true);
+      try {
+        const res = await fetch(`${apiBase}/api/messages/${id}/history`);
+        if (res.ok) {
+          const list = await res.json();
+          setHistoryItems(list || []);
+        }
+      } catch (err) {}
+      finally { setIsFetchingHistory(false); }
+    }
+    setShowInlineEdits(prev => !prev);
+  };
+
+  const mType = message.mediaType || message.media_type;
+  const mUrl  = message.mediaUrl  || message.media_url;
+  const urlMatch = displayText ? displayText.match(/https?:\/\/[^\s]+/gi) : null;
+  const detectedUrl = urlMatch ? urlMatch[0] : null;
 
   const bubbleRef     = useRef(null);
   const mountedRef    = useRef(false);
-  const apiBase       = (window.API_BASE_URL || 'http://localhost:5233').replace(/\/$/, '');
+  // Ensure we strip '/api' because media files are served from the root static files route
+  const apiBase       = (window.API_BASE_URL || 'http://localhost:5233').replace(/\/api\/?$/i, '').replace(/\/$/, '');
 
   useEffect(() => {
     if (!mountedRef.current && bubbleRef.current) {
@@ -834,16 +1397,83 @@ function GenUiBubble({ message }) {
       React.createElement('div',{style:{position:'relative', flexShrink:0, maxWidth:'100%'}},
 
       // ── OUTGOING bubble ──────────────────────────────────────────────
-      isMine && React.createElement('div',{style:{
-        background:'linear-gradient(135deg,#ea580c,#d97706)',color:'white',
-        borderRadius:'14px 14px 0 14px',padding:'10px 14px',
-        fontSize:11.5,fontWeight:500,lineHeight:1.6,
-        boxShadow:'0 4px 16px rgba(234,88,12,0.25)',
-        wordBreak: 'break-word',
-        overflowWrap: 'anywhere',
-        whiteSpace: 'pre-wrap',
-        maxWidth: '100%'
-      }}, displayText),
+      isMine && React.createElement('div',{style:{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:2,maxWidth:'100%'}},
+        (is_edited || message.isEdited) && React.createElement('button', {
+          type: 'button',
+          onClick: toggleInlineEdits,
+          style: {
+            background: 'none', border: 'none',
+            color: '#38bdf8', fontSize: 10.5, fontWeight: 700,
+            cursor: 'pointer', padding: '2px 4px', marginBottom: 2,
+            alignSelf: 'flex-end',
+            transition: 'color 0.15s'
+          }
+        }, showInlineEdits ? 'Hide edits' : 'Edited'),
+        showInlineEdits && React.createElement('div', {
+          style: { display: 'flex', flexDirection: 'column', gap: 4, width: '100%', alignItems: 'flex-end', marginBottom: 4 }
+        },
+          historyItems.map((item, idx) =>
+            React.createElement('div', {
+              key: idx,
+              style: {
+                background: 'rgba(30, 58, 138, 0.75)',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
+                color: '#e2e8f0',
+                borderRadius: '14px 14px 0 14px',
+                padding: '8px 12px',
+                fontSize: 11.5,
+                fontWeight: 400,
+                lineHeight: 1.5,
+                wordBreak: 'break-word',
+                maxWidth: '100%',
+                opacity: 0.9,
+                animation: 'fadeSlideUp 0.15s ease-out both'
+              }
+            }, item.text || item.body || '')
+          ),
+          isFetchingHistory && React.createElement('span', {
+            style: { fontSize: 9.5, color: '#94a3b8', fontStyle: 'italic' }
+          }, 'Loading edit history...')
+        ),
+        mType === 'image' && React.createElement('img', {
+          src: mUrl.startsWith('http') ? mUrl : apiBase + mUrl,
+          style: { maxWidth: 220, borderRadius: 12, border: '1px solid rgba(255,255,255,0.15)', cursor: 'pointer' },
+          onClick: () => {
+             setFullscreenMediaType('image');
+             setFullscreenMediaUrl(mUrl.startsWith('http') ? mUrl : apiBase + mUrl);
+             setShowFullscreenChart(true);
+          }
+        }),
+        mType === 'video' && React.createElement('div', {
+          style: { position: 'relative', cursor: 'pointer', maxWidth: 240, borderRadius: 12, overflow: 'hidden' },
+          onClick: () => {
+             setFullscreenMediaType('video');
+             setFullscreenMediaUrl(mUrl.startsWith('http') ? mUrl : apiBase + mUrl);
+             setShowFullscreenChart(true);
+          }
+        },
+          React.createElement('video', {
+            src: mUrl.startsWith('http') ? mUrl : apiBase + mUrl,
+            style: { width: '100%', display: 'block' }
+          }),
+          // Play button overlay
+          React.createElement('div', {
+             style: { position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 48, height: 48, borderRadius: '50%', background: 'rgba(234,88,12,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }
+          }, React.createElement('span', { style: { color: 'white', fontSize: 24, marginLeft: 4 } }, '▶'))
+        ),
+        mType === 'audio' && React.createElement(VoiceNotePlayer, { audioUrl: mUrl, metadata: message.mediaMetadata || message.media_metadata }),
+        displayText && React.createElement('div',{style:{
+          background:'linear-gradient(135deg,#ea580c,#d97706)',color:'white',
+          borderRadius:'14px 14px 0 14px',padding:'10px 14px',
+          fontSize:11.5,fontWeight:500,lineHeight:1.6,
+          boxShadow:'0 4px 16px rgba(234,88,12,0.25)',
+          wordBreak: 'break-word',
+          overflowWrap: 'anywhere',
+          whiteSpace: 'pre-wrap',
+          maxWidth: '100%'
+        }}, displayText),
+        detectedUrl && React.createElement(RichLinkCard, { url: detectedUrl })
+      ),
 
       // ── INCOMING bubble ──────────────────────────────────────────────
       !isMine && React.createElement('div',{style:{display:'flex',alignItems:'flex-start',gap:8,maxWidth:'100%'}},
@@ -914,13 +1544,20 @@ function GenUiBubble({ message }) {
     groupRow,
 
     showFullscreenChart && React.createElement(ChartFullscreenModal, {
-      componentType: dynamicUiComponent,
-      data: dynamicData,
-      onClose: () => setShowFullscreenChart(false)
+      componentType: fullscreenMediaType || dynamicUiComponent,
+      data: fullscreenMediaUrl || dynamicData,
+      onClose: () => {
+         setShowFullscreenChart(false);
+         setFullscreenMediaType('');
+         setFullscreenMediaUrl('');
+      }
     }),
 
-    // Edited tag
-    is_edited && React.createElement('span',{style:{fontSize:9,color:'rgba(255,255,255,0.5)',marginTop:2,paddingRight:2,alignSelf:isMine?'flex-end':'flex-start'}},'(edited)'),
+    React.createElement(EditHistoryModal, {
+      isOpen: showEditHistoryModal,
+      onClose: () => setShowEditHistoryModal(false),
+      historyJson: message.editHistory || message.edit_history
+    }),
 
     // Delivery state row (own messages only)
     isMine && React.createElement('div',{style:{display:'flex',alignItems:'center',gap:6,marginTop:4,paddingRight:4}},

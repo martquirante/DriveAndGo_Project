@@ -18,9 +18,45 @@ DotNetEnv.Env.TraversePath().Load();
 var builder = WebApplication.CreateBuilder(args);
 
 // ─────────────────────────────────────────────────────────────
+//  1b. Override Configuration with .env secrets dynamically
+// ─────────────────────────────────────────────────────────────
+var envDefaultConn = Environment.GetEnvironmentVariable("DEFAULT_CONNECTION")
+    ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
+if (!string.IsNullOrWhiteSpace(envDefaultConn))
+{
+    builder.Configuration["ConnectionStrings:DefaultConnection"] = envDefaultConn;
+}
+
+var envJwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET_KEY")
+    ?? Environment.GetEnvironmentVariable("Jwt__SecretKey");
+if (!string.IsNullOrWhiteSpace(envJwtSecret))
+{
+    builder.Configuration["Jwt:SecretKey"] = envJwtSecret;
+}
+
+var envFirebaseProj = Environment.GetEnvironmentVariable("FIREBASE_PROJECT_ID")
+    ?? Environment.GetEnvironmentVariable("Firebase__ProjectId");
+if (!string.IsNullOrWhiteSpace(envFirebaseProj))
+{
+    builder.Configuration["Firebase:ProjectId"] = envFirebaseProj;
+}
+
+var envFirebaseUrl = Environment.GetEnvironmentVariable("FIREBASE_DATABASE_URL")
+    ?? Environment.GetEnvironmentVariable("Firebase__DatabaseUrl");
+if (!string.IsNullOrWhiteSpace(envFirebaseUrl))
+{
+    builder.Configuration["Firebase:DatabaseUrl"] = envFirebaseUrl;
+}
+
+// ─────────────────────────────────────────────────────────────
 //  2.  Controllers & Swagger
 // ─────────────────────────────────────────────────────────────
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(opts =>
+    {
+        // Serialize null properties so mediaType/mediaUrl always appear in JSON
+        opts.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.Never;
+    });
 builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -54,13 +90,30 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 // ─────────────────────────────────────────────────────────────
-//  3.  PostgreSQL / EF Core (Supabase / local Docker)
+//  2b. FormOptions — allow large file uploads (up to 500 MB)
 // ─────────────────────────────────────────────────────────────
-// Smart Environment-Based Database Routing (.env DEFAULT_CONNECTION prioritized)
-var connectionString = Environment.GetEnvironmentVariable("DEFAULT_CONNECTION")
-    ?? Environment.GetEnvironmentVariable("SUPABASE_CONNECTION_STRING")
-    ?? Environment.GetEnvironmentVariable("LOCAL_DB_CONNECTION")
-    ?? builder.Configuration.GetConnectionString("DefaultConnection");
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit    = 524_288_000; // 500 MB
+    options.ValueLengthLimit            = int.MaxValue;
+    options.MultipartHeadersLengthLimit = int.MaxValue;
+});
+builder.WebHost.ConfigureKestrel(kestrel =>
+{
+    kestrel.Limits.MaxRequestBodySize = 524_288_000; // 500 MB
+});
+
+// ─────────────────────────────────────────────────────────────
+bool useLocalDb = string.Equals(Environment.GetEnvironmentVariable("USE_LOCAL_DB"), "true", StringComparison.OrdinalIgnoreCase);
+
+var connectionString = useLocalDb
+    ? (Environment.GetEnvironmentVariable("LOCAL_DB_CONNECTION")
+       ?? "Host=localhost;Port=5432;Database=driveandgo_test_db;Username=postgres;Password=postgres_local_password;")
+    : (Environment.GetEnvironmentVariable("SUPABASE_CONNECTION_STRING")
+       ?? Environment.GetEnvironmentVariable("DEFAULT_CONNECTION")
+       ?? builder.Configuration.GetConnectionString("DefaultConnection"));
+
+builder.Configuration["ConnectionStrings:DefaultConnection"] = connectionString;
 
 if (string.IsNullOrWhiteSpace(connectionString) || connectionString.Contains("YOUR_DB_PASSWORD"))
 {

@@ -1,23 +1,33 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using System.Web;
 using DriveAndGo_API.Models.AiCopilot;
 using Npgsql;
 
 namespace DriveAndGo_API.Services.Ai;
 
-/// <summary>
-/// THE AI BRAIN — Multi-model orchestration with function calling, GenUI output,
-/// persistent memory, and smart fallback cascade.
-///
-/// FALLBACK MATRIX (in order):
-///   Tier 1  → Groq       (llama-3.3-70b-versatile)  — speed
-///   Tier 2  → Cohere     (command-r-plus)            — tool use / RAG
-///   Tier 3  → Gemini     (gemini-1.5-flash)          — context capacity
-///   Tier 4  → OpenRouter (meta-llama/llama-3.3-70b)  — last resort
-///   Tier 5  → Local Rule Engine                      — always succeeds
-/// </summary>
 public class AiOrchestrationService : IAiOrchestrationService
 {
+    private static readonly HttpClient _webScraperClient = new HttpClient(new HttpClientHandler
+    {
+        AllowAutoRedirect = true,
+        AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
+    })
+    {
+        Timeout = TimeSpan.FromSeconds(6)
+    };
+
+    static AiOrchestrationService()
+    {
+        _webScraperClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)");
+        _webScraperClient.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+    }
     private readonly NpgsqlDataSource        _ds;
     private readonly AiToolsService          _tools;
     private readonly IHttpClientFactory      _httpFactory;
@@ -109,11 +119,14 @@ public class AiOrchestrationService : IAiOrchestrationService
         // 1b. ALSO persist in chat_messages table for cross-restart chat history
         await PersistToChatMessagesTableAsync(senderIdStr, "ai_copilot", userMessage);
 
+        // 1c. Detect URLs in userMessage and enrich prompt with scraped page content
+        string effectivePrompt = await EnrichPromptWithUrlContentAsync(userMessage);
+
         // 2. Load history (most recent N turns for context window)
         var history = await LoadHistoryForContextAsync(sessionId);
 
-        // 3. Build message list for LLM
-        var messages = BuildMessageList(history, userMessage);
+        // 3. Build message list for LLM using enriched prompt
+        var messages = BuildMessageList(history, effectivePrompt);
 
         // 4. Run multi-model fallback pipeline
         var (rawJson, provider) = await RunFallbackPipelineAsync(sessionId, messages);
@@ -152,6 +165,116 @@ public class AiOrchestrationService : IAiOrchestrationService
         await UpdateSessionTimestampAsync(sessionId);
 
         return response;
+    }
+
+    private async Task<string> EnrichPromptWithUrlContentAsync(string userMessage)
+    {
+        if (string.IsNullOrWhiteSpace(userMessage)) return userMessage;
+
+        var match = Regex.Match(userMessage, @"(https?://[^\s]+)", RegexOptions.IgnoreCase);
+        if (!match.Success) return userMessage;
+
+        string url = match.Groups[1].Value;
+        try
+        {
+            Uri uri = new Uri(url);
+            using var response = await _webScraperClient.GetAsync(uri);
+            if (!response.IsSuccessStatusCode) return userMessage;
+
+            string html = await response.Content.ReadAsStringAsync();
+            if (string.IsNullOrWhiteSpace(html)) return userMessage;
+
+            // Extract Title & Meta Description
+            string title = ExtractMetaTag(html, "og:title") ?? ExtractTagContent(html, "title") ?? uri.Host;
+            string description = ExtractMetaTag(html, "og:description") ?? ExtractMetaTag(html, "description") ?? "";
+
+            title = HttpUtility.HtmlDecode(title).Trim();
+            description = HttpUtility.HtmlDecode(description).Trim();
+
+            // Clean HTML tags and extract readable plain text
+            string cleanText = CleanHtmlToPlainText(html);
+            if (cleanText.Length > 8000)
+            {
+                cleanText = cleanText.Substring(0, 8000) + "\n...[truncated for token limit]";
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendLine(userMessage);
+            sb.AppendLine();
+            sb.AppendLine("---");
+            sb.AppendLine("[SYSTEM CONTEXT - WEB PAGE CONTENT READER]");
+            sb.AppendLine($"URL: {url}");
+            sb.AppendLine($"Page Title: {title}");
+            if (!string.IsNullOrWhiteSpace(description))
+            {
+                sb.AppendLine($"Description: {description}");
+            }
+            sb.AppendLine("Extracted Web Content:");
+            sb.AppendLine(cleanText);
+            sb.AppendLine("---");
+
+            return sb.ToString();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to scrape web page content for URL: {Url}", url);
+            return userMessage;
+        }
+    }
+
+    private static string ExtractMetaTag(string html, string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return null;
+
+        var pattern = $@"<meta\s+[^>]*(?:property|name)=[""']{Regex.Escape(propertyName)}[""']\s+[^>]*content=[""']([^""']+)[""']";
+        var match = Regex.Match(html, pattern, RegexOptions.IgnoreCase);
+        if (match.Success) return match.Groups[1].Value;
+
+        pattern = $@"<meta\s+[^>]*content=[""']([^""']+)[""']\s+[^>]*(?:property|name)=[""']{Regex.Escape(propertyName)}[""']";
+        match = Regex.Match(html, pattern, RegexOptions.IgnoreCase);
+        if (match.Success) return match.Groups[1].Value;
+
+        return null;
+    }
+
+    private static string ExtractTagContent(string html, string tagName)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return null;
+        var pattern = $@"<{tagName}[^>]*>(.*?)</{tagName}>";
+        var match = Regex.Match(html, pattern, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
+    private static string CleanHtmlToPlainText(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return "";
+
+        // Remove <script>, <style>, <nav>, <header>, <footer>, <svg>, <noscript>
+        html = Regex.Replace(html, @"<(script|style|nav|header|footer|svg|noscript)[^>]*?>.*?</\1>", "", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        html = Regex.Replace(html, @"<!--.*?-->", "", RegexOptions.Singleline);
+
+        // Replace block tags with linebreaks
+        html = Regex.Replace(html, @"</?(p|div|h1|h2|h3|h4|h5|h6|li|br|tr)[^>]*>", "\n", RegexOptions.IgnoreCase);
+
+        // Strip remaining HTML tags
+        html = Regex.Replace(html, @"<[^>]+>", "", RegexOptions.IgnoreCase);
+
+        // Decode HTML entities
+        html = HttpUtility.HtmlDecode(html);
+
+        // Normalize multiple whitespace and empty lines
+        string[] lines = html.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var cleanLines = new List<string>();
+        foreach (var l in lines)
+        {
+            string trimmed = l.Trim();
+            if (!string.IsNullOrWhiteSpace(trimmed) && trimmed.Length > 2)
+            {
+                cleanLines.Add(trimmed);
+            }
+        }
+
+        return string.Join("\n", cleanLines);
     }
 
     private async Task PersistToChatMessagesTableAsync(string senderId, string receiverId, string body)

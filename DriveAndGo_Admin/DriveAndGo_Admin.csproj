@@ -81,6 +81,9 @@
 		<None Update="Resources\loadingScreenVideo\*.mp4">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
+		<None Update="Resources\*.png">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
 	</ItemGroup>
 
 	<!-- ═══════════════════════════════════════════════════════════════════════

@@ -13,7 +13,13 @@
     <Compile Update="ChatOverlayPanel.cs">
       <SubType>UserControl</SubType>
     </Compile>
+    <Compile Update="Controls\SkeletonLoader.cs">
+      <SubType>Component</SubType>
+    </Compile>
     <Compile Update="ForwardMessageDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="Helpers\ModernDialog.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Update="LoginForm.cs">

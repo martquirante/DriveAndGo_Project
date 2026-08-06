@@ -18,6 +18,12 @@ namespace DriveAndGo_API.Services
         public NpgsqlConnection CreateConnection()
         {
             var connStr = _configuration.GetConnectionString("DefaultConnection");
+            if (string.IsNullOrWhiteSpace(connStr) || connStr.Contains("YOUR_DB_PASSWORD"))
+            {
+                connStr = Environment.GetEnvironmentVariable("DEFAULT_CONNECTION")
+                    ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
+                    ?? connStr;
+            }
             return new NpgsqlConnection(connStr);
         }
     }

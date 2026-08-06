@@ -13,11 +13,13 @@ public class UsersController : ControllerBase
 {
     private readonly string _connectionString;
     private readonly IEmailService _emailService;
+    private readonly AuditService _auditService;
 
-    public UsersController(IConfiguration configuration, IEmailService emailService)
+    public UsersController(IConfiguration configuration, IEmailService emailService, AuditService auditService)
     {
         _connectionString = configuration.GetConnectionString("DefaultConnection")!;
         _emailService = emailService;
+        _auditService = auditService;
         EnsureColumnsExist();
     }
 
@@ -222,8 +224,38 @@ public class UsersController : ControllerBase
         public bool PinRequired { get; set; }
     }
 
+    [HttpGet("{id:int}/security")]
+    public IActionResult GetSecuritySettings(int id)
+    {
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            using var cmd = new NpgsqlCommand(
+                "SELECT two_factor_enabled, login_alerts_enabled, pin_required FROM users WHERE user_id = @id",
+                connection);
+            cmd.Parameters.AddWithValue("@id", id);
+            using var reader = cmd.ExecuteReader();
+            if (reader.Read())
+            {
+                return Ok(new
+                {
+                    TwoFactorEnabled = !reader.IsDBNull(0) && reader.GetBoolean(0),
+                    LoginAlertsEnabled = reader.IsDBNull(1) || reader.GetBoolean(1),
+                    PinRequired = !reader.IsDBNull(2) && reader.GetBoolean(2)
+                });
+            }
+            return NotFound(new { Message = "User not found." });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+        }
+    }
+
     [HttpPut("{id:int}/security")]
-    public IActionResult UpdateSecurity(int id, [FromBody] SecuritySettingsRequest request)
+    public async Task<IActionResult> UpdateSecurity(int id, [FromBody] SecuritySettingsRequest request)
     {
         try
         {
@@ -243,7 +275,85 @@ public class UsersController : ControllerBase
             cmd.Parameters.AddWithValue("@id", id);
             cmd.ExecuteNonQuery();
 
+            // Log SECURITY_UPDATE to system_audit_logs table
+            string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+            string desc = $"Updated Security: 2FA={(request.TwoFactorEnabled ? "ON" : "OFF")}, Alerts={(request.LoginAlertsEnabled ? "ON" : "OFF")}, PIN={(request.PinRequired ? "ON" : "OFF")}";
+
+            await _auditService.LogActionAsync(
+                adminUserId: id,
+                actionType: "SECURITY_UPDATE",
+                targetUserId: id,
+                ipAddress: clientIp,
+                oldValues: new { description = "Security Settings Toggled" },
+                newValues: new { description = desc, twoFactor = request.TwoFactorEnabled, alerts = request.LoginAlertsEnabled, pin = request.PinRequired }
+            );
+
             return Ok(new { Message = "Security settings updated in database." });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+        }
+    }
+
+    [HttpGet("{id:int}/activity")]
+    public IActionResult GetUserActivityLogs(int id)
+    {
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            var logs = new List<object>();
+
+            using var cmd = new NpgsqlCommand(
+                @"SELECT audit_id, action_type, metadata_json, timestamp, ip_address 
+                  FROM system_audit_logs 
+                  WHERE admin_user_id = @id OR target_user_id = @id OR admin_user_id IS NULL
+                  ORDER BY timestamp DESC 
+                  LIMIT 20",
+                connection);
+            cmd.Parameters.AddWithValue("@id", id);
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                int auditId = reader.GetInt32(0);
+                string actionType = reader.GetString(1);
+                string metadataJson = reader.IsDBNull(2) ? "{}" : reader.GetString(2);
+                DateTime ts = reader.GetDateTime(3);
+                string ip = reader.IsDBNull(4) ? "127.0.0.1" : reader.GetString(4);
+
+                string description = actionType switch
+                {
+                    "USER_LOGIN" => "Logged into system",
+                    "SECURITY_UPDATE" => "Updated security settings",
+                    "PASSWORD_CHANGE" => "Changed account password",
+                    _ => actionType.Replace("_", " ")
+                };
+
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(metadataJson);
+                    if (doc.RootElement.TryGetProperty("newValues", out var nv) && nv.TryGetProperty("description", out var d))
+                    {
+                        string? dStr = d.GetString();
+                        if (!string.IsNullOrWhiteSpace(dStr)) description = dStr;
+                    }
+                }
+                catch { }
+
+                logs.Add(new
+                {
+                    AuditId = auditId,
+                    ActionType = actionType,
+                    Description = description,
+                    MetadataJson = metadataJson,
+                    Timestamp = ts,
+                    IpAddress = ip
+                });
+            }
+
+            return Ok(logs);
         }
         catch (Exception ex)
         {

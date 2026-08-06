@@ -13,12 +13,25 @@ public class RentalsController : ControllerBase
     private readonly string _connectionString;
     private readonly NpgsqlDataSource _ds;
     private readonly NotificationWriter _notificationWriter;
+    private readonly AuditService _auditService;
 
-    public RentalsController(IConfiguration configuration, NpgsqlDataSource ds, NotificationWriter notificationWriter)
+    public RentalsController(IConfiguration configuration, NpgsqlDataSource ds, NotificationWriter notificationWriter, AuditService auditService)
     {
         _connectionString = configuration.GetConnectionString("DefaultConnection")!;
         _ds = ds;
         _notificationWriter = notificationWriter;
+        _auditService = auditService;
+    }
+
+    private string GetAdminName()
+    {
+        if (Request.Headers.TryGetValue("X-Admin-Name", out var headerName) && !string.IsNullOrWhiteSpace(headerName))
+        {
+            return headerName.ToString();
+        }
+        string claimName = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
+        if (!string.IsNullOrWhiteSpace(claimName)) return claimName;
+        return "Admin";
     }
 
     [HttpGet]
@@ -286,6 +299,20 @@ public class RentalsController : ControllerBase
             }
 
             transaction.Commit();
+
+            // System-wide audit trail logging
+            string adminName = GetAdminName();
+            string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+            _ = _auditService.LogActionAsync(
+                adminUserId: 0,
+                adminName: adminName,
+                actionType: "RENTAL_APPROVED",
+                targetUserId: customerId,
+                ipAddress: clientIp,
+                oldValues: new { rentalId = id },
+                newValues: new { description = $"{adminName} approved booking BK-{id}" }
+            );
+
             return Ok(new { Message = "Rental approved successfully.", RentalId = id });
         }
         catch (Exception ex)
@@ -324,6 +351,20 @@ public class RentalsController : ControllerBase
                 transaction);
 
             transaction.Commit();
+
+            // System-wide audit trail logging
+            string adminNameRej = GetAdminName();
+            string clientIpRej = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+            _ = _auditService.LogActionAsync(
+                adminUserId: 0,
+                adminName: adminNameRej,
+                actionType: "RENTAL_REJECTED",
+                targetUserId: rental.CustomerId,
+                ipAddress: clientIpRej,
+                oldValues: new { rentalId = id },
+                newValues: new { description = $"{adminNameRej} rejected booking BK-{id}" }
+            );
+
             return Ok(new { Message = "Rental rejected successfully.", RentalId = id });
         }
         catch (Exception ex)

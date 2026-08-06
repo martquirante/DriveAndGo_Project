@@ -11,11 +11,27 @@ public class VehiclesController : ControllerBase
 {
     private readonly string _connectionString;
     private readonly Microsoft.AspNetCore.SignalR.IHubContext<DriveAndGo_API.Hubs.AdminHub> _hubContext;
+    private readonly DriveAndGo_API.Services.AuditService _auditService;
 
-    public VehiclesController(IConfiguration configuration, Microsoft.AspNetCore.SignalR.IHubContext<DriveAndGo_API.Hubs.AdminHub> hubContext)
+    public VehiclesController(
+        IConfiguration configuration,
+        Microsoft.AspNetCore.SignalR.IHubContext<DriveAndGo_API.Hubs.AdminHub> hubContext,
+        DriveAndGo_API.Services.AuditService auditService)
     {
         _connectionString = configuration.GetConnectionString("DefaultConnection")!;
         _hubContext = hubContext;
+        _auditService = auditService;
+    }
+
+    private string GetAdminName()
+    {
+        if (Request.Headers.TryGetValue("X-Admin-Name", out var headerName) && !string.IsNullOrWhiteSpace(headerName))
+        {
+            return headerName.ToString();
+        }
+        string claimName = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
+        if (!string.IsNullOrWhiteSpace(claimName)) return claimName;
+        return "Admin";
     }
 
     [HttpGet]
@@ -165,6 +181,19 @@ public class VehiclesController : ControllerBase
 
             var vehicleId = Convert.ToInt32(insertCommand.ExecuteScalar());
 
+            // System-wide audit trail logging
+            string adminName = GetAdminName();
+            string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+            _ = _auditService.LogActionAsync(
+                adminUserId: 0,
+                adminName: adminName,
+                actionType: "VEHICLE_ADDED",
+                targetUserId: 0,
+                ipAddress: clientIp,
+                oldValues: new { vehicleId = vehicleId },
+                newValues: new { description = $"{adminName} added vehicle {vehicle.Brand} {vehicle.Model} ({vehicle.PlateNo})", plateNo = vehicle.PlateNo }
+            );
+
             await _hubContext.Clients.All.SendAsync("ReceiveVehicleUpdate");
             await _hubContext.Clients.All.SendAsync("ReceiveDashboardUpdate");
 
@@ -251,6 +280,19 @@ public class VehiclesController : ControllerBase
                 return NotFound(new { Message = "Vehicle not found." });
             }
 
+            // System-wide audit trail logging
+            string adminName = GetAdminName();
+            string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+            _ = _auditService.LogActionAsync(
+                adminUserId: 0,
+                adminName: adminName,
+                actionType: "VEHICLE_UPDATED",
+                targetUserId: 0,
+                ipAddress: clientIp,
+                oldValues: new { vehicleId = id },
+                newValues: new { description = $"{adminName} updated vehicle {vehicle.Brand} {vehicle.Model} ({vehicle.PlateNo})", status = vehicle.Status }
+            );
+
             await _hubContext.Clients.All.SendAsync("ReceiveVehicleUpdate");
             await _hubContext.Clients.All.SendAsync("ReceiveDashboardUpdate");
 
@@ -291,6 +333,19 @@ public class VehiclesController : ControllerBase
             {
                 return NotFound(new { Message = "Vehicle not found." });
             }
+
+            // System-wide audit trail logging
+            string adminNameDel = GetAdminName();
+            string clientIpDel = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+            _ = _auditService.LogActionAsync(
+                adminUserId: 0,
+                adminName: adminNameDel,
+                actionType: "VEHICLE_DELETED",
+                targetUserId: 0,
+                ipAddress: clientIpDel,
+                oldValues: new { vehicleId = id },
+                newValues: new { description = $"{adminNameDel} deleted vehicle ID #{id}" }
+            );
 
             await _hubContext.Clients.All.SendAsync("ReceiveVehicleUpdate");
             await _hubContext.Clients.All.SendAsync("ReceiveDashboardUpdate");

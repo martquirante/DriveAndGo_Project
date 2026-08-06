@@ -103,6 +103,7 @@ namespace DriveAndGo_Admin
             BuildRightPanel();
             ApplyTheme();
             StartAnimations();
+            InitializeNetworkMonitoring();
         }
 
         private void BuildForm()
@@ -246,42 +247,69 @@ namespace DriveAndGo_Admin
             // 4. Element Sliding & Fading Mathematics
             float lift = _hoverProgress * 80f; // 80px translation lift on hover
 
-            float logoY  = centerY - 50f - lift + parallaxY * 0.5f;
-            float titleY = logoY + 95f;
-            float subY   = titleY + 42f;
-            float descY  = titleY + 45f;
-
-            // Draw Logo Image (80x80)
-            int logoSize = 80;
-            var logoRect = new Rectangle((int)(centerX + parallaxX * 1.3f - logoSize / 2f), (int)logoY, logoSize, logoSize);
-            try
+            // Draw Official Drive & Go Logo Image (Wide Aspect Ratio)
+            Image logoImg = GetLogoImage();
+            if (logoImg != null)
             {
-                if (Properties.Resources.DriveAndGo_Logo != null)
+                float aspect = (float)logoImg.Width / Math.Max(1, logoImg.Height);
+                int logoW = 250;
+                int logoH = Math.Min(160, (int)(logoW / aspect));
+
+                float logoY = centerY - 95f - lift + parallaxY * 0.5f;
+                var logoRect = new Rectangle((int)(centerX + parallaxX * 1.3f - logoW / 2f), (int)logoY, logoW, logoH);
+
+                g.DrawImage(logoImg, logoRect);
+
+                // Subtitle ("Vehicle Rental Platform") — Fades OUT on hover
+                float subY = logoY + logoH + 10f;
+                int subAlpha = (int)((1f - _hoverProgress) * 255f);
+                subAlpha = Math.Clamp(subAlpha, 0, 255);
+
+                if (subAlpha > 5)
                 {
-                    g.DrawImage(Properties.Resources.DriveAndGo_Logo, logoRect);
+                    using (var subFont  = new Font("Segoe UI", 11F, FontStyle.Regular))
+                    using (var subBrush = new SolidBrush(Color.FromArgb(subAlpha, ThemeManager.CurrentSubText)))
+                    {
+                        var sfSub = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
+                        g.DrawString("Vehicle Rental Platform", subFont, subBrush, centerX + parallaxX, subY, sfSub);
+                    }
                 }
             }
-            catch { }
-
-            // Draw Main Title ("Drive & Go")
-            using (var titleFont = new Font("Segoe UI", 26F, FontStyle.Bold))
-            using (var titleBrush = new SolidBrush(ThemeManager.CurrentPrimary))
+            else
             {
-                var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
-                g.DrawString("Drive & Go", titleFont, titleBrush, centerX + parallaxX, titleY, sf);
-            }
+                int logoSize = 80;
+                float logoY  = centerY - 110f - lift + parallaxY * 0.5f;
+                float titleY = logoY + 95f;
+                float subY   = titleY + 42f;
+                var logoRect = new Rectangle((int)(centerX + parallaxX * 1.3f - logoSize / 2f), (int)logoY, logoSize, logoSize);
 
-            // Idle Subtitle ("Vehicle Rental Platform") — Fades OUT on hover
-            int subAlpha = (int)((1f - _hoverProgress) * 255f);
-            subAlpha = Math.Clamp(subAlpha, 0, 255);
+                using var logoPath = RR(logoRect, 20);
+                using var logoGrad = new LinearGradientBrush(logoRect, ThemeManager.CurrentPrimary, Color.FromArgb(249, 115, 22), LinearGradientMode.ForwardDiagonal);
+                g.FillPath(logoGrad, logoPath);
+                using var iconFont = new Font("Segoe UI Emoji", 32F);
+                using var iconFmt  = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                g.DrawString("🚗", iconFont, Brushes.White, logoRect, iconFmt);
 
-            if (subAlpha > 5)
-            {
-                using (var subFont = new Font("Segoe UI", 11F, FontStyle.Regular))
-                using (var subBrush = new SolidBrush(Color.FromArgb(subAlpha, ThemeManager.CurrentSubText)))
+                // Draw Main Title ("Drive & Go")
+                using (var titleFont = new Font("Segoe UI", 26F, FontStyle.Bold))
+                using (var titleBrush = new SolidBrush(ThemeManager.CurrentPrimary))
                 {
-                    var sfSub = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
-                    g.DrawString("Vehicle Rental Platform", subFont, subBrush, centerX + parallaxX, subY, sfSub);
+                    var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
+                    g.DrawString("Drive & Go", titleFont, titleBrush, centerX + parallaxX, titleY, sf);
+                }
+
+                // Idle Subtitle ("Vehicle Rental Platform") — Fades OUT on hover
+                int subAlpha = (int)((1f - _hoverProgress) * 255f);
+                subAlpha = Math.Clamp(subAlpha, 0, 255);
+
+                if (subAlpha > 5)
+                {
+                    using (var subFont = new Font("Segoe UI", 11F, FontStyle.Regular))
+                    using (var subBrush = new SolidBrush(Color.FromArgb(subAlpha, ThemeManager.CurrentSubText)))
+                    {
+                        var sfSub = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
+                        g.DrawString("Vehicle Rental Platform", subFont, subBrush, centerX + parallaxX, subY, sfSub);
+                    }
                 }
             }
 
@@ -291,6 +319,7 @@ namespace DriveAndGo_Admin
 
             if (descAlpha > 5)
             {
+                float descY = logoImg != null ? (centerY - 95f - lift + parallaxY * 0.5f + 155f) : (centerY - 110f - lift + parallaxY * 0.5f + 137f);
                 string descText = "DriveAndGo is the definitive platform engineered to maximize fleet profitability and protect your automotive assets. By unifying real-time vehicle tracking, automated transaction billing, and deep operational telemetry, we empower business owners to minimize overhead, eliminate security leaks, and accelerate revenue growth effortlessly.";
 
                 var descRect = new RectangleF(cardX + 22 + parallaxX, descY, cardW - 44, 200);
@@ -999,6 +1028,236 @@ namespace DriveAndGo_Admin
                 null, c, new object[] { true });
         }
 
+        // ════════════════════════════════════════════════════════════════════════
+        //  NETWORK MONITORING & OFFLINE BANNER
+        // ════════════════════════════════════════════════════════════════════════
+        private Panel _pnlOfflineWarning;
+        private Label _lblOfflineWarningText;
+        private System.Windows.Forms.Timer _netCheckTimer;
+        private System.Windows.Forms.Timer _restoreBannerTimer;
+        private bool _wasOffline = false;
+        private bool _isCheckingNet = false;
+        private static readonly System.Net.Http.HttpClient _netCheckClient = new System.Net.Http.HttpClient();
+
+        private void InitializeNetworkMonitoring()
+        {
+            _pnlOfflineWarning = new Panel
+            {
+                Height = 36,
+                Dock = DockStyle.Top,
+                BackColor = Color.FromArgb(220, 38, 38), // Crimson Red
+                Visible = false
+            };
+
+            _lblOfflineWarningText = new Label
+            {
+                Text = "⚠️ No Internet Connection. Working offline — Live features are paused.",
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+
+            _pnlOfflineWarning.Controls.Add(_lblOfflineWarningText);
+            this.Controls.Add(_pnlOfflineWarning);
+            this.Controls.SetChildIndex(_pnlOfflineWarning, 0);
+
+            _restoreBannerTimer = new System.Windows.Forms.Timer { Interval = 3000 };
+            _restoreBannerTimer.Tick += (s, e) =>
+            {
+                _restoreBannerTimer.Stop();
+                if (!_wasOffline)
+                {
+                    _pnlOfflineWarning.Visible = false;
+                }
+            };
+
+            _netCheckTimer = new System.Windows.Forms.Timer { Interval = 3000 };
+            _netCheckTimer.Tick += async (s, e) =>
+            {
+                if (_isCheckingNet) return;
+                _isCheckingNet = true;
+
+                try
+                {
+                    bool isOnline = await CheckInternetConnectionAsync();
+
+                    if (this.IsDisposed || !this.IsHandleCreated) return;
+
+                    if (!isOnline)
+                    {
+                        // 🔴 State: OFFLINE (Spotify Red Banner)
+                        _wasOffline = true;
+                        _restoreBannerTimer.Stop();
+                        _pnlOfflineWarning.BackColor = Color.FromArgb(220, 38, 38);
+                        _lblOfflineWarningText.Text = "⚠️ No Internet Connection. Working offline — Live features are paused.";
+                        _pnlOfflineWarning.Visible = true;
+                    }
+                    else if (_wasOffline)
+                    {
+                        // 🟢 State: JUST RESTORED (Spotify Emerald Green Banner - Displays for 3s then auto-hides)
+                        _wasOffline = false;
+                        _pnlOfflineWarning.BackColor = Color.FromArgb(16, 185, 129);
+                        _lblOfflineWarningText.Text = "📶 Internet Connection Restored! You are back online.";
+                        _pnlOfflineWarning.Visible = true;
+                        _restoreBannerTimer.Stop();
+                        _restoreBannerTimer.Start();
+                    }
+                }
+                catch
+                {
+                    // Swallowing exception in async void event handler to prevent crashes
+                }
+                finally
+                {
+                    _isCheckingNet = false;
+                }
+            };
+            _netCheckTimer.Start();
+        }
+
+        private static async System.Threading.Tasks.Task<bool> CheckInternetConnectionAsync()
+        {
+            try
+            {
+                // 1. Hardware network interface check (ignore loopback & tunnel)
+                bool hasActiveAdapter = System.Linq.Enumerable.Any(
+                    System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces(),
+                    ni => ni.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up &&
+                          ni.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback &&
+                          ni.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Tunnel);
+
+                if (!hasActiveAdapter)
+                {
+                    return false;
+                }
+            }
+            catch
+            {
+                if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable()) return false;
+            }
+
+            // 2. ICMP Ping check to 8.8.8.8 (Google Public DNS)
+            // SendPingAsync returns IPStatus.TimedOut when offline — WITHOUT throwing any TaskCanceledException!
+            try
+            {
+                using var ping = new System.Net.NetworkInformation.Ping();
+                var reply = await ping.SendPingAsync("8.8.8.8", 1200);
+                if (reply != null && reply.Status == System.Net.NetworkInformation.IPStatus.Success)
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+            }
+
+            // 3. Backup Ping check to 1.1.1.1 (Cloudflare DNS)
+            try
+            {
+                using var ping = new System.Net.NetworkInformation.Ping();
+                var reply = await ping.SendPingAsync("1.1.1.1", 1200);
+                if (reply != null && reply.Status == System.Net.NetworkInformation.IPStatus.Success)
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+            }
+
+            // 4. HTTP fallback for networks blocking ICMP ping
+            try
+            {
+                using var cts = new System.Threading.CancellationTokenSource(1200);
+                using var response = await _netCheckClient.GetAsync("http://clients3.google.com/generate_204", cts.Token);
+                return response.IsSuccessStatusCode;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static Image _cachedLogoImage = null;
+
+        private static Image GetLogoImage()
+        {
+            if (_cachedLogoImage != null) return _cachedLogoImage;
+
+            // 1. Try Assembly Manifest Resource Stream
+            try
+            {
+                var asm = System.Reflection.Assembly.GetExecutingAssembly();
+                foreach (string name in asm.GetManifestResourceNames())
+                {
+                    if (name.EndsWith("DriveAndGo_Logo.png", StringComparison.OrdinalIgnoreCase) ||
+                        name.EndsWith("logo.png", StringComparison.OrdinalIgnoreCase))
+                    {
+                        using var stream = asm.GetManifestResourceStream(name);
+                        if (stream != null)
+                        {
+                            _cachedLogoImage = Image.FromStream(stream);
+                            return _cachedLogoImage;
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // 2. Try Properties.Resources
+            try
+            {
+                if (Properties.Resources.DriveAndGo_Logo != null)
+                {
+                    _cachedLogoImage = (Image)Properties.Resources.DriveAndGo_Logo.Clone();
+                    return _cachedLogoImage;
+                }
+            }
+            catch { }
+
+            try
+            {
+                if (Properties.Resources.logo != null)
+                {
+                    _cachedLogoImage = (Image)Properties.Resources.logo.Clone();
+                    return _cachedLogoImage;
+                }
+            }
+            catch { }
+
+            // 3. Try Disk File Paths
+            try
+            {
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                string projectDir = Path.GetFullPath(Path.Combine(baseDir, "..", "..", ".."));
+                string[] candidates = new string[]
+                {
+                    Path.Combine(baseDir, "Resources", "DriveAndGo_Logo.png"),
+                    Path.Combine(baseDir, "Resources", "logo.png"),
+                    Path.Combine(projectDir, "Resources", "DriveAndGo_Logo.png"),
+                    Path.Combine(projectDir, "Resources", "logo.png"),
+                    Path.Combine(projectDir, "WebAssets", "logo.png"),
+                    Path.Combine(Application.StartupPath, "Resources", "DriveAndGo_Logo.png"),
+                    @"C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\Resources\DriveAndGo_Logo.png",
+                    @"C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\Resources\logo.png"
+                };
+
+                foreach (var path in candidates)
+                {
+                    if (File.Exists(path))
+                    {
+                        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                        _cachedLogoImage = Image.FromStream(stream);
+                        return _cachedLogoImage;
+                    }
+                }
+            }
+            catch { }
+
+            return _cachedLogoImage;
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)
@@ -1007,6 +1266,8 @@ namespace DriveAndGo_Admin
                 _physicsTimer?.Dispose();
                 _btnGlowTimer?.Dispose();
                 _knobTimer?.Dispose();
+                _netCheckTimer?.Dispose();
+                _restoreBannerTimer?.Dispose();
             }
             base.Dispose(disposing);
         }

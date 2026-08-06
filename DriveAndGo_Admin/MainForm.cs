@@ -225,6 +225,7 @@ namespace DriveAndGo_Admin
         private System.Windows.Forms.Timer _netCheckTimer;
         private System.Windows.Forms.Timer _restoreBannerTimer;
         private bool _wasOffline = false;
+        private bool _isCheckingNet = false;
 
         private void InitializeNetworkMonitoring()
         {
@@ -233,8 +234,7 @@ namespace DriveAndGo_Admin
                 Height = 36,
                 Dock = DockStyle.Top,
                 BackColor = Color.FromArgb(220, 38, 38), // Red default
-                Visible = false,
-                Padding = new Padding(12, 0, 12, 0)
+                Visible = false
             };
 
             _lblOfflineWarningText = new Label
@@ -250,7 +250,7 @@ namespace DriveAndGo_Admin
             this.Controls.Add(_pnlOfflineWarning);
             this.Controls.SetChildIndex(_pnlOfflineWarning, 0);
 
-            _restoreBannerTimer = new System.Windows.Forms.Timer { Interval = 3500 };
+            _restoreBannerTimer = new System.Windows.Forms.Timer { Interval = 3000 };
             _restoreBannerTimer.Tick += (s, e) =>
             {
                 _restoreBannerTimer.Stop();
@@ -263,38 +263,105 @@ namespace DriveAndGo_Admin
             _netCheckTimer = new System.Windows.Forms.Timer { Interval = 3000 };
             _netCheckTimer.Tick += async (s, e) =>
             {
-                bool isOnline = await CheckInternetConnectionAsync();
-                
-                if (!isOnline)
+                if (_isCheckingNet) return;
+                _isCheckingNet = true;
+
+                try
                 {
-                    // 🔴 State: OFFLINE (Spotify Red Banner)
-                    _wasOffline = true;
-                    _restoreBannerTimer.Stop();
-                    _pnlOfflineWarning.BackColor = Color.FromArgb(220, 38, 38); // Rich Crimson Red
-                    _lblOfflineWarningText.Text = "⚠️ No Internet Connection. Working offline — Live features & AI Copilot are paused.";
-                    _pnlOfflineWarning.Visible = true;
+                    bool isOnline = await CheckInternetConnectionAsync();
+                    
+                    if (this.IsDisposed || !this.IsHandleCreated) return;
+
+                    if (!isOnline)
+                    {
+                        // 🔴 State: OFFLINE (Spotify Red Banner)
+                        _wasOffline = true;
+                        _restoreBannerTimer.Stop();
+                        _pnlOfflineWarning.BackColor = Color.FromArgb(220, 38, 38); // Rich Crimson Red
+                        _lblOfflineWarningText.Text = "⚠️ No Internet Connection. Working offline — Live features & AI Copilot are paused.";
+                        _pnlOfflineWarning.Visible = true;
+                    }
+                    else if (_wasOffline)
+                    {
+                        // 🟢 State: JUST RESTORED (Spotify Emerald Green Banner)
+                        _wasOffline = false;
+                        _pnlOfflineWarning.BackColor = Color.FromArgb(16, 185, 129); // Vibrant Spotify Emerald Green
+                        _lblOfflineWarningText.Text = "📶 Internet Connection Restored! You are back online.";
+                        _pnlOfflineWarning.Visible = true;
+                        _restoreBannerTimer.Stop();
+                        _restoreBannerTimer.Start(); // Display green banner for 3.5s then auto-hide
+                    }
                 }
-                else if (_wasOffline)
+                catch
                 {
-                    // 🟢 State: JUST RESTORED (Spotify Emerald Green Banner)
-                    _wasOffline = false;
-                    _pnlOfflineWarning.BackColor = Color.FromArgb(16, 185, 129); // Vibrant Spotify Emerald Green
-                    _lblOfflineWarningText.Text = "📶 Internet Connection Restored! You are back online.";
-                    _pnlOfflineWarning.Visible = true;
-                    _restoreBannerTimer.Stop();
-                    _restoreBannerTimer.Start(); // Display green banner for 3.5s then auto-hide
+                    // Swallowing exception in async void timer tick to prevent crashes
+                }
+                finally
+                {
+                    _isCheckingNet = false;
                 }
             };
             _netCheckTimer.Start();
         }
 
+        private static readonly HttpClient _netCheckClient = new HttpClient();
+
         private static async System.Threading.Tasks.Task<bool> CheckInternetConnectionAsync()
         {
             try
             {
+                // 1. Hardware network interface check (ignore loopback & tunnel)
+                bool hasActiveAdapter = System.Linq.Enumerable.Any(
+                    System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces(),
+                    ni => ni.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up &&
+                          ni.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback &&
+                          ni.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Tunnel);
+
+                if (!hasActiveAdapter)
+                {
+                    return false;
+                }
+            }
+            catch
+            {
+                if (!System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable()) return false;
+            }
+
+            // 2. ICMP Ping check to 8.8.8.8 (Google Public DNS)
+            // SendPingAsync returns IPStatus.TimedOut when offline — WITHOUT throwing any TaskCanceledException!
+            try
+            {
                 using var ping = new System.Net.NetworkInformation.Ping();
-                var reply = await ping.SendPingAsync("8.8.8.8", 1500);
-                return reply.Status == System.Net.NetworkInformation.IPStatus.Success;
+                var reply = await ping.SendPingAsync("8.8.8.8", 1200);
+                if (reply != null && reply.Status == System.Net.NetworkInformation.IPStatus.Success)
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+            }
+
+            // 3. Backup Ping check to 1.1.1.1 (Cloudflare DNS)
+            try
+            {
+                using var ping = new System.Net.NetworkInformation.Ping();
+                var reply = await ping.SendPingAsync("1.1.1.1", 1200);
+                if (reply != null && reply.Status == System.Net.NetworkInformation.IPStatus.Success)
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+            }
+
+            // 4. HTTP fallback for networks blocking ICMP ping
+            try
+            {
+                using var cts = new System.Threading.CancellationTokenSource(1200);
+                using var response = await _netCheckClient.GetAsync("http://clients3.google.com/generate_204", cts.Token);
+                return response.IsSuccessStatusCode;
             }
             catch
             {
@@ -1547,7 +1614,27 @@ namespace DriveAndGo_Admin
                 _fabPanel?.Invalidate();
 
                 if (_chatOverlay == null || _chatOverlay.IsDisposed)
+                {
                     _chatOverlay = new ChatOverlayPanel();
+                }
+
+                _chatOverlay.OnToggleFullscreenRequested = (isFullscreen) =>
+                {
+                    if (_chatFloatHost == null || _chatFloatHost.IsDisposed) return;
+                    if (isFullscreen)
+                    {
+                        int padding = 20;
+                        _chatFloatHost.SetBounds(padding, padding, Math.Max(600, this.ClientSize.Width - (padding * 2)), Math.Max(500, this.ClientSize.Height - (padding * 2)));
+                        _chatFloatHost.BringToFront();
+                    }
+                    else
+                    {
+                        int initialX = this.ClientSize.Width - 560 - FabMargin;
+                        int targetY = this.ClientSize.Height - 700 - FabMargin - FabSize - 12;
+                        _chatFloatHost.SetBounds(initialX, targetY, 560, 700);
+                        _chatFloatHost.BringToFront();
+                    }
+                };
 
                 if (_chatFloatHost == null || _chatFloatHost.IsDisposed)
                 {
@@ -2406,9 +2493,13 @@ namespace DriveAndGo_Admin
 
         public void PerformLogout()
         {
-            var r = MessageBox.Show(
-                "Are you sure you want to log out?", "Confirm Logout",
-                MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            var r = ModernDialog.Show(
+                this,
+                "Are you sure you want to log out of the Drive&Go System?",
+                "Confirm Logout",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
             if (r == DialogResult.Yes)
             {
                 SessionManager.Clear();

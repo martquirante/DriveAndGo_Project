@@ -379,12 +379,18 @@ namespace DriveAndGo_Admin.Panels
             _data.Columns.Add("open_issues",        typeof(int));
             _data.Columns.Add("unread_messages",    typeof(int));
 
+            this.ShowSkeleton(SkeletonLayoutType.Grid);
+
             Task.Run(async () =>
             {
                 try
                 {
                     var result = await ApiService.GetAsync("rentals");
-                    if (!result.Success) return;
+                    if (!result.Success)
+                    {
+                        this.Invoke((MethodInvoker)(() => this.HideSkeleton()));
+                        return;
+                    }
 
                     using var doc = JsonDocument.Parse(result.Body);
                     this.Invoke((MethodInvoker)(() =>
@@ -410,6 +416,7 @@ namespace DriveAndGo_Admin.Panels
 
                         RefreshGrid(_data);
                         UpdateStats();
+                        this.HideSkeleton();
                     }));
                 }
                 catch (Exception)
@@ -417,6 +424,7 @@ namespace DriveAndGo_Admin.Panels
                     this.Invoke((MethodInvoker)(() =>
                     {
                         RefreshGrid(new DataTable());
+                        this.HideSkeleton();
                     }));
                 }
             });

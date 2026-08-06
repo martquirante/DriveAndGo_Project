@@ -21,6 +21,17 @@ function ChatOverlay({ initialQuery = '' }) {
 
   const [inputText, setInputText] = useState('');
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [editingMessage, setEditingMessage] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTimer, setRecordingTimer] = useState(0);
+
+  const [linkPreviewData, setLinkPreviewData] = useState(null);
+  const [isLinkPreviewDismissed, setIsLinkPreviewDismissed] = useState(false);
+  const linkDebounceTimer = useRef(null);
+
+  const mediaInputRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
 
   const [aiSessionId, setAiSessionId] = useState(null);
   const [aiMessages, setAiMessages] = useState([]);
@@ -30,6 +41,41 @@ function ChatOverlay({ initialQuery = '' }) {
   const messageEndRef = useRef(null);
   const chatScrollContainerRef = useRef(null);
   const adminUserId = 1;
+  const apiBase = (window.API_BASE_URL || 'http://localhost:5233').replace(/\/$/, '');
+
+  // Extract HTTP/HTTPS URL anywhere inside text
+  const extractUrl = (text) => {
+    if (!text) return null;
+    const match = text.match(/(https?:\/\/[^\s]+)/i);
+    return match ? match[0] : null;
+  };
+
+  useEffect(() => {
+    const url = extractUrl(inputText);
+    if (!url) {
+      setLinkPreviewData(null);
+      setIsLinkPreviewDismissed(false);
+      return;
+    }
+
+    if (linkDebounceTimer.current) clearTimeout(linkDebounceTimer.current);
+
+    linkDebounceTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`${apiBase}/api/media/link-preview?url=${encodeURIComponent(url)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setLinkPreviewData(data);
+        }
+      } catch (err) {
+        console.warn("[ChatOverlay] Link preview fetch error:", err);
+      }
+    }, 300);
+
+    return () => {
+      if (linkDebounceTimer.current) clearTimeout(linkDebounceTimer.current);
+    };
+  }, [inputText, apiBase]);
 
   const scrollToBottom = (instant = true) => {
     if (chatScrollContainerRef.current) {
@@ -46,8 +92,6 @@ function ChatOverlay({ initialQuery = '' }) {
       }
     }
   };
-
-  const apiBase = (window.API_BASE_URL || 'http://localhost:5233').replace(/\/$/, '');
 
   function sanitizeNonTechText(text) {
     if (!text || typeof text !== 'string') return text;
@@ -571,6 +615,63 @@ function ChatOverlay({ initialQuery = '' }) {
             );
           })()}
 
+          {/* Hidden File Input for Media Upload */}
+          <input
+            type="file"
+            ref={mediaInputRef}
+            accept="image/*,video/*,audio/*"
+            style={{ display: 'none' }}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const formData = new FormData();
+              formData.append('file', file);
+              try {
+                const res = await fetch(`${apiBase}/api/messages/upload`, { method: 'POST', body: formData });
+                if (res.ok) {
+                  const data = await res.json();
+                  const mType = data.mediaType || 'image';
+                  handleSendAiMessage(mType === 'image' ? '[Photo]' : mType === 'video' ? '[Video]' : '[Audio]');
+                }
+              } catch (err) {}
+            }}
+          />
+
+          {/* Live Link Preview Header Bar */}
+          {linkPreviewData && !isLinkPreviewDismissed && (
+            <div className="flex items-center gap-3 bg-[#1e202e] border border-[var(--border)] rounded-xl p-2 mb-2 shadow-lg backdrop-blur-sm relative animate-fadeIn">
+              {linkPreviewData.image ? (
+                <img
+                  src={linkPreviewData.image}
+                  alt={linkPreviewData.title}
+                  className="w-11 h-11 rounded-lg object-cover bg-slate-900 shrink-0"
+                />
+              ) : (
+                <div className="w-11 h-11 rounded-lg bg-orange-500/20 text-orange-400 flex items-center justify-center text-lg shrink-0">
+                  🌐
+                </div>
+              )}
+              <div className="flex-1 min-w-0 flex flex-col gap-0.5 pr-6">
+                <span className="text-xs font-bold text-slate-100 truncate">
+                  {linkPreviewData.title || linkPreviewData.domain}
+                </span>
+                <span className="text-[10.5px] text-slate-400 truncate">
+                  {linkPreviewData.description || linkPreviewData.siteName || linkPreviewData.url}
+                </span>
+                <span className="text-[9.5px] text-orange-400 lowercase font-medium">
+                  {linkPreviewData.domain}
+                </span>
+              </div>
+              <button
+                onClick={() => setIsLinkPreviewDismissed(true)}
+                className="absolute top-2 right-2 text-slate-400 hover:text-white font-bold p-1 text-xs cursor-pointer rounded-full"
+                title="Dismiss link preview"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Input pill */}
           <div className="flex items-center gap-2 bg-[var(--bg-panel)] border border-[var(--border)] rounded-full px-4 py-2 shadow-lg focus-within:border-orange-500/50 transition-all">
             <button
@@ -579,16 +680,26 @@ function ChatOverlay({ initialQuery = '' }) {
               title="Open Command Palette (Ctrl+K)"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 00-2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
               </svg>
             </button>
-            <input
-              type="text"
+            <textarea
+              rows={1}
               value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+              onChange={(e) => {
+                setInputText(e.target.value);
+                e.target.style.height = 'auto';
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 100)}px`;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                  e.target.style.height = 'auto';
+                }
+              }}
               placeholder="Ask Drive&Go AI about revenue, fleet, analytics..."
-              className="flex-1 bg-transparent border-none text-xs text-[var(--text-main)] outline-none placeholder-[var(--text-muted)]"
+              className="flex-1 bg-transparent border-none text-xs text-[var(--text-main)] outline-none placeholder-[var(--text-muted)] resize-none py-1.5 max-h-[100px] overflow-y-auto"
             />
             <button
               onClick={handleSend}

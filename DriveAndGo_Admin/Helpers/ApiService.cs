@@ -53,13 +53,17 @@ namespace DriveAndGo_Admin.Helpers
             PropertyNameCaseInsensitive = true
         };
 
-        // ── Attach the stored JWT token to every request ──────────────────
+        // ── Attach stored JWT token and active Admin Name header to every request ──
         private static void AttachBearerToken()
         {
             _client.DefaultRequestHeaders.Authorization =
                 string.IsNullOrWhiteSpace(SessionManager.JwtToken)
                     ? null
                     : new AuthenticationHeaderValue("Bearer", SessionManager.JwtToken);
+
+            string adminName = !string.IsNullOrWhiteSpace(SessionManager.FullName) ? SessionManager.FullName : "Raymart Quirante";
+            _client.DefaultRequestHeaders.Remove("X-Admin-Name");
+            _client.DefaultRequestHeaders.Add("X-Admin-Name", adminName);
         }
 
         // ─────────────────────────────────────────────
@@ -227,6 +231,65 @@ namespace DriveAndGo_Admin.Helpers
             var payload = new { TwoFactorEnabled = twoFactor, LoginAlertsEnabled = alerts, PinRequired = pin };
             var res = await PutAsync($"users/{userId}/security", payload);
             return res.Success;
+        }
+
+        /// <summary>
+        /// Calls GET /api/users/{userId}/security to fetch current 2FA, login alert, and PIN requirement toggles.
+        /// </summary>
+        public static async Task<(bool twoFactor, bool alerts, bool pin)> GetUserSecuritySettingsAsync(int userId)
+        {
+            var res = await GetAsync($"users/{userId}/security");
+            if (res.Success && !string.IsNullOrWhiteSpace(res.Body))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(res.Body);
+                    bool tf = (doc.RootElement.TryGetProperty("twoFactorEnabled", out var p1) || doc.RootElement.TryGetProperty("TwoFactorEnabled", out p1)) && p1.GetBoolean();
+                    bool la = !(doc.RootElement.TryGetProperty("loginAlertsEnabled", out var p2) || doc.RootElement.TryGetProperty("LoginAlertsEnabled", out p2)) || p2.GetBoolean();
+                    bool pr = (doc.RootElement.TryGetProperty("pinRequired", out var p3) || doc.RootElement.TryGetProperty("PinRequired", out p3)) && p3.GetBoolean();
+                    return (tf, la, pr);
+                }
+                catch { }
+            }
+            return (false, true, false);
+        }
+
+        /// <summary>
+        /// Calls GET /api/users/{userId}/activity to retrieve the user's audit activity timeline.
+        /// </summary>
+        public static async Task<List<ActivityLogDto>> GetActivityLogsAsync(int userId)
+        {
+            var list = new List<ActivityLogDto>();
+            var res = await GetAsync($"users/{userId}/activity");
+            if (res.Success && !string.IsNullOrWhiteSpace(res.Body))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(res.Body);
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var el in doc.RootElement.EnumerateArray())
+                        {
+                            int auditId = (el.TryGetProperty("auditId", out var p1) || el.TryGetProperty("AuditId", out p1)) ? p1.GetInt32() : 0;
+                            string actionType = (el.TryGetProperty("actionType", out var p2) || el.TryGetProperty("ActionType", out p2)) ? p2.GetString() ?? "" : "";
+                            string description = (el.TryGetProperty("description", out var p3) || el.TryGetProperty("Description", out p3)) ? p3.GetString() ?? "" : "";
+                            DateTime timestamp = (el.TryGetProperty("timestamp", out var p4) || el.TryGetProperty("Timestamp", out p4)) ? p4.GetDateTime() : DateTime.UtcNow;
+                            string ip = (el.TryGetProperty("ipAddress", out var p5) || el.TryGetProperty("IpAddress", out p5)) ? p5.GetString() ?? "127.0.0.1" : "127.0.0.1";
+
+                            list.Add(new ActivityLogDto
+                            {
+                                AuditId = auditId,
+                                ActionType = actionType,
+                                Description = description,
+                                Timestamp = timestamp,
+                                IpAddress = ip
+                            });
+                        }
+                    }
+                }
+                catch { }
+            }
+            return list;
         }
 
         private static string ExtractMessage(string jsonBody)
@@ -403,5 +466,14 @@ namespace DriveAndGo_Admin.Helpers
                 return default;
             }
         }
+    }
+
+    public class ActivityLogDto
+    {
+        public int AuditId { get; set; }
+        public string ActionType { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public DateTime Timestamp { get; set; }
+        public string IpAddress { get; set; } = "127.0.0.1";
     }
 }

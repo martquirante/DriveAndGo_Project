@@ -348,6 +348,8 @@ namespace DriveAndGo_Admin.Panels
         // ══ API LOAD ══
         private void LoadFromDB()
         {
+            this.ShowSkeleton(SkeletonLayoutType.ListRow);
+
             Task.Run(async () =>
             {
                 try
@@ -359,6 +361,7 @@ namespace DriveAndGo_Admin.Panels
                         this.Invoke(new Action(() =>
                         {
                             RefreshGrid(new DataTable());
+                            this.HideSkeleton();
                             MessageBox.Show($"API Error:\n{err}", "Load Drivers", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         }));
                         return;
@@ -403,6 +406,7 @@ namespace DriveAndGo_Admin.Panels
                     {
                         _data = dt;
                         RefreshGrid(_data);
+                        this.HideSkeleton();
                     }));
                 }
                 catch (Exception ex)
@@ -410,6 +414,7 @@ namespace DriveAndGo_Admin.Panels
                     this.Invoke(new Action(() =>
                     {
                         RefreshGrid(new DataTable());
+                        this.HideSkeleton();
                         MessageBox.Show(ApiService.CleanErrorMessage(ex.Message), "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }));
                 }
