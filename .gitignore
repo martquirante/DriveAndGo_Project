@@ -9,3 +9,8 @@ CMD Comand.txt
 package.json
 package-lock.json
 *.user
+.vs/
+.FullName
+temp_api.json
+*.js
+!DriveAndGo_Admin/WebAssets/*.js

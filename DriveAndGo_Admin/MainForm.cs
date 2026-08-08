@@ -1629,11 +1629,52 @@ namespace DriveAndGo_Admin
                     }
                     else
                     {
-                        int initialX = this.ClientSize.Width - 560 - FabMargin;
-                        int targetY = this.ClientSize.Height - 700 - FabMargin - FabSize - 12;
-                        _chatFloatHost.SetBounds(initialX, targetY, 560, 700);
+                        int floatW = 540;
+                        int floatH = 680;
+                        int initialX = Math.Max(20, this.ClientSize.Width - floatW - FabMargin);
+                        int targetY = Math.Max(20, this.ClientSize.Height - floatH - FabMargin - FabSize - 12);
+                        _chatFloatHost.SetBounds(initialX, targetY, floatW, floatH);
                         _chatFloatHost.BringToFront();
                     }
+                };
+
+                _chatOverlay.OnSetLayoutModeRequested = (mode) =>
+                {
+                    if (_chatFloatHost == null || _chatFloatHost.IsDisposed) return;
+                    int padding = 20;
+                    if (mode == "fullscreen")
+                    {
+                        _chatFloatHost.SetBounds(padding, padding, Math.Max(600, this.ClientSize.Width - (padding * 2)), Math.Max(500, this.ClientSize.Height - (padding * 2)));
+                    }
+                    else if (mode == "split")
+                    {
+                        int splitWidth = Math.Max(480, (this.ClientSize.Width / 2) - padding);
+                        int initialX = this.ClientSize.Width - splitWidth - padding;
+                        int targetY = padding;
+                        int targetHeight = Math.Max(500, this.ClientSize.Height - (padding * 2));
+                        _chatFloatHost.SetBounds(initialX, targetY, splitWidth, targetHeight);
+                    }
+                    else // "floating"
+                    {
+                        int floatW = 540;
+                        int floatH = 680;
+                        int initialX = Math.Max(padding, this.ClientSize.Width - floatW - FabMargin);
+                        int targetY = Math.Max(padding, this.ClientSize.Height - floatH - FabMargin - FabSize - 12);
+                        _chatFloatHost.SetBounds(initialX, targetY, floatW, floatH);
+                    }
+                    _chatFloatHost.BringToFront();
+                };
+
+                _chatOverlay.OnNavigateToAccountRequested = (customerId) =>
+                {
+                    this.BeginInvoke((System.Windows.Forms.MethodInvoker)(() =>
+                    {
+                        if (btnAccounts != null && !btnAccounts.IsDisposed)
+                        {
+                            SetActiveButton(btnAccounts);
+                            NavigateTo<AccountsPanel>();
+                        }
+                    }));
                 };
 
                 if (_chatFloatHost == null || _chatFloatHost.IsDisposed)

@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DriveAndGo Chat Overlay</title>
 
-
   <!-- Google Fonts: Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -13,14 +12,53 @@
 
   <!-- Tailwind CSS CDN for Glassmorphism & Utilities -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: ['class', '[data-theme="dark"]'],
+      theme: { extend: {} }
+    };
+  </script>
 
   <style>
+    :root, html[data-theme="dark"] {
+      --bg-dark: #07070e;
+      --bg-panel: #111326;
+      --bubble-user: linear-gradient(135deg, #ea580c, #d97706);
+      --bubble-ai: #1e2038;
+      --border: rgba(255, 255, 255, 0.14);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      color-scheme: dark !important;
+    }
+    html[data-theme="light"] {
+      --bg-dark: #f1f5f9;
+      --bg-panel: #ffffff;
+      --bubble-user: linear-gradient(135deg, #ea580c, #f97316);
+      --bubble-ai: #e2e8f0;
+      --border: rgba(0, 0, 0, 0.1);
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      color-scheme: light !important;
+    }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    textarea {
+      resize: none !important;
+      scrollbar-width: none !important;
+      -ms-overflow-style: none !important;
+    }
+    textarea::-webkit-scrollbar {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+    }
     html, body {
       width: 100%; height: 100%;
-      background: #07070e;
+      background: var(--bg-dark);
       font-family: 'Inter', system-ui, sans-serif;
-      color: #e2e8f0;
+      color: var(--text-main);
       overflow: hidden;
     }
     #root { width: 100%; height: 100%; }
@@ -31,7 +69,6 @@
     }
     .animate-chat-bubble {
       animation: fadeInUp 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-      opacity: 0;
     }
 
     @keyframes aiDotBounce {
@@ -51,23 +88,18 @@
       50%      { transform: scale(1.15) rotate(15deg); opacity: 1; filter: drop-shadow(0 0 10px rgba(234, 88, 12, 0.8)); }
     }
 
-    :root {
-      color-scheme: dark !important;
-    }
-
     html, body, #root, * {
       scrollbar-width: thin;
       scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
     }
 
     ::-webkit-scrollbar {
-      width: 5px !important;
-      height: 5px !important;
+      width: 4px !important;
+      height: 4px !important;
       background-color: transparent !important;
     }
     ::-webkit-scrollbar-track {
       background: transparent !important;
-      background-color: transparent !important;
     }
     ::-webkit-scrollbar-thumb {
       background: rgba(255, 255, 255, 0.16) !important;
@@ -79,117 +111,107 @@
     ::-webkit-scrollbar-corner {
       background: transparent !important;
     }
+
+    .chat-overlay-scrollbar {
+      overflow-y: auto !important;
+      scrollbar-width: thin !important;
+      scrollbar-color: rgba(255, 255, 255, 0.25) transparent !important;
+    }
+    .chat-overlay-scrollbar::-webkit-scrollbar {
+      width: 5px !important;
+    }
+    .chat-overlay-scrollbar::-webkit-scrollbar-track {
+      background: transparent !important;
+    }
+    .chat-overlay-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.25) !important;
+      border-radius: 999px !important;
+    }
+    .chat-overlay-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.45) !important;
+    }
   </style>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <div class="flex flex-col h-screen items-center justify-center bg-[#07070e] text-slate-400 text-xs font-sans gap-2">
+      <div class="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+      <span>Loading Drive&amp;Go AI Interface...</span>
+    </div>
+  </div>
 
-  <!-- React 18 & ReactDOM (Local Offline Fallback) -->
+  <!-- React 18 & ReactDOM -->
   <script src="react.production.min.js"></script>
   <script src="react-dom.production.min.js"></script>
 
-  <!-- Recharts (Local Offline Fallback) -->
+  <!-- Recharts -->
   <script src="Recharts.js"></script>
 
-  <!-- Babel Standalone (Local Offline Fallback) -->
+  <!-- Babel Standalone -->
   <script src="babel.min.js"></script>
 
-  <!-- Explicit App Loader to avoid Babel async race conditions -->
-  <script>
-    async function initReactApp() {
-      const rootDiv = document.getElementById('root');
-      try {
-        rootDiv.innerHTML = '<div class="flex flex-col h-screen items-center justify-center bg-[#07070e] text-slate-400 text-xs font-sans gap-2"><div class="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div><span>Loading Drive&amp;Go AI Interface...</span></div>';
+  <!-- Load JSX Components directly via script tags -->
+  <script type="text/babel" src="Skeleton.jsx"></script>
+  <script type="text/babel" src="GenUiBubble.jsx"></script>
+  <script type="text/babel" src="CommandPalette.jsx"></script>
+  <script type="text/babel" src="ChatOverlay.jsx"></script>
 
-        // 1. Wait for Babel to load (WebView2 can sometimes delay scripts)
-        let babelAttempts = 0;
-        while (typeof Babel === 'undefined' && babelAttempts < 50) {
-          await new Promise(r => setTimeout(r, 100));
-          babelAttempts++;
+  <!-- Mount React App -->
+  <script type="text/babel">
+    class ErrorBoundary extends React.Component {
+      constructor(props) {
+        super(props);
+        this.state = { hasError: false, error: null };
+      }
+      static getDerivedStateFromError(error) {
+        return { hasError: true, error };
+      }
+      componentDidCatch(error, info) {
+        console.error("ChatOverlay crashed:", error, info);
+      }
+      render() {
+        if (this.state.hasError) {
+          return (
+            <div className="flex flex-col h-screen items-center justify-center bg-[#07070e] text-red-400 text-xs p-4 text-center">
+              <span className="font-bold mb-1">⚠️ Interface Runtime Error</span>
+              <span>{this.state.error?.message || "An unexpected error occurred."}</span>
+            </div>
+          );
         }
-        if (typeof Babel === 'undefined') {
-          throw new Error("Babel compiler failed to load locally. Please rebuild the project to copy assets.");
-        }
-
-        // 2. Fetch all JSX files sequentially to maintain dependency order
-        const files = ['Skeleton.jsx', 'GenUiBubble.jsx', 'CommandPalette.jsx', 'ChatOverlay.jsx'];
-        let combinedJsx = '';
-        
-        for (const file of files) {
-          const res = await fetch(file);
-          if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${file}`);
-          combinedJsx += await res.text() + '\n\n';
-        }
-
-        // 3. Append the root app component and mount logic
-        combinedJsx += `
-          class ErrorBoundary extends React.Component {
-            constructor(props) {
-              super(props);
-              this.state = { hasError: false, error: null };
-            }
-            static getDerivedStateFromError(error) {
-              return { hasError: true, error };
-            }
-            componentDidCatch(error, info) {
-              console.error("ChatOverlay crashed:", error, info);
-            }
-            render() {
-              if (this.state.hasError) {
-                return (
-                  <div className="flex flex-col h-screen items-center justify-center bg-[#07070e] text-red-400 text-xs p-4 text-center">
-                    <span className="font-bold mb-1">⚠️ Interface Runtime Error</span>
-                    <span>{this.state.error?.message || "An unexpected error occurred."}</span>
-                  </div>
-                );
-              }
-              return this.props.children;
-            }
-          }
-
-          function StandaloneChatApp() {
-            const ChatComp = window.ChatOverlay || (typeof ChatOverlay !== 'undefined' ? ChatOverlay : null);
-            if (!ChatComp) {
-              return (
-                <div className="flex flex-col h-screen items-center justify-center bg-[#07070e] text-red-400 text-xs p-4 text-center">
-                  <span className="font-bold mb-1">⚠️ Component Resolution Error</span>
-                  <span>ChatOverlay is not defined.</span>
-                </div>
-              );
-            }
-            return (
-              <ErrorBoundary>
-                <ChatComp />
-              </ErrorBoundary>
-            );
-          }
-
-          const root = ReactDOM.createRoot(document.getElementById('root'));
-          root.render(<StandaloneChatApp />);
-        `;
-
-        // 4. Transpile combined JSX to JS using Babel Standalone
-        const transformedCode = Babel.transform(combinedJsx, { 
-          presets: ['react'] 
-        }).code;
-
-        // 5. Inject and execute the transpiled code
-        const script = document.createElement('script');
-        script.text = transformedCode;
-        document.body.appendChild(script);
-
-      } catch (error) {
-        console.error('Failed to initialize React App:', error);
-        rootDiv.innerHTML = '<div class="flex flex-col h-screen items-center justify-center bg-[#07070e] text-red-400 text-xs p-4 text-center"><span class="font-bold mb-1">⚠️ Initialization Error</span><span>' + error.message + '</span></div>';
+        return this.props.children;
       }
     }
 
-    // Start initialization when the DOM is ready
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', initReactApp);
-    } else {
-      initReactApp();
+    // Intercept clicks on links to open in default browser
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest('a');
+      if (a && a.href && a.href.startsWith('http')) {
+        e.preventDefault();
+        if (window.chrome && window.chrome.webview) {
+          window.chrome.webview.postMessage(JSON.stringify({ action: 'openExternal', url: a.href }));
+        }
+      }
+    });
+
+    function StandaloneChatApp() {
+      const ChatComp = window.ChatOverlay || (typeof ChatOverlay !== 'undefined' ? ChatOverlay : null);
+      if (!ChatComp) {
+        return (
+          <div className="flex flex-col h-screen items-center justify-center bg-[#07070e] text-red-400 text-xs p-4 text-center">
+            <span className="font-bold mb-1">⚠️ Component Resolution Error</span>
+            <span>ChatOverlay is not defined.</span>
+          </div>
+        );
+      }
+      return (
+        <ErrorBoundary>
+          <ChatComp />
+        </ErrorBoundary>
+      );
     }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<StandaloneChatApp />);
   </script>
 </body>
 </html>

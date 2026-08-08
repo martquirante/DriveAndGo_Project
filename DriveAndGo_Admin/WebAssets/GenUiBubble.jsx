@@ -22,14 +22,14 @@ const QUICK_EMOJIS = ['👍','❤️','😂','😮','😢','😡'];
     @keyframes gub-fade-in   { from{opacity:0} to{opacity:1} }
     @keyframes gub-scale-up  { from{opacity:0;transform:scale(0.88) translateY(6px)} to{opacity:1;transform:scale(1) translateY(0)} }
     @keyframes gub-emoji-pop { from{opacity:0;transform:scale(0.7) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
+    @keyframes gub-react-pop { from{opacity:0;transform:scale(0.5) translateY(10px)} to{opacity:1;transform:scale(1) translateY(0)} }
+    @keyframes gub-slide-up  { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
     .gub-overlay  { animation: gub-fade-in 0.18s ease forwards; }
     .gub-modal    { animation: gub-scale-up 0.22s cubic-bezier(0.34,1.56,0.64,1) forwards; }
     .gub-emoji-bar{ animation: gub-emoji-pop 0.2s cubic-bezier(0.34,1.56,0.64,1) forwards; }
     .gub-action-btn:hover { background: rgba(255,255,255,0.12) !important; }
     .gub-action-btn:active { transform: scale(0.88); }
-    .gub-emoji-btn:hover { transform: scale(1.3); }
-    .gub-emoji-btn:active{ transform: scale(0.95); }
-    /* reaction pill: steady, no re-animation on state update */
+    /* reaction pill */
     .gub-reaction-pill { cursor: pointer; transition: filter 0.15s, transform 0.12s; }
     .gub-reaction-pill:hover { filter: brightness(1.3) !important; transform: scale(1.06); }
     .gub-reaction-pill:active { transform: scale(0.94); }
@@ -50,16 +50,224 @@ const QUICK_EMOJIS = ['👍','❤️','😂','😮','😢','😡'];
       box-shadow: 0 6px 24px rgba(234,88,12,0.2) !important;
       transform: translateY(-1px);
     }
+
+    /* ═══════════════════════════════════════════════════════
+       MESSENGER-STYLE HOVER SYSTEM
+       ─ Emoji reaction strip appears ABOVE the bubble
+       ─ Action icon bar appears BELOW the bubble
+       ═══════════════════════════════════════════════════════ */
+
+    /* Wrapper: relative so hover bars can be positioned */
+    .gub-bubble-row {
+      position: relative;
+    }
+
+    /* ── Reaction Emoji Strip (Messenger style, floats above 😊 button) ── */
+    .gub-react-strip {
+      position: absolute;
+      bottom: calc(100% + 6px);
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      background: #2a2b32;
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 999px;
+      padding: 3px 6px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.7);
+      backdrop-filter: blur(12px);
+      z-index: 60;
+      white-space: nowrap;
+      animation: fadeIn 0.15s ease-out;
+    }
+    .gub-react-strip.mine  { right: 0; }
+    .gub-react-strip.theirs { left: 0; }
+
+    .gub-react-emoji-btn {
+      width: 30px;
+      height: 30px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-family: 'Segoe UI Emoji', 'Apple Color Emoji', sans-serif;
+      font-size: 17px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1);
+      line-height: 1;
+    }
+    .gub-react-emoji-btn:hover { transform: scale(1.35); }
+    .gub-react-emoji-btn:active { transform: scale(0.9); }
+
+    /* ── Action Icon Buttons (Inline Messenger style: [ ⋮ ] [ ↩️ ] [ 😊 ]) ── */
+    .gub-action-bar {
+      position: absolute;
+      top: 50%;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-50%);
+      transition: opacity 0.15s ease;
+      z-index: 50;
+    }
+    .gub-action-bar.mine   { right: calc(100% + 4px); left: auto; }
+    .gub-action-bar.theirs { left: calc(100% + 4px); right: auto; }
+
+    /* On narrow containers (e.g. Float mode), overlay action bar on top right of bubble so buttons never get cut off */
+    @media (max-width: 580px) {
+      .gub-action-bar.theirs {
+        left: auto;
+        right: 8px;
+        top: -12px;
+        transform: none;
+        background: rgba(15, 23, 42, 0.92);
+        backdrop-filter: blur(8px);
+        padding: 3px 6px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      }
+    }
+
+    /* Hover on bubble row reveals inline 3 buttons cleanly without vertical jump */
+    .gub-bubble-row:hover .gub-action-bar {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .gub-icon-btn {
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: rgba(255,255,255,0.06);
+      cursor: pointer;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.14s, transform 0.14s;
+      color: #b0b3b8;
+    }
+    .gub-icon-btn:hover { background: rgba(255,255,255,0.15); color: #ffffff; transform: scale(1.1); }
+    .gub-icon-btn:active { transform: scale(0.95); }
+    .gub-icon-btn svg { display: block; }
+    .gub-icon-btn:active { background: rgba(255,255,255,0.18); }
+    .gub-icon-btn svg { display: block; }
+
+    /* Separator between icon groups */
+    .gub-icon-sep {
+      width: 1px;
+      height: 18px;
+      background: rgba(255,255,255,0.1);
+      flex-shrink: 0;
+      margin: 0 1px;
+    }
+
+    /* ── Quoted Reply Bubble ── */
+    .gub-reply-quote {
+      border-left: 3px solid #ea580c;
+      background: rgba(234,88,12,0.08);
+      border-radius: 8px;
+      padding: 5px 10px;
+      margin-bottom: 4px;
+      font-size: 10.5px;
+      color: #94a3b8;
+      cursor: pointer;
+      transition: background 0.15s;
+      max-width: 100%;
+      overflow: hidden;
+    }
+    .gub-reply-quote:hover { background: rgba(234,88,12,0.14); }
+    .gub-reply-quote .gub-rq-sender { color: #fb923c; font-weight: 700; font-size: 10px; margin-bottom: 2px; }
+    .gub-reply-quote .gub-rq-body   { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ── Human incoming bubble ── */
+    .gub-human-bubble {
+      background: #2a2b32;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 0 18px 18px 18px;
+      padding: 10px 14px;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+      max-width: 100%;
+      font-size: 13px;
+      font-weight: 400;
+      line-height: 1.55;
+      color: #e2e8f0;
+    }
+
+    /* ── AI incoming bubble ── */
+    .gub-ai-bubble {
+      background: rgba(20,22,32,0.9);
+      border: 1px solid rgba(234,88,12,0.2);
+      border-radius: 0 18px 18px 18px;
+      padding: 10px 14px;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+      max-width: 100%;
+      font-size: 13px;
+      font-weight: 400;
+      line-height: 1.6;
+      color: #e2e8f0;
+    }
+
+    /* ── Outgoing bubble ── */
+    .gub-out-bubble {
+      background: linear-gradient(135deg, #ea580c, #d97706);
+      border-radius: 18px 18px 0 18px;
+      padding: 10px 14px;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+      max-width: 100%;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.55;
+      color: #fff;
+      box-shadow: 0 4px 16px rgba(234,88,12,0.25);
+    }
+
+    /* ── Image bubble Messenger-style ── */
+    .gub-img-bubble {
+      border-radius: 18px;
+      overflow: hidden;
+      cursor: pointer;
+      display: block;
+      max-width: 260px;
+      width: 100%;
+      min-height: 140px;
+      aspect-ratio: 4/3;
+      object-fit: cover;
+      border: 1px solid rgba(255,255,255,0.1);
+      transition: filter 0.15s;
+      background-color: rgba(255,255,255,0.05);
+      -webkit-user-select: auto !important;
+      user-select: auto !important;
+      pointer-events: auto !important;
+    }
+    .gub-img-bubble:hover { filter: brightness(0.9); }
+
+    /* ── Voice note pill ── */
+    .gub-voice-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: linear-gradient(135deg, rgba(37,99,235,0.3), rgba(234,88,12,0.3));
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 999px;
+      padding: 8px 14px;
+      min-width: 210px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+
     @keyframes aiDotBounce {
-      0%, 80%, 100% {
-        transform: translateY(0) scale(0.85);
-        opacity: 0.35;
-      }
-      40% {
-        transform: translateY(-9px) scale(1.3);
-        opacity: 1;
-        filter: drop-shadow(0 4px 12px rgba(234,88,12,0.9));
-      }
+      0%, 80%, 100% { transform: translateY(0) scale(0.85); opacity: 0.35; }
+      40% { transform: translateY(-9px) scale(1.3); opacity: 1; filter: drop-shadow(0 4px 12px rgba(234,88,12,0.9)); }
     }
     @keyframes aiSparklePulse {
       0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.9; }
@@ -93,7 +301,12 @@ function RemoveModal({ onConfirm, onCancel }) {
       },
       onClick: e => e.stopPropagation()
     },
-      React.createElement('div', { style:{fontSize:22, textAlign:'center', marginBottom:10} }, '🗑️'),
+      React.createElement('div', { style:{ width:46, height:46, borderRadius:'50%', background:'rgba(224,45,60,0.15)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 12px' } },
+        React.createElement('svg', { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: '#e02d3c', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+          React.createElement('polyline', { points: '3 6 5 6 21 6' }),
+          React.createElement('path', { d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' })
+        )
+      ),
       React.createElement('h3', { style:{color:'#e4e6eb',fontSize:16,fontWeight:700,textAlign:'center',margin:'0 0 10px'} }, 'Remove message?'),
       React.createElement('p', { style:{color:'#b0b3b8',fontSize:13,lineHeight:1.6,textAlign:'center',margin:'0 0 24px'} },
         'This message will be removed for you. Other chat members will still be able to see it.'
@@ -110,6 +323,55 @@ function RemoveModal({ onConfirm, onCancel }) {
           style:{flex:1,padding:'10px',borderRadius:10,border:'none',background:'#e02d3c',color:'white',fontSize:14,fontWeight:600,cursor:'pointer',transition:'background 0.15s'}
         }, 'Remove')
       )
+    )
+  );
+}
+
+/* ── Context Menu Options Modal (3-Dots Menu - Screenshot 2 Match) ─────── */
+function ContextMenuModal({ isMine, onCopy, onReply, onForward, onRemove, onEdit, onPin, onClose }) {
+  return React.createElement('div', {
+    className: 'gub-overlay',
+    style: {
+      position: 'fixed', inset: 0, zIndex: 99999,
+      background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center'
+    },
+    onClick: onClose
+  },
+    React.createElement('div', {
+      className: 'gub-modal',
+      style: {
+        background: '#24252f', border: '1px solid rgba(255,255,255,0.15)',
+        borderRadius: 14, padding: 6, width: 180,
+        boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+        display: 'flex', flexDirection: 'column', gap: 2
+      },
+      onClick: e => e.stopPropagation()
+    },
+      isMine && onEdit && React.createElement('button', {
+        onClick: (e) => { e.stopPropagation(); onEdit(); onClose(); },
+        style: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'transparent', border: 'none', borderRadius: 8, color: '#e2e8f0', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left', transition: 'background 0.15s' },
+        onMouseEnter: (e) => e.target.style.background = 'rgba(255,255,255,0.1)',
+        onMouseLeave: (e) => e.target.style.background = 'transparent'
+      }, 'Edit'),
+      React.createElement('button', {
+        onClick: (e) => { e.stopPropagation(); onRemove(); onClose(); },
+        style: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'transparent', border: 'none', borderRadius: 8, color: '#e2e8f0', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left', transition: 'background 0.15s' },
+        onMouseEnter: (e) => e.target.style.background = 'rgba(255,255,255,0.1)',
+        onMouseLeave: (e) => e.target.style.background = 'transparent'
+      }, isMine ? 'Unsend' : 'Remove'),
+      React.createElement('button', {
+        onClick: (e) => { e.stopPropagation(); onForward(); onClose(); },
+        style: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'transparent', border: 'none', borderRadius: 8, color: '#e2e8f0', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left', transition: 'background 0.15s' },
+        onMouseEnter: (e) => e.target.style.background = 'rgba(255,255,255,0.1)',
+        onMouseLeave: (e) => e.target.style.background = 'transparent'
+      }, 'Forward'),
+      React.createElement('button', {
+        onClick: (e) => { e.stopPropagation(); if (onPin) onPin(); onClose(); },
+        style: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'transparent', border: 'none', borderRadius: 8, color: '#e2e8f0', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left', transition: 'background 0.15s' },
+        onMouseEnter: (e) => e.target.style.background = 'rgba(255,255,255,0.1)',
+        onMouseLeave: (e) => e.target.style.background = 'transparent'
+      }, 'Pin')
     )
   );
 }
@@ -175,7 +437,7 @@ function ForwardModal({ onSend, onCancel }) {
   );
 }
 
-/* ── Reaction Details Modal ─────────────────────────────────────────────── */
+/* ── Reaction Details Modal (Screenshot 5 Match) ───────────────────────── */
 function ReactionDetailsModal({ reactions, onClose, onRemoveOwnReaction }) {
   const parsed = React.useMemo(() => {
     if (!reactions || reactions === '{}') return {};
@@ -194,66 +456,58 @@ function ReactionDetailsModal({ reactions, onClose, onRemoveOwnReaction }) {
 
   return React.createElement('div',{
     className:'gub-overlay',
-    style:{position:'fixed',inset:0,zIndex:9999,background:'rgba(0,0,0,0.55)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center'},
+    style:{position:'fixed',inset:0,zIndex:9999,background:'rgba(0,0,0,0.6)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center'},
     onClick:onClose
   },
     React.createElement('div',{
       className:'gub-modal',
-      style:{background:'#242526',borderRadius:16,padding:'0',maxWidth:360,width:'92%',boxShadow:'0 24px 64px rgba(0,0,0,0.7)',border:'1px solid rgba(255,255,255,0.1)',overflow:'hidden'},
+      style:{background:'#24252f',borderRadius:16,padding:'0',maxWidth:440,width:'92%',boxShadow:'0 24px 64px rgba(0,0,0,0.8)',border:'1px solid rgba(255,255,255,0.12)',overflow:'hidden'},
       onClick:e=>e.stopPropagation()
     },
-      React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'18px 20px 0'}},
-        React.createElement('h3',{style:{color:'#e4e6eb',fontSize:15,fontWeight:700,margin:0}},'Reactions'),
-        React.createElement('button',{onClick:onClose,style:{background:'none',border:'none',color:'#b0b3b8',fontSize:20,cursor:'pointer',lineHeight:1}}, '×')
+      React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'18px 20px 12px'}},
+        React.createElement('h3',{style:{color:'#f1f5f9',fontSize:18,fontWeight:700,margin:0,flex:1,textAlign:'center'}},'Message reactions'),
+        React.createElement('button',{onClick:onClose,style:{background:'rgba(255,255,255,0.1)',border:'none',color:'#94a3b8',width:30,height:30,borderRadius:'50%',fontSize:16,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}, '✕')
       ),
-      React.createElement('div',{style:{display:'flex',gap:4,padding:'12px 20px 0',borderBottom:'1px solid rgba(255,255,255,0.08)'}},
+      React.createElement('div',{style:{display:'flex',gap:16,padding:'0 20px',borderBottom:'1px solid rgba(255,255,255,0.1)'}},
         ['All', ...emojiList].map(t =>
           React.createElement('button',{
             key:t,
             onClick:()=>setTab(t),
             style:{
-              padding:'6px 14px',borderRadius:20,border:'none',cursor:'pointer',
-              fontSize: t === 'All' ? 13 : 16,
-              fontFamily: t === 'All' ? 'Segoe UI, sans-serif' : 'Segoe UI Emoji, Apple Color Emoji, sans-serif',
-              fontWeight:600,transition:'all 0.15s',
-              background: tab===t ? 'rgba(234,88,12,0.25)' : 'transparent',
-              color: tab===t ? '#ea580c' : '#b0b3b8',
-              borderBottom: tab===t ? '2px solid #ea580c' : '2px solid transparent',
+              padding:'8px 4px',border:'none',cursor:'pointer',
+              fontSize: t === 'All' ? 14 : 16,
+              fontWeight:700,transition:'all 0.15s',
+              background:'transparent',
+              color: tab===t ? '#3b82f6' : '#94a3b8',
+              borderBottom: tab===t ? '3px solid #3b82f6' : '3px solid transparent',
               lineHeight:1
             }
           }, t === 'All' ? `All ${entries.length}` : `${t} ${emojiGroups[t].length}`)
         )
       ),
-      React.createElement('div',{style:{maxHeight:260,overflowY:'auto',padding:'10px 0'}},
+      React.createElement('div',{style:{maxHeight:280,overflowY:'auto',padding:'8px 0'}},
         displayEntries.length === 0
-          ? React.createElement('p',{style:{color:'#b0b3b8',fontSize:13,textAlign:'center',padding:'20px'}},'No reactions yet')
-          : displayEntries.map(([uid, emoji], i) =>
-              React.createElement('div',{
+          ? React.createElement('p',{style:{color:'#94a3b8',fontSize:13,textAlign:'center',padding:'20px'}},'No reactions yet')
+          : displayEntries.map(([uid, emoji], i) => {
+              const displayName = uid === 'admin' ? 'Raymart Quirante' : uid;
+              const isOwn = uid === 'admin';
+              return React.createElement('div',{
                 key:i,
-                style:{display:'flex',alignItems:'center',gap:12,padding:'9px 20px',transition:'background 0.12s'},
-                className:'gub-menu-item'
+                onClick: isOwn ? onRemoveOwnReaction : undefined,
+                style:{display:'flex',alignItems:'center',gap:14,padding:'10px 20px',cursor: isOwn ? 'pointer' : 'default', transition:'background 0.12s'},
+                onMouseEnter: (e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)',
+                onMouseLeave: (e) => e.currentTarget.style.background = 'transparent'
               },
-                React.createElement('div',{style:{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#ea580c,#8b5cf6)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontWeight:700,fontSize:13,flexShrink:0}},
-                  (uid[0] || '?').toUpperCase()
+                React.createElement('div',{style:{width:40,height:40,borderRadius:'50%',background:'linear-gradient(135deg,#3b82f6,#8b5cf6)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontWeight:700,fontSize:14,flexShrink:0}},
+                  (displayName[0] || '?').toUpperCase()
                 ),
-                React.createElement('span',{style:{color:'#e4e6eb',fontSize:13,fontWeight:600,flex:1}}, uid),
-                React.createElement('span',{style:{fontFamily:'Segoe UI Emoji, Apple Color Emoji, sans-serif', fontSize:20}}, emoji)
-              )
-            )
-      ),
-      // Footer: "Remove my reaction" button (shown when admin has reacted)
-      onRemoveOwnReaction && React.createElement('div',{
-        style:{padding:'10px 20px 14px',borderTop:'1px solid rgba(255,255,255,0.06)'}
-      },
-        React.createElement('button',{
-          onClick: onRemoveOwnReaction,
-          className: 'gub-btn-remove',
-          style:{
-            width:'100%',padding:'9px',borderRadius:10,border:'1px solid rgba(255,100,100,0.3)',
-            background:'rgba(224,45,60,0.12)',color:'#ff6b6b',fontSize:13,fontWeight:600,
-            cursor:'pointer',transition:'background 0.15s'
-          }
-        }, '🗑️  Remove my reaction')
+                React.createElement('div',{style:{display:'flex',flexDirection:'column',flex:1,minWidth:0}},
+                  React.createElement('span',{style:{color:'#f1f5f9',fontSize:14,fontWeight:600}}, displayName),
+                  isOwn && React.createElement('span',{style:{color:'#94a3b8',fontSize:11}}, 'Click to remove')
+                ),
+                React.createElement('span',{style:{fontFamily:'Segoe UI Emoji, Apple Color Emoji, sans-serif', fontSize:22}}, emoji)
+              );
+            })
       )
     )
   );
@@ -284,7 +538,10 @@ function ChartFullscreenModal({ componentType, data, onClose }) {
   };
 
   const handleContext = (e) => {
-      if (componentType === 'image' || componentType === 'video') e.preventDefault();
+    // Explicitly allow native Chromium context menu ("Copy image", "Save image as...", "Copy link address")
+    if (e.target.tagName === 'IMG' || e.target.tagName === 'VIDEO' || e.target.closest('.gub-img-bubble')) {
+      return true;
+    }
   };
 
   React.useEffect(() => {
@@ -494,17 +751,27 @@ function MarkdownTable({ headerCols, dataRows }) {
           React.createElement('span', { style: { fontSize: 9.5, color: '#ea580c', background: 'rgba(234,88,12,0.18)', border: '1px solid rgba(234,88,12,0.4)', borderRadius: 999, padding: '2px 8px', fontWeight: 700, flexShrink: 0, whiteSpace: 'nowrap' } }, `${filteredRows.length} Rows`)
         ),
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 } },
-          React.createElement('input', {
-            type: 'text',
-            placeholder: '🔍 Search table data...',
-            value: searchQuery,
-            onChange: e => setSearchQuery(e.target.value),
-            style: {
-              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.18)',
-              borderRadius: 6, padding: '4px 10px', color: '#f8fafc', fontSize: 11,
-              outline: 'none', width: 140
-            }
-          }),
+          React.createElement('div', { style: { position: 'relative', display: 'flex', alignItems: 'center' } },
+            React.createElement('svg', {
+              width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: '#94a3b8',
+              strokeWidth: 2.2, strokeLinecap: 'round', strokeLinejoin: 'round',
+              style: { position: 'absolute', left: 9, pointerEvents: 'none' }
+            },
+              React.createElement('circle', { cx: '11', cy: '11', r: '8' }),
+              React.createElement('line', { x1: '21', y1: '21', x2: '16.65', y2: '16.65' })
+            ),
+            React.createElement('input', {
+              type: 'text',
+              placeholder: 'Search table data...',
+              value: searchQuery,
+              onChange: e => setSearchQuery(e.target.value),
+              style: {
+                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.18)',
+                borderRadius: 6, padding: '4px 10px 4px 28px', color: '#f8fafc', fontSize: 11,
+                outline: 'none', width: 145
+              }
+            })
+          ),
           React.createElement('button', {
             onClick: () => setIsFullscreen(false),
             title: 'Close (ESC)',
@@ -974,10 +1241,12 @@ function EditHistoryModal({ isOpen, onClose, historyJson }) {
 
 /* ── Custom Audio Player for Voice Notes ───────────────────────────────── */
 function VoiceNotePlayer({ audioUrl, metadata }) {
-  const [isPlaying, setIsPlaying] = React.useState(false);
-  const [progress, setProgress]   = React.useState(0);
-  const [duration, setDuration]   = React.useState(0);
-  
+  const [isPlaying, setIsPlaying]       = React.useState(false);
+  const [progress, setProgress]         = React.useState(0);
+  const [duration, setDuration]         = React.useState(0);
+  const [playbackRate, setPlaybackRate] = React.useState(1);
+  const waveformRef                     = React.useRef(null);
+
   // Extract real recorded waveform heights from metadata if present
   const baseHeights = React.useMemo(() => {
     if (metadata) {
@@ -992,9 +1261,9 @@ function VoiceNotePlayer({ audioUrl, metadata }) {
   }, [metadata]);
 
   const [dynHeights, setDynHeights] = React.useState(baseHeights);
-  const audioRef = React.useRef(null);
-  const analyserRef = React.useRef(null);
-  const dataArrayRef = React.useRef(null);
+  const audioRef                    = React.useRef(null);
+  const analyserRef                 = React.useRef(null);
+  const dataArrayRef                = React.useRef(null);
 
   const getAudio = () => {
     if (!audioRef.current) {
@@ -1004,6 +1273,8 @@ function VoiceNotePlayer({ audioUrl, metadata }) {
         fullUrl = serverRoot + (fullUrl.startsWith('/') ? '' : '/') + fullUrl;
       }
       const audio = new Audio(fullUrl);
+      audio.crossOrigin = "anonymous";
+      audio.playbackRate = playbackRate;
       audioRef.current = audio;
 
       try {
@@ -1037,9 +1308,8 @@ function VoiceNotePlayer({ audioUrl, metadata }) {
       if (isPlaying && analyserRef.current && dataArrayRef.current) {
         analyserRef.current.getByteFrequencyData(dataArrayRef.current);
         const newHeights = baseHeights.map((h, i) => {
-          // map index to frequency bin
           const bin = Math.floor((i / baseHeights.length) * (dataArrayRef.current.length * 0.7));
-          const val = dataArrayRef.current[bin] / 255.0; // 0.0 to 1.0
+          const val = dataArrayRef.current[bin] / 255.0;
           return Math.max(3, h * 0.4 + (h * 1.5 * val));
         });
         setDynHeights(newHeights);
@@ -1058,7 +1328,7 @@ function VoiceNotePlayer({ audioUrl, metadata }) {
     if (isPlaying) {
       audio.pause();
       setIsPlaying(false);
-    } else { 
+    } else {
       if (analyserRef.current && analyserRef.current.context && analyserRef.current.context.state === 'suspended') {
          analyserRef.current.context.resume().catch(() => {});
       }
@@ -1071,26 +1341,57 @@ function VoiceNotePlayer({ audioUrl, metadata }) {
     }
   };
 
+  const handleSeek = (e) => {
+    if (!waveformRef.current) return;
+    const rect = waveformRef.current.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const pct = Math.max(0, Math.min(1, clickX / rect.width));
+    const audio = getAudio();
+    if (audio && audio.duration) {
+      audio.currentTime = pct * audio.duration;
+      setProgress(pct * 100);
+    }
+  };
+
+  const toggleSpeed = (e) => {
+    e.stopPropagation();
+    const rates = [1, 1.5, 2];
+    const nextIdx = (rates.indexOf(playbackRate) + 1) % rates.length;
+    const nextRate = rates[nextIdx];
+    setPlaybackRate(nextRate);
+    const audio = getAudio();
+    if (audio) audio.playbackRate = nextRate;
+  };
+
   const fmt = (s) => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
 
   return React.createElement('div', {
     style: {
       display: 'flex', alignItems: 'center', gap: 10,
-      background: 'linear-gradient(135deg, rgba(37,99,235,0.35), rgba(234,88,12,0.35))',
-      border: '1px solid rgba(255,255,255,0.2)',
-      borderRadius: 24, padding: '8px 14px', minWidth: 210, boxShadow: '0 4px 16px rgba(0,0,0,0.3)'
+      background: 'linear-gradient(135deg, #0084ff, #0066cc)',
+      border: '1px solid rgba(255,255,255,0.25)',
+      borderRadius: 24, padding: '8px 14px', minWidth: 220, boxShadow: '0 4px 16px rgba(0,132,255,0.35)'
     }
   },
     React.createElement('button', {
       type: 'button', onClick: togglePlay,
       style: {
         width: 34, height: 34, borderRadius: '50%',
-        background: 'linear-gradient(135deg,#2563eb,#ea580c)',
+        background: '#09152e',
         border: 'none', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        cursor: 'pointer', fontSize: 14, boxShadow: '0 2px 10px rgba(37,99,235,0.5)', flexShrink: 0
+        cursor: 'pointer', fontSize: 14, boxShadow: '0 2px 8px rgba(0,0,0,0.4)', flexShrink: 0
       }
-    }, isPlaying ? '⏸' : '▶'),
-    React.createElement('div', { style: { flex: 1, display: 'flex', alignItems: 'center', gap: 2.5, height: 28 } },
+    }, isPlaying
+      ? React.createElement('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'white' }, React.createElement('rect', { x: 6, y: 4, width: 4, height: 16 }), React.createElement('rect', { x: 14, y: 4, width: 4, height: 16 }))
+      : React.createElement('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'white' }, React.createElement('polygon', { points: '5 3 19 12 5 21 5 3' }))
+    ),
+    React.createElement('div', {
+      ref: waveformRef,
+      onClick: handleSeek,
+      style: {
+        flex: 1, position: 'relative', display: 'flex', alignItems: 'center', gap: 2.5, height: 28, cursor: 'pointer', padding: '0 2px'
+      }
+    },
       dynHeights.map((h, i) => {
         const pct = (i / dynHeights.length) * 100;
         const isActive = pct <= progress;
@@ -1099,19 +1400,92 @@ function VoiceNotePlayer({ audioUrl, metadata }) {
           style: {
             width: 3,
             height: `${h}px`,
-            background: isActive ? '#60a5fa' : 'rgba(255,255,255,0.35)',
+            background: isActive ? '#ffffff' : 'rgba(255,255,255,0.45)',
             borderRadius: 2,
             transition: 'height 0.05s ease, background 0.1s ease'
           }
         });
+      }),
+      // White Scrubber Dot (Knob)
+      React.createElement('div', {
+        style: {
+          position: 'absolute',
+          top: '50%',
+          left: `${Math.min(97, Math.max(3, progress))}%`,
+          transform: 'translate(-50%, -50%)',
+          width: 11,
+          height: 11,
+          borderRadius: '50%',
+          background: '#ffffff',
+          boxShadow: '0 1px 6px rgba(0,0,0,0.5), 0 0 4px rgba(255,255,255,0.8)',
+          pointerEvents: 'none',
+          transition: isPlaying ? 'left 0.05s linear' : 'left 0.1s ease'
+        }
       })
     ),
-    React.createElement('span', {
-      style: { fontSize: 10.5, color: '#f8fafc', fontWeight: 700, flexShrink: 0 }
-    }, duration > 0 ? fmt(duration) : '—')
+    React.createElement('div', {
+      style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }
+    },
+      React.createElement('span', {
+        style: { fontSize: 10.5, color: '#ffffff', fontWeight: 700 }
+      }, duration > 0 ? fmt(duration) : '0:05'),
+      React.createElement('button', {
+        type: 'button',
+        onClick: toggleSpeed,
+        title: 'Playback Speed',
+        style: {
+          background: 'rgba(0, 0, 0, 0.45)',
+          border: 'none',
+          borderRadius: 999,
+          padding: '1px 6px',
+          fontSize: 9.5,
+          fontWeight: 800,
+          color: '#ffffff',
+          cursor: 'pointer',
+          lineHeight: '1.2'
+        }
+      }, `${playbackRate}x`)
+    )
   );
 }
 
+
+/* ── Clickable Hyperlink & Auto-Link Parser ────────────────────────────── */
+function renderFormattedTextWithLinks(text, isMine = false) {
+  if (!text || typeof text !== 'string') return text;
+  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+  const parts = [];
+  let lastIdx = 0;
+  let match;
+
+  while ((match = urlRegex.exec(text)) !== null) {
+    if (match.index > lastIdx) {
+      parts.push(text.slice(lastIdx, match.index));
+    }
+    const rawUrl = match[0];
+    const href = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
+    parts.push(
+      React.createElement('a', {
+        key: match.index,
+        href: href,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        onClick: (e) => e.stopPropagation(),
+        style: {
+          color: isMine ? '#ffffff' : '#60a5fa',
+          textDecoration: 'underline',
+          fontWeight: 600,
+          wordBreak: 'break-all'
+        }
+      }, rawUrl)
+    );
+    lastIdx = match.index + rawUrl.length;
+  }
+  if (lastIdx < text.length) {
+    parts.push(text.slice(lastIdx));
+  }
+  return parts.length > 0 ? parts : text;
+}
 
 /* ── Rich Link Card Renderer ────────────────────────────────────────────── */
 /* ── Messenger-Style Rich Link Card Renderer ───────────────────────────── */
@@ -1129,47 +1503,96 @@ function RichLinkCard({ url, previewData }) {
     }
     if (!url) return;
     let isMounted = true;
+
+    let cleanDomain = url;
+    try { cleanDomain = new URL(url).hostname.replace('www.', ''); } catch (e) {}
+
     async function fetchMeta() {
       try {
         const res = await fetch(`${apiBase}/api/media/link-preview?url=${encodeURIComponent(url)}`);
         if (res.ok) {
           const data = await res.json();
-          if (isMounted) setMeta(data);
+          if (isMounted && data && (data.image || data.title)) {
+            setMeta(data);
+            setLoading(false);
+            return;
+          }
         }
-      } catch (e) {
-      } finally {
-        if (isMounted) setLoading(false);
+      } catch (e) {}
+
+      // Fallback 1: Free public microlink OpenGraph API for arbitrary websites
+      try {
+        const mRes = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`);
+        if (mRes.ok) {
+          const mData = await mRes.json();
+          if (isMounted && mData?.data) {
+            setMeta({
+              title: mData.data.title || cleanDomain,
+              description: mData.data.description || url,
+              image: mData.data.image?.url || mData.data.logo?.url || `https://image.thum.io/get/width/600/crop/800/${url}`,
+              domain: cleanDomain
+            });
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (e) {}
+
+      // Fallback 2: Universal Live Screenshot + Favicon
+      if (isMounted) {
+        setMeta({
+          title: cleanDomain,
+          description: url,
+          image: `https://image.thum.io/get/width/600/crop/800/${url}`,
+          domain: cleanDomain
+        });
+        setLoading(false);
       }
     }
+
     fetchMeta();
     return () => { isMounted = false; };
   }, [url, previewData]);
 
   let domainName = meta?.domain || url;
-  try { domainName = new URL(url).hostname; } catch (e) {}
+  try { domainName = new URL(url).hostname.replace('www.', ''); } catch (e) {}
 
-  const cardTitle = meta?.title || domainName;
-  const cardDesc  = meta?.description || meta?.siteName || url;
-  const imageUrl  = meta?.image;
+  let ytId = null;
+  if (url.includes('youtu.be/')) {
+    ytId = url.split('youtu.be/')[1]?.split('?')[0]?.split('#')[0];
+  } else if (url.includes('youtube.com/watch')) {
+    try {
+      const uParams = new URLSearchParams(new URL(url).search);
+      ytId = uParams.get('v');
+    } catch (e) {}
+  }
+
+  const cardTitle = meta?.title || (ytId ? 'YouTube Video' : domainName);
+  const cardDesc  = meta?.description || meta?.siteName || (ytId ? `https://youtu.be/${ytId}` : url);
+  const imageUrl  = meta?.image || (ytId ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` : `https://image.thum.io/get/width/600/crop/800/${url}`);
 
   return React.createElement('a', {
     href: url, target: '_blank', rel: 'noopener noreferrer',
-    style: { textDecoration: 'none', marginTop: 8, display: 'block', maxWidth: 360, width: '100%' }
+    style: { textDecoration: 'none', marginTop: 8, display: 'block', maxWidth: 380, width: '100%' }
   },
     React.createElement('div', {
       style: {
-        background: '#1e202e', border: '1px solid rgba(255, 255, 255, 0.12)',
-        borderRadius: 14, overflow: 'hidden', display: 'flex', flexDirection: 'column',
+        background: 'rgba(30, 32, 46, 0.95)', border: '1px solid rgba(255, 255, 255, 0.12)',
+        borderRadius: 16, overflow: 'hidden', display: 'flex', flexDirection: 'column',
         boxShadow: '0 8px 24px rgba(0,0,0,0.4)', transition: 'transform 0.2s, box-shadow 0.2s',
         cursor: 'pointer'
       }
     },
       imageUrl ? React.createElement('div', {
-        style: { width: '100%', height: 180, overflow: 'hidden', background: '#0f111a', position: 'relative' }
+        style: { width: '100%', height: 190, overflow: 'hidden', background: '#0f111a', position: 'relative' }
       },
         React.createElement('img', {
           src: imageUrl,
           alt: cardTitle,
+          onError: (e) => {
+             // Fallback to favicon icon banner if image load fails
+             e.target.style.display = 'none';
+          },
           style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' }
         })
       ) : null,
@@ -1183,9 +1606,14 @@ function RichLinkCard({ url, previewData }) {
           style: { fontSize: 11, color: '#94a3b8', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }
         }, cardDesc),
         React.createElement('div', {
-          style: { display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }
+          style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }
         },
-          React.createElement('span', { style: { fontSize: 10, color: '#64748b', textTransform: 'lowercase' } }, domainName)
+          React.createElement('img', {
+            src: `https://www.google.com/s2/favicons?domain=${domainName}&sz=32`,
+            alt: domainName,
+            style: { width: 14, height: 14, borderRadius: 3 }
+          }),
+          React.createElement('span', { style: { fontSize: 10.5, color: '#94a3b8', fontWeight: 600, textTransform: 'lowercase' } }, domainName)
         )
       )
     )
@@ -1195,11 +1623,11 @@ function RichLinkCard({ url, previewData }) {
 /* ── 3-Dots Context Menu ────────────────────────────────────────────────── */
 function BubbleContextMenu({ isMine, onForward, onRemove, onReact, onUnsend, onEdit, onClose }) {
   const items = [
-    { label:'React', icon:'😊', action: onReact },
-    { label:'Forward', icon:'↪️', action: onForward },
-    ...(isMine && onEdit ? [{ label:'Edit', icon:'✏️', action: onEdit }] : []),
-    { label:'Remove for you', icon:'🗑️', action: onRemove },
-    ...(isMine ? [{ label:'Unsend', icon:'↩️', action: onUnsend }] : [])
+    { label:'React', icon: React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' }, React.createElement('circle', { cx: 12, cy: 12, r: 10 }), React.createElement('path', { d: 'M8 14s1.5 2 4 2 4-2 4-2' }), React.createElement('line', { x1: 9, y1: 9, x2: 9.01, y2: 9 }), React.createElement('line', { x1: 15, y1: 9, x2: 15.01, y2: 9 })), action: onReact },
+    { label:'Forward', icon: React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' }, React.createElement('polyline', { points: '15 17 20 12 15 7' }), React.createElement('path', { d: 'M4 18v-2a4 4 0 0 1 4-4h12' })), action: onForward },
+    ...(isMine && onEdit ? [{ label:'Edit', icon: React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' }, React.createElement('path', { d: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' }), React.createElement('path', { d: 'M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' })), action: onEdit }] : []),
+    { label:'Remove for you', icon: React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' }, React.createElement('polyline', { points: '3 6 5 6 21 6' }), React.createElement('path', { d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' })), action: onRemove },
+    ...(isMine ? [{ label:'Unsend', icon: React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' }, React.createElement('polyline', { points: '9 14 4 9 9 4' }), React.createElement('path', { d: 'M20 20v-7a4 4 0 0 0-4-4H4' })), action: onUnsend }] : [])
   ];
   return React.createElement('div',{
     style:{position:'fixed',inset:0,zIndex:200},
@@ -1240,13 +1668,40 @@ function BubbleContextMenu({ isMine, onForward, onRemove, onReact, onUnsend, onE
 /* ══════════════════════════════════════════════════════════════════════════
    MAIN GenUiBubble COMPONENT
 ══════════════════════════════════════════════════════════════════════════ */
-function GenUiBubble({ message }) {
+function GenUiBubble({ message, groupPosition = 'single', showSenderHeader = true, isLastSeenMessage = false, seenAvatarUrl = null }) {
   const {
-    id, sender, body, isMine, time, status, deliveryStatus,
-    ui_component, data, providerUsed, is_unsent, is_edited, reactions
+    id, sender, body, isMine: isMineProp, time, status, deliveryStatus,
+    ui_component, data, providerUsed, is_unsent, is_edited, reactions,
+    // ── Pillar 02: Reply/Quote fields ──
+    replyToId, replyToSender, replyToBody, replyToMediaType,
+    // ── Sender info ──
+    senderName, senderId
   } = message;
 
+  const isMine = !!(
+    isMineProp ||
+    message.isMine ||
+    message.is_mine ||
+    senderId === 'admin' ||
+    senderId === '1' ||
+    senderId === 1 ||
+    (typeof sender === 'string' && sender.toLowerCase() === 'admin') ||
+    (typeof senderName === 'string' && senderName.toLowerCase() === 'admin')
+  );
+
   const { useState, useRef, useEffect } = React;
+
+  // ── Detect if incoming message is AI or human ──────────────────────────
+  const isAiMessage = !isMine && (
+    senderId === 'ai_copilot' ||
+    senderId === '@Drive&Go AI' ||
+    sender === 'Drive&Go AI' ||
+    senderName === 'Drive&Go AI' ||
+    (typeof sender === 'string' && sender.toLowerCase().includes('ai')) ||
+    (typeof senderName === 'string' && senderName.toLowerCase().includes('ai'))
+  );
+  const displaySender = senderName || sender || (isMine ? 'Admin' : 'Contact');
+  const senderInitial = (displaySender || 'U')[0].toUpperCase();
 
   let displayText = body || '';
   let dynamicUiComponent = ui_component;
@@ -1262,8 +1717,6 @@ function GenUiBubble({ message }) {
   }
 
   // ── FIX 3: HIDE RAW JSON FROM UI ─────────────────────────────────────────
-  // If body is a raw JSON string (e.g., starts with '{' and contains 'text' or 'ui_component'),
-  // parse it and extract ONLY the human-readable text and dynamic component props!
   if (displayText && typeof displayText === 'string' && displayText.trim().startsWith('{')) {
     try {
       const parsedJson = JSON.parse(displayText.trim());
@@ -1280,9 +1733,7 @@ function GenUiBubble({ message }) {
           dynamicData = Array.isArray(parsedJson.data) ? parsedJson.data : [parsedJson.data];
         }
       }
-    } catch (e) {
-      // If parsing fails, use displayText as is
-    }
+    } catch (e) {}
   }
 
   const hasChart = dynamicUiComponent && dynamicUiComponent !== 'Text Only';
@@ -1300,6 +1751,8 @@ function GenUiBubble({ message }) {
   const [showEditHistoryModal,setShowEditHistoryModal]= useState(false);
 
   const [showInlineEdits,     setShowInlineEdits]     = useState(false);
+  const [isFetchingHistory,   setIsFetchingHistory]   = useState(false);
+  const [userReaction,        setUserReaction]        = useState(null);
   const [historyItems,        setHistoryItems]        = useState(() => {
     let hist = message.editHistory || message.edit_history || [];
     if (typeof hist === 'string') {
@@ -1307,33 +1760,23 @@ function GenUiBubble({ message }) {
     }
     return Array.isArray(hist) ? hist : [];
   });
-  const [isFetchingHistory, setIsFetchingHistory] = useState(false);
-
-  const toggleInlineEdits = async (e) => {
-    if (e) { e.preventDefault(); e.stopPropagation(); }
-    if (!showInlineEdits && historyItems.length === 0 && id) {
-      setIsFetchingHistory(true);
-      try {
-        const res = await fetch(`${apiBase}/api/messages/${id}/history`);
-        if (res.ok) {
-          const list = await res.json();
-          setHistoryItems(list || []);
-        }
-      } catch (err) {}
-      finally { setIsFetchingHistory(false); }
-    }
-    setShowInlineEdits(prev => !prev);
-  };
-
   const mType = message.mediaType || message.media_type;
   const mUrl  = message.mediaUrl  || message.media_url;
-  const urlMatch = displayText ? displayText.match(/https?:\/\/[^\s]+/gi) : null;
-  const detectedUrl = urlMatch ? urlMatch[0] : null;
+  const urlMatch = displayText ? displayText.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/gi) : null;
+  const detectedUrl = urlMatch ? (urlMatch[0].startsWith('http') ? urlMatch[0] : `https://${urlMatch[0]}`) : null;
 
-  const bubbleRef     = useRef(null);
-  const mountedRef    = useRef(false);
-  // Ensure we strip '/api' because media files are served from the root static files route
-  const apiBase       = (window.API_BASE_URL || 'http://localhost:5233').replace(/\/api\/?$/i, '').replace(/\/$/, '');
+  const isVoiceNote = (mType === 'audio') ||
+    (displayText && (
+      displayText.startsWith('[Voice Note') ||
+      displayText.includes('🎙️ Voice Note') ||
+      displayText.includes('Voice Note')
+    )) ||
+    (mUrl && typeof mUrl === 'string' && (mUrl.endsWith('.webm') || mUrl.endsWith('.mp3') || mUrl.endsWith('.m4a') || mUrl.endsWith('.wav') || mUrl.endsWith('.ogg')));
+
+  const apiBase = (window.API_BASE_URL || 'http://localhost:5233').replace(/\/api\/?$/i, '').replace(/\/$/, '');
+
+  const bubbleRef  = useRef(null);
+  const mountedRef = useRef(false);
 
   useEffect(() => {
     if (!mountedRef.current && bubbleRef.current) {
@@ -1352,164 +1795,474 @@ function GenUiBubble({ message }) {
   };
 
   const rxParsed = React.useMemo(() => {
-    if (!reactions || reactions === '{}') return {};
-    try { return typeof reactions === 'string' ? JSON.parse(reactions) : reactions; } catch { return {}; }
-  }, [reactions]);
+    let res = {};
+    if (reactions && reactions !== '{}') {
+      try { res = typeof reactions === 'string' ? JSON.parse(reactions) : reactions; } catch { res = {}; }
+    }
+    if ((!res || Object.keys(res).length === 0) && userReaction) {
+      res = { admin: userReaction };
+    }
+    return res || {};
+  }, [reactions, userReaction]);
 
   const wrapperStyle = {
-    position:'relative',
-    display:'flex',
-    flexDirection:'column',
+    position: 'relative', display: 'flex', flexDirection: 'column',
     alignItems: isMine ? 'flex-end' : 'flex-start',
-    maxWidth: hasChart ? '95%' : '85%',
+    maxWidth: '100%',
+    width: '100%',
     alignSelf: isMine ? 'flex-end' : 'flex-start',
-    wordBreak: 'break-word',
-    overflowWrap: 'anywhere',
-    opacity: 1
+    wordBreak: 'break-word', overflowWrap: 'anywhere', opacity: 1
   };
 
-  if (is_unsent) {
+
+
+  const currentStatus = status || deliveryStatus || 'delivered';
+
+  const handleReplyClick = (e) => {
+    e.stopPropagation();
+    window.dispatchEvent(new CustomEvent('chat:replyTo', { detail: {
+      id: message.id || message.messageId,
+      sender: displaySender,
+      body: body || '',
+      mediaType: message.mediaType || message.media_type || null
+    }}));
+  };
+
+  const effectiveReplySender = message.replyToSender || message.reply_to_sender || message.replySender || replyToSender || null;
+  const effectiveReplyBody = message.replyToBody || message.reply_to_body || message.replyBody || replyToBody || null;
+  const effectiveReplyMediaType = message.replyToMediaType || message.reply_to_media_type || message.replyMediaType || replyToMediaType || null;
+
+  const isForwarded = React.useMemo(() => {
+    if (message.isForwarded || message.is_forwarded || message.isForward || message.forwarded) return true;
+    let meta = message.mediaMetadata || message.media_metadata;
+    if (meta && typeof meta === 'string') {
+      try { meta = JSON.parse(meta); } catch { meta = {}; }
+    }
+    return !!(meta && (meta.isForwarded || meta.is_forwarded || meta.isForward || meta.forwarded));
+  }, [message]);
+
+  const ForwardedLabel = () => React.createElement('div', {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 4,
+      fontSize: 10.5,
+      fontWeight: 500,
+      color: '#94a3b8',
+      fontStyle: 'italic',
+      marginBottom: 3,
+      paddingLeft: isMine ? 0 : 2,
+      paddingRight: isMine ? 2 : 0
+    }
+  },
+    React.createElement('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+      React.createElement('polyline', { points: '15 17 20 12 15 7' }),
+      React.createElement('path', { d: 'M4 18v-2a4 4 0 0 1 4-4h12' })
+    ),
+    'Forwarded'
+  );
+
+  const QuotedReplyBubble = () => {
+    if (!effectiveReplySender && !effectiveReplyBody) return null;
+    const quotedText = effectiveReplyMediaType === 'audio' ? 'Voice Note'
+      : effectiveReplyMediaType === 'image' ? 'Photo'
+      : effectiveReplyMediaType === 'video' ? 'Video'
+      : effectiveReplyBody || '...';
+
+    const replyHeaderLabel = isMine
+      ? `You replied to ${effectiveReplySender === displaySender || effectiveReplySender === 'Admin' ? 'yourself' : (effectiveReplySender || 'a message')}`
+      : `${displaySender} replied to ${effectiveReplySender || 'a message'}`;
+
     return React.createElement('div', {
-      className:'animate-chat-bubble', style:wrapperStyle
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: isMine ? 'flex-end' : 'flex-start',
+        marginBottom: 3,
+        maxWidth: '100%'
+      }
     },
-      React.createElement('div',{style:{padding:'10px 14px',fontSize:11.5,color:'#94a3b8',fontStyle:'italic',border:'1px dashed rgba(255,255,255,0.2)',borderRadius:'14px 14px 0 14px'}},
+      React.createElement('div', {
+        style: {
+          fontSize: 10,
+          color: '#94a3b8',
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          marginBottom: 3
+        }
+      },
+        React.createElement(SvgReply),
+        replyHeaderLabel
+      ),
+      React.createElement('div', {
+        style: {
+          background: 'rgba(255, 255, 255, 0.08)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: 14,
+          padding: '6px 12px',
+          fontSize: 11,
+          color: '#cbd5e1',
+          maxWidth: 240,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis'
+        }
+      }, quotedText)
+    );
+  };
+
+  const toggleInlineEdits = async (e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    if (!showInlineEdits && historyItems.length === 0) {
+      const rawHist = message.editHistory || message.edit_history;
+      if (rawHist) {
+        try {
+          const parsed = typeof rawHist === 'string' ? JSON.parse(rawHist) : rawHist;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setHistoryItems(parsed);
+            setShowInlineEdits(true);
+            return;
+          }
+        } catch (e) {}
+      }
+      if (id) {
+        setIsFetchingHistory(true);
+        try {
+          const res = await fetch(`${apiBase}/api/messages/${id}/history`);
+          if (res.ok) {
+            const list = await res.json();
+            setHistoryItems(list || []);
+          }
+        } catch (err) {}
+        finally { setIsFetchingHistory(false); }
+      }
+    }
+    setShowInlineEdits(prev => !prev);
+  };
+
+  const EditHistorySection = ({ side = 'mine' }) => {
+    const isEditedMsg = !!(is_edited || message.isEdited || message.is_edited || (message.editHistory && message.editHistory !== '[]') || (message.edit_history && message.edit_history !== '[]'));
+    if (!isEditedMsg) return null;
+
+    return React.createElement('div', {
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: side === 'mine' ? 'flex-end' : 'flex-start',
+        marginBottom: 4,
+        maxWidth: '100%',
+        width: '100%'
+      }
+    },
+      React.createElement('button', {
+        type: 'button',
+        onClick: toggleInlineEdits,
+        style: {
+          background: 'none',
+          border: 'none',
+          color: '#3b82f6',
+          fontSize: 11,
+          fontWeight: 600,
+          cursor: 'pointer',
+          padding: '2px 4px',
+          marginBottom: 2,
+          transition: 'opacity 0.15s'
+        }
+      }, showInlineEdits ? 'Hide edits' : 'Edited'),
+
+      showInlineEdits && React.createElement('div', {
+        style: {
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 4,
+          width: '100%',
+          alignItems: side === 'mine' ? 'flex-end' : 'flex-start',
+          marginBottom: 4
+        }
+      },
+        historyItems.length > 0 ? historyItems.map((item, idx) =>
+          React.createElement('div', {
+            key: idx,
+            style: {
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              color: '#cbd5e1',
+              borderRadius: 14,
+              padding: '6px 12px',
+              fontSize: 11.5,
+              width: 'fit-content',
+              maxWidth: '85%',
+              wordBreak: 'break-word',
+              whiteSpace: 'pre-wrap',
+              boxSizing: 'border-box'
+            }
+          }, typeof item === 'string' ? item : (item.text || item.body || item.messageBody || item.old_text || ''))
+        ) : (!isFetchingHistory && React.createElement('div', {
+          style: {
+            background: 'rgba(255, 255, 255, 0.05)',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            color: '#94a3b8',
+            borderRadius: 14,
+            padding: '6px 12px',
+            fontSize: 11,
+            fontStyle: 'italic',
+            width: 'fit-content'
+          }
+        }, 'No previous edits found')),
+        isFetchingHistory && React.createElement('span', { style: { fontSize: 10, color: '#94a3b8', fontStyle: 'italic' } }, 'Loading edit history...')
+      )
+    );
+  };
+
+  // ── SVG Icon helpers ─────────────────────────────────────────────────────
+  const SvgReply = () => React.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('polyline', { points: '9 17 4 12 9 7' }),
+    React.createElement('path', { d: 'M20 18v-2a4 4 0 00-4-4H4' })
+  );
+  const SvgCopy = () => React.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('rect', { x: '9', y: '9', width: '13', height: '13', rx: '2', ry: '2' }),
+    React.createElement('path', { d: 'M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1' })
+  );
+  const SvgForward = () => React.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('polyline', { points: '15 17 20 12 15 7' }),
+    React.createElement('path', { d: 'M4 18v-2a4 4 0 014-4h12' })
+  );
+  const SvgDelete = () => React.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+    React.createElement('polyline', { points: '3 6 5 6 21 6' }),
+    React.createElement('path', { d: 'M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6' }),
+    React.createElement('path', { d: 'M10 11v6' }),
+    React.createElement('path', { d: 'M14 11v6' }),
+    React.createElement('path', { d: 'M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2' })
+  );
+  const SvgMore = () => React.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'currentColor' },
+    React.createElement('circle', { cx: '5', cy: '12', r: '2' }),
+    React.createElement('circle', { cx: '12', cy: '12', r: '2' }),
+    React.createElement('circle', { cx: '19', cy: '12', r: '2' })
+  );
+  const SvgPlay = () => React.createElement('svg', { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'white' },
+    React.createElement('path', { d: 'M8 5v14l11-7z' })
+  );
+  const SvgExpand = () => React.createElement('svg', { width: 10, height: 10, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2.5 },
+    React.createElement('path', { d: 'M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3m8 0h3a2 2 0 002-2v-3' })
+  );
+
+  // ── Local Reaction Toggle / Undo ───────────────────────────────────────────
+
+  const handleEmojiSelect = async (emoji, e) => {
+    if (e) e.stopPropagation();
+    const newReaction = userReaction === emoji ? null : emoji;
+    setUserReaction(newReaction);
+    setShowEmojiPicker(false);
+
+    try {
+      const apiBase2 = (window.API_BASE_URL || 'http://localhost:5233').replace(/\/api\/?$/i, '').replace(/\/$/, '');
+      await fetch(`${apiBase2}/api/messages/${id}/react`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: 'admin', emoji: newReaction || '', Emoji: newReaction || '', reaction: newReaction || '' })
+      });
+    } catch (err) {}
+  };
+
+  const isUnsent = !!(
+    is_unsent ||
+    message.isUnsent ||
+    message.is_unsent ||
+    message.status === 'unsent' ||
+    (typeof body === 'string' && body.trim() === '' && (message.isUnsent || message.is_unsent))
+  );
+
+  if (isUnsent) {
+    return React.createElement('div', { style: wrapperStyle },
+      React.createElement('div', {
+        style: {
+          padding: '9px 14px',
+          fontSize: 12,
+          color: '#94a3b8',
+          fontStyle: 'italic',
+          border: '1px dashed rgba(255,255,255,0.2)',
+          borderRadius: isMine ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+          background: 'rgba(255,255,255,0.03)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6
+        }
+      },
+        React.createElement('svg', { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+          React.createElement('circle', { cx: 12, cy: 12, r: 10 }),
+          React.createElement('line', { x1: 4.93, y1: 4.93, x2: 19.07, y2: 19.07 })
+        ),
         isMine ? 'You unsent a message' : 'This message was unsent'
       )
     );
   }
 
-  const currentStatus = status || deliveryStatus || 'delivered';
+  // ── Action Bars (Messenger-style: 3 inline buttons [ ⋮ ] [ ↩️ ] [ 😊 ]) ──
+  const ReactStrip = ({ side }) => React.createElement('div', {
+    className: `gub-react-strip ${side}`,
+    onClick: e => e.stopPropagation()
+  },
+    ['❤️','😆','😮','😢','😡','👍'].map((emoji, i) =>
+      React.createElement('button', {
+        key: i,
+        className: 'gub-react-emoji-btn',
+        title: emoji,
+        onClick: (e) => handleEmojiSelect(emoji, e)
+      }, emoji)
+    ),
+    React.createElement('button', {
+      className: 'gub-react-emoji-btn',
+      title: 'More reactions',
+      style: {
+        width: 26, height: 26, borderRadius: '50%',
+        background: 'rgba(255,255,255,0.12)',
+        color: '#e4e6eb', fontSize: 14, fontWeight: 700
+      },
+      onClick: (e) => { e.stopPropagation(); setShowEmojiPicker(prev => !prev); }
+    }, React.createElement('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2.5, strokeLinecap: 'round' },
+      React.createElement('line', { x1: 12, y1: 5, x2: 12, y2: 19 }),
+      React.createElement('line', { x1: 5, y1: 12, x2: 19, y2: 12 })
+    ))
+  );
+
+  const ActionBar = ({ side }) => React.createElement('div', {
+    className: `gub-action-bar ${side} ${(showEmojiPicker || showContextMenu) ? 'is-open' : ''}`,
+    onClick: e => e.stopPropagation()
+  },
+    React.createElement('button', { className: 'gub-icon-btn', title: 'More options', onClick: (e) => { e.stopPropagation(); setShowContextMenu(prev => !prev); } },
+      React.createElement(SvgMore)
+    ),
+    React.createElement('button', { className: 'gub-icon-btn', title: 'Reply to this message', onClick: handleReplyClick },
+      React.createElement(SvgReply)
+    ),
+    React.createElement('button', { className: 'gub-icon-btn', title: 'React', onClick: (e) => { e.stopPropagation(); setShowEmojiPicker(prev => !prev); } },
+      React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('circle', { cx: 12, cy: 12, r: 10 }),
+        React.createElement('path', { d: 'M8 14s1.5 2 4 2 4-2 4-2' }),
+        React.createElement('line', { x1: 9, y1: 9, x2: 9.01, y2: 9 }),
+        React.createElement('line', { x1: 15, y1: 9, x2: 15.01, y2: 9 })
+      )
+    )
+  );
+
+  const openGlobalLightbox = (url, type, title) => {
+    window.dispatchEvent(new CustomEvent('chat:openLightbox', {
+      detail: {
+        url,
+        type,
+        title: title || (type === 'video' ? 'Shared Video Preview' : 'Shared Image Preview')
+      }
+    }));
+  };
 
   const groupRow = React.createElement('div',{
     ref: bubbleRef,
+    className: 'gub-bubble-row',
     style:{
       display:'flex', alignItems:'center',
       width:'100%',
       justifyContent: isMine ? 'flex-end' : 'flex-start',
       position:'relative',
-      minHeight: 36
+      minHeight: 36,
+      paddingBottom: 2
     }
   },
 
-    React.createElement('div',{style:{position:'relative', flexShrink:0, display:'flex', alignItems:'center', maxWidth:'100%'}},
+    React.createElement('div',{
+      style:{
+        position:'relative',
+        display:'inline-flex',
+        alignItems:'center',
+        justifyContent: isMine ? 'flex-end' : 'flex-start',
+        maxWidth: isMine ? '70%' : '75%',
+        marginLeft: isMine ? 'auto' : undefined
+      }
+    },
 
-      // Inner bubble content wrapper
-      React.createElement('div',{style:{position:'relative', flexShrink:0, maxWidth:'100%'}},
-
-      // ── OUTGOING bubble ──────────────────────────────────────────────
-      isMine && React.createElement('div',{style:{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:2,maxWidth:'100%'}},
-        (is_edited || message.isEdited) && React.createElement('button', {
-          type: 'button',
-          onClick: toggleInlineEdits,
-          style: {
-            background: 'none', border: 'none',
-            color: '#38bdf8', fontSize: 10.5, fontWeight: 700,
-            cursor: 'pointer', padding: '2px 4px', marginBottom: 2,
-            alignSelf: 'flex-end',
-            transition: 'color 0.15s'
-          }
-        }, showInlineEdits ? 'Hide edits' : 'Edited'),
-        showInlineEdits && React.createElement('div', {
-          style: { display: 'flex', flexDirection: 'column', gap: 4, width: '100%', alignItems: 'flex-end', marginBottom: 4 }
-        },
-          historyItems.map((item, idx) =>
-            React.createElement('div', {
-              key: idx,
-              style: {
-                background: 'rgba(30, 58, 138, 0.75)',
-                border: '1px solid rgba(56, 189, 248, 0.3)',
-                color: '#e2e8f0',
-                borderRadius: '14px 14px 0 14px',
-                padding: '8px 12px',
-                fontSize: 11.5,
-                fontWeight: 400,
-                lineHeight: 1.5,
-                wordBreak: 'break-word',
-                maxWidth: '100%',
-                opacity: 0.9,
-                animation: 'fadeSlideUp 0.15s ease-out both'
-              }
-            }, item.text || item.body || '')
-          ),
-          isFetchingHistory && React.createElement('span', {
-            style: { fontSize: 9.5, color: '#94a3b8', fontStyle: 'italic' }
-          }, 'Loading edit history...')
-        ),
-        mType === 'image' && React.createElement('img', {
+      isMine && React.createElement('div',{style:{position:'relative', display:'inline-flex', flexDirection:'column', alignItems:'flex-end', gap:4, maxWidth:'100%'}},
+        showEmojiPicker && React.createElement(ReactStrip, { side: 'mine' }),
+        React.createElement(ActionBar, { side: 'mine' }),
+        isForwarded && React.createElement(ForwardedLabel),
+        (effectiveReplySender || effectiveReplyBody) && React.createElement(QuotedReplyBubble),
+        React.createElement(EditHistorySection, { side: 'mine' }),
+        mType === 'image' && mUrl && React.createElement('img', {
           src: mUrl.startsWith('http') ? mUrl : apiBase + mUrl,
-          style: { maxWidth: 220, borderRadius: 12, border: '1px solid rgba(255,255,255,0.15)', cursor: 'pointer' },
-          onClick: () => {
-             setFullscreenMediaType('image');
-             setFullscreenMediaUrl(mUrl.startsWith('http') ? mUrl : apiBase + mUrl);
-             setShowFullscreenChart(true);
-          }
+          className: 'gub-img-bubble',
+          onClick: () => openGlobalLightbox(mUrl.startsWith('http') ? mUrl : apiBase + mUrl, 'image', message.fileName)
         }),
-        mType === 'video' && React.createElement('div', {
-          style: { position: 'relative', cursor: 'pointer', maxWidth: 240, borderRadius: 12, overflow: 'hidden' },
-          onClick: () => {
-             setFullscreenMediaType('video');
-             setFullscreenMediaUrl(mUrl.startsWith('http') ? mUrl : apiBase + mUrl);
-             setShowFullscreenChart(true);
-          }
+        mType === 'video' && mUrl && React.createElement('div', {
+          style: { position: 'relative', cursor: 'pointer', maxWidth: 260, width: '100%', minHeight: 140, aspectRatio: '16/9', borderRadius: 18, overflow: 'hidden', background: '#090a0f' },
+          onClick: () => openGlobalLightbox(mUrl.startsWith('http') ? mUrl : apiBase + mUrl, 'video', message.fileName)
         },
-          React.createElement('video', {
-            src: mUrl.startsWith('http') ? mUrl : apiBase + mUrl,
-            style: { width: '100%', display: 'block' }
-          }),
-          // Play button overlay
-          React.createElement('div', {
-             style: { position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 48, height: 48, borderRadius: '50%', background: 'rgba(234,88,12,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }
-          }, React.createElement('span', { style: { color: 'white', fontSize: 24, marginLeft: 4 } }, '▶'))
+          React.createElement('video', { src: mUrl.startsWith('http') ? mUrl : apiBase + mUrl, style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } }),
+          React.createElement('div', { style: { position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 48, height: 48, borderRadius: '50%', background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+            React.createElement(SvgPlay)
+          )
         ),
-        mType === 'audio' && React.createElement(VoiceNotePlayer, { audioUrl: mUrl, metadata: message.mediaMetadata || message.media_metadata }),
-        displayText && React.createElement('div',{style:{
-          background:'linear-gradient(135deg,#ea580c,#d97706)',color:'white',
-          borderRadius:'14px 14px 0 14px',padding:'10px 14px',
-          fontSize:11.5,fontWeight:500,lineHeight:1.6,
-          boxShadow:'0 4px 16px rgba(234,88,12,0.25)',
-          wordBreak: 'break-word',
-          overflowWrap: 'anywhere',
-          whiteSpace: 'pre-wrap',
-          maxWidth: '100%'
-        }}, displayText),
-        detectedUrl && React.createElement(RichLinkCard, { url: detectedUrl })
+        isVoiceNote && React.createElement(VoiceNotePlayer, { audioUrl: mUrl || detectedUrl, metadata: message.mediaMetadata || message.media_metadata }),
+        (!isVoiceNote && displayText && !['audio', 'image', 'video'].includes(mType) && displayText !== '[Photo]' && displayText !== '[Video]') && React.createElement('div', {
+          className: 'gub-out-bubble',
+          style: {
+            borderRadius: groupPosition === 'first' ? '18px 18px 4px 18px' : groupPosition === 'middle' ? '18px 4px 4px 18px' : groupPosition === 'last' ? '18px 4px 18px 18px' : '18px 18px 0 18px'
+          }
+        }, renderFormattedTextWithLinks(displayText, true)),
+        (!isVoiceNote && detectedUrl) && React.createElement(RichLinkCard, { url: detectedUrl })
       ),
 
-      // ── INCOMING bubble ──────────────────────────────────────────────
       !isMine && React.createElement('div',{style:{display:'flex',alignItems:'flex-start',gap:8,maxWidth:'100%'}},
-        React.createElement('div',{style:{
-          width:24,height:24,borderRadius:'50%',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,
-          background:'linear-gradient(135deg,#ea580c,#f59e0b,#8b5cf6)',
-          boxShadow:'0 0 12px rgba(234,88,12,0.5)',marginTop:'auto'
-        }},'✨'),
-        React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:6,flex:1,minWidth:0,maxWidth:'100%'}},
-          React.createElement('div',{style:{display:'flex',alignItems:'center',gap:6}},
-            React.createElement('span',{style:{fontSize:9,color:'#fb923c',fontWeight:700}},'Drive&Go AI')
+        isAiMessage
+          ? React.createElement('div',{style:{ width:28, height:28, borderRadius:'50%', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', background:'linear-gradient(135deg,#ea580c,#f59e0b)', boxShadow:'0 0 10px rgba(234,88,12,0.5)', alignSelf:'flex-start', marginTop:3, visibility: (groupPosition === 'last' || groupPosition === 'single') ? 'visible' : 'hidden' }},
+              React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'white' },
+                React.createElement('path', { d: 'M13 2L4.5 13.5H11V22L19.5 10.5H13V2Z' })
+              )
+            )
+          : React.createElement('div',{style:{ width:28, height:28, borderRadius:'50%', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, background:'linear-gradient(135deg,#6d28d9,#a855f7)', color:'white', boxShadow:'0 0 8px rgba(139,92,246,0.4)', alignSelf:'flex-start', marginTop:3, visibility: (groupPosition === 'last' || groupPosition === 'single') ? 'visible' : 'hidden' }}, senderInitial),
+
+        React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0,maxWidth:'100%'}},
+          showSenderHeader && React.createElement('div',{style:{display:'flex',alignItems:'center',gap:5}},
+            isAiMessage
+              ? React.createElement('span',{style:{fontSize:9.5,color:'#fb923c',fontWeight:700,letterSpacing:'0.02em'}}, 'Drive&Go AI')
+              : React.createElement('span',{style:{fontSize:9.5,color:'#a78bfa',fontWeight:700}}, displaySender)
           ),
-          (() => {
-            const txtToRender = (displayText && displayText.trim().length > 0)
-              ? displayText
-              : '';
-            return txtToRender ? React.createElement('div',{style:{
-              background:'var(--bubble-ai)',
-              border:'1px solid var(--border)',
-              borderRadius:'0 14px 14px 14px',
-              padding:'10px 14px',
-              wordBreak: 'break-word',
-              overflowWrap: 'anywhere',
-              whiteSpace: 'pre-wrap',
-              maxWidth: '100%'
-            }},
-              ...renderMarkdown(txtToRender)
-            ) : null;
-          })(),
+          React.createElement('div',{style:{position:'relative', display:'inline-flex', flexDirection:'column', maxWidth:'100%', width:'fit-content'}},
+            showEmojiPicker && React.createElement(ReactStrip, { side: 'theirs' }),
+            React.createElement(ActionBar, { side: 'theirs' }),
+            isForwarded && React.createElement(ForwardedLabel),
+            (effectiveReplySender || effectiveReplyBody) && React.createElement(QuotedReplyBubble),
+            React.createElement(EditHistorySection, { side: 'theirs' }),
+            isVoiceNote && React.createElement(VoiceNotePlayer, { audioUrl: message.mediaUrl || mUrl || detectedUrl, metadata: message.mediaMetadata || message.media_metadata }),
+            (!isVoiceNote && (() => {
+              const txtToRender = (displayText && displayText.trim().length > 0) ? displayText : '';
+              if (!txtToRender) return null;
+              const customInRadius = groupPosition === 'first' ? '18px 18px 18px 4px' : groupPosition === 'middle' ? '4px 18px 18px 4px' : groupPosition === 'last' ? '4px 18px 18px 18px' : '0 18px 18px 18px';
+              if (isAiMessage) return React.createElement('div', { className: 'gub-ai-bubble', style: { borderRadius: customInRadius } }, ...renderMarkdown(txtToRender));
+              return React.createElement('div', { className: 'gub-human-bubble', style: { borderRadius: customInRadius } }, renderFormattedTextWithLinks(txtToRender, false));
+            })()),
+            (!isVoiceNote && detectedUrl) && React.createElement(RichLinkCard, { url: detectedUrl }),
+            message.mediaType === 'image' && message.mediaUrl && React.createElement('img', {
+              src: (message.mediaUrl || '').startsWith('http') ? message.mediaUrl : apiBase + message.mediaUrl,
+              className: 'gub-img-bubble',
+              onClick: () => openGlobalLightbox((message.mediaUrl || '').startsWith('http') ? message.mediaUrl : apiBase + message.mediaUrl, 'image', message.fileName)
+            })
+          ),
+          message.mediaType === 'video' && message.mediaUrl && React.createElement('div', {
+            style: { position: 'relative', cursor: 'pointer', maxWidth: 240, borderRadius: 18, overflow: 'hidden', background: '#090a0f' },
+            onClick: () => openGlobalLightbox((message.mediaUrl || '').startsWith('http') ? message.mediaUrl : apiBase + message.mediaUrl, 'video', message.fileName)
+          },
+            React.createElement('video', { src: (message.mediaUrl || '').startsWith('http') ? message.mediaUrl : apiBase + message.mediaUrl, style: { width: '100%', display: 'block' } }),
+            React.createElement('div', { style: { position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 44, height: 44, borderRadius: '50%', background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+              React.createElement(SvgPlay)
+            )
+          ),
           hasChart && (dynamicData.length > 0 || dynamicUiComponent === 'DataGrid') && React.createElement('div',{
             className: 'gub-chart-clickable',
             onClick: () => setShowFullscreenChart(true),
             title: 'Click to open in full screen view',
             style: {
-              background: 'var(--bg-panel)',
-              border: '1px solid var(--border)',
+              background: 'var(--bg-panel,rgba(15,23,42,0.6))',
+              border: '1px solid var(--border,rgba(255,255,255,0.1))',
               borderRadius: 14,
               padding: '10px 12px',
               maxWidth: '100%',
@@ -1536,12 +2289,48 @@ function GenUiBubble({ message }) {
           React.createElement('span',{style:{fontSize:8,color:'#475569',fontWeight:500,paddingLeft:2}},time)
         )
       )
-    )
-    )
+    ),
+
+    // Reaction Badge at bottom right of bubble (Screenshot 5 Trigger)
+    userReaction && React.createElement('div', {
+      style: {
+        position: 'absolute',
+        bottom: -10,
+        right: isMine ? 4 : 'auto',
+        left: !isMine ? 36 : 'auto',
+        background: '#24252f',
+        border: '1px solid rgba(255,255,255,0.15)',
+        borderRadius: 999,
+        padding: '1px 5px',
+        fontSize: 12,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+        zIndex: 10,
+        cursor: 'pointer'
+      },
+      title: 'View reactions',
+      onClick: (e) => { e.stopPropagation(); setShowReactionModal(true); }
+    }, userReaction),
+
+    showReactionModal && React.createElement(ReactionDetailsModal, {
+      reactions: rxParsed,
+      onClose: () => setShowReactionModal(false),
+      onRemoveOwnReaction: (e) => { handleEmojiSelect(userReaction, e); setShowReactionModal(false); }
+    })
   );
 
   return React.createElement('div',{ ref: bubbleRef, style: wrapperStyle },
     groupRow,
+
+    showContextMenu && React.createElement(ContextMenuModal, {
+      isMine,
+      onCopy: async () => { try { await navigator.clipboard.writeText(body || ''); } catch (err) {} },
+      onReply: handleReplyClick,
+      onForward: () => window.dispatchEvent(new CustomEvent('chat:forwardMessage', { detail: message })),
+      onRemove: () => window.dispatchEvent(new CustomEvent('chat:unsendMessage', { detail: message })),
+      onEdit: () => window.dispatchEvent(new CustomEvent('chat:editMessage', { detail: message })),
+      onPin: () => window.dispatchEvent(new CustomEvent('chat:pinMessage', { detail: message })),
+      onClose: () => setShowContextMenu(false)
+    }),
 
     showFullscreenChart && React.createElement(ChartFullscreenModal, {
       componentType: fullscreenMediaType || dynamicUiComponent,
@@ -1559,10 +2348,15 @@ function GenUiBubble({ message }) {
       historyJson: message.editHistory || message.edit_history
     }),
 
-    // Delivery state row (own messages only)
-    isMine && React.createElement('div',{style:{display:'flex',alignItems:'center',gap:6,marginTop:4,paddingRight:4}},
+    // Delivery / Seen Read Receipt state row (own messages only)
+    isMine && React.createElement('div',{style:{display:'flex',alignItems:'center',gap:4,marginTop:2,paddingRight:0,justifyContent:'flex-end'}},
       React.createElement('span',{style:{fontSize:8,color:'#475569',fontWeight:500}},time),
-      renderDeliveryBadge(currentStatus)
+      isLastSeenMessage
+        ? (seenAvatarUrl && (seenAvatarUrl.startsWith('http') || seenAvatarUrl.startsWith('/'))
+            ? React.createElement('img', { src: seenAvatarUrl.startsWith('http') ? seenAvatarUrl : apiBase + seenAvatarUrl, style: { width: 14, height: 14, borderRadius: '50%', objectFit: 'cover', boxShadow: '0 0 4px rgba(0,0,0,0.5)' }, title: 'Seen' })
+            : React.createElement('div', { style: { width: 14, height: 14, borderRadius: '50%', background: 'linear-gradient(135deg, #ea580c, #f59e0b)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: 'white' }, title: 'Seen' }, (seenAvatarUrl || 'U')[0].toUpperCase())
+          )
+        : renderDeliveryBadge(currentStatus)
     )
   );
 }

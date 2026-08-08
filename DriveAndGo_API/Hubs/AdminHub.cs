@@ -47,5 +47,15 @@ namespace DriveAndGo_API.Hubs
         {
             await Clients.All.SendAsync("MessageReactionChanged", messageId, reactionsJson, receiverId);
         }
+
+        public async Task BroadcastTypingStatus(string senderId, string receiverId, bool isTyping)
+        {
+            await Clients.All.SendAsync("TypingStatusChanged", senderId, receiverId, isTyping);
+        }
+
+        public async Task BroadcastThreadSeen(string contactId, string viewerId)
+        {
+            await Clients.All.SendAsync("ThreadSeen", contactId, viewerId);
+        }
     }
 }

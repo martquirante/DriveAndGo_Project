@@ -90,7 +90,7 @@ namespace DriveAndGo_API.Controllers
                     SiteName = siteName
                 });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 string fallbackDomain = "link";
                 try { fallbackDomain = new Uri(url).Host; } catch { }

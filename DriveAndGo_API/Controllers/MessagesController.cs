@@ -174,10 +174,37 @@ public class MessagesController : ControllerBase
             cmd.Parameters.AddWithValue("@rid",   req.ReceiverId);
             cmd.Parameters.AddWithValue("@body",  req.MessageBody);
             cmd.Parameters.AddWithValue("@group", req.IsGroupChat);
-            cmd.Parameters.AddWithValue("@sname", string.IsNullOrWhiteSpace(req.SenderName) ? (object)DBNull.Value : req.SenderName.Trim());
+            string effectiveSenderName = req.SenderId == "admin"
+                ? (string.IsNullOrWhiteSpace(req.SenderName) ? "Admin Dispatcher" : req.SenderName.Trim())
+                : (string.IsNullOrWhiteSpace(req.SenderName) ? null : req.SenderName.Trim());
+
+            string effectiveMediaMetadata = req.MediaMetadata;
+            if (!string.IsNullOrWhiteSpace(req.ReplyToSender) || !string.IsNullOrWhiteSpace(req.ReplyToBody))
+            {
+                try
+                {
+                    var metaDict = new System.Collections.Generic.Dictionary<string, object>();
+                    if (!string.IsNullOrWhiteSpace(effectiveMediaMetadata))
+                    {
+                        var existing = System.Text.Json.JsonSerializer.Deserialize<System.Collections.Generic.Dictionary<string, object>>(effectiveMediaMetadata);
+                        if (existing != null)
+                        {
+                            foreach (var kvp in existing) metaDict[kvp.Key] = kvp.Value;
+                        }
+                    }
+                    if (req.ReplyToId.HasValue) metaDict["replyToId"] = req.ReplyToId.Value;
+                    if (!string.IsNullOrWhiteSpace(req.ReplyToSender)) metaDict["replyToSender"] = req.ReplyToSender;
+                    if (!string.IsNullOrWhiteSpace(req.ReplyToBody)) metaDict["replyToBody"] = req.ReplyToBody;
+                    if (!string.IsNullOrWhiteSpace(req.ReplyToMediaType)) metaDict["replyToMediaType"] = req.ReplyToMediaType;
+                    effectiveMediaMetadata = System.Text.Json.JsonSerializer.Serialize(metaDict);
+                }
+                catch {}
+            }
+
+            cmd.Parameters.AddWithValue("@sname", (object)effectiveSenderName ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@mtype", string.IsNullOrWhiteSpace(req.MediaType) ? (object)DBNull.Value : req.MediaType);
             cmd.Parameters.AddWithValue("@murl",  string.IsNullOrWhiteSpace(req.MediaUrl) ? (object)DBNull.Value : req.MediaUrl);
-            cmd.Parameters.AddWithValue("@mdata", string.IsNullOrWhiteSpace(req.MediaMetadata) ? (object)DBNull.Value : req.MediaMetadata);
+            cmd.Parameters.AddWithValue("@mdata", string.IsNullOrWhiteSpace(effectiveMediaMetadata) ? (object)DBNull.Value : effectiveMediaMetadata);
 
             await using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
@@ -605,14 +632,16 @@ public class MessagesController : ControllerBase
             }
 
             var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(reactionsJson) ?? new Dictionary<string, string>();
-            if (req == null || string.IsNullOrWhiteSpace(req.Emoji))
+            string targetEmoji = req?.EffectiveEmoji ?? "";
+            if (req == null || string.IsNullOrWhiteSpace(targetEmoji))
             {
                 if (req?.UserId != null) dict.Remove(req.UserId);
                 else dict.Remove("admin");
             }
             else
             {
-                dict[req.UserId] = req.Emoji;
+                string uId = string.IsNullOrWhiteSpace(req?.UserId) ? "admin" : req.UserId;
+                dict[uId] = targetEmoji;
             }
 
             string newReactionsJson = JsonSerializer.Serialize(dict);
@@ -692,12 +721,14 @@ public class MessagesController : ControllerBase
             }
 
             // create new message
+            string metaJson = "{\"isForwarded\":true}";
             await using var cmd = new NpgsqlCommand(
-                @"INSERT INTO chat_messages (sender_id, receiver_id, message_body, timestamp, is_group_chat, delivery_status)
-                  VALUES (@sid, @rid, @body, NOW(), false, 'sent') RETURNING message_id, timestamp", conn);
+                @"INSERT INTO chat_messages (sender_id, receiver_id, message_body, timestamp, is_group_chat, delivery_status, media_metadata)
+                  VALUES (@sid, @rid, @body, NOW(), false, 'sent', CAST(@meta AS JSONB)) RETURNING message_id, timestamp", conn);
             cmd.Parameters.AddWithValue("@sid", req.SenderId);
             cmd.Parameters.AddWithValue("@rid", req.NewReceiverId);
             cmd.Parameters.AddWithValue("@body", content);
+            cmd.Parameters.AddWithValue("@meta", metaJson);
             
             await using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
@@ -730,9 +761,9 @@ public class MessagesController : ControllerBase
             await using var conn = await _ds.OpenConnectionAsync();
 
             // 0. Pre-fetch all non-admin users in memory to resolve any indexed IDs like c1, d1 safely
-            var allUsers = new List<(int userId, string fullName, string role)>();
+            var allUsers = new List<(int userId, string fullName, string role, string? avatarUrl)>();
             await using (var uCmd = new NpgsqlCommand(
-                "SELECT user_id, full_name, role FROM users WHERE role != 'admin' ORDER BY user_id ASC", conn))
+                "SELECT user_id, full_name, role, id_photo_url FROM users WHERE role != 'admin' ORDER BY user_id ASC", conn))
             {
                 await using var uReader = await uCmd.ExecuteReaderAsync();
                 while (await uReader.ReadAsync())
@@ -740,7 +771,8 @@ public class MessagesController : ControllerBase
                     allUsers.Add((
                         uReader.GetInt32(0),
                         uReader["full_name"]?.ToString() ?? "",
-                        uReader["role"]?.ToString() ?? ""
+                        uReader["role"]?.ToString() ?? "",
+                        uReader["id_photo_url"] == DBNull.Value ? null : uReader["id_photo_url"].ToString()
                     ));
                 }
             }
@@ -784,7 +816,7 @@ public class MessagesController : ControllerBase
             {
                 cmd.Parameters.AddWithValue("@userId", userId);
                 await using var reader = await cmd.ExecuteReaderAsync();
-                var rawItems = new List<(string contactId, string msgBody, DateTime ts, bool isGroup, string delStatus, int unread, string? fullName, string? userRole)>();
+                var rawItems = new List<(string contactId, string msgBody, DateTime ts, bool isGroup, string delStatus, int unread, string? fullName, string? userRole, string? avatarUrl)>();
 
                 while (await reader.ReadAsync())
                 {
@@ -800,7 +832,8 @@ public class MessagesController : ControllerBase
                         reader["delivery_status"].ToString()!,
                         reader.IsDBNull(reader.GetOrdinal("unread_count")) ? 0 : Convert.ToInt32(reader["unread_count"]),
                         reader.IsDBNull(reader.GetOrdinal("full_name")) ? null : reader["full_name"].ToString(),
-                        reader.IsDBNull(reader.GetOrdinal("user_role")) ? null : reader["user_role"].ToString()
+                        reader.IsDBNull(reader.GetOrdinal("user_role")) ? null : reader["user_role"].ToString(),
+                        null // avatarUrl resolved below from allUsers
                     ));
                 }
 
@@ -809,6 +842,7 @@ public class MessagesController : ControllerBase
                     string contactId = item.contactId;
                     string? fullName = item.fullName;
                     string? userRole = item.userRole;
+                    string? avatarUrl = item.avatarUrl;
 
                     bool isGroup = item.isGroup
                                  || contactId.StartsWith("gc_")
@@ -824,13 +858,15 @@ public class MessagesController : ControllerBase
                             var matchedUsers = allUsers.Where(u => string.Equals(u.role, targetRole, StringComparison.OrdinalIgnoreCase)).ToList();
                             if (index <= matchedUsers.Count)
                             {
-                                fullName = matchedUsers[index - 1].fullName;
-                                userRole = matchedUsers[index - 1].role;
+                                fullName  = matchedUsers[index - 1].fullName;
+                                userRole  = matchedUsers[index - 1].role;
+                                avatarUrl = matchedUsers[index - 1].avatarUrl;
                             }
                             else if (matchedUsers.Count > 0)
                             {
-                                fullName = matchedUsers[0].fullName;
-                                userRole = matchedUsers[0].role;
+                                fullName  = matchedUsers[0].fullName;
+                                userRole  = matchedUsers[0].role;
+                                avatarUrl = matchedUsers[0].avatarUrl;
                             }
                         }
                     }
@@ -862,6 +898,30 @@ public class MessagesController : ControllerBase
                               : $"Customer {contactId.TrimStart('c')}");
                     }
 
+                    // Load group avatar from stored JSON file if it's a group chat
+                    if (isGroup)
+                    {
+                        try
+                        {
+                            var groupAvatarPath = Path.Combine(AppContext.BaseDirectory, "group_avatars.json");
+                            if (System.IO.File.Exists(groupAvatarPath))
+                            {
+                                var json = await System.IO.File.ReadAllTextAsync(groupAvatarPath);
+                                var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+                                if (dict != null)
+                                {
+                                    if (dict.TryGetValue(contactId, out var gAvatar))
+                                        avatarUrl = gAvatar;
+                                    else if (string.Equals(contactId, "@Drive&Go AI", StringComparison.OrdinalIgnoreCase) && dict.TryGetValue("group_dispatch", out var aliasAvatar))
+                                        avatarUrl = aliasAvatar;
+                                    else if (string.Equals(contactId, "group_dispatch", StringComparison.OrdinalIgnoreCase) && dict.TryGetValue("@Drive&Go AI", out var aliasAvatar2))
+                                        avatarUrl = aliasAvatar2;
+                                }
+                            }
+                        }
+                        catch { /* ignore */ }
+                    }
+
                     list.Add(new
                     {
                         id             = contactId,
@@ -870,27 +930,122 @@ public class MessagesController : ControllerBase
                         lastMessage    = item.msgBody,
                         time           = item.ts.ToString("h:mm tt"),
                         deliveryStatus = item.delStatus,
-                        unreadCount    = item.unread
+                        unreadCount    = item.unread,
+                        avatarUrl      = avatarUrl,
+                        isOnline       = !isGroup && !string.Equals(contactId, "ai_copilot", StringComparison.OrdinalIgnoreCase)
+                                         ? (bool?)null  // determine online status separately if needed
+                                         : (bool?)null
                     });
                 }
             }
 
             // 3. Standard Group Chat channels
-            if (!seenIds.Contains("gc_drivers"))
-                list.Add(new { id = "gc_drivers",   name = "Drivers Community GC",
-                               role = "Group", lastMessage = "Group Chat Channel",
-                               time = "", deliveryStatus = "sent", unreadCount = 0 });
+            var gcIds = new[] { "gc_drivers", "gc_customers" };
+            var gcNames = new Dictionary<string, string>
+            {
+                ["gc_drivers"]   = "Drivers Community GC",
+                ["gc_customers"] = "Customers General Support"
+            };
 
-            if (!seenIds.Contains("gc_customers"))
-                list.Add(new { id = "gc_customers", name = "Customers General Support",
-                               role = "Group", lastMessage = "Group Chat Channel",
-                               time = "", deliveryStatus = "sent", unreadCount = 0 });
+            // Load group avatars for static GC channels
+            Dictionary<string, string> gcAvatars = new();
+            try
+            {
+                var groupAvatarPath = Path.Combine(AppContext.BaseDirectory, "group_avatars.json");
+                if (System.IO.File.Exists(groupAvatarPath))
+                {
+                    var json = await System.IO.File.ReadAllTextAsync(groupAvatarPath);
+                    gcAvatars = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json) ?? new();
+                }
+            }
+            catch { /* ignore */ }
+
+            foreach (var gcId in gcIds)
+            {
+                if (!seenIds.Contains(gcId))
+                {
+                    gcAvatars.TryGetValue(gcId, out var gcAvatar);
+                    list.Add(new
+                    {
+                        id = gcId,
+                        name = gcNames[gcId],
+                        role = "Group",
+                        lastMessage = "Group Chat Channel",
+                        time = "",
+                        deliveryStatus = "sent",
+                        unreadCount = 0,
+                        avatarUrl = gcAvatar,
+                        isOnline = (bool?)null
+                    });
+                }
+            }
 
             return Ok(list);
         }
         catch (Exception ex)
         {
             return StatusCode(500, new { Message = ex.Message });
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  POST /api/messages/groups/{groupId}/avatar
+    //  Uploads a group chat profile picture.
+    //  Stores the URL mapping in a local group_avatars.json file.
+    // ══════════════════════════════════════════════════════════════════
+    [HttpPost("groups/{groupId}/avatar")]
+    [RequestSizeLimit(100 * 1024 * 1024)] // Allow up to 100MB uploads for 4K images
+    [RequestFormLimits(MultipartBodyLengthLimit = 100 * 1024 * 1024)]
+    public async Task<IActionResult> UploadGroupAvatar(string groupId, IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest(new { Message = "No image file provided." });
+
+        if (!file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { Message = "Invalid file type. Only image files (JPG, PNG, WEBP) are allowed." });
+
+        try
+        {
+            var wwwroot = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+            var uploadsDir = Path.Combine(wwwroot, "uploads");
+            Directory.CreateDirectory(uploadsDir);
+
+            var ext      = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (string.IsNullOrEmpty(ext)) ext = ".png";
+            var fileName = $"gc_{groupId}_{Guid.NewGuid():N}{ext}";
+            var filePath = Path.Combine(uploadsDir, fileName);
+
+            await using (var fs = new FileStream(filePath, FileMode.Create))
+                await file.CopyToAsync(fs);
+
+            var publicUrl = $"/uploads/{fileName}";
+
+            // Persist group → avatar URL mapping
+            var mapPath = Path.Combine(AppContext.BaseDirectory, "group_avatars.json");
+            Dictionary<string, string> map = new();
+            if (System.IO.File.Exists(mapPath))
+            {
+                try
+                {
+                    var existing = await System.IO.File.ReadAllTextAsync(mapPath);
+                    map = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(existing) ?? new();
+                }
+                catch { /* corrupt file — start fresh */ }
+            }
+
+            map[groupId] = publicUrl;
+            if (string.Equals(groupId, "group_dispatch", StringComparison.OrdinalIgnoreCase))
+                map["@Drive&Go AI"] = publicUrl;
+            else if (string.Equals(groupId, "@Drive&Go AI", StringComparison.OrdinalIgnoreCase))
+                map["group_dispatch"] = publicUrl;
+            await System.IO.File.WriteAllTextAsync(mapPath,
+                System.Text.Json.JsonSerializer.Serialize(map, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+
+            return Ok(new { url = publicUrl, groupId, success = true });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = $"Server storage error: {ex.Message}" });
         }
     }
 
@@ -944,11 +1099,32 @@ public class MessagesController : ControllerBase
                     rcvr);
             }
 
+            // Broadcast thread seen event
+            await _hubContext.Clients.All.SendAsync("ThreadSeen", contactId, req.ViewerId);
+
             return Ok(new
             {
                 MarkedSeen = updatedMessages.Count,
                 MessageIds = updatedMessages.Select(m => m.msgId).ToArray()
             });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = ex.Message });
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  POST /api/messages/typing
+    //  Broadcasting live typing status (typing indicator in Messenger UI)
+    // ══════════════════════════════════════════════════════════════════
+    [HttpPost("typing")]
+    public async Task<IActionResult> SendTypingStatus([FromBody] TypingRequest req)
+    {
+        try
+        {
+            await _hubContext.Clients.All.SendAsync("TypingStatusChanged", req.SenderId, req.ReceiverId, req.IsTyping);
+            return Ok(new { Message = "Typing status broadcasted" });
         }
         catch (Exception ex)
         {
@@ -962,14 +1138,18 @@ public class MessagesController : ControllerBase
 // ══════════════════════════════════════════════════════════════════════
 public class MessageRequest
 {
-    public string SenderId      { get; set; } = string.Empty;
-    public string ReceiverId    { get; set; } = string.Empty;
-    public string MessageBody   { get; set; } = string.Empty;
-    public bool   IsGroupChat   { get; set; } = false;
-    public string SenderName    { get; set; } = string.Empty;
-    public string MediaType     { get; set; } = null;
-    public string MediaUrl      { get; set; } = null;
-    public string MediaMetadata { get; set; } = null;
+    public string SenderId         { get; set; } = string.Empty;
+    public string ReceiverId       { get; set; } = string.Empty;
+    public string MessageBody      { get; set; } = string.Empty;
+    public bool   IsGroupChat      { get; set; } = false;
+    public string SenderName       { get; set; } = string.Empty;
+    public string MediaType        { get; set; } = null;
+    public string MediaUrl         { get; set; } = null;
+    public string MediaMetadata    { get; set; } = null;
+    public long?  ReplyToId        { get; set; } = null;
+    public string ReplyToSender    { get; set; } = null;
+    public string ReplyToBody      { get; set; } = null;
+    public string ReplyToMediaType { get; set; } = null;
 }
 
 /// <summary>Used by POST /api/messages/{id}/seen to identify who opened the chat.</summary>
@@ -1003,6 +1183,9 @@ public class ReactMessageRequest
 {
     public string UserId { get; set; } = string.Empty;
     public string Emoji { get; set; } = string.Empty;
+    public string Reaction { get; set; } = string.Empty;
+
+    public string EffectiveEmoji => !string.IsNullOrWhiteSpace(Emoji) ? Emoji : Reaction;
 }
 
 public class ForwardMessageRequest
@@ -1010,4 +1193,11 @@ public class ForwardMessageRequest
     public int OriginalMessageId { get; set; }
     public string SenderId { get; set; } = string.Empty;
     public string NewReceiverId { get; set; } = string.Empty;
+}
+
+public class TypingRequest
+{
+    public string SenderId { get; set; } = string.Empty;
+    public string ReceiverId { get; set; } = string.Empty;
+    public bool IsTyping { get; set; } = true;
 }
