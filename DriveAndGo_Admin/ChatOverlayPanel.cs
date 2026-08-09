@@ -163,11 +163,68 @@ namespace DriveAndGo_Admin
                 string token = SessionManager.Token ?? string.Empty;
                 string currentTheme = ThemeManager.IsDarkMode ? "dark" : "light";
 
+                string adminAvatarBase64 = string.Empty;
+                if (SessionManager.CustomAvatar != null)
+                {
+                    try
+                    {
+                        using (var ms = new MemoryStream())
+                        {
+                            SessionManager.CustomAvatar.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                            adminAvatarBase64 = "data:image/png;base64," + Convert.ToBase64String(ms.ToArray());
+                        }
+                    }
+                    catch { }
+                }
+
                 // Pre-inject configuration variables before DOM loads
                 await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
                     $"window.API_BASE_URL = '{apiBase}'; " +
                     $"window.AUTH_TOKEN = '{token}'; " +
+                    $"window.ADMIN_AVATAR = '{adminAvatarBase64}'; " +
                     $"document.documentElement.setAttribute('data-theme', '{currentTheme}');");
+
+                _webView.CoreWebView2.NewWindowRequested += (sender, args) =>
+                {
+                    args.Handled = true;
+                    if (!string.IsNullOrWhiteSpace(args.Uri))
+                    {
+                        try
+                        {
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                            {
+                                FileName = args.Uri,
+                                UseShellExecute = true
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[ChatOverlayPanel] NewWindowRequested error: {ex.Message}");
+                        }
+                    }
+                };
+
+                _webView.CoreWebView2.NavigationStarting += (sender, args) =>
+                {
+                    if (!string.IsNullOrWhiteSpace(args.Uri) &&
+                        !args.Uri.StartsWith("http://chatassets.local", StringComparison.OrdinalIgnoreCase) &&
+                        !args.Uri.StartsWith("about:blank", StringComparison.OrdinalIgnoreCase))
+                    {
+                        args.Cancel = true;
+                        try
+                        {
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                            {
+                                FileName = args.Uri,
+                                UseShellExecute = true
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[ChatOverlayPanel] NavigationStarting error: {ex.Message}");
+                        }
+                    }
+                };
 
                 _webView.CoreWebView2.NavigationCompleted += (sender, args) =>
                 {
@@ -329,9 +386,36 @@ namespace DriveAndGo_Admin
                     action = actProp.GetString();
                 else if (root.TryGetProperty("ACTION", out actProp))
                     action = actProp.GetString();
+                else if (root.TryGetProperty("type", out var typeProp))
+                    action = typeProp.GetString();
+                else if (root.TryGetProperty("TYPE", out typeProp))
+                    action = typeProp.GetString();
 
                 switch (action)
                 {
+                    case "open_external_url":
+                    case "openUrl":
+                    case "open_url":
+                        if (root.TryGetProperty("url", out var urlProp))
+                        {
+                            string extUrl = urlProp.GetString();
+                            if (!string.IsNullOrWhiteSpace(extUrl))
+                            {
+                                try
+                                {
+                                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                                    {
+                                        FileName = extUrl,
+                                        UseShellExecute = true
+                                    });
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"[ChatOverlayPanel] Error opening external URL: {ex.Message}");
+                                }
+                            }
+                        }
+                        break;
                     case "toggleFullscreen":
                     case "TOGGLE_FULLSCREEN":
                         bool isFullscreen = (root.TryGetProperty("isFullscreen", out var fsProp) && fsProp.GetBoolean()) ||

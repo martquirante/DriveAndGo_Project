@@ -156,10 +156,12 @@ const INITIAL_CONVERSATIONS = [
 ];
 
 const DEFAULT_SUGGESTION_PILLS = [
-  { text: '📊 Today\'s Revenue Summary', query: 'Hi magkano kinita natin ngayon araw??' },
-  { text: '⚠️ Overdue Rentals & Penalties', query: 'List all overdue rentals with penalty estimates.' },
-  { text: '🚗 Active Vehicle Leases', query: 'Show active vehicle rentals overview' },
-  { text: '🏎️ Competitor Market Analysis', query: 'What do u say about Anis Transport competitive analysis?' }
+  { text: '📊 Today\'s Revenue Summary', query: 'Hi magkano kinita natin ngayon araw??', keywords: ['revenue', 'sales', 'money', 'kinita', 'today', 'summary', 'kita', 'earning', 'financial', 'total'] },
+  { text: '⚠️ Overdue Rentals & Penalties', query: 'List all overdue rentals with penalty estimates.', keywords: ['overdue', 'penalty', 'late', 'penalties', 'overdue rentals', 'unpaid', 'delay'] },
+  { text: '🚗 Active Vehicle Leases', query: 'Show active vehicle rentals overview', keywords: ['vehicle', 'car', 'fleet', 'leases', 'active', 'rentals', 'auto', 'suv', 'sedan'] },
+  { text: '🏎️ Competitor Market Analysis', query: 'What do u say about Anis Transport competitive analysis?', keywords: ['competitor', 'market', 'analysis', 'price', 'rates', 'surge', 'compare'] },
+  { text: '🧑‍✈️ Driver Performance Ratings', query: 'Show top drivers and recent performance ratings', keywords: ['driver', 'ratings', 'performance', 'drivers', 'top driver', 'earning'] },
+  { text: '🔧 Maintenance & Service Alerts', query: 'Show vehicles due for maintenance', keywords: ['maintenance', 'service', 'repair', 'oil', 'checkup', 'due', 'issue'] }
 ];
 
 const InfoPanel = ({
@@ -567,6 +569,10 @@ function ChatOverlay({ initialQuery = '' }) {
   const fileInputRef                       = useRef(null);
 
   const [inputText, setInputText] = useState('');
+  const [hasAiMentionTag, setHasAiMentionTag] = useState(false);
+  const [drafts, setDrafts] = useState({}); // { [convId]: { text: string, hasMention: boolean } }
+  const draftPrevConvIdRef = useRef(activeConvId);
+  const scrollPrevConvIdRef = useRef(activeConvId);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const inputRef = useRef(null);
   const inputShellRef = useRef(null);
@@ -601,11 +607,7 @@ function ChatOverlay({ initialQuery = '' }) {
   const [mentionQuery, setMentionQuery] = useState(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const mentionTargets = [
-    { id: 'ai', name: 'Drive&Go AI', role: 'AI Copilot Intelligence', avatar: '🤖' },
-    { id: 'admin', name: 'Admin Dispatcher', role: 'Operations Admin', avatar: 'A' },
-    { id: 'drivers', name: 'Drivers Community GC', role: 'Group Channel', avatar: '🚘' },
-    { id: 'customers', name: 'Customers Support GC', role: 'Group Channel', avatar: '👥' },
-    { id: 'joyce', name: 'Joyce Dela Cruz', role: 'Customer', avatar: 'J' }
+    { id: 'ai', name: 'Drive&Go AI', role: 'AI Support Assistant', avatar: 'AI' }
   ];
 
   const [activePopup, setActivePopup] = useState(null); // { type, message, rect }
@@ -615,12 +617,112 @@ function ChatOverlay({ initialQuery = '' }) {
   const [reactionTab, setReactionTab] = useState('All');
   const [editingMessage, setEditingMessage] = useState(null);
   const [pinnedMessage, setPinnedMessage] = useState(null);
+  const [adminProfilePfp, setAdminProfilePfp] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
   const [lightboxMedia, setLightboxMedia] = useState(null);
 
+  useEffect(() => {
+    fetch(`${apiBase}/api/users/1`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && (data.avatarBase64 || data.avatar_base64)) {
+          const pic = data.avatarBase64 || data.avatar_base64;
+          if (pic && pic.length > 20) {
+            setAdminProfilePfp(pic.startsWith('data:') ? pic : `data:image/png;base64,${pic}`);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // AI & Messenger Typing States
   const [aiSessionId, setAiSessionId] = useState(null);
-  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiLoadingConvoId, setAiLoadingConvoId] = useState(null);
+  const isAiLoading = Boolean(aiLoadingConvoId) && String(aiLoadingConvoId) === String(activeConvId);
+
+  useEffect(() => {
+    if (isAiLoading) {
+      setTimeout(() => scrollToBottom(), 50);
+    }
+  }, [isAiLoading]);
+
+  // ── Auto-Expand Textarea Height Dynamic Effect ──────────────────────────────
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+      const newHeight = Math.min(inputRef.current.scrollHeight, 160);
+      inputRef.current.style.height = `${newHeight}px`;
+    }
+  }, [inputText]);
+
+  // Antigravity-Style AI Request Queue State & Ref
+  const [aiQueue, setAiQueue] = useState([]);
+  const aiQueueRef = useRef([]);
+  const isProcessingQueueRef = useRef(false);
+  const cancelledQueueItemIdsRef = useRef(new Set());
+
+  const updateAiQueue = (newQueue) => {
+    aiQueueRef.current = newQueue;
+    setAiQueue(newQueue);
+  };
+
+  // ── Per-Conversation Draft Sync Effect (Messenger Style) ───────────────────
+  useEffect(() => {
+    const prevId = draftPrevConvIdRef.current;
+    if (prevId === activeConvId) return;
+
+    // 1. Save draft for previous conversation thread
+    setDrafts(prev => ({
+      ...prev,
+      [prevId]: {
+        text: inputText,
+        hasMention: hasAiMentionTag
+      }
+    }));
+
+    // 2. Load draft for newly selected activeConvId (or clear if empty)
+    const targetDraft = drafts[activeConvId];
+    if (targetDraft) {
+      setInputText(targetDraft.text || '');
+      setHasAiMentionTag(!!targetDraft.hasMention);
+    } else {
+      setInputText('');
+      setHasAiMentionTag(false);
+    }
+
+    // 3. Update previous conv ref
+    draftPrevConvIdRef.current = activeConvId;
+  }, [activeConvId]);
+
+  // Desktop Mouse Drag-to-Scroll State for AI Suggestion Pills
+  const pillScrollRef = useRef(null);
+  const [isPillDragging, setIsPillDragging] = useState(false);
+  const [pillStartX, setPillStartX] = useState(0);
+  const [pillScrollLeft, setPillScrollLeft] = useState(0);
+  const [hasPillDragged, setHasPillDragged] = useState(false);
+
+  const handlePillMouseDown = (e) => {
+    if (!pillScrollRef.current) return;
+    setIsPillDragging(true);
+    setHasPillDragged(false);
+    setPillStartX(e.pageX - pillScrollRef.current.offsetLeft);
+    setPillScrollLeft(pillScrollRef.current.scrollLeft);
+  };
+
+  const handlePillMouseLeaveOrUp = () => {
+    setIsPillDragging(false);
+  };
+
+  const handlePillMouseMove = (e) => {
+    if (!isPillDragging || !pillScrollRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - pillScrollRef.current.offsetLeft;
+    const walk = (x - pillStartX) * 1.8;
+    if (Math.abs(walk) > 4) {
+      setHasPillDragged(true);
+    }
+    pillScrollRef.current.scrollLeft = pillScrollLeft - walk;
+  };
   const [typingUsers, setTypingUsers] = useState({});
   const typingTimeoutRef = useRef(null);
 
@@ -759,7 +861,7 @@ function ChatOverlay({ initialQuery = '' }) {
     if (removing) delete next.admin;
     else next.admin = emoji;
 
-    updateMessageLocally(getMessageKey(msg), m => ({ ...m, reactions: next }));
+    updateMessageLocally(getMessageKey(msg), m => ({ ...m, reactions: JSON.stringify(next) }));
     closePopups();
 
     try {
@@ -785,7 +887,7 @@ function ChatOverlay({ initialQuery = '' }) {
       showToast('This message is still syncing.');
       return;
     }
-    const target = receiverId === 'group_dispatch' ? '@Drive&Go AI' : receiverId;
+    const target = receiverId;
     try {
       await fetch(`${apiBase}/api/messages/forward`, {
         method: 'POST',
@@ -803,6 +905,12 @@ function ChatOverlay({ initialQuery = '' }) {
 
   const handleUnsendMessage = async (msg, scope) => {
     try {
+      // Cancel any pending AI queue items matching this message
+      const msgKey = getMessageKey(msg);
+      cancelledQueueItemIdsRef.current.add(msgKey);
+      if (msg.id) cancelledQueueItemIdsRef.current.add(msg.id);
+      updateAiQueue(aiQueueRef.current.filter(item => item.id !== msgKey && item.id !== msg.id));
+
       if (scope === 'everyone') {
         await callMessageAction(msg, 'unsend', null, 'DELETE');
         updateMessageLocally(getMessageKey(msg), { isUnsent: true, is_unsent: true, body: '', messageBody: '' });
@@ -901,7 +1009,7 @@ function ChatOverlay({ initialQuery = '' }) {
             let avatarBg = 'from-purple-500 to-indigo-600';
 
             if (isAi) {
-              avatar = '🤖';
+              avatar = 'AI';
               avatarBg = 'from-orange-500 to-amber-600';
             } else if (isGroup) {
               avatar = cId === 'gc_drivers' ? '🚘' : '🏢';
@@ -973,14 +1081,14 @@ function ChatOverlay({ initialQuery = '' }) {
   const fetchThreadMessages = async (contactId) => {
     if (!contactId) return;
     try {
-      const targetQueryId = contactId === 'group_dispatch' ? '@Drive&Go AI' : contactId;
+      const targetQueryId = contactId;
       const res = await fetch(`${apiBase}/api/messages?senderId=admin&receiverId=${encodeURIComponent(targetQueryId)}`);
       if (res.ok) {
         const rawJson = await res.json();
         const dbMsgs = Array.isArray(rawJson) ? rawJson : (rawJson && Array.isArray(rawJson.value) ? rawJson.value : []);
 
         if (dbMsgs.length > 0) {
-          const formattedMsgs = dbMsgs.map(m => {
+          const formattedMsgs = dbMsgs.map((m, idx) => {
             let bodyText = m.messageBody || m.body || '';
             let uiComp = m.ui_component || m.uiComponentType || 'Text Only';
             let uiData = m.data || m.uiPayload || [];
@@ -1010,6 +1118,16 @@ function ChatOverlay({ initialQuery = '' }) {
               } catch (e) {}
             }
 
+            let delStatus = m.deliveryStatus || 'delivered';
+            if (isMine && (contactId === 'ai_copilot' || m.receiverId === 'ai_copilot' || contactId === 'group_dispatch')) {
+              const hasAiResponseAfter = dbMsgs.slice(idx + 1).some(next => 
+                next.senderId === 'ai_copilot' || next.senderId === '@Drive&Go AI' || next.senderName === 'Drive&Go AI'
+              );
+              if (hasAiResponseAfter) {
+                delStatus = 'seen';
+              }
+            }
+
             return {
               id: m.messageId || m.id || Date.now(),
               messageId: m.messageId || m.id,
@@ -1022,8 +1140,8 @@ function ChatOverlay({ initialQuery = '' }) {
               isMine,
               time: formatLocalTime(m.timestamp || m.time),
               timestamp: m.timestamp,
-              deliveryStatus: m.deliveryStatus || 'seen',
-              status: m.deliveryStatus || 'seen',
+              deliveryStatus: delStatus,
+              status: delStatus,
               isEdited: !!(m.isEdited || m.is_edited),
               editHistory: m.editHistory || m.edit_history,
               isUnsent: !!(m.isUnsent || m.is_unsent),
@@ -1082,7 +1200,8 @@ function ChatOverlay({ initialQuery = '' }) {
         if (!data || !data.event_name) return;
 
         if (data.event_name === 'ReceiveChatMessage') {
-          const targetThread = data.senderId === 'admin' ? data.receiverId : data.senderId;
+          const isMineOrAi = data.senderId === 'admin' || data.senderId === '@Drive&Go AI' || data.senderId === 'Drive&Go AI' || (data.senderId && data.senderId.includes('AI'));
+          const targetThread = isMineOrAi ? data.receiverId : data.senderId;
           fetchThreadMessages(targetThread);
           fetchDbConversations();
         } else if (data.event_name === 'MessageStatusChanged' || data.event_name === 'MessageEdited' || data.event_name === 'MessageUnsent' || data.event_name === 'MessageReactionChanged') {
@@ -1150,7 +1269,7 @@ function ChatOverlay({ initialQuery = '' }) {
   // ── Send Live Typing Signal (Messenger real-time flow) ─────────────────────
   const sendTypingSignal = useCallback(async (isTyping) => {
     try {
-      const targetReceiver = activeConvId === 'group_dispatch' ? '@Drive&Go AI' : activeConvId;
+      const targetReceiver = activeConvId;
       await fetch(`${apiBase}/api/messages/typing`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1161,8 +1280,20 @@ function ChatOverlay({ initialQuery = '' }) {
 
   // ── Mention Parser & Typing Signal on Input Change ─────────────────────────
   const handleInputChange = (e) => {
-    const val = e.target.value;
+    let val = e.target.value;
+
+    if (val.includes('@Drive&Go AI') || val.includes('@DriveAndGo AI') || val.includes('@Meta AI')) {
+      setHasAiMentionTag(true);
+      val = val.replace(/@(Drive&Go AI|DriveAndGo AI|Meta AI)/gi, '').trimStart();
+    }
+
     setInputText(val);
+
+    // Persist draft message per active conversation thread
+    setDrafts(prev => ({
+      ...prev,
+      [activeConvId]: { text: val, hasMention: hasAiMentionTag }
+    }));
 
     // Broadcast live typing status
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -1187,20 +1318,28 @@ function ChatOverlay({ initialQuery = '' }) {
   };
 
   const insertMention = (target) => {
-    const textarea = inputRef.current;
-    const cursorPos = textarea?.selectionStart ?? inputText.length;
-    const textBeforeCursor = inputText.slice(0, cursorPos);
-    const lastAtIndex = textBeforeCursor.lastIndexOf('@');
-    if (lastAtIndex !== -1) {
-      const prefix = inputText.slice(0, lastAtIndex);
-      const suffix = inputText.slice(cursorPos);
-      const newText = `${prefix}@${target.name} ${suffix}`;
-      setInputText(newText);
-      window.setTimeout(() => {
-        inputRef.current?.focus();
-        const nextCursor = `${prefix}@${target.name} `.length;
-        inputRef.current?.setSelectionRange?.(nextCursor, nextCursor);
-      }, 0);
+    if (target.id === 'ai' || (target.name && target.name.includes('Drive&Go AI'))) {
+      setHasAiMentionTag(true);
+      const textarea = inputRef.current;
+      const cursorPos = textarea?.selectionStart ?? inputText.length;
+      const textBeforeCursor = inputText.slice(0, cursorPos);
+      const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+      if (lastAtIndex !== -1) {
+        const prefix = inputText.slice(0, lastAtIndex);
+        const suffix = inputText.slice(cursorPos);
+        setInputText(`${prefix}${suffix}`.trimStart());
+      }
+    } else {
+      const textarea = inputRef.current;
+      const cursorPos = textarea?.selectionStart ?? inputText.length;
+      const textBeforeCursor = inputText.slice(0, cursorPos);
+      const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+      if (lastAtIndex !== -1) {
+        const prefix = inputText.slice(0, lastAtIndex);
+        const suffix = inputText.slice(cursorPos);
+        const newText = `${prefix}@${target.name} ${suffix}`;
+        setInputText(newText);
+      }
     }
     setMentionQuery(null);
     setMentionIndex(0);
@@ -1242,7 +1381,7 @@ function ChatOverlay({ initialQuery = '' }) {
           }
         } catch (e) {}
 
-        const targetReceiver = activeConvId === 'group_dispatch' ? '@Drive&Go AI' : activeConvId;
+        const targetReceiver = activeConvId;
 
         try {
           await fetch(`${apiBase}/api/messages`, {
@@ -1333,13 +1472,12 @@ function ChatOverlay({ initialQuery = '' }) {
   }, []);
 
   const lastMsgCountRef = useRef(0);
-  const prevConvIdRef = useRef(activeConvId);
 
   useEffect(() => {
-    const isNewConv = prevConvIdRef.current !== activeConvId;
+    const isNewConv = scrollPrevConvIdRef.current !== activeConvId;
     const isNewMsgAdded = activeMessages.length > lastMsgCountRef.current;
 
-    prevConvIdRef.current = activeConvId;
+    scrollPrevConvIdRef.current = activeConvId;
     lastMsgCountRef.current = activeMessages.length;
 
     if (isNewConv) {
@@ -1430,12 +1568,13 @@ function ChatOverlay({ initialQuery = '' }) {
       await saveEditedMessage();
       return;
     }
-    if (!inputText.trim() && !attachedMedia) return;
-
-    const msgText = inputText.trim();
+    if (!inputText.trim() && !attachedMedia && !hasAiMentionTag) return;
+    const isAiTagged = hasAiMentionTag || inputText.includes('@Drive&Go AI') || inputText.includes('@DriveAndGo AI') || inputText.includes('@Meta AI');
+    const cleanUserText = inputText.replace(/@(Drive&Go AI|DriveAndGo AI|Meta AI)/gi, '').trim();
+    const msgText = (isAiTagged ? '@Drive&Go AI ' : '') + cleanUserText;
     const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const newMsgId = Date.now();
-    const targetReceiver = activeConvId === 'group_dispatch' ? '@Drive&Go AI' : activeConvId;
+    const targetReceiver = activeConvId;
 
     const mediaMetaObj = attachedMedia ? { ...(attachedMedia.metadata || {}) } : {};
     if (replyingTo) {
@@ -1446,11 +1585,61 @@ function ChatOverlay({ initialQuery = '' }) {
     }
     const finalMediaMetaStr = Object.keys(mediaMetaObj).length > 0 ? JSON.stringify(mediaMetaObj) : null;
 
+    const isAiTarget = activeConvId === 'ai_copilot' || isAiTagged;
+    const isAiBusy = isAiLoading || isProcessingQueueRef.current;
+
+    setInputText('');
+    setHasAiMentionTag(false);
+    setDrafts(prev => {
+      const next = { ...prev };
+      delete next[activeConvId];
+      return next;
+    });
+    setAttachedMedia(null);
+    setLinkPreviewData(null);
+    setIsLinkPreviewDismissed(false);
+    setReplyingTo(null); // Clear reply state after send
+
+    if (isAiTarget) {
+      if (isAiBusy) {
+        // AI is currently busy: enqueue request WITHOUT posting user bubble yet (holds in Queued Messages container)
+        enqueueAiRequest({
+          id: Date.now(),
+          text: msgText,
+          convId: activeConvId,
+          isGroup: activeConv.isGroup,
+          isCopilot: activeConvId === 'ai_copilot',
+          shouldPostUserMsg: true,
+          replyingTo
+        });
+      } else {
+        // AI is free: post user message bubble in parallel and start AI processing immediately
+        postUserMessageToDbAndUi(msgText, activeConvId, activeConv.isGroup, replyingTo, attachedMedia, finalMediaMetaStr, newMsgId, nowStr);
+        enqueueAiRequest({
+          id: Date.now(),
+          text: msgText,
+          convId: activeConvId,
+          isGroup: activeConv.isGroup,
+          isCopilot: activeConvId === 'ai_copilot',
+          shouldPostUserMsg: false,
+          replyingTo
+        });
+      }
+    } else {
+      // Regular non-AI message: post immediately
+      await postUserMessageToDbAndUi(msgText, activeConvId, activeConv.isGroup, replyingTo, attachedMedia, finalMediaMetaStr, newMsgId, nowStr);
+    }
+  };
+
+  // ── Helper to Post User Message Bubble to Database & UI ───────────────────
+  const postUserMessageToDbAndUi = async (msgText, convId, isGroup = false, replyCtx = null, media = null, mediaMetaStr = null, msgId = Date.now(), timeStr = null) => {
+    const nowStr = timeStr || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
     const newMsg = {
-      id: newMsgId,
-      messageId: newMsgId,
+      id: msgId,
+      messageId: msgId,
       senderId: 'admin',
-      receiverId: targetReceiver,
+      receiverId: convId,
       sender: 'Admin',
       senderName: 'Admin',
       body: msgText,
@@ -1458,19 +1647,18 @@ function ChatOverlay({ initialQuery = '' }) {
       isMine: true,
       time: nowStr,
       status: 'sending',
-      media: attachedMedia,
+      media: media,
       reactions: {},
-      mediaMetadata: finalMediaMetaStr,
-      // Reply context
-      replyToId: replyingTo?.id || null,
-      replyToSender: replyingTo?.sender || null,
-      replyToBody: replyingTo?.body || null,
-      replyToMediaType: replyingTo?.mediaType || null,
+      mediaMetadata: mediaMetaStr,
+      replyToId: replyCtx?.id || null,
+      replyToSender: replyCtx?.sender || null,
+      replyToBody: replyCtx?.body || null,
+      replyToMediaType: replyCtx?.mediaType || null,
     };
 
     setMessagesByConv(prev => ({
       ...prev,
-      [activeConvId]: [...(prev[activeConvId] || []), newMsg]
+      [convId]: [...(prev[convId] || []), newMsg]
     }));
 
     try {
@@ -1479,52 +1667,197 @@ function ChatOverlay({ initialQuery = '' }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           senderId: 'admin',
-          receiverId: targetReceiver,
+          receiverId: convId,
           messageBody: msgText,
-          isGroupChat: activeConv.isGroup,
-          mediaType: attachedMedia ? attachedMedia.type : null,
-          mediaUrl: attachedMedia ? attachedMedia.url : null,
-          mediaMetadata: finalMediaMetaStr,
-          replyToId: replyingTo?.id || null,
-          replyToSender: replyingTo?.sender || null,
-          replyToBody: replyingTo?.body || null,
-          replyToMediaType: replyingTo?.mediaType || null,
+          isGroupChat: !!isGroup,
+          mediaType: media ? media.type : null,
+          mediaUrl: media ? media.url : null,
+          mediaMetadata: mediaMetaStr,
+          replyToId: replyCtx?.id || null,
+          replyToSender: replyCtx?.sender || null,
+          replyToBody: replyCtx?.body || null,
+          replyToMediaType: replyCtx?.mediaType || null,
         })
       });
 
       if (res.ok) {
         const resData = await res.json();
         const realId = resData.messageId || resData.MessageId;
-        updateMessageLocally(newMsgId, m => ({
+        updateMessageLocally(msgId, m => ({
           ...m,
           id: realId || m.id,
           messageId: realId || m.messageId,
-          status: 'sent',
-          deliveryStatus: 'sent'
+          status: 'delivered',
+          deliveryStatus: 'delivered'
         }));
       }
 
-      await fetchThreadMessages(activeConvId);
+      await fetchThreadMessages(convId);
       fetchDbConversations();
     } catch (err) {
       console.warn("[ChatOverlay] Post message to DB API failed:", err);
-      updateMessageLocally(newMsgId, m => ({ ...m, status: 'failed' }));
+      updateMessageLocally(msgId, m => ({ ...m, status: 'failed' }));
+    }
+  };
+
+  // ── Antigravity-Style AI Sequential Queue Worker ────────────────────────────
+  const enqueueAiRequest = (reqObj) => {
+    const nextQueue = [...aiQueueRef.current, reqObj];
+    updateAiQueue(nextQueue);
+    processNextAiQueueItem();
+  };
+
+  const processNextAiQueueItem = async () => {
+    if (isProcessingQueueRef.current) return;
+    if (aiQueueRef.current.length === 0) return;
+
+    isProcessingQueueRef.current = true;
+    const item = aiQueueRef.current[0];
+
+    // Dequeue active working item immediately so queue only shows pending waiting items
+    updateAiQueue(aiQueueRef.current.slice(1));
+
+    // Abort if item was deleted/canceled by user
+    if (cancelledQueueItemIdsRef.current.has(item.id)) {
+      cancelledQueueItemIdsRef.current.delete(item.id);
+      isProcessingQueueRef.current = false;
+      if (aiQueueRef.current.length > 0) {
+        setTimeout(() => processNextAiQueueItem(), 100);
+      }
+      return;
     }
 
-    setInputText('');
-    setAttachedMedia(null);
-    setLinkPreviewData(null);
-    setIsLinkPreviewDismissed(false);
-    setReplyingTo(null); // Clear reply state after send
+    try {
+      // 1. If this queued message was held, post the user message bubble to DB & UI NOW as its turn starts!
+      if (item.shouldPostUserMsg) {
+        if (cancelledQueueItemIdsRef.current.has(item.id)) return;
+        await postUserMessageToDbAndUi(item.text, item.convId, item.isGroup, item.replyingTo);
+      }
 
-    if (msgText.includes('@Drive&Go AI') || activeConvId === 'ai_copilot') {
-      setIsAiLoading(true);
+      // Set AI thinking state AFTER the user message is posted so the UI makes sense (User bubble appears, then AI thinking bubble).
+      setAiLoadingConvoId(item.convId);
+
+      // 2. Query AI backend
+      if (item.isCopilot) {
+        await handleSendAiMessageInternal(item.text);
+      } else {
+        await handleSendInChatMentionInternal(item.text, item.convId, item.isGroup);
+      }
+    } catch (err) {
+      console.warn("[ChatOverlay] Queue processing error:", err);
+    } finally {
+      isProcessingQueueRef.current = false;
+      // Process remaining queued items immediately
+      if (aiQueueRef.current.length > 0) {
+        processNextAiQueueItem();
+      }
+    }
+  };
+
+  const handleRemoveQueuedItem = (itemId) => {
+    cancelledQueueItemIdsRef.current.add(itemId);
+    updateAiQueue(aiQueueRef.current.filter(item => item.id !== itemId));
+  };
+
+  // ── In-Chat Mention Sender (/api/messages/mention-ai) ──────────────────────
+  const handleSendInChatMentionInternal = async (userPrompt, convId, isGroup = false) => {
+    setAiLoadingConvoId(convId);
+
+    try {
+      const res = await fetch(`${apiBase}/api/messages/mention-ai`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: convId,
+          senderId: 'admin',
+          userPrompt: userPrompt,
+          isGroupChat: !!isGroup
+        })
+      });
+
+      if (res.ok) {
+        const resData = await res.json();
+        const aiMsgObj = {
+          id: resData.messageId || Date.now(),
+          messageId: resData.messageId || Date.now(),
+          senderId: '@Drive&Go AI',
+          receiverId: convId,
+          senderName: 'Drive&Go AI',
+          sender: 'Drive&Go AI',
+          body: resData.messageBody || resData.text || '',
+          messageBody: resData.messageBody || resData.text || '',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isMine: false,
+          replyToSender: 'you',
+          replyToBody: userPrompt
+        };
+
+        setMessagesByConv(prev => {
+          const threadMsgs = prev[convId] || [];
+          const updatedThread = threadMsgs.map(m => {
+            if (m.isMine || m.senderId === 'admin' || m.sender === 'Admin') {
+              return { ...m, deliveryStatus: 'seen', status: 'seen', isSeen: true };
+            }
+            return m;
+          });
+          return {
+            ...prev,
+            [convId]: [...updatedThread.filter(m => (m.id || m.messageId) !== aiMsgObj.id), aiMsgObj]
+          };
+        });
+        fetchThreadMessages(convId);
+        fetchDbConversations();
+      } else {
+        const errorMsgObj = {
+          id: Date.now(),
+          messageId: Date.now(),
+          senderId: '@Drive&Go AI',
+          receiverId: convId,
+          senderName: 'Drive&Go AI',
+          sender: 'Drive&Go AI',
+          body: 'Sorry, I am currently unavailable. Please try again later.',
+          messageBody: 'Sorry, I am currently unavailable. Please try again later.',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isMine: false,
+          replyToSender: 'you',
+          replyToBody: userPrompt
+        };
+        setMessagesByConv(prev => {
+          const threadMsgs = prev[convId] || [];
+          return { ...prev, [convId]: [...threadMsgs, errorMsgObj] };
+        });
+        fetchThreadMessages(convId);
+      }
+    } catch (err) {
+      console.warn("[ChatOverlay] Mention AI error:", err);
+      const errorMsgObj = {
+        id: Date.now(),
+        messageId: Date.now(),
+        senderId: '@Drive&Go AI',
+        receiverId: convId,
+        senderName: 'Drive&Go AI',
+        sender: 'Drive&Go AI',
+        body: 'Sorry, I am currently unavailable. Please try again later.',
+        messageBody: 'Sorry, I am currently unavailable. Please try again later.',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isMine: false,
+        replyToSender: 'you',
+        replyToBody: userPrompt
+      };
+      setMessagesByConv(prev => {
+        const threadMsgs = prev[convId] || [];
+        return { ...prev, [convId]: [...threadMsgs, errorMsgObj] };
+      });
+      fetchThreadMessages(convId);
+    } finally {
+      setAiLoadingConvoId(prev => (prev === convId ? null : prev));
     }
   };
 
   // ── AI Message Sender (/api/ai/chat) ───────────────────────────────────────
-  const handleSendAiMessage = async (userMessage) => {
-    setIsAiLoading(true);
+  const handleSendAiMessageInternal = async (userMessage) => {
+    setAiLoadingConvoId('ai_copilot');
+
     try {
       const res = await fetch(`${apiBase}/api/ai/chat`, {
         method: 'POST',
@@ -1532,20 +1865,86 @@ function ChatOverlay({ initialQuery = '' }) {
         body: JSON.stringify({
           sessionId: aiSessionId || 1,
           adminUserId,
-          userMessage: userMessage.replace('@Drive&Go AI', '').trim()
+          userMessage: userMessage.replace('@Drive&Go AI', '').replace('@Meta AI', '').trim()
         })
       });
 
       if (res.ok) {
-        await res.json();
-        fetchThreadMessages(activeConvId);
+        const resData = await res.json();
+        const aiMsgObj = {
+          id: resData.messageId || Date.now(),
+          messageId: resData.messageId || Date.now(),
+          senderId: '@Drive&Go AI',
+          receiverId: 'ai_copilot',
+          senderName: 'Drive&Go AI',
+          sender: 'Drive&Go AI',
+          body: resData.text || resData.messageBody || '',
+          messageBody: resData.text || resData.messageBody || '',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isMine: false,
+          replyToSender: 'you',
+          replyToBody: userMessage
+        };
+
+        setMessagesByConv(prev => {
+          const threadMsgs = prev.ai_copilot || [];
+          const updatedThread = threadMsgs.map(m => {
+            if (m.isMine || m.senderId === 'admin' || m.sender === 'Admin') {
+              return { ...m, deliveryStatus: 'seen', status: 'seen', isSeen: true };
+            }
+            return m;
+          });
+          return {
+            ...prev,
+            ai_copilot: [...updatedThread.filter(m => (m.id || m.messageId) !== aiMsgObj.id), aiMsgObj]
+          };
+        });
+        fetchThreadMessages('ai_copilot');
         fetchDbConversations();
+      } else {
+        const errorMsgObj = {
+          id: Date.now(),
+          messageId: Date.now(),
+          senderId: '@Drive&Go AI',
+          receiverId: 'ai_copilot',
+          senderName: 'Drive&Go AI',
+          sender: 'Drive&Go AI',
+          body: 'Sorry, I am currently unavailable. Please try again later.',
+          messageBody: 'Sorry, I am currently unavailable. Please try again later.',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isMine: false,
+          replyToSender: 'you',
+          replyToBody: userMessage
+        };
+        setMessagesByConv(prev => {
+          const threadMsgs = prev.ai_copilot || [];
+          return { ...prev, ai_copilot: [...threadMsgs, errorMsgObj] };
+        });
+        fetchThreadMessages('ai_copilot');
       }
     } catch (err) {
       console.warn("[ChatOverlay] AI Chat warning:", err);
+      const errorMsgObj = {
+        id: Date.now(),
+        messageId: Date.now(),
+        senderId: '@Drive&Go AI',
+        receiverId: 'ai_copilot',
+        senderName: 'Drive&Go AI',
+        sender: 'Drive&Go AI',
+        body: 'Sorry, I am currently unavailable. Please try again later.',
+        messageBody: 'Sorry, I am currently unavailable. Please try again later.',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isMine: false,
+        replyToSender: 'you',
+        replyToBody: userMessage
+      };
+      setMessagesByConv(prev => {
+        const threadMsgs = prev.ai_copilot || [];
+        return { ...prev, ai_copilot: [...threadMsgs, errorMsgObj] };
+      });
+      fetchThreadMessages('ai_copilot');
     } finally {
-      setIsAiLoading(false);
-      setTimeout(() => fetchThreadMessages(activeConvId), 600);
+      setAiLoadingConvoId(prev => (prev === 'ai_copilot' ? null : prev));
     }
   };
 
@@ -1596,12 +1995,18 @@ function ChatOverlay({ initialQuery = '' }) {
       }
     };
 
+    const handleReactEvent = (e) => {
+      const { msg, emoji } = e.detail || {};
+      if (msg) handleReactToMessage(msg, emoji);
+    };
+
     window.addEventListener('chat:replyTo', handleReplyEvent);
     window.addEventListener('chat:editMessage', handleEditEvent);
     window.addEventListener('chat:unsendMessage', handleUnsendEvent);
     window.addEventListener('chat:forwardMessage', handleForwardEvent);
     window.addEventListener('chat:pinMessage', handlePinEvent);
     window.addEventListener('chat:openLightbox', handleLightboxEvent);
+    window.addEventListener('chat:reactToMessage', handleReactEvent);
 
     return () => {
       window.removeEventListener('chat:replyTo', handleReplyEvent);
@@ -1610,14 +2015,23 @@ function ChatOverlay({ initialQuery = '' }) {
       window.removeEventListener('chat:forwardMessage', handleForwardEvent);
       window.removeEventListener('chat:pinMessage', handlePinEvent);
       window.removeEventListener('chat:openLightbox', handleLightboxEvent);
+      window.removeEventListener('chat:reactToMessage', handleReactEvent);
     };
   }, []);
 
   // ── Filtered Conversations ─────────────────────────────────────────────────
   const filteredConversations = conversations.filter(c => {
-    const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          (c.lastMessage && c.lastMessage.toLowerCase().includes(searchQuery.toLowerCase()));
-    if (!matchesSearch) return false;
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      const matchesSearch = (c.name && c.name.toLowerCase().includes(q)) ||
+                            (c.role && c.role.toLowerCase().includes(q)) ||
+                            (c.lastMessage && c.lastMessage.toLowerCase().includes(q)) ||
+                            (c.status && c.status.toLowerCase().includes(q)) ||
+                            (c.id && String(c.id).toLowerCase().includes(q)) ||
+                            (c.email && c.email.toLowerCase().includes(q)) ||
+                            (c.phone && c.phone.toLowerCase().includes(q));
+      if (!matchesSearch) return false;
+    }
 
     if (activeTabFilter === 'unread') return c.unreadCount > 0;
     if (activeTabFilter === 'groups') return c.isGroup;
@@ -1678,9 +2092,43 @@ function ChatOverlay({ initialQuery = '' }) {
   const getReactionTotal = (msg) => Object.keys(parseReactions(msg.reactions)).length;
 
   const displayReactionUser = (userId) => {
-    if (userId === 'admin') return 'You';
+    if (userId === 'admin' || userId === '1' || userId === 1) return 'Raymart Quirante';
     const found = mentionTargets.find(m => m.id === userId) || conversations.find(c => c.id === userId);
     return found?.name || userId;
+  };
+
+  const getReactionUserAvatar = (uId) => {
+    if (uId === 'admin' || uId === '1' || uId === 1) {
+      if (adminProfilePfp) {
+        return <img src={adminProfilePfp} alt="Raymart Quirante" className="w-full h-full object-cover rounded-full" />;
+      }
+      const adminPic = (typeof window !== 'undefined' && window.ADMIN_AVATAR && window.ADMIN_AVATAR.length > 20)
+        ? window.ADMIN_AVATAR
+        : (typeof window !== 'undefined' ? (localStorage.getItem('admin_avatar') || localStorage.getItem('user_avatar') || localStorage.getItem('profile_picture')) : null);
+      
+      if (adminPic) {
+        return <img src={adminPic} alt="Raymart Quirante" className="w-full h-full object-cover rounded-full" />;
+      }
+    }
+
+    const target = mentionTargets.find(m => String(m.id) === String(uId)) ||
+                   conversations.find(c => String(c.id) === String(uId) || (c.name && c.name.toLowerCase() === String(uId).toLowerCase()));
+
+    if (target) {
+      const pfp = target.avatarUrl || target.avatar_url || target.pfp || target.profilePicture || target.profile_picture || target.avatarBase64 || target.avatar_base64;
+      if (pfp && typeof pfp === 'string' && pfp.trim().length > 0 && !pfp.includes('undefined') && !pfp.includes('null')) {
+        const fullPfp = (pfp.startsWith('http') || pfp.startsWith('data:') || pfp.startsWith('blob:'))
+          ? pfp
+          : (apiBase + (pfp.startsWith('/') ? '' : '/') + pfp);
+        return <img src={fullPfp} alt={target.name || ''} className="w-full h-full object-cover rounded-full" />;
+      }
+      if (target.avatar && typeof target.avatar === 'string' && target.avatar.length <= 2) {
+        return <span className="text-white font-bold">{target.avatar}</span>;
+      }
+    }
+
+    const name = displayReactionUser(uId);
+    return <span className="text-white font-bold">{(name || 'U')[0].toUpperCase()}</span>;
   };
 
   const MessageActionShell = ({ msg, children }) => {
@@ -1778,7 +2226,6 @@ function ChatOverlay({ initialQuery = '' }) {
                 {emoji}
               </button>
             ))}
-            <button onClick={(e) => openAnchoredPopup('emojiPicker', msg, e)} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold">+</button>
           </div>
         </Portal>
       );
@@ -1881,7 +2328,7 @@ const handleGroupAvatarChange = async (e) => {
         reader.onload = (event) => {
           const dataUrl = event.target.result;
           setConversations(prev => prev.map(c => 
-            (c.id === activeConv.id || (activeConv.id === 'group_dispatch' && c.id === '@Drive&Go AI') || (activeConv.id === '@Drive&Go AI' && c.id === 'group_dispatch')) 
+            (c.id === activeConv.id) 
               ? { ...c, avatarUrl: dataUrl, pfp: dataUrl } 
               : c
           ));
@@ -1918,7 +2365,7 @@ const handleGroupAvatarChange = async (e) => {
 
           if (finalUrl) {
             setConversations(prev => prev.map(c => 
-              (c.id === activeConv.id || (activeConv.id === 'group_dispatch' && c.id === '@Drive&Go AI') || (activeConv.id === '@Drive&Go AI' && c.id === 'group_dispatch')) 
+              (c.id === activeConv.id) 
                 ? { ...c, avatarUrl: finalUrl, pfp: finalUrl } 
                 : c
             ));
@@ -2001,6 +2448,8 @@ const handleGroupAvatarChange = async (e) => {
         />
       )}
 
+      <MentionPopup />
+
       <div className="w-full h-full flex bg-[#07070e] text-slate-100 font-sans overflow-hidden select-none">
         
         {/* ════════════════════════════════════════════════════════════════════
@@ -2022,9 +2471,6 @@ const handleGroupAvatarChange = async (e) => {
               {!isSidebarCollapsed && (
                 <h2 className="text-base sm:text-lg font-extrabold text-white tracking-tight flex items-center gap-2">
                   <span>Messages</span>
-                  <span className="bg-orange-500/20 text-orange-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-orange-500/30">
-                    DISPATCH
-                  </span>
                 </h2>
               )}
               <div className={`flex items-center gap-1.5 ${isSidebarCollapsed ? 'w-full justify-center' : 'ml-auto'}`}>
@@ -2354,20 +2800,29 @@ const handleGroupAvatarChange = async (e) => {
                                     </div>
                                   );
                                 }
-                                const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+                                const combinedRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|@(Drive&Go AI|DriveAndGo AI|Meta AI))/gi;
                                 const parts = [];
                                 let lastIdx = 0;
                                 let match;
-                                while ((match = urlRegex.exec(txt)) !== null) {
+                                while ((match = combinedRegex.exec(txt)) !== null) {
                                   if (match.index > lastIdx) parts.push(txt.slice(lastIdx, match.index));
-                                  const u = match[0];
-                                  const href = u.startsWith('http') ? u : `https://${u}`;
-                                  parts.push(
-                                    <a key={match.index} href={href} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline font-semibold break-all" onClick={e => e.stopPropagation()}>
-                                      {u}
-                                    </a>
-                                  );
-                                  lastIdx = match.index + u.length;
+                                  const token = match[0];
+                                  if (token.startsWith('@')) {
+                                    parts.push(
+                                      <span key={match.index} className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/25 text-amber-200 border border-amber-500/40 mx-0.5 shadow-sm">
+                                        {token}
+                                      </span>
+                                    );
+                                  } else {
+                                    const u = token;
+                                    const href = u.startsWith('http') ? u : `https://${u}`;
+                                    parts.push(
+                                      <a key={match.index} href={href} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline font-semibold break-all" onClick={e => e.stopPropagation()}>
+                                        {u}
+                                      </a>
+                                    );
+                                  }
+                                  lastIdx = match.index + token.length;
                                 }
                                 if (lastIdx < txt.length) parts.push(txt.slice(lastIdx));
                                 return <p className="text-xs whitespace-pre-wrap">{parts.length > 0 ? parts : txt}</p>;
@@ -2410,25 +2865,96 @@ const handleGroupAvatarChange = async (e) => {
           {/* ════════════════════════════════════════════════════════════════════
               FLOATING GLASS INPUT BAR AREA
              ════════════════════════════════════════════════════════════════════ */}
-          <div className="p-3 sm:p-4 border-t border-white/10 bg-[#0d0e1b]/95 backdrop-blur-xl shrink-0 flex flex-col gap-2 relative w-full">
+          <div className="p-2.5 sm:p-3.5 border-t border-white/10 bg-[#0d0e1b]/95 backdrop-blur-xl shrink-0 flex flex-col gap-2 relative w-full overflow-hidden">
             
-            {/* AI Suggestion Pills for AI Copilot or Mentions */}
-            {(activeConvId === 'ai_copilot' || inputText.includes('@')) && (
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-[11px]">
-                {DEFAULT_SUGGESTION_PILLS.map((sug, i) => (
+            {/* Antigravity-Style Queued Messages Container */}
+            {aiQueue.filter(q => q.convId === activeConvId).length > 0 && (
+              <div className="p-3 bg-[#161724]/90 border border-white/10 rounded-2xl backdrop-blur-md shadow-lg transition-all animate-fadeIn mb-1">
+                <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <span className="font-bold text-slate-200">Queued Messages</span>
+                    <span className="w-4 h-4 rounded-full bg-orange-500/30 border border-orange-500/50 text-orange-300 font-bold text-[10px] flex items-center justify-center">
+                      {aiQueue.filter(q => q.convId === activeConvId).length}
+                    </span>
+                    <span className="text-slate-400 text-[10px]">Sends after agent finishes working</span>
+                  </div>
                   <button
-                    key={i}
-                    onClick={() => {
-                      setInputText('');
-                      handleSendAiMessage(sug.query);
-                    }}
-                    className="whitespace-nowrap bg-white/5 hover:bg-orange-500/20 hover:text-orange-300 border border-white/10 hover:border-orange-500/30 px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 text-slate-300"
+                    onClick={() => updateAiQueue(aiQueueRef.current.filter(q => q.convId !== activeConvId))}
+                    className="text-slate-400 hover:text-slate-200 transition-colors p-1 cursor-pointer"
+                    title="Collapse / Clear active queue"
                   >
-                    <span>{sug.text}</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="18 15 12 9 6 15"/>
+                    </svg>
                   </button>
-                ))}
+                </div>
+                <div className="mt-2 flex flex-col gap-1.5 max-h-28 overflow-y-auto">
+                  {aiQueue.filter(q => q.convId === activeConvId).map((item) => (
+                    <div key={item.id} className="flex items-center justify-between bg-white/5 hover:bg-white/10 px-3 py-2 rounded-xl border border-white/5 text-xs text-slate-200">
+                      <span className="truncate max-w-[82%] font-medium">{item.text}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => handleRemoveQueuedItem(item.id)}
+                          className="text-slate-400 hover:text-red-400 transition-colors p-1 cursor-pointer"
+                          title="Delete queued message"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6"/>
+                            <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
+            
+            {/* AI Smart Suggestion Pills ONLY when user is actively typing */}
+            {(() => {
+              const cleanInputQuery = inputText.trim().toLowerCase();
+              const filteredSuggestionPills = cleanInputQuery.length > 0
+                ? DEFAULT_SUGGESTION_PILLS.filter(sug => {
+                    const textMatch = sug.text.toLowerCase().includes(cleanInputQuery);
+                    const queryMatch = sug.query.toLowerCase().includes(cleanInputQuery);
+                    const keywordMatch = sug.keywords && sug.keywords.some(kw => kw.toLowerCase().includes(cleanInputQuery) || cleanInputQuery.includes(kw.toLowerCase()));
+                    return textMatch || queryMatch || keywordMatch;
+                  })
+                : [];
+
+              if (activeConvId !== 'ai_copilot' || filteredSuggestionPills.length === 0) return null;
+
+              return (
+                <div
+                  ref={pillScrollRef}
+                  onMouseDown={handlePillMouseDown}
+                  onMouseLeave={handlePillMouseLeaveOrUp}
+                  onMouseUp={handlePillMouseLeaveOrUp}
+                  onMouseMove={handlePillMouseMove}
+                  className={`flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-[11px] select-none transition-all animate-fadeIn ${
+                    isPillDragging ? 'cursor-grabbing' : 'cursor-grab'
+                  }`}
+                >
+                  {filteredSuggestionPills.map((sug, i) => (
+                    <button
+                      key={i}
+                      onClick={(e) => {
+                        if (hasPillDragged) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          return;
+                        }
+                        setInputText('');
+                        enqueueAiRequest({ id: Date.now(), text: sug.query, convId: 'ai_copilot', isGroup: false, isCopilot: true });
+                      }}
+                      className="whitespace-nowrap bg-white/5 hover:bg-orange-500/20 hover:text-orange-300 border border-white/10 hover:border-orange-500/30 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 text-slate-300 shrink-0 cursor-pointer"
+                    >
+                      <span>{sug.text}</span>
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
 
             {/* Mention Autocomplete Popup (@Drive&Go AI) */}
             {mentionQuery !== null && (
@@ -2439,6 +2965,7 @@ const handleGroupAvatarChange = async (e) => {
                 {mentionTargets.filter(t => t.name.toLowerCase().includes(mentionQuery)).map(target => (
                   <button
                     key={target.id}
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => insertMention(target)}
                     className="w-full text-left px-3 py-2 hover:bg-orange-500/20 hover:text-orange-300 flex items-center gap-2 transition-all cursor-pointer border-b border-white/5 last:border-none"
                   >
@@ -2529,64 +3056,106 @@ const handleGroupAvatarChange = async (e) => {
             )}
 
             {/* Messenger Input Bar Layout: [Media 📎] [Mic 🎙️] [AI Palette ✨] -> [Pill Textarea] -> [Emoji 😊] -> [Send ➔] */}
-            <div className="flex items-center gap-2 bg-slate-950/80 border border-white/10 rounded-2xl px-4 py-2 focus-within:border-orange-500/50 shadow-inner transition-all">
+            <div className={`flex items-center ${viewMode === 'floating' ? 'gap-1 px-2 py-1.5' : 'gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-2'} bg-slate-950/80 border border-white/10 rounded-2xl focus-within:border-orange-500/50 shadow-inner transition-all w-full box-border overflow-hidden`}>
               
-              {/* ── Attachment Media Icon — Hidden for AI ── */}
-              {!isAiChannel && (
-                <>
+              {/* Left Action Buttons Group */}
+              <div className={`flex items-center ${viewMode === 'floating' ? 'gap-0.5' : 'gap-1'} shrink-0 self-center`}>
+                {/* ── Attachment Media Icon — Hidden for AI ── */}
+                {!isAiChannel && (
+                  <>
+                    <button
+                      onClick={() => mediaInputRef.current?.click()}
+                      className="text-slate-400 hover:text-orange-400 transition-colors p-1 cursor-pointer shrink-0"
+                      title="Attach Media (Photos/Videos)"
+                    >
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+                      </svg>
+                    </button>
+                    <input
+                      type="file"
+                      ref={mediaInputRef}
+                      accept="image/*,video/*,audio/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const url = URL.createObjectURL(file);
+                        const type = file.type.startsWith('image') ? 'image' : file.type.startsWith('video') ? 'video' : 'audio';
+                        setAttachedMedia({ type, url, name: file.name });
+                      }}
+                    />
+                  </>
+                )}
+
+                {/* ── Voice Note Mic Icon — Hidden for AI ── */}
+                {!isAiChannel && (
                   <button
-                    onClick={() => mediaInputRef.current?.click()}
-                    className="text-slate-400 hover:text-orange-400 transition-colors p-1 cursor-pointer shrink-0"
-                    title="Attach Media (Photos/Videos)"
+                    onClick={isRecording ? stopRecordingVoice : startRecordingVoice}
+                    className={`p-1 cursor-pointer transition-all shrink-0 ${isRecording ? 'text-red-500 animate-bounce' : 'text-slate-400 hover:text-orange-400'}`}
+                    title="Record Microphone Voice Note"
                   >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+                    {isRecording
+                      ? <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>
+                      : <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                    }
+                  </button>
+                )}
+
+                {/* ── Mention @ Icon — Hidden for AI Channel & when tag is active ── */}
+                {!isAiChannel && !hasAiMentionTag && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (mentionQuery !== null) {
+                        setMentionQuery(null);
+                      } else {
+                        setMentionQuery('');
+                        setMentionIndex(0);
+                        setTimeout(() => inputRef.current?.focus(), 20);
+                      }
+                    }}
+                    className={`p-1 cursor-pointer transition-colors shrink-0 ${mentionQuery !== null ? 'text-amber-400 font-bold' : 'text-slate-400 hover:text-amber-400'}`}
+                    title="Mention @Drive&Go AI"
+                  >
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="4"/>
+                      <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>
                     </svg>
                   </button>
-                  <input
-                    type="file"
-                    ref={mediaInputRef}
-                    accept="image/*,video/*,audio/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      const url = URL.createObjectURL(file);
-                      const type = file.type.startsWith('image') ? 'image' : file.type.startsWith('video') ? 'video' : 'audio';
-                      setAttachedMedia({ type, url, name: file.name });
-                    }}
-                  />
-                </>
-              )}
+                )}
 
-              {/* ── Voice Note Mic Icon — Hidden for AI ── */}
-              {!isAiChannel && (
-                <button
-                  onClick={isRecording ? stopRecordingVoice : startRecordingVoice}
-                  className={`p-1 cursor-pointer transition-all shrink-0 ${isRecording ? 'text-red-500 animate-bounce' : 'text-slate-400 hover:text-orange-400'}`}
-                  title="Record Microphone Voice Note"
-                >
-                  {isRecording
-                    ? <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>
-                    : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-                  }
-                </button>
-              )}
+                {/* Command Palette Trigger — ONLY for AI Chatbot or @Drive&Go AI mention */}
+                {(activeConvId === 'ai_copilot' || hasAiMentionTag || inputText.includes('@Drive&Go AI')) && (
+                  <button
+                    onClick={() => setIsCommandPaletteOpen(true)}
+                    className="text-amber-400 hover:text-amber-300 transition-colors p-1 cursor-pointer shrink-0 flex items-center gap-1"
+                    title="Open AI Command Palette (Ctrl+K)"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                    </svg>
+                  </button>
+                )}
+              </div>
 
-              {/* Command Palette Trigger — ONLY for AI Chatbot or @Drive&Go AI mention */}
-              {(activeConvId === 'ai_copilot' || inputText.includes('@Drive&Go AI')) && (
-                <button
-                  onClick={() => setIsCommandPaletteOpen(true)}
-                  className="text-amber-400 hover:text-amber-300 transition-colors p-1 cursor-pointer shrink-0"
-                  title="Open AI Command Palette (Ctrl+K)"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-                  </svg>
-                </button>
+              {/* Single Highlight Mention Capsule Pill in Textbox */}
+              {hasAiMentionTag && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[10px] sm:text-[10.5px] font-bold bg-amber-500/25 text-amber-200 border border-amber-500/40 shrink-0 max-w-[62px] sm:max-w-[125px] shadow-sm transition-all animate-fadeIn self-center">
+                  <span className="truncate">{viewMode === 'floating' ? '@AI' : '@Drive&Go AI'}</span>
+                  <button
+                    type="button"
+                    onClick={() => setHasAiMentionTag(false)}
+                    className="text-amber-300 hover:text-white transition-colors cursor-pointer text-xs font-bold px-0.5 shrink-0 ml-0.5"
+                    title="Remove AI Mention"
+                  >
+                    ×
+                  </button>
+                </span>
               )}
 
               <textarea
+                ref={inputRef}
                 rows={1}
                 value={inputText}
                 onChange={handleInputChange}
@@ -2596,8 +3165,9 @@ const handleGroupAvatarChange = async (e) => {
                     handleSend();
                   }
                 }}
-                placeholder={isAiChannel ? "Ask Drive&Go AI..." : "Message"}
-                className="flex-1 bg-transparent border-none text-xs text-slate-100 placeholder-slate-500 outline-none resize-none py-1.5 max-h-28 overflow-y-auto leading-normal"
+                placeholder={hasAiMentionTag ? "Ask AI..." : (isAiChannel ? "Ask Drive&Go AI..." : "Message")}
+                className="flex-1 min-w-[40px] bg-transparent border-none text-xs sm:text-[13px] text-slate-100 placeholder-slate-400/80 outline-none resize-none py-1 leading-[20px] self-center max-h-40 overflow-y-auto transition-all"
+                style={{ minHeight: '20px', height: 'auto' }}
               />
 
               {/* Emoji Picker Quick Button */}
@@ -2605,10 +3175,10 @@ const handleGroupAvatarChange = async (e) => {
                 onClick={() => {
                   setInputText(prev => prev + ' 😊 ');
                 }}
-                className="text-slate-400 hover:text-amber-400 transition-colors p-1 cursor-pointer shrink-0"
+                className="text-slate-400 hover:text-amber-400 transition-colors p-0.5 sm:p-1 cursor-pointer shrink-0"
                 title="Insert Emoji"
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10"/>
                   <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
                   <line x1="9" y1="9" x2="9.01" y2="9"/>
@@ -2620,9 +3190,9 @@ const handleGroupAvatarChange = async (e) => {
               <button
                 onClick={handleSend}
                 disabled={!inputText.trim() && !attachedMedia}
-                className="w-9 h-9 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:brightness-110 active:scale-95 disabled:opacity-40 text-white font-bold flex items-center justify-center shadow-[0_0_15px_rgba(234,88,12,0.4)] transition-all cursor-pointer shrink-0"
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:brightness-110 active:scale-95 disabled:opacity-40 text-white font-bold flex items-center justify-center shadow-[0_0_15px_rgba(234,88,12,0.4)] transition-all cursor-pointer shrink-0 ml-0.5"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="22" y1="2" x2="11" y2="13"/>
                   <polygon points="22 2 15 22 11 13 2 9 22 2"/>
                 </svg>
@@ -2779,7 +3349,9 @@ const handleGroupAvatarChange = async (e) => {
                         onClick={() => userId === 'admin' && handleReactToMessage(msg, emoji)}
                         className="w-full px-5 py-3 flex items-center gap-3 hover:bg-white/5 text-left"
                       >
-                        <span className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-500 to-purple-600 flex items-center justify-center text-white font-bold">{displayReactionUser(userId)[0]}</span>
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-500 to-purple-600 flex items-center justify-center text-white font-bold overflow-hidden shrink-0 border border-white/10 shadow-md">
+                          {getReactionUserAvatar(userId)}
+                        </div>
                         <span className="flex-1">
                           <span className="block text-sm font-bold text-white">{displayReactionUser(userId)}</span>
                           {userId === 'admin' && <span className="block text-xs text-slate-400">Click to remove</span>}

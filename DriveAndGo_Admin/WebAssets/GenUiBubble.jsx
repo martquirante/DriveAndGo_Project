@@ -488,9 +488,27 @@ function ReactionDetailsModal({ reactions, onClose, onRemoveOwnReaction }) {
       React.createElement('div',{style:{maxHeight:280,overflowY:'auto',padding:'8px 0'}},
         displayEntries.length === 0
           ? React.createElement('p',{style:{color:'#94a3b8',fontSize:13,textAlign:'center',padding:'20px'}},'No reactions yet')
-          : displayEntries.map(([uid, emoji], i) => {
-              const displayName = uid === 'admin' ? 'Raymart Quirante' : uid;
+          : displayEntries.map(([uid, emojiVal], i) => {
+              const emoji = typeof emojiVal === 'string' ? emojiVal : (emojiVal?.emoji || emojiVal?.reaction || '');
+              const avatar = typeof emojiVal === 'object' ? (emojiVal?.avatarUrl || emojiVal?.avatar_url || emojiVal?.avatarBase64) : null;
+              const displayName = uid === 'admin' ? 'Raymart Quirante' : (typeof emojiVal === 'object' && emojiVal?.userName ? emojiVal.userName : uid);
               const isOwn = uid === 'admin';
+
+              const renderAvatar = () => {
+                if (avatar && typeof avatar === 'string' && avatar.length > 5) {
+                  const src = (avatar.startsWith('http') || avatar.startsWith('data:') || avatar.startsWith('blob:')) ? avatar : `data:image/png;base64,${avatar}`;
+                  return React.createElement('img', { src, alt: displayName, style: { width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' } });
+                }
+                if (uid === 'admin' || uid === '1' || uid === 1) {
+                  const adminPic = typeof window !== 'undefined' && (window.ADMIN_AVATAR || localStorage.getItem('admin_avatar') || localStorage.getItem('user_avatar'));
+                  if (adminPic && adminPic.length > 20) {
+                    const src = (adminPic.startsWith('http') || adminPic.startsWith('data:') || adminPic.startsWith('blob:')) ? adminPic : `data:image/png;base64,${adminPic}`;
+                    return React.createElement('img', { src, alt: displayName, style: { width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' } });
+                  }
+                }
+                return (displayName[0] || '?').toUpperCase();
+              };
+
               return React.createElement('div',{
                 key:i,
                 onClick: isOwn ? onRemoveOwnReaction : undefined,
@@ -498,8 +516,8 @@ function ReactionDetailsModal({ reactions, onClose, onRemoveOwnReaction }) {
                 onMouseEnter: (e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)',
                 onMouseLeave: (e) => e.currentTarget.style.background = 'transparent'
               },
-                React.createElement('div',{style:{width:40,height:40,borderRadius:'50%',background:'linear-gradient(135deg,#3b82f6,#8b5cf6)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontWeight:700,fontSize:14,flexShrink:0}},
-                  (displayName[0] || '?').toUpperCase()
+                React.createElement('div',{style:{width:40,height:40,borderRadius:'50%',background:'linear-gradient(135deg,#3b82f6,#8b5cf6)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontWeight:700,fontSize:14,flexShrink:0,overflow:'hidden'}},
+                  renderAvatar()
                 ),
                 React.createElement('div',{style:{display:'flex',flexDirection:'column',flex:1,minWidth:0}},
                   React.createElement('span',{style:{color:'#f1f5f9',fontSize:14,fontWeight:600}}, displayName),
@@ -912,7 +930,9 @@ function MarkdownTable({ headerCols, dataRows }) {
 
 function parseInlineMarkdown(str) {
   if (!str) return '';
+  const mentionStyle = 'display:inline-flex;align-items:center;background:rgba(249,115,22,0.2);color:#fb923c;border:1px solid rgba(249,115,22,0.4);font-weight:700;padding:1px 7px;border-radius:12px;font-size:11px;margin:0 2px;';
   return str
+    .replace(/@(Drive&Go AI|DriveAndGo AI|Meta AI)/gi, `<span style="${mentionStyle}">$1</span>`)
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.*?)\*/g,   '<em>$1</em>')
     .replace(/`(.*?)`/g, '<code style="background:rgba(255,255,255,0.1);padding:1px 4px;border-radius:4px;color:#fb923c;font-size:10px">$1</code>');
@@ -1095,7 +1115,11 @@ function renderDeliveryBadge(status = 'delivered') {
   if (st === 'sending') return React.createElement('div',{style:{display:'flex',alignItems:'center',gap:3,fontSize:8,color:'#94a3b8'}},React.createElement('svg',{width:11,height:11,viewBox:'0 0 24 24',fill:'none',stroke:'#3b82f6',strokeWidth:2,strokeDasharray:'3 3'},React.createElement('circle',{cx:12,cy:12,r:10})),React.createElement('span',null,'Sending'));
   if (st === 'sent') return React.createElement('div',{style:{display:'flex',alignItems:'center',gap:3,fontSize:8,color:'#94a3b8'}},React.createElement('svg',{width:11,height:11,viewBox:'0 0 24 24',fill:'none',stroke:'#3b82f6',strokeWidth:2},React.createElement('circle',{cx:12,cy:12,r:10}),React.createElement('path',{d:'M7 12l3.5 3.5L17 8',strokeLinecap:'round',strokeLinejoin:'round'})),React.createElement('span',null,'Sent'));
   if (st === 'seen' || st === 'read') return React.createElement('div',{style:{display:'flex',alignItems:'center',gap:4,fontSize:8.5,color:'#fb923c',fontWeight:600}},
-    React.createElement('div',{style:{width:12,height:12,borderRadius:'50%',background:'linear-gradient(135deg,#ea580c,#8b5cf6)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:7,fontWeight:800,boxShadow:'0 0 6px rgba(234,88,12,0.4)'}},'A'),
+    React.createElement('div',{style:{width:13,height:13,borderRadius:'50%',background:'linear-gradient(135deg,#ea580c,#f59e0b)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:7,fontWeight:800,boxShadow:'0 0 6px rgba(234,88,12,0.4)'}},
+      React.createElement('svg', { width: 8, height: 8, viewBox: '0 0 24 24', fill: 'white' },
+        React.createElement('path', { d: 'M13 2L4.5 13.5H11V22L19.5 10.5H13V2Z' })
+      )
+    ),
     React.createElement('svg',{width:12,height:12,viewBox:'0 0 24 24',fill:'none',stroke:'#fb923c',strokeWidth:2.5,strokeLinecap:'round',strokeLinejoin:'round'},
       React.createElement('path',{d:'M18 6L7 17l-5-5'}),
       React.createElement('path',{d:'M22 10l-7.5 7.5-1.5-1.5'})
@@ -1450,36 +1474,74 @@ function VoiceNotePlayer({ audioUrl, metadata }) {
 }
 
 
-/* ── Clickable Hyperlink & Auto-Link Parser ────────────────────────────── */
+/* ── Helper for Opening External URLs ─────────────────────────────────── */
+const openExternalUrl = (url) => {
+  if (!url) return;
+  const href = url.startsWith('http') ? url : `https://${url}`;
+  if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+    window.chrome.webview.postMessage(JSON.stringify({ type: 'open_external_url', url: href }));
+  } else {
+    window.open(href, '_blank', 'noopener,noreferrer');
+  }
+};
+
+/* ── Clickable Hyperlink & Auto-Link & @Mention Parser ────────────────────── */
 function renderFormattedTextWithLinks(text, isMine = false) {
   if (!text || typeof text !== 'string') return text;
-  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+  const combinedRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|@(Drive&Go AI|DriveAndGo AI|Meta AI))/gi;
   const parts = [];
   let lastIdx = 0;
   let match;
 
-  while ((match = urlRegex.exec(text)) !== null) {
+  while ((match = combinedRegex.exec(text)) !== null) {
     if (match.index > lastIdx) {
       parts.push(text.slice(lastIdx, match.index));
     }
-    const rawUrl = match[0];
-    const href = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
-    parts.push(
-      React.createElement('a', {
-        key: match.index,
-        href: href,
-        target: '_blank',
-        rel: 'noopener noreferrer',
-        onClick: (e) => e.stopPropagation(),
-        style: {
-          color: isMine ? '#ffffff' : '#60a5fa',
-          textDecoration: 'underline',
-          fontWeight: 600,
-          wordBreak: 'break-all'
-        }
-      }, rawUrl)
-    );
-    lastIdx = match.index + rawUrl.length;
+    const token = match[0];
+    if (token.startsWith('@')) {
+      parts.push(
+        React.createElement('span', {
+          key: match.index,
+          style: {
+            display: 'inline-flex',
+            alignItems: 'center',
+            background: isMine ? 'rgba(255, 255, 255, 0.25)' : 'rgba(249, 115, 22, 0.22)',
+            color: isMine ? '#ffffff' : '#fb923c',
+            border: isMine ? '1px solid rgba(255, 255, 255, 0.4)' : '1px solid rgba(249, 115, 22, 0.45)',
+            fontWeight: 700,
+            padding: '1px 7px',
+            borderRadius: '12px',
+            fontSize: '11px',
+            letterSpacing: '0.01em',
+            margin: '0 2px'
+          }
+        }, token)
+      );
+    } else {
+      const rawUrl = token;
+      const href = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
+      parts.push(
+        React.createElement('a', {
+          key: match.index,
+          href: href,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          onClick: (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openExternalUrl(href);
+          },
+          style: {
+            color: isMine ? '#ffffff' : '#60a5fa',
+            textDecoration: 'underline',
+            fontWeight: 600,
+            wordBreak: 'break-all',
+            cursor: 'pointer'
+          }
+        }, rawUrl)
+      );
+    }
+    lastIdx = match.index + token.length;
   }
   if (lastIdx < text.length) {
     parts.push(text.slice(lastIdx));
@@ -1573,7 +1635,12 @@ function RichLinkCard({ url, previewData }) {
 
   return React.createElement('a', {
     href: url, target: '_blank', rel: 'noopener noreferrer',
-    style: { textDecoration: 'none', marginTop: 8, display: 'block', maxWidth: 380, width: '100%' }
+    onClick: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openExternalUrl(url);
+    },
+    style: { textDecoration: 'none', marginTop: 8, display: 'block', maxWidth: 380, width: '100%', cursor: 'pointer' }
   },
     React.createElement('div', {
       style: {
@@ -1794,16 +1861,34 @@ function GenUiBubble({ message, groupPosition = 'single', showSenderHeader = tru
     }
   };
 
+  useEffect(() => {
+    if (reactions) {
+      try {
+        const parsed = typeof reactions === 'string' ? JSON.parse(reactions) : reactions;
+        if (parsed && typeof parsed === 'object') {
+          const own = parsed.admin || parsed['1'];
+          const ownEmoji = typeof own === 'string' ? own : (own?.emoji || own?.reaction);
+          if (ownEmoji) setUserReaction(ownEmoji);
+        }
+      } catch (e) {}
+    }
+  }, [reactions]);
+
   const rxParsed = React.useMemo(() => {
     let res = {};
     if (reactions && reactions !== '{}') {
       try { res = typeof reactions === 'string' ? JSON.parse(reactions) : reactions; } catch { res = {}; }
     }
-    if ((!res || Object.keys(res).length === 0) && userReaction) {
-      res = { admin: userReaction };
+    if (userReaction) {
+      res = { ...res, admin: userReaction };
     }
     return res || {};
   }, [reactions, userReaction]);
+
+  const activeReactionEmojis = React.useMemo(() => {
+    const list = Object.values(rxParsed).map(v => typeof v === 'string' ? v : (v?.emoji || v?.reaction || '')).filter(Boolean);
+    return Array.from(new Set(list));
+  }, [rxParsed]);
 
   const wrapperStyle = {
     position: 'relative', display: 'flex', flexDirection: 'column',
@@ -1828,9 +1913,24 @@ function GenUiBubble({ message, groupPosition = 'single', showSenderHeader = tru
     }}));
   };
 
-  const effectiveReplySender = message.replyToSender || message.reply_to_sender || message.replySender || replyToSender || null;
-  const effectiveReplyBody = message.replyToBody || message.reply_to_body || message.replyBody || replyToBody || null;
-  const effectiveReplyMediaType = message.replyToMediaType || message.reply_to_media_type || message.replyMediaType || replyToMediaType || null;
+  const metaObj = React.useMemo(() => {
+    let meta = message.mediaMetadata || message.media_metadata;
+    if (meta && typeof meta === 'string') {
+      try { return JSON.parse(meta); } catch { return {}; }
+    }
+    return meta && typeof meta === 'object' ? meta : {};
+  }, [message]);
+
+  const isAiSender = displaySender === 'Drive&Go AI' || displaySender === '@Drive&Go AI' || (senderId && String(senderId).includes('AI'));
+
+  const effectiveReplyBody = React.useMemo(() => {
+    const directBody = message.replyToBody || message.reply_to_body || message.replyBody || replyToBody || metaObj?.replyToBody || message.prompt || message.userPrompt || null;
+    if (directBody && directBody !== '...') return directBody;
+    return null;
+  }, [message, metaObj, replyToBody]);
+
+  const effectiveReplySender = message.replyToSender || message.reply_to_sender || message.replySender || replyToSender || metaObj?.replyToSender || (isAiSender && effectiveReplyBody ? 'you' : null);
+  const effectiveReplyMediaType = message.replyToMediaType || message.reply_to_media_type || message.replyMediaType || replyToMediaType || metaObj?.replyToMediaType || null;
 
   const isForwarded = React.useMemo(() => {
     if (message.isForwarded || message.is_forwarded || message.isForward || message.forwarded) return true;
@@ -1869,8 +1969,12 @@ function GenUiBubble({ message, groupPosition = 'single', showSenderHeader = tru
       : effectiveReplyMediaType === 'video' ? 'Video'
       : effectiveReplyBody || '...';
 
+    const isAiSender = displaySender === 'Drive&Go AI' || displaySender === '@Drive&Go AI' || (senderId && String(senderId).includes('AI'));
+
     const replyHeaderLabel = isMine
       ? `You replied to ${effectiveReplySender === displaySender || effectiveReplySender === 'Admin' ? 'yourself' : (effectiveReplySender || 'a message')}`
+      : isAiSender
+      ? `${displaySender} replied to ${effectiveReplySender === 'you' || effectiveReplySender === 'admin' || effectiveReplySender === 'Admin' ? 'you' : (effectiveReplySender || 'you')}`
       : `${displaySender} replied to ${effectiveReplySender || 'a message'}`;
 
     return React.createElement('div', {
@@ -1909,10 +2013,9 @@ function GenUiBubble({ message, groupPosition = 'single', showSenderHeader = tru
           overflow: 'hidden',
           textOverflow: 'ellipsis'
         }
-      }, quotedText)
+      }, renderFormattedTextWithLinks(quotedText, false))
     );
   };
-
   const toggleInlineEdits = async (e) => {
     if (e) { e.preventDefault(); e.stopPropagation(); }
     if (!showInlineEdits && historyItems.length === 0) {
@@ -1940,6 +2043,15 @@ function GenUiBubble({ message, groupPosition = 'single', showSenderHeader = tru
       }
     }
     setShowInlineEdits(prev => !prev);
+  };
+
+  const handleEmojiSelect = (emoji, e) => {
+    if (e) e.stopPropagation();
+    setShowEmojiPicker(false);
+    setUserReaction(prev => prev === emoji ? null : emoji);
+    window.dispatchEvent(new CustomEvent('chat:reactToMessage', {
+      detail: { msg: message, emoji }
+    }));
   };
 
   const EditHistorySection = ({ side = 'mine' }) => {
@@ -2048,23 +2160,7 @@ function GenUiBubble({ message, groupPosition = 'single', showSenderHeader = tru
     React.createElement('path', { d: 'M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3m8 0h3a2 2 0 002-2v-3' })
   );
 
-  // ── Local Reaction Toggle / Undo ───────────────────────────────────────────
 
-  const handleEmojiSelect = async (emoji, e) => {
-    if (e) e.stopPropagation();
-    const newReaction = userReaction === emoji ? null : emoji;
-    setUserReaction(newReaction);
-    setShowEmojiPicker(false);
-
-    try {
-      const apiBase2 = (window.API_BASE_URL || 'http://localhost:5233').replace(/\/api\/?$/i, '').replace(/\/$/, '');
-      await fetch(`${apiBase2}/api/messages/${id}/react`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: 'admin', emoji: newReaction || '', Emoji: newReaction || '', reaction: newReaction || '' })
-      });
-    } catch (err) {}
-  };
 
   const isUnsent = !!(
     is_unsent ||
@@ -2291,8 +2387,9 @@ function GenUiBubble({ message, groupPosition = 'single', showSenderHeader = tru
       )
     ),
 
-    // Reaction Badge at bottom right of bubble (Screenshot 5 Trigger)
-    userReaction && React.createElement('div', {
+    // Reaction Badge at bottom right of bubble
+    activeReactionEmojis.length > 0 && React.createElement('div', {
+      className: 'gub-reaction-badge',
       style: {
         position: 'absolute',
         bottom: -10,
@@ -2301,15 +2398,18 @@ function GenUiBubble({ message, groupPosition = 'single', showSenderHeader = tru
         background: '#24252f',
         border: '1px solid rgba(255,255,255,0.15)',
         borderRadius: 999,
-        padding: '1px 5px',
+        padding: '1px 6px',
         fontSize: 12,
         boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
         zIndex: 10,
-        cursor: 'pointer'
+        cursor: 'pointer',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 2
       },
       title: 'View reactions',
       onClick: (e) => { e.stopPropagation(); setShowReactionModal(true); }
-    }, userReaction),
+    }, activeReactionEmojis.join(' ')),
 
     showReactionModal && React.createElement(ReactionDetailsModal, {
       reactions: rxParsed,

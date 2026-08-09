@@ -14,3 +14,5 @@ package-lock.json
 temp_api.json
 *.js
 !DriveAndGo_Admin/WebAssets/*.js
+DriveAndGo_API/wwwroot/uploads/*
+!DriveAndGo_API/wwwroot/uploads/.gitkeep

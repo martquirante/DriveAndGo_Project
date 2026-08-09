@@ -612,22 +612,22 @@
                 default: return '#3b82f6';
             }
         }
-        function typeEmoji(t) {
+        function typeSvg(t) {
             t = (t || '').toLowerCase();
-            if (t.includes('motor')) return '🏍';
-            if (t.includes('van')) return '🚐';
-            if (t.includes('truck')) return '🚛';
-            if (t.includes('bicy')) return '🚲';
-            return '🚗';
+            if (t.includes('motor')) return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6h2.5l2 3.5-3 5.5H9.5L7 9.5 9 6h6z"/></svg>`;
+            if (t.includes('van')) return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="6" width="16" height="11" rx="2"/><path d="M17 8.5l4 2.5v6h-4"/><circle cx="5.5" cy="17.5" r="2.5"/><circle cx="15.5" cy="17.5" r="2.5"/></svg>`;
+            if (t.includes('truck')) return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 3h15v13H1z"/><path d="M16 8h4l3 3v5h-7z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`;
+            if (t.includes('bicy')) return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M5.5 17.5l6-9h5.5M11.5 8.5L8.5 14h10"/></svg>`;
+            return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>`;
         }
 
         function markerHtml(vid, iconUrl, type, status, speed, isLost, name) {
             var c = statusColor(status);
-            if (isLost) return `<div class='v-wrap'><div class='v-lost'></div><div class='v-name' style='color:#ef4444;border-color:rgba(239,68,68,.4)'>⚠ No GPS</div></div>`;
+            if (isLost) return `<div class='v-wrap'><div class='v-lost'></div><div class='v-name' style='color:#ef4444;border-color:rgba(239,68,68,.4)'>No GPS</div></div>`;
             var hasImg = iconUrl && iconUrl.trim() && iconUrl !== 'null' && (iconUrl.startsWith('http') || iconUrl.startsWith('data:'));
             var innerContent = hasImg
-                ? `<img src='${iconUrl}' class='v-img' id='vimg${vid}' onerror='this.style.display="none";document.getElementById("vsym${vid}").style.display="flex"'/><div class='v-sym' id='vsym${vid}' style='display:none'>${typeEmoji(type)}</div>`
-                : `<div class='v-sym' id='vsym${vid}'>${typeEmoji(type)}</div>`;
+                ? `<img src='${iconUrl}' class='v-img' id='vimg${vid}' onerror='this.style.display="none";document.getElementById("vsym${vid}").style.display="flex"'/><div class='v-sym' id='vsym${vid}' style='display:none'>${typeSvg(type)}</div>`
+                : `<div class='v-sym' id='vsym${vid}'>${typeSvg(type)}</div>`;
             var moving = speed > 0;
             return `<div class='v-wrap'>
         <div class='v-spd${moving ? " on" : ""}' id='vspd${vid}' style='color:${speed > 80 ? "#ef4444" : speed > 40 ? "#eab308" : "#00ffc8"}'>${speed > 0 ? Math.round(speed) + ' km/h' : ''}</div>

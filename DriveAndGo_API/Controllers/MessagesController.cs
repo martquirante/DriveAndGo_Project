@@ -71,7 +71,7 @@ public class MessagesController : ControllerBase
                     FROM   chat_messages
                     WHERE  ((sender_id = @sid AND receiver_id = @rid)
                          OR (sender_id = @rid AND receiver_id = @sid)
-                         OR (receiver_id = @rid AND is_group_chat = true))
+                         OR (receiver_id = @rid AND (is_group_chat = true OR sender_id = '@Drive&Go AI' OR sender_id = 'Drive&Go AI')))
                       AND  NOT (hidden_for @> CAST(CONCAT('[""', @sid, '""]') AS JSONB))
                     ORDER  BY timestamp ASC";
 
@@ -626,12 +626,20 @@ public class MessagesController : ControllerBase
                 await using var r = await fetchCmd.ExecuteReaderAsync();
                 if (await r.ReadAsync())
                 {
-                    reactionsJson = r["reactions"].ToString() ?? "{}";
+                    if (!r.IsDBNull(r.GetOrdinal("reactions")))
+                    {
+                        reactionsJson = r["reactions"].ToString() ?? "{}";
+                    }
                     receiverId = r["receiver_id"].ToString() ?? "";
                 }
             }
 
-            var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(reactionsJson) ?? new Dictionary<string, string>();
+            if (string.IsNullOrWhiteSpace(reactionsJson)) reactionsJson = "{}";
+
+            Dictionary<string, string>? dict = null;
+            try { dict = JsonSerializer.Deserialize<Dictionary<string, string>>(reactionsJson); } catch { dict = new Dictionary<string, string>(); }
+            if (dict == null) dict = new Dictionary<string, string>();
+
             string targetEmoji = req?.EffectiveEmoji ?? "";
             if (req == null || string.IsNullOrWhiteSpace(targetEmoji))
             {
@@ -677,12 +685,19 @@ public class MessagesController : ControllerBase
                 await using var r = await fetchCmd.ExecuteReaderAsync();
                 if (await r.ReadAsync())
                 {
-                    reactionsJson = r["reactions"].ToString() ?? "{}";
+                    if (!r.IsDBNull(r.GetOrdinal("reactions")))
+                    {
+                        reactionsJson = r["reactions"].ToString() ?? "{}";
+                    }
                     receiverId = r["receiver_id"].ToString() ?? "";
                 }
             }
 
-            var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(reactionsJson) ?? new Dictionary<string, string>();
+            if (string.IsNullOrWhiteSpace(reactionsJson)) reactionsJson = "{}";
+
+            Dictionary<string, string>? dict = null;
+            try { dict = JsonSerializer.Deserialize<Dictionary<string, string>>(reactionsJson); } catch { dict = new Dictionary<string, string>(); }
+            if (dict == null) dict = new Dictionary<string, string>();
             dict.Remove(string.IsNullOrWhiteSpace(userId) ? "admin" : userId);
 
             string newReactionsJson = JsonSerializer.Serialize(dict);
@@ -976,6 +991,28 @@ public class MessagesController : ControllerBase
                         unreadCount = 0,
                         avatarUrl = gcAvatar,
                         isOnline = (bool?)null
+                    });
+                }
+            }
+
+            // 4. Include all registered DB users (customers, drivers) so every DB account is searchable even before first message
+            foreach (var u in allUsers)
+            {
+                string uIdStr = u.userId.ToString();
+                if (!seenIds.Contains(uIdStr) && !seenIds.Contains($"c{u.userId}") && !seenIds.Contains($"d{u.userId}"))
+                {
+                    seenIds.Add(uIdStr);
+                    list.Add(new
+                    {
+                        id             = uIdStr,
+                        name           = u.fullName,
+                        role           = string.Equals(u.role, "driver", StringComparison.OrdinalIgnoreCase) ? "Driver" : "Customer",
+                        lastMessage    = "Tap to start conversation",
+                        time           = "",
+                        deliveryStatus = "sent",
+                        unreadCount    = 0,
+                        avatarUrl      = u.avatarUrl,
+                        isOnline       = (bool?)null
                     });
                 }
             }

@@ -30,6 +30,8 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__DefaultConnection=Host=postgres_db;Database=driveandgo_test_db;Username=postgres;Password=postgres_local_password;Port=5432
+    volumes:
+      - ./DriveAndGo_API/wwwroot/uploads:/app/wwwroot/uploads
     expose:
       - "8080"
     depends_on:

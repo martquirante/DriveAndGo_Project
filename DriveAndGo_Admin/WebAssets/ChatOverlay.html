@@ -15,9 +15,8 @@
   <!-- Lucide Icons CDN -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <script>
-    tailwind.config = {
-      darkMode: ['class', '[data-theme="dark"]'],
-      theme: { extend: {} }
+    window.setChatTheme = function(t) {
+      document.documentElement.setAttribute('data-theme', t);
     };
   </script>
 
@@ -33,7 +32,7 @@
       color-scheme: dark !important;
     }
     html[data-theme="light"] {
-      --bg-dark: #f1f5f9;
+      --bg-dark: #f8fafc;
       --bg-panel: #ffffff;
       --bubble-user: linear-gradient(135deg, #ea580c, #f97316);
       --bubble-ai: #e2e8f0;
@@ -41,6 +40,233 @@
       --text-main: #0f172a;
       --text-muted: #64748b;
       color-scheme: light !important;
+    }
+
+    /* ── Light Mode Master Comprehensive Overrides ──────────────────────── */
+    html[data-theme="light"] body,
+    html[data-theme="light"] #root,
+    html[data-theme="light"] [class*="bg-[#07070e]"],
+    html[data-theme="light"] [class*="bg-[#0d0f19]"] {
+      background-color: #f8fafc !important;
+      color: #0f172a !important;
+    }
+
+    /* Sidebar, Panels, Drawers, Modals & Cards */
+    html[data-theme="light"] [class*="bg-[#0d0e1b]"],
+    html[data-theme="light"] [class*="bg-[#111322]"],
+    html[data-theme="light"] [class*="bg-[#111326]"],
+    html[data-theme="light"] [class*="bg-[#121424]"],
+    html[data-theme="light"] [class*="bg-[#161824]"],
+    html[data-theme="light"] [class*="bg-[#181926]"],
+    html[data-theme="light"] [class*="bg-[#1c1d29]"],
+    html[data-theme="light"] [class*="bg-[#242526]"],
+    html[data-theme="light"] [class*="bg-[#24252f]"],
+    html[data-theme="light"] [class*="bg-[#282a36]"],
+    html[data-theme="light"] [class*="bg-[#2a2b32]"] {
+      background-color: #ffffff !important;
+      color: #0f172a !important;
+      border-color: #e2e8f0 !important;
+    }
+
+    /* Inactive Conversation Items in Sidebar List */
+    html[data-theme="light"] [class*="bg-[#181926]"] {
+      background-color: #f8fafc !important;
+      border-color: #e2e8f0 !important;
+    }
+
+    /* Active Conversation Item Pill */
+    html[data-theme="light"] [class*="bg-orange-500/20"],
+    html[data-theme="light"] [class*="bg-orange-500/15"] {
+      background-color: #ffedd5 !important;
+      border-color: #f97316 !important;
+    }
+
+    /* Receiver Chat Bubbles & AI Response Bubbles in Light Mode */
+    html[data-theme="light"] [class*="bg-[#1e2038]"],
+    html[data-theme="light"] [class*="bg-[#24252f]"],
+    html[data-theme="light"] [class*="bg-[#282a36]"],
+    html[data-theme="light"] [class*="bg-[#2a2b32]"],
+    html[data-theme="light"] .gub-bubble-row:not(.mine) .gub-bubble-content {
+      background-color: #ffffff !important;
+      color: #0f172a !important;
+      border: 1px solid #cbd5e1 !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05) !important;
+    }
+
+    html[data-theme="light"] .gub-bubble-row:not(.mine) .gub-bubble-content *,
+    html[data-theme="light"] .gub-bubble-row:not(.mine) p,
+    html[data-theme="light"] .gub-bubble-row:not(.mine) span,
+    html[data-theme="light"] .gub-bubble-row:not(.mine) div,
+    html[data-theme="light"] [class*="bg-[#1e2038]"] *,
+    html[data-theme="light"] [class*="bg-[#1e2038]"] p,
+    html[data-theme="light"] [class*="bg-[#1e2038]"] span {
+      color: #0f172a !important;
+    }
+
+    /* Chat Input Bar Shell, Textarea & Inputs */
+    html[data-theme="light"] [class*="bg-slate-950"],
+    html[data-theme="light"] [class*="bg-slate-900"],
+    html[data-theme="light"] [class*="bg-slate-800"] {
+      background-color: #ffffff !important;
+      border-color: #cbd5e1 !important;
+      color: #0f172a !important;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06) !important;
+    }
+
+    html[data-theme="light"] textarea,
+    html[data-theme="light"] input[type="text"],
+    html[data-theme="light"] input[type="search"] {
+      background-color: transparent !important;
+      color: #0f172a !important;
+      border-color: transparent !important;
+    }
+
+    html[data-theme="light"] textarea::placeholder,
+    html[data-theme="light"] input::placeholder {
+      color: #64748b !important;
+    }
+
+    /* Inactive / Hover Items in Sidebar */
+    html[data-theme="light"] [class*="bg-white/5"] {
+      background-color: #f1f5f9 !important;
+    }
+    html[data-theme="light"] [class*="bg-white/10"] {
+      background-color: #e2e8f0 !important;
+    }
+    html[data-theme="light"] [class*="bg-white/15"],
+    html[data-theme="light"] [class*="bg-white/20"] {
+      background-color: #cbd5e1 !important;
+    }
+
+    /* Text Colors */
+    html[data-theme="light"] .text-slate-100,
+    html[data-theme="light"] .text-slate-200,
+    html[data-theme="light"] .text-white,
+    html[data-theme="light"] [class*="text-slate-100"],
+    html[data-theme="light"] [class*="text-slate-200"],
+    html[data-theme="light"] [class*="text-white"] {
+      color: #0f172a !important;
+    }
+    html[data-theme="light"] .text-slate-400,
+    html[data-theme="light"] .text-slate-300,
+    html[data-theme="light"] .text-slate-500,
+    html[data-theme="light"] [class*="text-slate-300"],
+    html[data-theme="light"] [class*="text-slate-400"],
+    html[data-theme="light"] [class*="text-slate-500"] {
+      color: #475569 !important;
+    }
+
+    /* Action Icons (Media, Mic, @, Emoji) in Light Mode */
+    html[data-theme="light"] [class*="text-slate-400"] svg,
+    html[data-theme="light"] button [class*="text-slate-400"] {
+      color: #475569 !important;
+    }
+
+    /* Mention Tag Pill in Light Mode */
+    html[data-theme="light"] [class*="bg-amber-500/25"] {
+      background-color: #fef3c7 !important;
+      border-color: #f59e0b !important;
+      color: #92400e !important;
+    }
+    html[data-theme="light"] [class*="text-amber-200"],
+    html[data-theme="light"] [class*="text-amber-300"] {
+      color: #92400e !important;
+    }
+
+    /* Borders */
+    html[data-theme="light"] [class*="border-white/10"],
+    html[data-theme="light"] [class*="border-white/15"],
+    html[data-theme="light"] [class*="border-white/20"],
+    html[data-theme="light"] [class*="border-white/5"] {
+      border-color: rgba(0, 0, 0, 0.12) !important;
+    }
+
+    /* Quick Action Pills ("Today's Revenue Summary", "Overdue Rentals") */
+    html[data-theme="light"] button.rounded-full.border-white\/10,
+    html[data-theme="light"] button.rounded-full.border-white\/15,
+    html[data-theme="light"] .rounded-full.border-white\/10 {
+      background-color: #ffffff !important;
+      border-color: #cbd5e1 !important;
+      color: #334155 !important;
+    }
+
+    /* Context Menu Modal (Edit, Unsend, Forward, Pin - Image 1 Fix) */
+    html[data-theme="light"] .gub-modal,
+    html[data-theme="light"] [class*="bg-[#24252f]"],
+    html[data-theme="light"] [class*="bg-[#242526]"] {
+      background: #ffffff !important;
+      background-color: #ffffff !important;
+      border: 1px solid #cbd5e1 !important;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12) !important;
+      color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .gub-modal button,
+    html[data-theme="light"] .gub-modal span,
+    html[data-theme="light"] .gub-modal div,
+    html[data-theme="light"] [class*="bg-[#24252f]"] button,
+    html[data-theme="light"] [class*="bg-[#242526]"] button {
+      color: #0f172a !important;
+    }
+
+    html[data-theme="light"] .gub-modal button:hover,
+    html[data-theme="light"] [class*="bg-[#24252f]"] button:hover,
+    html[data-theme="light"] [class*="bg-[#242526]"] button:hover {
+      background-color: #f1f5f9 !important;
+      color: #ea580c !important;
+    }
+
+    /* AI & Human Incoming Chat Bubbles (Image 2 Fix) */
+    html[data-theme="light"] .gub-ai-bubble,
+    html[data-theme="light"] .gub-human-bubble,
+    html[data-theme="light"] .gub-in-bubble,
+    html[data-theme="light"] [class*="bg-[#1e2038]"],
+    html[data-theme="light"] [class*="bg-[#24252f]"],
+    html[data-theme="light"] .gub-bubble-row:not(.mine) .gub-bubble-content {
+      background: #ffffff !important;
+      background-color: #ffffff !important;
+      border: 1px solid #cbd5e1 !important;
+      color: #0f172a !important;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05) !important;
+    }
+
+    html[data-theme="light"] .gub-ai-bubble *,
+    html[data-theme="light"] .gub-human-bubble *,
+    html[data-theme="light"] .gub-in-bubble *,
+    html[data-theme="light"] .gub-ai-bubble p,
+    html[data-theme="light"] .gub-human-bubble p,
+    html[data-theme="light"] .gub-in-bubble p,
+    html[data-theme="light"] .gub-ai-bubble span,
+    html[data-theme="light"] .gub-human-bubble span,
+    html[data-theme="light"] .gub-in-bubble span,
+    html[data-theme="light"] [class*="bg-[#1e2038]"] *,
+    html[data-theme="light"] [class*="bg-[#1e2038]"] p,
+    html[data-theme="light"] [class*="bg-[#1e2038]"] span,
+    html[data-theme="light"] .gub-bubble-row:not(.mine) * {
+      color: #0f172a !important;
+    }
+
+    /* Mention Someone Popup & Active Items (Image 3 Fix) */
+    html[data-theme="light"] [class*="bg-orange-500/25"],
+    html[data-theme="light"] [class*="bg-orange-500/20"] {
+      background-color: #ffedd5 !important;
+      border-color: #f97316 !important;
+    }
+
+    html[data-theme="light"] [class*="bg-orange-500/25"] *,
+    html[data-theme="light"] [class*="bg-orange-500/20"] *,
+    html[data-theme="light"] [class*="bg-orange-500/25"] span,
+    html[data-theme="light"] [class*="bg-orange-500/20"] span,
+    html[data-theme="light"] [class*="text-orange-200"],
+    html[data-theme="light"] [class*="text-amber-200"] {
+      color: #9a3412 !important;
+    }
+
+    html[data-theme="light"] html,
+    html[data-theme="light"] body,
+    html[data-theme="light"] #root,
+    html[data-theme="light"] * {
+      scrollbar-color: rgba(0, 0, 0, 0.25) transparent !important;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

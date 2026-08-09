@@ -68,6 +68,77 @@ export function AnimatedNumber({ value, duration = 900, prefix = '', suffix = ''
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   Vector SVG Icon Components (Strictly no emojis)
+───────────────────────────────────────────────────────────────────────────── */
+const IconFleet = ({ color = 'currentColor', size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/>
+    <circle cx="7" cy="17" r="2"/>
+    <path d="M9 17h6"/>
+    <circle cx="17" cy="17" r="2"/>
+  </svg>
+);
+const IconRentals = ({ color = 'currentColor', size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="7.5" cy="15.5" r="4.5"/>
+    <path d="m21 2-9.6 9.6"/>
+    <path d="m15.5 7.5 3 3"/>
+  </svg>
+);
+const IconBookings = ({ color = 'currentColor', size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+    <path d="M12 11h4"/>
+    <path d="M12 16h4"/>
+    <path d="M8 11h.01"/>
+    <path d="M8 16h.01"/>
+  </svg>
+);
+const IconRevenue = ({ color = 'currentColor', size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="5" width="20" height="14" rx="2"/>
+    <line x1="2" y1="10" x2="22" y2="10"/>
+    <path d="M6 15h.01"/>
+    <path d="M10 15h.01"/>
+  </svg>
+);
+const IconDrivers = ({ color = 'currentColor', size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
+    <circle cx="12" cy="7" r="4"/>
+  </svg>
+);
+const IconMaintenance = ({ color = 'currentColor', size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+  </svg>
+);
+const IconChart = ({ color = 'currentColor', size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+    <polyline points="16 7 22 7 22 13"/>
+  </svg>
+);
+const IconIncident = ({ color = 'currentColor', size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+    <line x1="12" y1="9" x2="12" y2="13"/>
+    <line x1="12" y1="17" x2="12.01" y2="17"/>
+  </svg>
+);
+const IconRefresh = ({ color = 'currentColor', size = 13, className = '' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+  </svg>
+);
+const IconSparkles = ({ color = 'currentColor', size = 13 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+    <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z"/>
+  </svg>
+);
+
+/* ─────────────────────────────────────────────────────────────────────────────
    MetricCard3D
    World-Class B2B SaaS 3D Metric Card
 
@@ -460,19 +531,19 @@ export default function DashboardOverview({
     {
       label: 'Total Fleet',
       value: isFirstLoad ? null : (activeData.totalVehicles != null ? Number(activeData.totalVehicles) : null),
-      icon: '🚗', color: '#f97316', glow: 'rgba(249,115,22,0.22)',
+      icon: <IconFleet color="#f97316" size={20} />, color: '#f97316', glow: 'rgba(249,115,22,0.22)',
       sub: 'Registered vehicles', trend: '+2 this month', trendUp: true,
     },
     {
       label: 'Active Rentals',
       value: isFirstLoad ? null : (activeData.activeRentals != null ? Number(activeData.activeRentals) : null),
-      icon: '🔑', color: '#22d3ee', glow: 'rgba(34,211,238,0.18)',
+      icon: <IconRentals color="#22d3ee" size={20} />, color: '#22d3ee', glow: 'rgba(34,211,238,0.18)',
       sub: 'Ongoing trips', trend: 'Live tracking', trendUp: true,
     },
     {
       label: 'Pending Bookings',
       value: isFirstLoad ? null : (activeData.pendingBookings != null ? Number(activeData.pendingBookings) : null),
-      icon: '📋', color: '#a78bfa', glow: 'rgba(167,139,250,0.18)',
+      icon: <IconBookings color="#a78bfa" size={20} />, color: '#a78bfa', glow: 'rgba(167,139,250,0.18)',
       sub: 'Awaiting confirmation', trend: 'Action required', trendUp: false,
     },
     {
@@ -485,19 +556,19 @@ export default function DashboardOverview({
             ? Number(activeData.revenueThisMonth)
             : null,
       isCurrency: true,
-      icon: '💰', color: '#34d399', glow: 'rgba(52,211,153,0.18)',
+      icon: <IconRevenue color="#34d399" size={20} />, color: '#34d399', glow: 'rgba(52,211,153,0.18)',
       sub: 'All-time earnings', trend: '+14% vs last mo.', trendUp: true,
     },
     {
       label: 'Total Drivers',
       value: isFirstLoad ? null : (activeData.totalDrivers != null ? Number(activeData.totalDrivers) : null),
-      icon: '👤', color: '#fb923c', glow: 'rgba(251,146,60,0.18)',
+      icon: <IconDrivers color="#fb923c" size={20} />, color: '#fb923c', glow: 'rgba(251,146,60,0.18)',
       sub: 'Registered drivers', trend: 'Active workforce', trendUp: true,
     },
     {
       label: 'Maintenance Due',
       value: isFirstLoad ? null : (activeData.maintenanceDue != null ? Number(activeData.maintenanceDue) : null),
-      icon: '🔧', color: '#f43f5e', glow: 'rgba(244,63,94,0.18)',
+      icon: <IconMaintenance color="#f43f5e" size={20} />, color: '#f43f5e', glow: 'rgba(244,63,94,0.18)',
       sub: 'Vehicles overdue', trend: 'Schedule service', trendUp: false,
     },
     {
@@ -508,13 +579,13 @@ export default function DashboardOverview({
           ? Number(activeData.revenueThisMonth)
           : null,
       isCurrency: true,
-      icon: '📈', color: '#facc15', glow: 'rgba(250,204,21,0.18)',
+      icon: <IconChart color="#facc15" size={20} />, color: '#facc15', glow: 'rgba(250,204,21,0.18)',
       sub: 'This month', trend: 'On target', trendUp: true,
     },
     {
       label: 'Open Incidents',
       value: isFirstLoad ? null : (activeData.openIssues != null ? Number(activeData.openIssues) : null),
-      icon: '⚠️', color: '#fb7185', glow: 'rgba(251,113,133,0.18)',
+      icon: <IconIncident color="#fb7185" size={20} />, color: '#fb7185', glow: 'rgba(251,113,133,0.18)',
       sub: 'Pending reports', trend: 'All clear', trendUp: true,
     },
   ], [activeData, isFirstLoad]);
@@ -734,7 +805,7 @@ export default function DashboardOverview({
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, paddingRight: 4 }}>
               {fetchStatus === 'error'
-                ? <span style={{ color: '#f87171' }}>⚠ Error: {apiError}</span>
+                ? <span style={{ color: '#f87171', display: 'inline-flex', alignItems: 'center', gap: 4 }}><IconIncident color="#f87171" size={12} /> Error: {apiError}</span>
                 : <>Synced {lastSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</>
               }
             </span>
@@ -743,7 +814,7 @@ export default function DashboardOverview({
               onClick={fetchDashboardData}
               disabled={isRefreshing || parentLoadingState}
             >
-              <span className={isRefreshing || parentLoadingState ? 'spinning' : ''} style={{ fontSize: 14 }}>↻</span>
+              <IconRefresh color="currentColor" size={13} className={isRefreshing || parentLoadingState ? 'spinning' : ''} />
               Refresh Data
             </button>
             <button
@@ -757,7 +828,7 @@ export default function DashboardOverview({
                 cursor: isAiProcessing ? 'wait' : 'pointer',
               }}
             >
-              <span style={{ fontSize: 12 }}>{isAiProcessing ? '⟳' : '✦'}</span>
+              <IconSparkles color="currentColor" size={13} className={isAiProcessing ? 'spinning' : ''} />
               {isAiProcessing ? 'Analyzing...' : 'AI Business Insights'}
             </button>
           </div>
@@ -781,7 +852,7 @@ export default function DashboardOverview({
             ...fadeUp(0),
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 18 }}>⚠️</span>
+              <IconIncident color="#f87171" size={18} />
               <span>API Error: {apiError}</span>
             </div>
             <button
@@ -796,7 +867,7 @@ export default function DashboardOverview({
                 cursor: 'pointer',
               }}
             >
-              <span className={isRefreshing ? 'spinning' : ''} style={{ fontSize: 14 }}>↻</span>
+              <IconRefresh color="currentColor" size={13} className={isRefreshing ? 'spinning' : ''} />
               {isRefreshing ? 'Retrying...' : 'Retry Connection'}
             </button>
           </div>
@@ -922,12 +993,12 @@ export default function DashboardOverview({
               }}>
                 {isRefreshing ? (
                   <>
-                    <span className="spinning" style={{ fontSize: 24, color: 'var(--accent)' }}>↻</span>
+                    <IconRefresh color="var(--accent)" size={24} className="spinning" />
                     <span style={{ fontSize: 12, color: 'var(--text-sub)' }}>Loading bookings…</span>
                   </>
                 ) : (
                   <>
-                    <span style={{ fontSize: 28 }}>📋</span>
+                    <IconBookings color="var(--text-sub)" size={28} />
                     <span style={{ fontSize: 12, color: 'var(--text-sub)' }}>No recent bookings yet</span>
                     <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
                       Bookings appear here once the API returns data

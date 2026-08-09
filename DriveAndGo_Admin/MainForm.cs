@@ -558,6 +558,9 @@ namespace DriveAndGo_Admin
 
             activeIndicator.BackColor = ThemeManager.CurrentPrimary;
 
+            if (_userProfileCard != null) _userProfileCard.BackColor = ThemeManager.CurrentCard;
+            if (btnLogout != null) btnLogout.BackColor = ThemeManager.CurrentCard;
+
             // Update chrome buttons to match new theme
             if (btnWinClose != null)
             {
@@ -716,17 +719,17 @@ namespace DriveAndGo_Admin
                 e.Graphics.FillPath(new SolidBrush(ThemeManager.CurrentPrimary), GetRoundedRect(new Rectangle(0, 0, 4, activeIndicator.Height), 2));
             };
 
-            btnDashboard    = CreateNavButton("Dashboard",    "📊", 10);
-            btnVehicles     = CreateNavButton("Fleet",        "🚗", 62);
-            btnRentals      = CreateNavButton("Rentals",      "📝", 114);
-            btnDrivers      = CreateNavButton("Drivers",      "👤", 166);
-            btnTransactions = CreateNavButton("Transactions", "💳", 218);
-            btnReports      = CreateNavButton("Reports",      "📈", 270);
-            btnCalendar     = CreateNavButton("Calendar",     "📅", 322);
-            btnDocVault     = CreateNavButton("Doc Vault",    "📋", 374);
-            btnExpenses     = CreateNavButton("Expenses",     "💰", 426);
-            btnSplitPay     = CreateNavButton("Split Pay",    "🤝", 478);
-            btnAccounts     = CreateNavButton("Accounts",     "👥", 530);
+            btnDashboard    = CreateNavButton("Dashboard",    "\uE9D9", 10);
+            btnVehicles     = CreateNavButton("Fleet",        "\uE804", 62);
+            btnRentals      = CreateNavButton("Rentals",      "\uE70F", 114);
+            btnDrivers      = CreateNavButton("Drivers",      "\uE77B", 166);
+            btnTransactions = CreateNavButton("Transactions", "\uE8C7", 218);
+            btnReports      = CreateNavButton("Reports",      "\uE9F5", 270);
+            btnCalendar     = CreateNavButton("Calendar",     "\uE787", 322);
+            btnDocVault     = CreateNavButton("Doc Vault",    "\uE8F1", 374);
+            btnExpenses     = CreateNavButton("Expenses",     "\uE945", 426);
+            btnSplitPay     = CreateNavButton("Split Pay",    "\uE8D4", 478);
+            btnAccounts     = CreateNavButton("Accounts",     "\uE716", 530);
 
             _navContainer.Controls.AddRange(new Control[] {
                 activeIndicator, btnDashboard, btnVehicles, btnRentals, btnDrivers,
@@ -904,21 +907,57 @@ namespace DriveAndGo_Admin
             // ── Logout button (below separator, flat + red, hover gives faint red bg) ──
             btnLogout = new Button
             {
-                Text      = "🔓  Log Out",
+                Text      = "Log Out",
                 Size      = new Size(_userProfileCard.Width - 16, 32),
                 Location  = new Point(8, 64),
                 FlatStyle = FlatStyle.Flat,
                 ForeColor = Color.FromArgb(239, 68, 68),
                 BackColor = Color.Transparent,
-                TextAlign = ContentAlignment.MiddleLeft,
-                Padding   = new Padding(10, 0, 0, 0),
-                Cursor    = Cursors.Hand,
-                Font      = new Font("Segoe UI", 9F, FontStyle.Bold)
+                Cursor    = Cursors.Hand
             };
             btnLogout.FlatAppearance.BorderSize         = 0;
-            btnLogout.FlatAppearance.MouseOverBackColor = Color.FromArgb(15, 239, 68, 68);
+            btnLogout.FlatAppearance.MouseOverBackColor = Color.Transparent;
+            btnLogout.FlatAppearance.MouseDownBackColor = Color.Transparent;
             SetRoundRegion(btnLogout, 6);
             btnLogout.Click += (s, e) => PerformLogout();
+
+            btnLogout.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+                Color fg = btnLogout.ForeColor;
+                using var iconFont = new Font("Segoe MDL2 Assets", 10F, FontStyle.Regular);
+                using var textFont = new Font("Segoe UI", 9F, FontStyle.Bold);
+                using var brush    = new SolidBrush(fg);
+
+                string glyph = "\uE7E8";
+                string txt   = "Log Out";
+                int h        = btnLogout.Height;
+
+                SizeF iconSize = g.MeasureString(glyph, iconFont);
+                SizeF textSize = g.MeasureString(txt, textFont);
+
+                float iconX = 10f;
+                float iconY = (h - iconSize.Height) / 2f + 0.5f;
+
+                float gap   = 10f;
+                float textX = iconX + 14f + gap;
+                float textY = (h - textSize.Height) / 2f;
+
+                g.Clear(btnLogout.Parent?.BackColor ?? ThemeManager.CurrentCard);
+
+                if (btnLogout.ClientRectangle.Contains(btnLogout.PointToClient(Cursor.Position)))
+                {
+                    using var hoverBrush = new SolidBrush(Color.FromArgb(15, 239, 68, 68));
+                    using var path = GetRoundedRect(new Rectangle(0, 0, btnLogout.Width, btnLogout.Height), 6);
+                    g.FillPath(hoverBrush, path);
+                }
+
+                g.DrawString(glyph, iconFont, brush, new PointF(iconX, iconY));
+                g.DrawString(txt, textFont, brush, new PointF(textX, textY));
+            };
 
             // ── Assemble card ────────────────────────────────────────────────────────
             _userProfileCard.Controls.AddRange(new Control[]
@@ -992,7 +1031,7 @@ namespace DriveAndGo_Admin
             _sidebarIconLayer.Controls.Add(picLogoIcon);
 
             // ── Centred nav icon buttons ──
-            string[] icons = { "📊", "🚗", "📝", "👤", "💳", "📈", "📅", "📋", "💰", "🤝", "👥" };
+            string[] icons = { "\uE9D9", "\uE804", "\uE70F", "\uE77B", "\uE8C7", "\uE9F5", "\uE787", "\uE8F1", "\uE945", "\uE8D4", "\uE716" };
             string[] labels = { "Dashboard", "Fleet", "Rentals", "Drivers", "Transactions", "Reports", "Calendar", "Doc Vault", "Expenses", "Split Pay", "Accounts" };
             Button[] fullBtns = { btnDashboard, btnVehicles, btnRentals, btnDrivers, btnTransactions, btnReports, btnCalendar, btnDocVault, btnExpenses, btnSplitPay, btnAccounts };
 
@@ -1010,7 +1049,7 @@ namespace DriveAndGo_Admin
                     Location  = new Point((SidebarCollapsedWidth - iconBtnW) / 2, startY + i * step),
                     FlatStyle = FlatStyle.Flat,
                     TextAlign = ContentAlignment.MiddleCenter,
-                    Font      = new Font("Segoe UI Emoji", 15F),
+                    Font      = new Font("Segoe MDL2 Assets", 13F),
                     BackColor = Color.Transparent,
                     Cursor    = Cursors.Hand,
                     ForeColor = ThemeManager.CurrentText
@@ -1084,13 +1123,13 @@ namespace DriveAndGo_Admin
             // ── Mini logout icon button ──
             _iconLogout = new Button
             {
-                Text      = "🔓",
+                Text      = "\uE7E8",
                 Size      = new Size(iconBtnW, 36),
                 Location  = new Point((SidebarCollapsedWidth - iconBtnW) / 2, miniAvatar.Top == 0 ? 730 : miniAvatar.Top + 42),
                 Anchor    = AnchorStyles.Bottom | AnchorStyles.Left,
                 FlatStyle = FlatStyle.Flat,
                 TextAlign = ContentAlignment.MiddleCenter,
-                Font      = new Font("Segoe UI Emoji", 14F),
+                Font      = new Font("Segoe MDL2 Assets", 12F),
                 ForeColor = Color.FromArgb(239, 68, 68),
                 BackColor = Color.Transparent,
                 Cursor    = Cursors.Hand
@@ -2036,7 +2075,8 @@ namespace DriveAndGo_Admin
 
                 if (btnLogout != null)
                 {
-                    btnLogout.Text      = "🔓";
+                    btnLogout.Text      = "\uE7E8";
+                    btnLogout.Font      = new Font("Segoe MDL2 Assets", 11F);
                     btnLogout.TextAlign = ContentAlignment.MiddleCenter;
                     btnLogout.Padding   = new Padding(0);
                     btnLogout.Width     = collapsedW - 16;
@@ -2058,7 +2098,8 @@ namespace DriveAndGo_Admin
 
                 if (btnLogout != null)
                 {
-                    btnLogout.Text      = "🔓  Log Out";
+                    btnLogout.Text      = "Log Out";
+                    btnLogout.Font      = new Font("Segoe UI", 9F, FontStyle.Bold);
                     btnLogout.TextAlign = ContentAlignment.MiddleLeft;
                     btnLogout.Padding   = new Padding(10, 0, 0, 0);
                     btnLogout.Width     = expandedW - 16;
@@ -2118,26 +2159,20 @@ namespace DriveAndGo_Admin
         // ══════════════════════════════════════════════════════════════════════════
         private void SetActiveButton(Button btn)
         {
-            if (activeButton != null)
+            var prevActive = activeButton;
+            activeButton = btn;
+
+            if (prevActive != null)
             {
-                activeButton.BackColor = Color.Transparent;
-                activeButton.ForeColor = ThemeManager.CurrentText;
-                activeButton.Font      = new Font("Segoe UI", 11F, FontStyle.Regular);
+                prevActive.Invalidate();
             }
 
-            btn.BackColor = ThemeManager.IsDarkMode
-                ? Color.FromArgb(28, 255, 255, 255)
-                : Color.FromArgb(18, 0, 0, 0);
-            btn.ForeColor = ThemeManager.CurrentPrimary;
-            btn.Font      = new Font("Segoe UI", 11F, FontStyle.Bold);
-            activeButton  = btn;
+            if (btn != null)
+            {
+                btn.Invalidate();
+            }
 
-            // Extract label text (strip emoji prefix from full text format "   📊   Dashboard")
-            string raw = btn.Text;
-            int lastSpace = raw.LastIndexOf("   ", StringComparison.Ordinal);
-            if (lastSpace >= 0) raw = raw.Substring(lastSpace).Trim();
-            else raw = raw.Trim();
-            // Remove any remaining emoji by stripping non-ASCII and trimming
+            string raw = btn?.Text?.Trim() ?? "";
             if (lblHeaderTitle != null && !string.IsNullOrWhiteSpace(raw))
                 lblHeaderTitle.Text = raw;
 
@@ -2377,16 +2412,16 @@ namespace DriveAndGo_Admin
         // ══════════════════════════════════════════════════════════════════════════
         //  HELPERS
         // ══════════════════════════════════════════════════════════════════════════
-        private Button CreateNavButton(string text, string icon, int y)
+        private Button CreateNavButton(string text, string iconGlyph, int y)
         {
+            bool isHovered = false;
             var btn = new Button
             {
-                Text      = $"   {icon}   {text}",
+                Text      = text,
+                Tag       = iconGlyph,
                 Size      = new Size(SidebarFullWidth - 20, 46),
                 Location  = new Point(10, y),
                 FlatStyle = FlatStyle.Flat,
-                TextAlign = ContentAlignment.MiddleLeft,
-                Font      = new Font("Segoe UI", 11F),
                 BackColor = Color.Transparent,
                 Cursor    = Cursors.Hand,
                 Anchor    = AnchorStyles.Top | AnchorStyles.Left
@@ -2395,6 +2430,69 @@ namespace DriveAndGo_Admin
             btn.FlatAppearance.MouseOverBackColor   = Color.Transparent;
             btn.FlatAppearance.MouseDownBackColor   = Color.Transparent;
             SetRoundRegion(btn, 8);
+
+            btn.MouseEnter += (s, e) => { isHovered = true;  btn.Invalidate(); };
+            btn.MouseLeave += (s, e) => { isHovered = false; btn.Invalidate(); };
+
+            btn.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+                bool isActive = (activeButton == btn);
+
+                // Erase native WinForms text by filling background
+                Color sidebarBg = ThemeManager.CurrentSidebar;
+                g.Clear(sidebarBg);
+
+                // Paint rounded card background for active / hover state
+                if (isActive)
+                {
+                    Color activeBg = ThemeManager.IsDarkMode
+                        ? Color.FromArgb(28, 255, 255, 255)
+                        : Color.FromArgb(18, 0, 0, 0);
+                    using var b = new SolidBrush(activeBg);
+                    using var path = GetRoundedRect(new Rectangle(0, 0, btn.Width, btn.Height), 8);
+                    g.FillPath(b, path);
+                }
+                else if (isHovered)
+                {
+                    Color hoverBg = ThemeManager.IsDarkMode
+                        ? Color.FromArgb(14, 255, 255, 255)
+                        : Color.FromArgb(10, 0, 0, 0);
+                    using var b = new SolidBrush(hoverBg);
+                    using var path = GetRoundedRect(new Rectangle(0, 0, btn.Width, btn.Height), 8);
+                    g.FillPath(b, path);
+                }
+
+                // Determine text & icon color
+                Color fg = isActive
+                    ? ThemeManager.CurrentPrimary
+                    : (isHovered ? ThemeManager.CurrentText : Color.FromArgb(195, ThemeManager.CurrentText));
+
+                using var iconFont = new Font("Segoe MDL2 Assets", 12F, FontStyle.Regular);
+                using var textFont = new Font("Segoe UI", 10.5F, isActive ? FontStyle.Bold : FontStyle.Regular);
+                using var brush    = new SolidBrush(fg);
+
+                int h = btn.Height; // 46px
+
+                // Measure strings for exact vertical centering
+                SizeF iconSize = g.MeasureString(iconGlyph, iconFont);
+                SizeF textSize = g.MeasureString(text, textFont);
+
+                float iconX = 18f;
+                float iconY = (h - iconSize.Height) / 2f + 0.5f;
+
+                float gap   = 14f;
+                float textX = iconX + 18f + gap; // 50px
+                float textY = (h - textSize.Height) / 2f;
+
+                // Draw Icon & Text cleanly aligned
+                g.DrawString(iconGlyph, iconFont, brush, new PointF(iconX, iconY));
+                g.DrawString(text, textFont, brush, new PointF(textX, textY));
+            };
+
             return btn;
         }
 

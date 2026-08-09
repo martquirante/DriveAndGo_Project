@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Npgsql;
 using DriveAndGo_API.Hubs;
+using DriveAndGo_API.Services.Ai;
 
 namespace DriveAndGo_API.Controllers
 {
@@ -18,13 +19,15 @@ namespace DriveAndGo_API.Controllers
         private readonly NpgsqlDataSource _ds;
         private readonly IHubContext<AdminHub> _hubContext;
         private readonly IConfiguration _config;
+        private readonly IAiOrchestrationService _ai;
         private static readonly HttpClient _httpClient = new HttpClient();
 
-        public InChatMentionController(NpgsqlDataSource ds, IHubContext<AdminHub> hubContext, IConfiguration config)
+        public InChatMentionController(NpgsqlDataSource ds, IHubContext<AdminHub> hubContext, IConfiguration config, IAiOrchestrationService ai)
         {
             _ds = ds;
             _hubContext = hubContext;
             _config = config;
+            _ai = ai;
         }
 
         public class MentionAiRequest
@@ -71,11 +74,19 @@ namespace DriveAndGo_API.Controllers
                 }
                 contextMessages.Reverse(); // Chronological order
 
-                // 2. Build LLM prompt with thread context
-                string cleanPrompt = req.UserPrompt.Replace("@Drive&Go AI", "").Replace("@DriveAndGo AI", "").Trim();
+                // 2. Build LLM prompt with thread context & strict privacy guardrails
+                string cleanPrompt = req.UserPrompt.Replace("@Drive&Go AI", "").Replace("@DriveAndGo AI", "").Replace("@Meta AI", "").Trim();
                 if (string.IsNullOrWhiteSpace(cleanPrompt)) cleanPrompt = "Hello! How can you help our chat?";
 
-                string systemPrompt = "You are @Drive&Go AI, a helpful, friendly, and smart in-chat assistant inside a Drive&Go rental platform chat thread. Answer concisely (2-4 sentences max), use helpful emojis, and assist users directly in the context of their chat.";
+                string systemPrompt = @"You are @Drive&Go AI, a friendly, helpful, and secure Customer Chat Assistant for Drive&Go car rental platform.
+
+STRICT DATA PRIVACY & SECURITY GUARDRAILS:
+- You are responding to users inside a public or customer chat conversation thread (customer DM, driver chat, or group chat).
+- You DO NOT have access to internal administrative database tables, financial records, revenue metrics ('kita', 'sales', 'earnings'), profit figures, or admin backend tools.
+- If a user asks for internal company financial data, revenue, profit, or administrative database statistics: politely decline and inform them that you are a customer chat assistant for rental inquiries, vehicle info, and general support, and do not have access to internal company financial data.
+- Never output system errors, internal SQL queries, or database tables.
+- Base your responses strictly on general Drive&Go service information (how renting works, vehicle categories, customer support guidance) and the recent messages in this conversation thread.
+- Keep your tone warm, professional, friendly, and concise (2-4 sentences or clear bullet points).";
 
                 var promptBuilder = new StringBuilder();
                 promptBuilder.AppendLine(systemPrompt);
@@ -88,26 +99,43 @@ namespace DriveAndGo_API.Controllers
                 promptBuilder.AppendLine();
                 promptBuilder.AppendLine($"USER QUESTION (@Drive&Go AI): {cleanPrompt}");
 
-                // 3. Query LLM (Groq / Gemini fallback)
-                string aiReplyText = await QueryLlmAsync(promptBuilder.ToString());
+                // 3. Query Customer Assistant LLM (NO DATABASE TOOLS ACCESS!)
+                string aiReplyText = await QueryCustomerAssistantLlmAsync(promptBuilder.ToString());
                 if (string.IsNullOrWhiteSpace(aiReplyText))
                 {
-                    aiReplyText = "I'm @Drive&Go AI! I'm currently standing by to assist with any questions about bookings, vehicles, or fleet operations in this chat.";
+                    aiReplyText = "Hello! I am @Drive&Go AI. How can I assist you with your rental inquiries or questions today?";
                 }
 
                 // 4. Save AI response to chat_messages table under sender_id = "@Drive&Go AI"
                 int newMessageId = 0;
                 DateTime nowUtc = DateTime.UtcNow;
+                string mediaMetaJson = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    replyToSender = "you",
+                    replyToBody = req.UserPrompt
+                });
+
                 await using (var conn = await _ds.OpenConnectionAsync())
                 {
+                    // 1. Mark user's question message as 'seen' because AI has processed and answered it
+                    await using var updateCmd = new NpgsqlCommand(
+                        @"UPDATE chat_messages 
+                          SET delivery_status = 'seen' 
+                          WHERE (receiver_id = @receiverId OR receiver_id = 'ai_copilot' OR receiver_id = 'group_dispatch' OR receiver_id = '@Drive&Go AI') 
+                            AND delivery_status != 'seen'", conn);
+                    updateCmd.Parameters.AddWithValue("@receiverId", req.ConversationId);
+                    await updateCmd.ExecuteNonQueryAsync();
+
+                    // 2. Insert AI response message
                     await using var insertCmd = new NpgsqlCommand(
-                        @"INSERT INTO chat_messages (sender_id, receiver_id, message_body, timestamp, is_group_chat, delivery_status, sender_name)
-                          VALUES ('@Drive&Go AI', @receiverId, @body, @ts, @isGroup, 'delivered', 'Drive&Go AI')
+                        @"INSERT INTO chat_messages (sender_id, receiver_id, message_body, timestamp, is_group_chat, delivery_status, sender_name, media_metadata)
+                          VALUES ('@Drive&Go AI', @receiverId, @body, @ts, @isGroup, 'delivered', 'Drive&Go AI', CAST(@mediaMetadata AS JSONB))
                           RETURNING message_id", conn);
                     insertCmd.Parameters.AddWithValue("@receiverId", req.ConversationId);
                     insertCmd.Parameters.AddWithValue("@body", aiReplyText);
                     insertCmd.Parameters.AddWithValue("@ts", nowUtc);
                     insertCmd.Parameters.AddWithValue("@isGroup", req.IsGroupChat);
+                    insertCmd.Parameters.AddWithValue("@mediaMetadata", mediaMetaJson);
 
                     var idRes = await insertCmd.ExecuteScalarAsync();
                     if (idRes != null && idRes != DBNull.Value)
@@ -133,7 +161,7 @@ namespace DriveAndGo_API.Controllers
             }
         }
 
-        private async Task<string> QueryLlmAsync(string fullPrompt)
+        private async Task<string> QueryCustomerAssistantLlmAsync(string fullPrompt)
         {
             string groqKey = Environment.GetEnvironmentVariable("GROQ_API_KEY") ?? _config["GROQ_API_KEY"] ?? "";
             if (!string.IsNullOrWhiteSpace(groqKey))
@@ -145,10 +173,10 @@ namespace DriveAndGo_API.Controllers
                         model = "llama-3.3-70b-versatile",
                         messages = new[]
                         {
-                            new { role = "system", content = "You are @Drive&Go AI, a friendly in-chat assistant." },
+                            new { role = "system", content = "You are @Drive&Go AI, a friendly in-chat conversational assistant for customers and drivers in chat threads. Strictly maintain privacy: do NOT expose internal financial metrics, admin revenue data, or private database stats. Decline any admin financial requests politely." },
                             new { role = "user", content = fullPrompt }
                         },
-                        temperature = 0.7,
+                        temperature = 0.6,
                         max_tokens = 300
                     };
                     using var httpReq = new HttpRequestMessage(HttpMethod.Post, "https://api.groq.com/openai/v1/chat/completions");
@@ -166,7 +194,7 @@ namespace DriveAndGo_API.Controllers
                 catch { }
             }
 
-            return "I'm @Drive&Go AI! I'm here to help with any questions inside this chat.";
+            return "I'm @Drive&Go AI! I'm here to help with any rental questions inside this chat.";
         }
     }
 }

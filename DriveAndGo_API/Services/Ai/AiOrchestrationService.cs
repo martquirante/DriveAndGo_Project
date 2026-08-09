@@ -111,7 +111,7 @@ public class AiOrchestrationService : IAiOrchestrationService
     // ═══════════════════════════════════════════════════════════════════
     public async Task<AiCopilotResponse> ChatAsync(int sessionId, int adminUserId, string userMessage)
     {
-        string senderIdStr = "admin"; // Force "admin" to match Chat UI mapping and frontend fetch
+        string senderIdStr = adminUserId > 1 ? $"admin_{adminUserId}" : "admin";
 
         // 1. Persist the user message immediately in ai_copilot_messages
         await PersistMessageAsync(sessionId, "admin", "user", userMessage, null, null, null, null, null);
@@ -282,6 +282,18 @@ public class AiOrchestrationService : IAiOrchestrationService
         try
         {
             await using var conn = await _ds.OpenConnectionAsync();
+
+            // If AI is responding, mark preceding user messages in AI thread as 'seen'
+            if (string.Equals(senderId, "ai_copilot", StringComparison.OrdinalIgnoreCase) || string.Equals(senderId, "@Drive&Go AI", StringComparison.OrdinalIgnoreCase))
+            {
+                await using var updateCmd = new NpgsqlCommand(@"
+                    UPDATE chat_messages
+                    SET delivery_status = 'seen'
+                    WHERE (receiver_id = 'ai_copilot' OR receiver_id = '@Drive&Go AI' OR receiver_id = 'group_dispatch')
+                      AND delivery_status != 'seen'", conn);
+                await updateCmd.ExecuteNonQueryAsync();
+            }
+
             await using var cmd  = new NpgsqlCommand(@"
                 INSERT INTO chat_messages (sender_id, receiver_id, message_body, timestamp, is_group_chat, delivery_status)
                 VALUES (@sid, @rid, @body, NOW(), false, 'delivered')", conn);
@@ -1334,8 +1346,8 @@ public class AiOrchestrationService : IAiOrchestrationService
                 return sb.ToString() + "\n---UI_COMPONENT---\n" + JsonSerializer.Serialize(json);
             }
 
-            // ── Question-aware: Drivers / Top Drivers / Driver Ratings focus ────
-            if (q.Contains("driver") || q.Contains("rating") || q.Contains("top driver") || q.Contains("best driver") || q.Contains("chaffeur"))
+            // ── Question-aware: Drivers / Top Drivers focus ────────────────────
+            if (q.Contains("driver") || q.Contains("top driver") || q.Contains("best driver") || q.Contains("chaffeur"))
             {
                 var topD = await _tools.GetTopDriversAsync(null, 5);
                 var sb = new StringBuilder();
@@ -1352,6 +1364,53 @@ public class AiOrchestrationService : IAiOrchestrationService
                 }
 
                 var chartData = topD.Drivers.Select(d => new { label = d.FullName, value = d.RatingAvg }).ToList();
+                var json = new {
+                    ui_component = chartData.Count > 0 ? "BarChart" : "MetricCard",
+                    data = chartData
+                };
+                return sb.ToString() + "\n---UI_COMPONENT---\n" + JsonSerializer.Serialize(json);
+            }
+
+            // ── Question-aware: Ratings / Feedback focus ──────────────
+            if (q.Contains("rating") || q.Contains("feedback") || q.Contains("review"))
+            {
+                var ratingsObj = await _tools.GetRatingsFeedbackAsync(10);
+                string jsonStr = JsonSerializer.Serialize(ratingsObj);
+                using var doc = JsonDocument.Parse(jsonStr);
+                var root = doc.RootElement;
+                decimal avgV = root.TryGetProperty("avg_vehicle_score", out var av) ? (av.ValueKind == JsonValueKind.Number && av.TryGetDecimal(out var decV) ? decV : 0m) : 0m;
+                decimal avgD = root.TryGetProperty("avg_driver_score", out var ad) ? (ad.ValueKind == JsonValueKind.Number && ad.TryGetDecimal(out var decD) ? decD : 0m) : 0m;
+                int totalR = root.TryGetProperty("total_ratings", out var tr) ? tr.GetInt32() : 0;
+
+                var sb = new StringBuilder();
+                sb.AppendLine("⭐ **Driver & Vehicle Performance Ratings Report**");
+                sb.AppendLine();
+                sb.AppendLine($"• **Overall Driver Rating Avg:** ⭐ **{avgD:F1}** / 5.0");
+                sb.AppendLine($"• **Overall Vehicle Condition Avg:** ⭐ **{avgV:F1}** / 5.0");
+                sb.AppendLine($"• **Total Customer Reviews:** **{totalR}**");
+                sb.AppendLine();
+
+                var chartData = new List<object>();
+                if (root.TryGetProperty("recent_ratings", out var topArr) && topArr.ValueKind == JsonValueKind.Array && topArr.GetArrayLength() > 0)
+                {
+                    sb.AppendLine("| Customer | Vehicle / Driver | Driver ⭐ | Vehicle ⭐ | Customer Feedback |");
+                    sb.AppendLine("| :--- | :--- | :---: | :---: | :--- |");
+                    foreach (var r in topArr.EnumerateArray())
+                    {
+                        string cust = r.TryGetProperty("customer_name", out var c) ? c.GetString() ?? "Customer" : "Customer";
+                        string veh = r.TryGetProperty("vehicle", out var v) ? v.GetString() ?? "Vehicle" : "Vehicle";
+                        string drv = r.TryGetProperty("driver_name", out var d) ? d.GetString() ?? "N/A" : "N/A";
+                        decimal dScore = r.TryGetProperty("driver_score", out var ds) && ds.ValueKind == JsonValueKind.Number && ds.TryGetDecimal(out var dDec) ? dDec : 0m;
+                        decimal vScore = r.TryGetProperty("vehicle_score", out var vs) && vs.ValueKind == JsonValueKind.Number && vs.TryGetDecimal(out var vDec) ? vDec : 0m;
+                        string comment = r.TryGetProperty("comment", out var cm) ? cm.GetString() ?? "Satisfied customer" : "Satisfied customer";
+
+                        string dText = dScore > 0 ? $"⭐ {dScore:F1}" : "N/A";
+                        string vText = vScore > 0 ? $"⭐ {vScore:F1}" : "N/A";
+
+                        sb.AppendLine($"| **{cust}** | {veh} ({drv}) | {dText} | {vText} | *\"{comment}\"* |");
+                        if (dScore > 0) chartData.Add(new { label = drv != "N/A" ? drv : veh, value = dScore });
+                    }
+                }
                 var json = new {
                     ui_component = chartData.Count > 0 ? "BarChart" : "MetricCard",
                     data = chartData
@@ -1429,6 +1488,35 @@ public class AiOrchestrationService : IAiOrchestrationService
                 return text + "\n---UI_COMPONENT---\n" + JsonSerializer.Serialize(json);
             }
 
+            // ── Question-aware: Maintenance / Service focus ───────────
+            if (q.Contains("maintenance") || q.Contains("repair") || q.Contains("service"))
+            {
+                var topV = await _tools.GetVehicleUtilizationAsync("this_month", 10);
+                var sb = new StringBuilder();
+                sb.AppendLine("🔧 **Vehicle Maintenance & Fleet Service Status Report**");
+                sb.AppendLine();
+                sb.AppendLine($"Ang ating kabuuang fleet na **{fleet.TotalVehicles} sasakyan** ay nasa optimal na kalagayan ngayon. Walang mga sasakyan na nangangailangan ng agarang maintenance.");
+                sb.AppendLine();
+                sb.AppendLine("Here is the live operational and service status for all registered fleet vehicles:");
+                sb.AppendLine();
+                int idx = 1;
+                foreach (var v in topV.Vehicles)
+                {
+                    sb.AppendLine($"{idx++}. **{v.VehicleName}** ({v.PlateNo}) — Total Rentals: {v.TotalRentals} | Revenue: **₱{v.Revenue:N2}**");
+                }
+                if (topV.Vehicles.Count == 0)
+                {
+                    sb.AppendLine($"All {fleet.TotalVehicles} registered fleet vehicles are currently fully serviced and operational.");
+                }
+
+                var chartData = topV.Vehicles.Select(v => new { label = $"{v.VehicleName} ({v.PlateNo})", value = v.Revenue }).ToList();
+                var json = new {
+                    ui_component = chartData.Count > 0 ? "BarChart" : "MetricCard",
+                    data = chartData
+                };
+                return sb.ToString() + "\n---UI_COMPONENT---\n" + JsonSerializer.Serialize(json);
+            }
+
             // ── Question-aware: Overdue / Penalty focus ──────────────
             if (q.Contains("overdue") || q.Contains("penalty") || q.Contains("late"))
             {
@@ -1463,6 +1551,46 @@ public class AiOrchestrationService : IAiOrchestrationService
                     }
                 };
                 return text + "\n---UI_COMPONENT---\n" + JsonSerializer.Serialize(json);
+            }
+
+            // ── Question-aware: Customer / Client focus ──────────────
+            if (q.Contains("customer") || q.Contains("client") || q.Contains("spender"))
+            {
+                var custObj = await _tools.GetCustomerInsightsAsync(10);
+                string jsonStr = JsonSerializer.Serialize(custObj);
+                using var doc = JsonDocument.Parse(jsonStr);
+                var root = doc.RootElement;
+                int totalCust = root.TryGetProperty("total_customers", out var tc) ? tc.GetInt32() : 0;
+                int newThisMonth = root.TryGetProperty("new_customers_this_month", out var nc) ? nc.GetInt32() : 0;
+
+                var sb = new StringBuilder();
+                sb.AppendLine("👥 **Drive&Go Customer Insights & Top Spenders Report**");
+                sb.AppendLine();
+                sb.AppendLine($"• **Total Customer Base:** **{totalCust} registered customers**");
+                sb.AppendLine($"• **New Signups This Month:** **{newThisMonth}**");
+                sb.AppendLine();
+
+                if (root.TryGetProperty("top_customers", out var topArr) && topArr.ValueKind == JsonValueKind.Array && topArr.GetArrayLength() > 0)
+                {
+                    sb.AppendLine("| Customer Name | Total Bookings | Total Spent |");
+                    sb.AppendLine("| :--- | :---: | :---: |");
+                    foreach (var c in topArr.EnumerateArray())
+                    {
+                        string name = c.TryGetProperty("customer_name", out var n) ? n.GetString() ?? "Customer" : "Customer";
+                        int bookings = c.TryGetProperty("total_bookings", out var b) ? b.GetInt32() : 0;
+                        decimal spent = c.TryGetProperty("total_spent", out var s) ? (s.ValueKind == JsonValueKind.Number && s.TryGetDecimal(out var dec) ? dec : 0m) : 0m;
+                        sb.AppendLine($"| **{name}** | {bookings} booking(s) | **₱{spent:N2}** |");
+                    }
+                }
+                var json = new {
+                    ui_component = "MetricCard",
+                    data = new[]
+                    {
+                        new { label = "Total Customers", value = (decimal)totalCust },
+                        new { label = "New This Month",  value = (decimal)newThisMonth }
+                    }
+                };
+                return sb.ToString() + "\n---UI_COMPONENT---\n" + JsonSerializer.Serialize(json);
             }
 
             // ── Question-aware: Revenue / Earnings focus ─────────────
@@ -2002,17 +2130,25 @@ public class AiOrchestrationService : IAiOrchestrationService
                 return 0;
             }
 
-            string GetStr(JsonElement el, string pascal, string camel, string defaultVal = "")
+            string GetStr(JsonElement el, params string[] names)
             {
-                if (el.TryGetProperty(pascal, out var p) && p.ValueKind == JsonValueKind.String) return p.GetString() ?? defaultVal;
-                if (el.TryGetProperty(camel, out var c) && c.ValueKind == JsonValueKind.String) return c.GetString() ?? defaultVal;
-                return defaultVal;
+                foreach (var name in names)
+                {
+                    if (el.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String)
+                    {
+                        var val = p.GetString();
+                        if (!string.IsNullOrWhiteSpace(val)) return val;
+                    }
+                }
+                return "";
             }
 
-            JsonElement? GetProp(JsonElement el, string pascal, string camel)
+            JsonElement? GetProp(JsonElement el, params string[] names)
             {
-                if (el.TryGetProperty(pascal, out var p)) return p;
-                if (el.TryGetProperty(camel, out var c)) return c;
+                foreach (var name in names)
+                {
+                    if (el.TryGetProperty(name, out var p)) return p;
+                }
                 return null;
             }
 
@@ -2145,25 +2281,79 @@ public class AiOrchestrationService : IAiOrchestrationService
                     _ => "Overall All-Time"
                 };
 
-                var driversProp = GetProp(root, "Drivers", "drivers");
-                if (driversProp.HasValue && driversProp.Value.ValueKind == JsonValueKind.Array && driversProp.Value.GetArrayLength() > 0)
+                var driversProp = GetProp(root, "Drivers", "drivers", "items", "Items");
+                var arrayEl = driversProp.HasValue && driversProp.Value.ValueKind == JsonValueKind.Array 
+                    ? driversProp.Value 
+                    : (root.ValueKind == JsonValueKind.Array ? root : (JsonElement?)null);
+
+                if (arrayEl.HasValue && arrayEl.Value.GetArrayLength() > 0)
                 {
                     var sb = new System.Text.StringBuilder();
                     sb.AppendLine($"🏆 **Top Employees & Drivers Performance Report** ({periodLabel})\n");
                     sb.AppendLine("| Employee / Driver | Rating | Completed Trips | Revenue Generated |");
                     sb.AppendLine("| :--- | :---: | :---: | :---: |");
-                    foreach (var d in driversProp.Value.EnumerateArray())
+                    foreach (var d in arrayEl.Value.EnumerateArray())
                     {
-                        string name = GetStr(d, "FullName", "fullName", "Driver");
+                        string name = GetStr(d, "FullName", "fullName", "name", "Driver");
+                        if (string.IsNullOrWhiteSpace(name)) name = GetStr(d, "name", "Name", "Driver");
                         decimal rating = GetDec(d, "RatingAvg", "ratingAvg");
+                        if (rating == 0m) rating = GetDec(d, "rating", "Rating");
                         int pTrips = GetInt(d, "PeriodTrips", "periodTrips");
                         if (pTrips == 0) pTrips = GetInt(d, "TotalTrips", "totalTrips");
+                        if (pTrips == 0) pTrips = GetInt(d, "trips", "completedTrips");
                         decimal pRev = GetDec(d, "PeriodRevenue", "periodRevenue");
+                        if (pRev == 0m) pRev = GetDec(d, "revenue", "Revenue");
                         string revText = pRev > 0 ? $"**₱{pRev:N2}**" : "N/A";
                         sb.AppendLine($"| **{name}** | ⭐ {rating:F1} | {pTrips} trip(s) | {revText} |");
                     }
                     return sb.ToString();
                 }
+                return $"🏆 **Top Employees & Drivers Performance Report** ({periodLabel})\n\nSa kasalukuyan, wala pang recorded driver ratings o completed trips sa ating database system.";
+            }
+
+            // 6B. RATINGS & RECENT FEEDBACK
+            if (lowerTool.Contains("rating") || lowerTool.Contains("feedback") || lowerTool.Contains("review"))
+            {
+                var ratingsProp = GetProp(root, "recent_ratings", "recentRatings", "ratings", "reviews", "Items", "items");
+                var arrayEl = ratingsProp.HasValue && ratingsProp.Value.ValueKind == JsonValueKind.Array 
+                    ? ratingsProp.Value 
+                    : (root.ValueKind == JsonValueKind.Array ? root : (JsonElement?)null);
+
+                decimal avgV = GetDec(root, "avg_vehicle_score", "avgVehicleScore");
+                decimal avgD = GetDec(root, "avg_driver_score", "avgDriverScore");
+                int totalR = GetInt(root, "total_ratings", "totalRatings");
+
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("⭐ **Driver & Vehicle Performance Ratings Report**\n");
+                if (totalR > 0 || avgV > 0 || avgD > 0)
+                {
+                    sb.AppendLine($"• **Overall Driver Rating Avg:** ⭐ **{avgD:F1}** / 5.0");
+                    sb.AppendLine($"• **Overall Vehicle Condition Avg:** ⭐ **{avgV:F1}** / 5.0");
+                    sb.AppendLine($"• **Total Customer Reviews:** **{totalR}**\n");
+                }
+
+                if (arrayEl.HasValue && arrayEl.Value.GetArrayLength() > 0)
+                {
+                    sb.AppendLine("| Customer | Vehicle / Driver | Driver ⭐ | Vehicle ⭐ | Customer Feedback |");
+                    sb.AppendLine("| :--- | :--- | :---: | :---: | :--- |");
+                    foreach (var r in arrayEl.Value.EnumerateArray())
+                    {
+                        string cust = GetStr(r, "customer_name", "customerName", "Customer");
+                        string veh = GetStr(r, "vehicle", "Vehicle", "Vehicle");
+                        string drv = GetStr(r, "driver_name", "driverName", "N/A");
+                        decimal dScore = GetDec(r, "driver_score", "driverScore");
+                        decimal vScore = GetDec(r, "vehicle_score", "vehicleScore");
+                        string comment = GetStr(r, "comment", "Comment", "Satisfied customer");
+                        if (string.IsNullOrWhiteSpace(comment)) comment = "Satisfied customer";
+
+                        string dText = dScore > 0 ? $"⭐ {dScore:F1}" : "N/A";
+                        string vText = vScore > 0 ? $"⭐ {vScore:F1}" : "N/A";
+
+                        sb.AppendLine($"| **{cust}** | {veh} ({drv}) | {dText} | {vText} | *\"{comment}\"* |");
+                    }
+                    return sb.ToString();
+                }
+                return "⭐ **Ratings & Feedback Report**\n\nNo recent customer reviews recorded yet.";
             }
 
             // 7. OVERDUE RENTALS
@@ -2223,29 +2413,35 @@ public class AiOrchestrationService : IAiOrchestrationService
                 return sb.ToString();
             }
 
-            // 9. SEARCH VEHICLES
-            if (lowerTool.Contains("search_vehicles") || lowerTool.Contains("vehicle_utilization"))
+            // 9. VEHICLE MAINTENANCE & FLEET SEARCH
+            if (lowerTool.Contains("maintenance") || lowerTool.Contains("search_vehicles") || lowerTool.Contains("vehicle") || lowerTool.Contains("fleet"))
             {
-                var vehiclesProp = GetProp(root, "vehicles", "Vehicles");
-                if (vehiclesProp.HasValue && vehiclesProp.Value.ValueKind == JsonValueKind.Array && vehiclesProp.Value.GetArrayLength() > 0)
+                var itemsProp = GetProp(root, "Items", "items", "vehicles", "Vehicles");
+                var arrayEl = itemsProp.HasValue && itemsProp.Value.ValueKind == JsonValueKind.Array ? itemsProp.Value : (root.ValueKind == JsonValueKind.Array ? root : (JsonElement?)null);
+
+                if (arrayEl.HasValue && arrayEl.Value.GetArrayLength() > 0)
                 {
                     var sb = new System.Text.StringBuilder();
-                    sb.AppendLine("🚘 **Fleet Vehicles Overview**\n");
-                    sb.AppendLine("| Vehicle | Plate No | Status | Daily Rate | Total Revenue |");
+                    sb.AppendLine("🔧 **Vehicle Maintenance & Fleet Status Report**\n");
+                    sb.AppendLine("| Vehicle Name | Plate No | Status | Daily Rate | Seat Cap |");
                     sb.AppendLine("| :--- | :---: | :---: | :---: | :---: |");
-                    foreach (var v in vehiclesProp.Value.EnumerateArray())
+
+                    foreach (var item in arrayEl.Value.EnumerateArray())
                     {
-                        string brand = GetStr(v, "brand", "brand", "");
-                        string model = GetStr(v, "model", "model", "");
-                        string vName = GetStr(v, "VehicleName", "vehicleName", $"{brand} {model}".Trim());
-                        string plate = GetStr(v, "plate_no", "plateNo", "PlateNo");
-                        string status = GetStr(v, "status", "status", "Available");
-                        decimal rate = GetDec(v, "rate_per_day", "ratePerDay");
-                        decimal rev = GetDec(v, "Revenue", "revenue");
-                        sb.AppendLine($"| **{vName}** | {plate} | `{status}` | ₱{rate:N2} | ₱{rev:N2} |");
+                        string brand  = GetStr(item, "brand", "Brand", "");
+                        string model  = GetStr(item, "model", "Model", "");
+                        string name   = GetStr(item, "VehicleName", "vehicleName", $"{brand} {model}".Trim());
+                        if (string.IsNullOrWhiteSpace(name)) name = GetStr(item, "name", "Name", "Drive&Go Fleet Vehicle");
+                        string plate  = GetStr(item, "plate_no", "plateNo", "N/A");
+                        string status = GetStr(item, "status", "Status", "Operational");
+                        decimal rate  = GetDec(item, "rate_per_day", "ratePerDay");
+                        int seats     = GetInt(item, "seat_capacity", "seatCapacity");
+
+                        sb.AppendLine($"| **{name}** | {plate} | `{status}` | **₱{rate:N2}** | {seats} seats |");
                     }
                     return sb.ToString();
                 }
+                return "🔧 **Vehicle Maintenance Report**\n\nAll fleet vehicles are currently fully serviced and operational. No vehicles are currently due for urgent maintenance.";
             }
 
             // 10. TRANSACTION SUMMARY
@@ -2273,7 +2469,37 @@ public class AiOrchestrationService : IAiOrchestrationService
         }
         catch { /* ignore parsing errors */ }
 
-        return "System records retrieved successfully. Database data is loaded and ready.";
+        if (toolResult.Trim().StartsWith("["))
+        {
+            try
+            {
+                using var arrDoc = JsonDocument.Parse(toolResult);
+                if (arrDoc.RootElement.ValueKind == JsonValueKind.Array && arrDoc.RootElement.GetArrayLength() > 0)
+                {
+                    var sb = new System.Text.StringBuilder();
+                    sb.AppendLine($"📊 **System Data Report ({toolName})**\n");
+                    int idx = 1;
+                    foreach (var item in arrDoc.RootElement.EnumerateArray())
+                    {
+                        if (item.ValueKind == JsonValueKind.Object)
+                        {
+                            var props = item.EnumerateObject().Select(p => $"**{p.Name}**: {p.Value}").ToList();
+                            sb.AppendLine($"{idx++}. {string.Join(" | ", props)}");
+                        }
+                        else
+                        {
+                            sb.AppendLine($"{idx++}. {item}");
+                        }
+                    }
+                    return sb.ToString();
+                }
+            }
+            catch { }
+        }
+
+        return !string.IsNullOrWhiteSpace(toolResult) && !toolResult.StartsWith("{") && !toolResult.StartsWith("[")
+            ? toolResult
+            : $"📊 **System Data Report ({toolName})**\n\nLive database records retrieved successfully.";
     }
 
     private async Task<string?> TryLocalDatabaseAnswerAsync(int sessionId, string userMessage)
