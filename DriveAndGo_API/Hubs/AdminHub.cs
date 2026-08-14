@@ -15,6 +15,24 @@ namespace DriveAndGo_API.Hubs
             await Clients.All.SendAsync("ReceiveVehicleUpdate");
         }
 
+        /// <summary>
+        /// Pushes a granular telemetry diff to all fleet clients.
+        /// Clients merge only the changed fields into their React vehicle state.
+        /// </summary>
+        public async Task BroadcastTelematicsUpdate(object payload)
+        {
+            await Clients.All.SendAsync("TelematicsUpdated", payload);
+        }
+
+        /// <summary>
+        /// Broadcasts a telematics command acknowledgement so all clients
+        /// can reflect the command result (e.g. lock icon flip) instantly.
+        /// </summary>
+        public async Task BroadcastTelematicsCommand(object payload)
+        {
+            await Clients.All.SendAsync("TelematicsCommand", payload);
+        }
+
         public async Task BroadcastAccountsUpdate()
         {
             await Clients.All.SendAsync("ReceiveAccountsUpdate");

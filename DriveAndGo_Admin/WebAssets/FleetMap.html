@@ -252,15 +252,24 @@
             width: 100%;
             height: 100%;
             border-radius: 12px;
-            overflow: hidden;
+            overflow: visible;
             position: relative;
+            perspective: 500px;
         }
 
         .v-img {
             width: 100%;
             height: 100%;
-            object-fit: cover;
+            object-fit: contain;
             object-position: center;
+            transform-style: preserve-3d;
+            transform: rotateX(42deg) rotateZ(-22deg);
+            filter: drop-shadow(0px 8px 10px rgba(0,0,0,0.75));
+            transition: transform 0.3s ease;
+        }
+
+        .v-img:hover {
+            transform: rotateX(35deg) rotateZ(-15deg) scale(1.15);
         }
 
         .v-sym {
@@ -362,14 +371,10 @@
         .hq-img-ring {
             width: 96px;
             height: 96px;
-            border-radius: 18px;
-            border: 3px solid #e6510d;
-            background: linear-gradient(145deg,rgba(8,6,16,.98),rgba(4,3,10,.96));
+            background: transparent;
             display: flex;
             align-items: center;
             justify-content: center;
-            overflow: hidden;
-            box-shadow: 0 0 32px rgba(230,81,13,.65),0 0 64px rgba(230,81,13,.25),inset 0 1px 0 rgba(255,255,255,.08);
             position: relative;
         }
 
@@ -591,16 +596,17 @@
         function setHQ(lat, lng, name, imgSrc) {
             hqLat = lat; hqLng = lng;
             if (hqMarker) map.removeLayer(hqMarker);
+            const buildingSvg = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5m0 0h4m-4 0V11m0 0V5"/></svg>`;
             var imgContent = imgSrc && imgSrc.trim()
-                ? `<img src='${imgSrc}' class='hq-3d-img' onerror='this.style.display="none";this.nextElementSibling.style.display="flex"'/><div class='hq-fallback' style='display:none'>🏢</div>`
-                : `<div class='hq-fallback'>🏢</div>`;
+                ? `<img src='${imgSrc}' class='hq-3d-img' style='width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 10px 20px rgba(249,115,22,0.8));' onerror='this.style.display="none";this.nextElementSibling.style.display="flex"'/><div class='hq-fallback' style='display:none'>${buildingSvg}</div>`
+                : `<div class='hq-fallback'>${buildingSvg}</div>`;
             var ic = L.divIcon({
                 className: '',
-                html: `<div class='hq-wrap'><div class='hq-img-ring'>${imgContent}</div><div class='hq-lbl'>${name}</div></div>`,
+                html: `<div class='hq-wrap'><div class='hq-img-ring'>${imgContent}</div><div class='hq-lbl'><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5m0 0h4m-4 0V11m0 0V5"/></svg> ${name}</div></div>`,
                 iconSize: [96, 120], iconAnchor: [48, 60]
             });
             hqMarker = L.marker([lat, lng], { icon: ic, zIndexOffset: 3000 }).addTo(map);
-            hqMarker.bindPopup(`<div class='pp-name'>🏢 ${name}</div><div class='pp-row'>Main Garage &amp; Operations Base</div><div class='pp-row' style='margin-top:6px;font-size:9px;color:#404070;'>${lat.toFixed(5)}, ${lng.toFixed(5)}</div>`);
+            hqMarker.bindPopup(`<div class='pp-name flex items-center gap-1.5'><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5m0 0h4m-4 0V11m0 0V5"/></svg> ${name}</div><div class='pp-row'>Main Garage &amp; Operations Base</div><div class='pp-row' style='margin-top:6px;font-size:9px;color:#404070;'>${lat.toFixed(5)}, ${lng.toFixed(5)}</div>`);
         }
 
         function statusColor(s) {

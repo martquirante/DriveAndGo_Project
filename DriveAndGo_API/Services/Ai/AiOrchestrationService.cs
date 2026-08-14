@@ -2116,17 +2116,21 @@ public class AiOrchestrationService : IAiOrchestrationService
             using var doc = JsonDocument.Parse(toolResult);
             var root = doc.RootElement;
 
-            decimal GetDec(JsonElement el, string pascal, string camel)
+            decimal GetDec(JsonElement el, params string[] names)
             {
-                if (el.TryGetProperty(pascal, out var p) && p.ValueKind == JsonValueKind.Number) return p.GetDecimal();
-                if (el.TryGetProperty(camel, out var c) && c.ValueKind == JsonValueKind.Number) return c.GetDecimal();
+                foreach (var name in names)
+                {
+                    if (el.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.Number && p.TryGetDecimal(out var dec)) return dec;
+                }
                 return 0m;
             }
 
-            int GetInt(JsonElement el, string pascal, string camel)
+            int GetInt(JsonElement el, params string[] names)
             {
-                if (el.TryGetProperty(pascal, out var p) && p.ValueKind == JsonValueKind.Number) return p.GetInt32();
-                if (el.TryGetProperty(camel, out var c) && c.ValueKind == JsonValueKind.Number) return c.GetInt32();
+                foreach (var name in names)
+                {
+                    if (el.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.Number && p.TryGetInt32(out var i)) return i;
+                }
                 return 0;
             }
 
@@ -2218,6 +2222,48 @@ public class AiOrchestrationService : IAiOrchestrationService
                         int txns = GetInt(m, "Transactions", "transactions");
                         sb.AppendLine($"| **{label}** | ₱{rev:N2} | {txns} |");
                     }
+                }
+                return sb.ToString();
+            }
+
+            // 3B. SALES PREDICTIONS & FORECAST
+            if (lowerTool.Contains("predict") || lowerTool.Contains("forecast"))
+            {
+                decimal grandTotal = GetDec(root, "GrandTotal", "grandTotal");
+                var monthsProp = GetProp(root, "Months", "months", "predictions", "Items");
+
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("🔮 **12-Month Sales Prediction & Revenue Forecast**\n");
+                if (grandTotal > 0)
+                {
+                    sb.AppendLine($"• **Total Projected Sales (Next 12 Months):** **₱{grandTotal:N2}**\n");
+                }
+
+                if (monthsProp.HasValue && monthsProp.Value.ValueKind == JsonValueKind.Array && monthsProp.Value.GetArrayLength() > 0)
+                {
+                    sb.AppendLine("| Forecast Period | Projected Sales | Estimated Growth |");
+                    sb.AppendLine("| :--- | :---: | :---: |");
+                    foreach (var m in monthsProp.Value.EnumerateArray())
+                    {
+                        string label = GetStr(m, "MonthLabel", "monthLabel", "label", "Month");
+                        decimal rev = GetDec(m, "Revenue", "revenue", "value");
+                        double growth = m.TryGetProperty("GrowthPct", out var g) ? g.GetDouble() : (m.TryGetProperty("growthPct", out var g2) ? g2.GetDouble() : 0.0);
+                        string growthText = growth != 0.0 ? $"{(growth >= 0 ? "+" : "")}{growth:F1}%" : "Baseline";
+                        sb.AppendLine($"| **{label}** | **₱{rev:N2}** | `{growthText}` |");
+                    }
+                    return sb.ToString();
+                }
+                else if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
+                {
+                    sb.AppendLine("| Forecast Period | Projected Sales |");
+                    sb.AppendLine("| :--- | :---: |");
+                    foreach (var m in root.EnumerateArray())
+                    {
+                        string label = GetStr(m, "MonthLabel", "monthLabel", "label", "Month");
+                        decimal rev = GetDec(m, "Revenue", "revenue", "value");
+                        sb.AppendLine($"| **{label}** | **₱{rev:N2}** |");
+                    }
+                    return sb.ToString();
                 }
                 return sb.ToString();
             }
@@ -2465,6 +2511,33 @@ public class AiOrchestrationService : IAiOrchestrationService
                     }
                 }
                 return sb.ToString();
+            }
+
+            // 11. RENTAL EXTENSIONS
+            if (lowerTool.Contains("extension"))
+            {
+                var itemsProp = GetProp(root, "Items", "items", "extensions", "Extensions");
+                var arrayEl = itemsProp.HasValue && itemsProp.Value.ValueKind == JsonValueKind.Array ? itemsProp.Value : (root.ValueKind == JsonValueKind.Array ? root : (JsonElement?)null);
+
+                if (arrayEl.HasValue && arrayEl.Value.GetArrayLength() > 0)
+                {
+                    var sb = new System.Text.StringBuilder();
+                    sb.AppendLine("⌛ **Pending Rental Extensions Report**\n");
+                    sb.AppendLine("| Rental ID | Customer | Extension Days | Extra Fee | Status |");
+                    sb.AppendLine("| :---: | :--- | :---: | :---: | :---: |");
+                    foreach (var item in arrayEl.Value.EnumerateArray())
+                    {
+                        int id = GetInt(item, "RentalId", "rentalId", "id");
+                        string cust = GetStr(item, "CustomerName", "customerName", "Customer");
+                        int days = GetInt(item, "ExtraDays", "extraDays", "days");
+                        decimal fee = GetDec(item, "ExtraFee", "extraFee", "amount");
+                        string status = GetStr(item, "Status", "status", "Pending");
+
+                        sb.AppendLine($"| #{id} | **{cust}** | +{days} day(s) | **₱{fee:N2}** | `{status}` |");
+                    }
+                    return sb.ToString();
+                }
+                return "⌛ **Rental Extensions Report**\n\nSa kasalukuyan, wala pong pending rental extensions sa ating system.";
             }
         }
         catch { /* ignore parsing errors */ }

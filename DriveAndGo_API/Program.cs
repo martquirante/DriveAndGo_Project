@@ -94,13 +94,14 @@ builder.Services.AddSwaggerGen(c =>
 // ─────────────────────────────────────────────────────────────
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
 {
-    options.MultipartBodyLengthLimit    = 524_288_000; // 500 MB
+    options.MultipartBodyLengthLimit    = long.MaxValue;
     options.ValueLengthLimit            = int.MaxValue;
     options.MultipartHeadersLengthLimit = int.MaxValue;
+    options.MemoryBufferThreshold       = int.MaxValue;
 });
 builder.WebHost.ConfigureKestrel(kestrel =>
 {
-    kestrel.Limits.MaxRequestBodySize = 524_288_000; // 500 MB
+    kestrel.Limits.MaxRequestBodySize = null; // Unlimited max request body size
 });
 
 // ─────────────────────────────────────────────────────────────

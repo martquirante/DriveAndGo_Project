@@ -246,6 +246,54 @@ namespace DriveAndGo_API.Services
                     cmd.ExecuteNonQuery();
                 }
 
+                // 17. Fleet Telematics & Telemetry columns migration & Real-Life Data Fix
+                using (var cmd = new NpgsqlCommand(@"
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS fuel_level_pct         INT             NOT NULL DEFAULT 100;
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS odometer_km             INT             NOT NULL DEFAULT 0;
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS health_score            INT             NOT NULL DEFAULT 98;
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS engine_status           VARCHAR(20)     NOT NULL DEFAULT 'off';
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS maintenance_due_km      INT             NOT NULL DEFAULT 5000;
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS telematics_locked       BOOLEAN         NOT NULL DEFAULT TRUE;
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS lto_expiry_date         TIMESTAMPTZ     NULL;
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS insurance_expiry_date   TIMESTAMPTZ     NULL;
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS safety_score            INT             NOT NULL DEFAULT 95;
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS idle_minutes            INT             NOT NULL DEFAULT 0;
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS rfid_balance_autosweep  NUMERIC(10,2)   NOT NULL DEFAULT 500.00;
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS rfid_balance_easytrip   NUMERIC(10,2)   NOT NULL DEFAULT 500.00;
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS or_cr_url               TEXT            NOT NULL DEFAULT '';
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS insurance_url           TEXT            NOT NULL DEFAULT '';
+
+                    -- Set active realistic future dates for LTO & Insurance if null or expired in past years
+                    UPDATE vehicles 
+                    SET lto_expiry_date = NOW() + (INTERVAL '1 day' * ((vehicle_id * 37) % 300 + 30))
+                    WHERE lto_expiry_date IS NULL OR lto_expiry_date < NOW() - INTERVAL '30 days';
+
+                    UPDATE vehicles 
+                    SET insurance_expiry_date = NOW() + (INTERVAL '1 day' * ((vehicle_id * 43) % 360 + 60))
+                    WHERE insurance_expiry_date IS NULL OR insurance_expiry_date < NOW() - INTERVAL '30 days';
+
+                    -- Populate realistic telematics metrics if uninitialized
+                    UPDATE vehicles
+                    SET fuel_level_pct = CASE WHEN fuel_level_pct = 0 THEN ((vehicle_id * 23) % 75 + 25) ELSE fuel_level_pct END,
+                        health_score = CASE WHEN health_score = 0 THEN ((vehicle_id * 17) % 30 + 70) ELSE health_score END,
+                        odometer_km = CASE WHEN odometer_km = 0 THEN ((vehicle_id * 3421) % 45000 + 5000) ELSE odometer_km END,
+                        rfid_balance_autosweep = CASE WHEN rfid_balance_autosweep = 0 THEN 750.00 ELSE rfid_balance_autosweep END,
+                        rfid_balance_easytrip = CASE WHEN rfid_balance_easytrip = 0 THEN 600.00 ELSE rfid_balance_easytrip END;
+
+                    -- Clean up duplicate plate numbers in PostgreSQL if any exist from test entries
+                    UPDATE vehicles v
+                    SET plate_no = v.plate_no || '-' || v.vehicle_id
+                    WHERE vehicle_id IN (
+                        SELECT vehicle_id FROM (
+                            SELECT vehicle_id, ROW_NUMBER() OVER (PARTITION BY REPLACE(LOWER(TRIM(plate_no)), '-', '') ORDER BY vehicle_id ASC) as rnum
+                            FROM vehicles
+                        ) sub WHERE sub.rnum > 1
+                    );
+                ", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
                 // 18. Promote rayquirante@gmail.com to admin role
                 using (var cmd = new NpgsqlCommand(@"
                     UPDATE users SET role = 'admin' WHERE LOWER(email) = 'rayquirante@gmail.com';

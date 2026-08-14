@@ -518,11 +518,18 @@ public class AiToolsService
         if (!result.Drivers.Any())
         {
             await using var cmdAll = new NpgsqlCommand(@"
-                SELECT d.driver_id, u.full_name, d.rating_avg, d.total_trips
+                SELECT 
+                    d.driver_id, 
+                    u.full_name, 
+                    d.rating_avg, 
+                    d.total_trips,
+                    COALESCE(SUM(r.total_amount), 0) AS total_revenue
                 FROM drivers d
                 JOIN users u ON u.user_id = d.user_id
+                LEFT JOIN rentals r ON r.driver_id = d.driver_id AND LOWER(r.status) IN ('completed', 'active', 'in-use', 'approved', 'paid', 'confirmed', 'verified', 'settled')
                 WHERE d.total_trips > 0 OR LOWER(d.status) IN ('available', 'active', 'assigned')
-                ORDER BY d.rating_avg DESC, d.total_trips DESC
+                GROUP BY d.driver_id, u.full_name, d.rating_avg, d.total_trips
+                ORDER BY d.rating_avg DESC, total_revenue DESC, d.total_trips DESC
                 LIMIT @limit", conn);
             cmdAll.Parameters.AddWithValue("@limit", limit);
 
@@ -530,6 +537,7 @@ public class AiToolsService
             while (await readerAll.ReadAsync())
             {
                 int trips = readerAll.GetInt32(3);
+                decimal rev = readerAll.GetDecimal(4);
                 result.Drivers.Add(new TopDriverItem
                 {
                     DriverId      = readerAll.GetInt32(0),
@@ -537,7 +545,7 @@ public class AiToolsService
                     RatingAvg     = readerAll.GetDecimal(2),
                     TotalTrips    = trips,
                     PeriodTrips   = trips,
-                    PeriodRevenue = 0m
+                    PeriodRevenue = rev
                 });
             }
         }

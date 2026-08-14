@@ -161,7 +161,7 @@ export default function GeoFenceTracking() {
                   </div>
                 ) : (
                   <div className="w-6 h-6 rounded-full bg-emerald-500 border border-white text-white flex items-center justify-center text-[10px] shadow-[0_0_8px_#10b981]">
-                    🚗
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 17a2 2 0 100 4 2 2 0 000-4zm10 0a2 2 0 100 4 2 2 0 000-4zM4 9h16l-1.5 5h-13L4 9z"/></svg>
                   </div>
                 )}
               </div>

@@ -387,7 +387,7 @@ namespace DriveAndGo_Admin
                     this.Invoke((System.Windows.Forms.MethodInvoker)(() =>
                     {
                         if (_activePanel is FleetPanel fleet)
-                            fleet.LoadVehiclesFromDB();
+                            fleet.RefreshWebViewData();
                     }));
                 });
 
@@ -1874,7 +1874,7 @@ namespace DriveAndGo_Admin
                 dp.RefreshWebViewData();
                 dp.PushThemeToWebView(ThemeManager.IsDarkMode ? "dark" : "light");
             }
-            else if (incoming is FleetPanel fp) fp.LoadVehiclesFromDB();
+            else if (incoming is FleetPanel fp) fp.RefreshWebViewData();
 
             SyncNavButtonState(panelType);
         }

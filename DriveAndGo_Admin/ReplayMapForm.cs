@@ -61,7 +61,7 @@ namespace DriveAndGo_Admin
 
             var lblTitle = new Label
             {
-                Text = $"📍  GPS ROUTE REPLAY  —  RENTAL #{_rentalId}",
+                Text = $"GPS ROUTE REPLAY  —  RENTAL #{_rentalId}",
                 Font = new Font("Segoe UI", 11F, FontStyle.Bold),
                 ForeColor = Color.White,
                 AutoSize = true,
@@ -71,7 +71,7 @@ namespace DriveAndGo_Admin
 
             var btnClose = new Button
             {
-                Text = "✕",
+                Text = "X",
                 Size = new Size(36, 30),
                 Location = new Point(this.Width - 50, 10),
                 FlatStyle = FlatStyle.Flat,
@@ -96,7 +96,7 @@ namespace DriveAndGo_Admin
             };
             _loadingLabel = new Label
             {
-                Text = "⚡ Retrieving GPS coordinates...",
+                Text = "Retrieving GPS coordinates...",
                 Font = new Font("Segoe UI", 12F, FontStyle.Bold),
                 ForeColor = Color.FromArgb(255, 90, 31),
                 AutoSize = true,
@@ -146,12 +146,12 @@ namespace DriveAndGo_Admin
                 }
                 else
                 {
-                    _loadingLabel.Text = "❌ Replay file missing in WebAssets.";
+                    _loadingLabel.Text = "Replay file missing in WebAssets.";
                 }
             }
             catch (Exception ex)
             {
-                _loadingLabel.Text = "❌ WebView2 failed to initialize: " + ex.Message;
+                _loadingLabel.Text = "WebView2 failed to initialize: " + ex.Message;
             }
         }
 
@@ -178,7 +178,7 @@ namespace DriveAndGo_Admin
                 {
                     this.Invoke((MethodInvoker)(() =>
                     {
-                        _loadingLabel.Text = "❌ No GPS logs recorded for this active/completed rental.";
+                        _loadingLabel.Text = "No GPS logs recorded for this active/completed rental.";
                     }));
                 }
             }
@@ -186,7 +186,7 @@ namespace DriveAndGo_Admin
             {
                 this.Invoke((MethodInvoker)(() =>
                 {
-                    _loadingLabel.Text = "❌ Error fetching logs: " + ex.Message;
+                    _loadingLabel.Text = "Error fetching logs: " + ex.Message;
                 }));
             }
         }
