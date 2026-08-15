@@ -252,6 +252,23 @@ namespace DriveAndGo_Admin.Panels
                     string url = rawStr.Substring("open_media_preview:".Length);
                     this.BeginInvoke((MethodInvoker)(() => ShowFleetMediaPreview(url, "Vehicle Media Preview")));
                 }
+                else if (rawStr.StartsWith("push_notification:"))
+                {
+                    string jsonPayload = rawStr.Substring("push_notification:".Length);
+                    this.BeginInvoke((MethodInvoker)(() => {
+                        try
+                        {
+                            using var doc = JsonDocument.Parse(jsonPayload);
+                            string title = doc.RootElement.GetProperty("title").GetString();
+                            string body = doc.RootElement.GetProperty("body").GetString();
+                            if (this.FindForm() is MainForm mainForm)
+                            {
+                                mainForm.PushNotification(title, body);
+                            }
+                        }
+                        catch { }
+                    }));
+                }
             }
             catch { }
         }
@@ -309,29 +326,14 @@ namespace DriveAndGo_Admin.Panels
         {
             try
             {
-                var confirm = MessageBox.Show(
-                    "Are you sure you want to permanently delete this vehicle record?",
-                    "Confirm Delete",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning);
-
-                if (confirm == DialogResult.Yes)
+                if (_fleetWebView != null && !_fleetWebView.IsDisposed && _fleetWebView.CoreWebView2 != null)
                 {
-                    var res = await ApiService.DeleteAsync($"vehicles/{vehicleId}");
-                    if (res.Success)
-                    {
-                        MessageBox.Show("Vehicle deleted successfully.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        RefreshWebViewData();
-                    }
-                    else
-                    {
-                        MessageBox.Show("Failed to delete vehicle: " + (res.Error ?? res.Body), "Delete Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
+                    await _fleetWebView.CoreWebView2.ExecuteScriptAsync($"if(window.handleDeleteUnit) window.handleDeleteUnit({vehicleId});");
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Delete error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Console.WriteLine("Error delegating delete to React modal: " + ex.Message);
             }
         }
 

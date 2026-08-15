@@ -52,6 +52,10 @@ namespace DriveAndGo_API.Models
         public int IdleMinutes { get; set; } = 0;
         public decimal RfidBalanceAutosweep { get; set; } = 500m;
         public decimal RfidBalanceEasytrip { get; set; } = 500m;
+        public string Color { get; set; } = "Pearl White";
+        public string FloodRiskStatus { get; set; } = "safe";
+        public bool EngineWaterIngressAlert { get; set; } = false;
+        public decimal LastWeatherTemp { get; set; } = 28.5m;
     }
 
     public class VehicleFleetDto
@@ -66,6 +70,9 @@ namespace DriveAndGo_API.Models
         public string PhotoUrl { get; set; } = "";
         public double? Latitude { get; set; }
         public double? Longitude { get; set; }
+        public string Color { get; set; } = "Pearl White";
+        public string FloodRiskStatus { get; set; } = "safe";
+        public bool EngineWaterIngressAlert { get; set; } = false;
     }
 
     // ── Telematics Request DTOs ───────────────────────────────────────────

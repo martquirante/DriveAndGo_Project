@@ -44,7 +44,7 @@ namespace DriveAndGo_API.Controllers
         <p>Drive&amp;Go reserves the right to suspend or terminate accounts that violate system policies, exhibit suspicious activity, or fail security verification challenges.</p>
 
         <div class=""footer"">
-            &copy; 2026 DriveAndGo Inc., Makati City, Philippines. All rights reserved.
+            &copy; 2026 DriveAndGo Inc., CSJDM | Norzagaray, Bulacan, Philippines. All rights reserved.
         </div>
     </div>
 </body>
@@ -91,7 +91,7 @@ namespace DriveAndGo_API.Controllers
         <p>If you have questions regarding data privacy, contact our Data Protection Officer at <a href=""mailto:support@driveandgo.ph"" style=""color:#F97316;"">support@driveandgo.ph</a>.</p>
 
         <div class=""footer"">
-            &copy; 2026 DriveAndGo Inc., Makati City, Philippines. All rights reserved.
+            &copy; 2026 DriveAndGo Inc., CSJDM | Norzagaray, Bulacan, Philippines. All rights reserved.
         </div>
     </div>
 </body>

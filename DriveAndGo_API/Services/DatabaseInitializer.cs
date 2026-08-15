@@ -261,7 +261,17 @@ namespace DriveAndGo_API.Services
                     ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS rfid_balance_autosweep  NUMERIC(10,2)   NOT NULL DEFAULT 500.00;
                     ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS rfid_balance_easytrip   NUMERIC(10,2)   NOT NULL DEFAULT 500.00;
                     ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS or_cr_url               TEXT            NOT NULL DEFAULT '';
-                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS insurance_url           TEXT            NOT NULL DEFAULT '';
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS color                   VARCHAR(50)     NOT NULL DEFAULT 'Pearl White';
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS flood_risk_status       VARCHAR(50)     NOT NULL DEFAULT 'safe';
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS engine_water_ingress_alert BOOLEAN       NOT NULL DEFAULT FALSE;
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS last_weather_temp       NUMERIC(5,2)    NOT NULL DEFAULT 28.5;
+
+                    -- Populate distinct vehicle colors if unassigned or default
+                    UPDATE vehicles SET color = 'Pearl White' WHERE (vehicle_id % 5 = 0) AND (color IS NULL OR color = '' OR color = 'White' OR color = 'Pearl White');
+                    UPDATE vehicles SET color = 'Absolute Black' WHERE (vehicle_id % 5 = 1) AND (color IS NULL OR color = '' OR color = 'White' OR color = 'Pearl White');
+                    UPDATE vehicles SET color = 'Crimson Red' WHERE (vehicle_id % 5 = 2) AND (color IS NULL OR color = '' OR color = 'White' OR color = 'Pearl White');
+                    UPDATE vehicles SET color = 'Agate Black' WHERE (vehicle_id % 5 = 3) AND (color IS NULL OR color = '' OR color = 'White' OR color = 'Pearl White');
+                    UPDATE vehicles SET color = 'Metropolitan Grey' WHERE (vehicle_id % 5 = 4) AND (color IS NULL OR color = '' OR color = 'White' OR color = 'Pearl White');
 
                     -- Set active realistic future dates for LTO & Insurance if null or expired in past years
                     UPDATE vehicles 
@@ -294,7 +304,44 @@ namespace DriveAndGo_API.Services
                     cmd.ExecuteNonQuery();
                 }
 
-                // 18. Promote rayquirante@gmail.com to admin role
+                // 18. flood_hazard_zones table
+                using (var cmd = new NpgsqlCommand(@"
+                    CREATE TABLE IF NOT EXISTS flood_hazard_zones (
+                        id SERIAL PRIMARY KEY,
+                        zone_name VARCHAR(100) NOT NULL,
+                        risk_level VARCHAR(30) NOT NULL DEFAULT 'moderate',
+                        water_depth_level VARCHAR(100) NOT NULL DEFAULT 'Tire-Deep Level (25 - 35 cm)',
+                        polygon_coordinates_json TEXT NOT NULL,
+                        advisory_timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        recommended_reroute VARCHAR(200) NOT NULL DEFAULT '',
+                        is_active BOOLEAN NOT NULL DEFAULT TRUE
+                    );
+
+                    -- Migration: Convert legacy database snake_case strings to clear human-readable levels
+                    UPDATE flood_hazard_zones SET water_depth_level = 'Tire-Deep Level (25 - 35 cm)' WHERE LOWER(water_depth_level) = 'tire_deep';
+                    UPDATE flood_hazard_zones SET water_depth_level = 'Waist-Deep Hazard (60 - 80 cm)' WHERE LOWER(water_depth_level) = 'waist_deep';
+
+                    INSERT INTO flood_hazard_zones (zone_name, risk_level, water_depth_level, polygon_coordinates_json, recommended_reroute, is_active)
+                    SELECT 'España Blvd - UST Corridor', 'moderate', 'Tire-Deep Level (25 - 35 cm)', '[[14.6080,120.9880],[14.6120,120.9930],[14.6100,120.9960],[14.6060,120.9910]]', 'Reroute via Lacson Ave or Boulevard Bypass', true
+                    WHERE NOT EXISTS (SELECT 1 FROM flood_hazard_zones WHERE zone_name = 'España Blvd - UST Corridor');
+
+                    INSERT INTO flood_hazard_zones (zone_name, risk_level, water_depth_level, polygon_coordinates_json, recommended_reroute, is_active)
+                    SELECT 'Araneta Avenue Underpass', 'impassable', 'Waist-Deep Hazard (60 - 80 cm)', '[[14.6200,121.0100],[14.6250,121.0150],[14.6220,121.0200],[14.6170,121.0140]]', 'Reroute via E. Rodriguez Sr. Ave or A. Bonifacio', true
+                    WHERE NOT EXISTS (SELECT 1 FROM flood_hazard_zones WHERE zone_name = 'Araneta Avenue Underpass');
+
+                    INSERT INTO flood_hazard_zones (zone_name, risk_level, water_depth_level, polygon_coordinates_json, recommended_reroute, is_active)
+                    SELECT 'R-10 Navotas Coastal Slipway', 'severe', 'Waist-Deep Hazard (60 - 80 cm)', '[[14.6500,120.9400],[14.6550,120.9480],[14.6510,120.9530],[14.6460,120.9450]]', 'Reroute via Circumferential Road 4 (C4)', true
+                    WHERE NOT EXISTS (SELECT 1 FROM flood_hazard_zones WHERE zone_name = 'R-10 Navotas Coastal Slipway');
+
+                    INSERT INTO flood_hazard_zones (zone_name, risk_level, water_depth_level, polygon_coordinates_json, recommended_reroute, is_active)
+                    SELECT 'Marikina Riverbank Inundation Area', 'severe', 'Waist-Deep Hazard (60 - 80 cm)', '[[14.6300,121.0900],[14.6350,121.0980],[14.6310,121.1030],[14.6260,121.0950]]', 'Reroute via Marcos Highway or Sumulong Highway', true
+                    WHERE NOT EXISTS (SELECT 1 FROM flood_hazard_zones WHERE zone_name = 'Marikina Riverbank Inundation Area');
+                ", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 19. Promote rayquirante@gmail.com to admin role
                 using (var cmd = new NpgsqlCommand(@"
                     UPDATE users SET role = 'admin' WHERE LOWER(email) = 'rayquirante@gmail.com';
                 ", conn))

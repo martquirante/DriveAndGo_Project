@@ -2532,6 +2532,25 @@ namespace DriveAndGo_Admin
             g.DrawString(txt, font, Brushes.White, rect, format);
         }
 
+        public void PushNotification(string title, string body)
+        {
+            if (this.IsDisposed || !this.IsHandleCreated) return;
+            if (this.InvokeRequired)
+            {
+                this.Invoke(new Action(() => PushNotification(title, body)));
+                return;
+            }
+
+            _unreadNotifCount++;
+            btnNotifications.Invalidate();
+            _notifications.Insert(0, new { Title = title, Body = body, Time = DateTime.Now });
+
+            if (_notifFlyout != null && !_notifFlyout.IsDisposed)
+            {
+                _notifFlyout.RebuildList();
+            }
+        }
+
         private void ToggleNotifFlyout()
         {
             if (_notifFlyout == null || _notifFlyout.IsDisposed)
@@ -2687,6 +2706,11 @@ namespace DriveAndGo_Admin
                 Point screenPt = anchor.PointToScreen(new Point(0, 0));
                 Point parentPt = _parent.PointToClient(screenPt);
                 this.Location = new Point(parentPt.X + anchor.Width - this.Width, parentPt.Y + anchor.Height + 6 + (int)_yOffset);
+            }
+
+            public void RebuildList()
+            {
+                BuildList();
             }
 
             private void BuildList()

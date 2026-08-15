@@ -70,5 +70,16 @@ namespace DriveAndGo_API.Models
         public DateTime? InsuranceExpiryDate { get; set; }
 
         public bool InGarage { get; set; } = true;
+
+        public string Color { get; set; } = "Pearl White";
+
+        [JsonPropertyName("flood_risk_status")]
+        public string FloodRiskStatus { get; set; } = "safe";
+
+        [JsonPropertyName("engine_water_ingress_alert")]
+        public bool EngineWaterIngressAlert { get; set; } = false;
+
+        [JsonPropertyName("last_weather_temp")]
+        public decimal LastWeatherTemp { get; set; } = 28.5m;
     }
 }

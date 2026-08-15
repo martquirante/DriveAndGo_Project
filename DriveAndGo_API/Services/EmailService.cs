@@ -234,7 +234,7 @@ namespace DriveAndGo_API.Services
                                 <!-- Company Address & Copyright -->
                                 <tr>
                                     <td align=""left"" style=""color: #94A3B8; font-size: 10px; line-height: 1.4;"">
-                                        DriveAndGo Inc., Makati City, Philippines<br />
+                                        DriveAndGo Inc., CSJDM | Norzagaray, Bulacan, Philippines<br />
                                         &copy; 2026 DriveAndGo Inc. All rights reserved.
                                     </td>
                                 </tr>

@@ -20,6 +20,16 @@ var builder = WebApplication.CreateBuilder(args);
 // ─────────────────────────────────────────────────────────────
 //  1b. Override Configuration with .env secrets dynamically
 // ─────────────────────────────────────────────────────────────
+foreach (System.Collections.DictionaryEntry env in Environment.GetEnvironmentVariables())
+{
+    string? key = env.Key?.ToString();
+    string? val = env.Value?.ToString();
+    if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(val))
+    {
+        builder.Configuration[key] = val;
+    }
+}
+
 var envDefaultConn = Environment.GetEnvironmentVariable("DEFAULT_CONNECTION")
     ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
 if (!string.IsNullOrWhiteSpace(envDefaultConn))

@@ -216,72 +216,187 @@ const WeatherBanner = ({ show, onHide }) => {
     );
 };
 
+const VehicleImageComponent = ({ src, alt, className, iconSize = 48 }) => {
+    const [hasError, setHasError] = useState(false);
+
+    useEffect(() => {
+        setHasError(false);
+    }, [src]);
+
+    if (!src || hasError) {
+        return (
+            <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)] opacity-30">
+                <IconCar sz={iconSize} />
+            </div>
+        );
+    }
+
+    return (
+        <img
+            key={src}
+            src={src}
+            alt={alt || 'Vehicle Photo'}
+            className={className || "w-full h-full object-cover"}
+            onError={() => setHasError(true)}
+        />
+    );
+};
+
+const StatusCombobox = ({ value, onChange }) => {
+    const [open, setOpen] = React.useState(false);
+    const containerRef = React.useRef(null);
+
+    const options = [
+        { key: 'all', label: 'All Statuses' },
+        { key: 'available', label: 'Available' },
+        { key: 'rented', label: 'Rented' },
+        { key: 'maintenance', label: 'Maintenance' },
+    ];
+
+    const currentOpt = options.find(o => o.key === value) || options[0];
+
+    React.useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (containerRef.current && !containerRef.current.contains(e.target)) {
+                setOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    return (
+        <div className="relative shrink-0" ref={containerRef}>
+            <button
+                type="button"
+                onClick={() => setOpen(!open)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 border bg-[var(--bg-tertiary)] ${
+                    open 
+                    ? 'border-orange-500 text-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.3)] ring-2 ring-orange-500/20' 
+                    : 'border-[var(--border-color)] text-[var(--text-primary)] hover:border-orange-500/60 hover:text-orange-400'
+                }`}
+            >
+                <span className={`w-2 h-2 rounded-full ${value === 'available' ? 'bg-emerald-400 animate-pulse' : value === 'rented' ? 'bg-amber-400 animate-pulse' : value === 'maintenance' ? 'bg-orange-400' : 'bg-orange-500'}`}></span>
+                <span>{currentOpt.label}</span>
+                <IconChevronDown sz={14} className={`transition-transform duration-200 ${open ? 'rotate-180 text-orange-500' : 'text-[var(--text-muted)]'}`} />
+            </button>
+
+            {open && (
+                <div className="absolute right-0 mt-2 w-48 rounded-2xl bg-[var(--bg-card)] border border-orange-500/40 shadow-[0_12px_32px_rgba(0,0,0,0.6)] py-1.5 z-50 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
+                    <div className="px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider text-orange-500 border-b border-[var(--border-color)] mb-1">
+                        Select Status
+                    </div>
+                    {options.map(opt => (
+                        <button
+                            key={opt.key}
+                            onClick={() => {
+                                onChange(opt.key);
+                                setOpen(false);
+                            }}
+                            className={`w-full px-3.5 py-2 text-xs font-bold flex items-center justify-between transition-colors ${
+                                value === opt.key 
+                                ? 'bg-orange-500/15 text-orange-400 font-extrabold' 
+                                : 'text-[var(--text-primary)] hover:bg-orange-500/10 hover:text-orange-400'
+                            }`}
+                        >
+                            <span className="flex items-center gap-2">
+                                <span className={`w-2 h-2 rounded-full ${opt.key === 'available' ? 'bg-emerald-400' : opt.key === 'rented' ? 'bg-amber-400' : opt.key === 'maintenance' ? 'bg-orange-400' : 'bg-orange-500'}`}></span>
+                                {opt.label}
+                            </span>
+                            {value === opt.key && <IconCheck sz={14} className="text-orange-500" />}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const VehicleCard = ({ v, onClick, onMapFocus }) => {
     const st = getStatusStyle(v.status);
+    const isRented = (v.status || '').toLowerCase() === 'rented';
 
     return (
         <div 
-            className="group flex flex-col rounded-3xl bg-[var(--bg-card)] border border-[var(--border-color)] hover:border-orange-500/50 transition-all duration-300 shadow-[var(--shadow-card)] hover:-translate-y-1 hover:shadow-orange-500/10 cursor-pointer overflow-hidden relative h-full justify-between"
+            className="group flex flex-col rounded-3xl bg-[var(--bg-card)] border border-[var(--border-color)] hover:border-orange-500/60 transition-all duration-300 ease-out shadow-lg hover:-translate-y-2 hover:scale-[1.02] hover:z-20 hover:shadow-[0_16px_36px_rgba(249,115,22,0.25)] cursor-pointer overflow-hidden relative justify-between p-0 pb-5.5 min-h-[360px]"
             onClick={() => onClick(v)}
         >
-            {/* Top Section: Vehicle Image + Status Badge Overlay */}
-            <div className="h-36 w-full relative overflow-hidden bg-[#121422] shrink-0">
-                {v.image ? (
-                    <img src={v.image} alt={v.plateNumber} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}/>
-                ) : null}
-                <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)] opacity-20 group-hover:scale-110 transition-transform" style={{display: v.image ? 'none' : 'flex'}}><IconCar sz={48} /></div>
+            {/* Ambient Soft Glow Overlay on Hover */}
+            <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-orange-500/10 opacity-0 group-hover:opacity-100 blur-xl transition-opacity duration-500 pointer-events-none"></div>
+
+            {/* Top Section: FULL WIDTH Image Container (Edge-to-Edge with Card Borders) */}
+            <div className="h-48 w-full relative overflow-hidden shrink-0 border-b border-[var(--border-color)] group-hover:border-orange-500/30 transition-colors">
+                <VehicleImageComponent src={v.image} alt={v.plateNumber} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" iconSize={56} />
                 
-                <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-card)] via-transparent to-transparent"></div>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none"></div>
                 
                 {/* Status Badge */}
-                <div className={`absolute top-3 right-3 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1.5 backdrop-blur-md border border-white/20 shadow-md ${st.bg} ${st.text}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${st.hex === '#34d399' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+                <div className={`absolute top-3.5 right-3.5 px-3.5 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 backdrop-blur-md border border-white/20 shadow-lg ${st.bg} ${st.text}`}>
+                    <span className={`w-2 h-2 rounded-full ${st.hex === '#34d399' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
                     {v.status}
                 </div>
 
                 {v.rfidBalancePHP < 200 && (
-                    <div className="absolute top-3 left-3 p-1.5 rounded-full bg-red-500/90 text-white backdrop-blur shadow-lg" title="Low RFID Balance">
-                        <IconAlertTriangle sz={12} />
+                    <div className="absolute top-3.5 left-3.5 px-2.5 py-1 rounded-full bg-red-500/90 text-white backdrop-blur shadow-lg text-[10px] font-bold flex items-center gap-1">
+                        <IconAlertTriangle sz={12} /> Low RFID
                     </div>
                 )}
+
+                {/* Bottom Overlay inside Image Container: Type & Spec Badges */}
+                <div className="absolute bottom-3.5 left-3.5 right-3.5 flex justify-between items-end pointer-events-none">
+                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-orange-400 bg-black/60 backdrop-blur px-2.5 py-0.5 rounded-md border border-white/10">
+                        {v.type || 'Car'}
+                    </span>
+                    <span className="text-[10px] text-gray-300 font-semibold bg-black/60 backdrop-blur px-2 py-0.5 rounded-md border border-white/10">
+                        {v.transmission} • {v.engineCc}cc
+                    </span>
+                </div>
             </div>
             
-            {/* Body Section */}
-            <div className="p-4 flex flex-col justify-between flex-1 gap-3">
-                {/* Row 1: Brand & Model */}
-                <div>
-                    <div className="text-[10px] font-bold text-orange-400 uppercase tracking-widest truncate mb-0.5">
-                        {v.brand} {v.model} • {v.type}
+            {/* Body Section with 1.5cm Side Margins (px-6 Inset) */}
+            <div className="pt-5 px-6 flex flex-col justify-between flex-1 gap-4 relative z-10">
+                {/* Row 1: Brand & Model + Plate Number & Price */}
+                <div className="flex flex-col gap-2">
+                    <div className="text-xs font-extrabold text-orange-400 uppercase tracking-widest truncate">
+                        {v.brand} {v.model}
                     </div>
                     
-                    {/* Row 2: Plate Number & Daily Rate on Clean Symmetrical Line */}
-                    <div className="flex justify-between items-baseline gap-2 mt-1">
-                        <div className="text-base font-black text-white tracking-tight whitespace-nowrap overflow-hidden text-ellipsis">
+                    <div className="flex justify-between items-baseline gap-2 mb-2">
+                        <div className="text-2xl font-black text-white tracking-tight whitespace-nowrap overflow-hidden text-ellipsis drop-shadow">
                             {v.plateNumber}
                         </div>
                         <div className="text-right shrink-0">
-                            <span className="text-xs font-black text-emerald-400">₱{parseInt(v.dailyRatePHP || 0).toLocaleString()}</span>
-                            <span className="text-[10px] text-[var(--text-muted)] font-normal">/day</span>
+                            <span className="text-base font-black text-emerald-400">₱{parseInt(v.dailyRatePHP || 0).toLocaleString()}</span>
+                            <span className="text-[10px] text-[var(--text-muted)] font-medium">/day</span>
                         </div>
                     </div>
                 </div>
 
-                {/* Row 3: Symmetrical Stat Boxes (Odometer & Health Score) */}
-                <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-[var(--border-color)] shrink-0">
-                    <div className="bg-white/5 p-2.5 rounded-2xl border border-white/5 flex flex-col justify-center min-h-[52px]">
-                        <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-1">
-                            <IconGauge sz={11} className="text-orange-400 shrink-0"/> Odometer
+                {/* Row 2: Symmetrical Dashboard-Style Stat Cards (Odometer & Health Score) */}
+                <div className="grid grid-cols-2 gap-3 pt-4 border-t border-[var(--border-color)] shrink-0">
+                    {/* Odometer Box with Live GPS Telematics Badge */}
+                    <div className={`p-2.5 px-3 rounded-xl border transition-all duration-500 flex flex-col justify-center min-h-[52px] ${isRented ? 'border-emerald-500/50 bg-emerald-500/10 shadow-[0_0_12px_rgba(16,185,129,0.15)]' : 'bg-[var(--bg-tertiary)] border-[var(--border-color)]'}`}>
+                        <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center justify-between gap-1">
+                            <span className="flex items-center gap-1 shrink-0">
+                                <IconGauge sz={11} className={isRented ? "text-emerald-400 shrink-0" : "text-orange-500 shrink-0"}/> Odometer
+                            </span>
+                            {isRented && (
+                                <span className="flex items-center gap-1 text-[7.5px] text-emerald-400 font-extrabold tracking-tight bg-emerald-500/20 px-1.5 py-0.5 rounded-full border border-emerald-500/30 shrink-0 whitespace-nowrap">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> LIVE
+                                </span>
+                            )}
                         </div>
-                        <div className="font-extrabold text-white text-xs mt-0.5 whitespace-nowrap truncate">
-                            {parseInt(v.odometerKm || 0).toLocaleString()} <span className="text-[9px] text-[var(--text-muted)] font-medium">km</span>
+                        <div className={`font-black text-xs mt-0.5 whitespace-nowrap truncate transition-all duration-300 ${isRented ? 'text-emerald-400 animate-pulse' : 'text-[var(--text-primary)]'}`}>
+                            {parseInt(v.odometerKm || 0).toLocaleString()} <span className="text-[9px] text-[var(--text-muted)] font-normal">km</span>
                         </div>
                     </div>
 
-                    <div className="bg-white/5 p-2.5 rounded-2xl border border-white/5 flex flex-col justify-center min-h-[52px]">
+                    {/* Health Score Box */}
+                    <div className="bg-[var(--bg-tertiary)] p-2.5 px-3 rounded-xl border border-[var(--border-color)] flex flex-col justify-center min-h-[50px]">
                         <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider flex items-center gap-1">
-                            <IconShield sz={11} className="text-orange-400 shrink-0"/> Health Score
+                            <IconShield sz={11} className="text-emerald-400 shrink-0"/> Health Score
                         </div>
-                        <div className={`font-extrabold text-xs mt-0.5 whitespace-nowrap ${v.healthScore > 80 ? 'text-emerald-400' : v.healthScore > 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                        <div className={`font-black text-xs mt-0.5 whitespace-nowrap ${v.healthScore > 80 ? 'text-emerald-400' : v.healthScore > 50 ? 'text-amber-400' : 'text-red-400'}`}>
                             {v.healthScore}/100
                         </div>
                     </div>
@@ -312,7 +427,7 @@ const VehicleTable = ({ vehicles, onSelect }) => (
                         <tr key={v.id} onClick={() => onSelect(v)} className="hover:bg-[var(--border-highlight)] cursor-pointer transition-colors group">
                             <td className="p-4 flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-lg bg-[var(--bg-tertiary)] overflow-hidden shrink-0 border border-[var(--border-color)]">
-                                    {v.image ? <img src={v.image} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]"><IconCar sz={20}/></div>}
+                                    <VehicleImageComponent src={v.image} alt={v.plateNumber} className="w-full h-full object-cover" iconSize={20} />
                                 </div>
                                 <div>
                                     <div className="font-bold text-[var(--text-primary)]">{v.plateNumber}</div>
@@ -591,23 +706,23 @@ const AddVehicleModal = ({ onClose, onSave, vehicleToEdit }) => {
 
     const [form, setForm] = useState({
         vehicleId: initialId,
-        brand: vehicleToEdit?.brand || '',
-        model: vehicleToEdit?.model || '',
-        plateNumber: vehicleToEdit?.plateNumber || '',
-        type: vehicleToEdit?.type || 'Car',
-        engineCc: vehicleToEdit?.engineCc || 1500,
-        dailyRatePHP: vehicleToEdit?.dailyRatePHP || 2500,
-        rateWithDriverPHP: vehicleToEdit?.rateWithDriverPHP || 3500,
-        seatCapacity: vehicleToEdit?.seatCapacity || 5,
-        transmission: vehicleToEdit?.transmission || 'Automatic',
-        status: vehicleToEdit?.status || 'available',
-        description: vehicleToEdit?.description || '',
-        image: vehicleToEdit?.image || '',
-        mapIconUrl: vehicleToEdit?.mapIconUrl || '',
-        ltoExpiryDate: vehicleToEdit?.documents?.ltoRegistrationExpiry || '2026-10-15',
-        insuranceExpiryDate: vehicleToEdit?.documents?.insuranceExpiry || '2026-11-20',
-        orCrUrl: vehicleToEdit?.orCrUrl || vehicleToEdit?.or_cr_url || '',
-        insuranceUrl: vehicleToEdit?.insuranceUrl || vehicleToEdit?.insurance_url || ''
+        brand: vehicleToEdit?.brand || vehicleToEdit?.Brand || '',
+        model: vehicleToEdit?.model || vehicleToEdit?.Model || '',
+        plateNumber: vehicleToEdit?.plateNumber || vehicleToEdit?.plate_no || vehicleToEdit?.plateNo || vehicleToEdit?.PlateNumber || '',
+        type: vehicleToEdit?.type || vehicleToEdit?.Type || 'Car',
+        engineCc: vehicleToEdit?.engineCc || vehicleToEdit?.cc || vehicleToEdit?.EngineCc || 1500,
+        dailyRatePHP: vehicleToEdit?.dailyRatePHP || vehicleToEdit?.rate_per_day || vehicleToEdit?.ratePerDay || vehicleToEdit?.RatePerDay || 2500,
+        rateWithDriverPHP: vehicleToEdit?.rateWithDriverPHP || vehicleToEdit?.rate_with_driver || vehicleToEdit?.rateWithDriver || vehicleToEdit?.RateWithDriver || 3500,
+        seatCapacity: vehicleToEdit?.seatCapacity || vehicleToEdit?.seat_capacity || vehicleToEdit?.SeatCapacity || 5,
+        transmission: vehicleToEdit?.transmission || vehicleToEdit?.Transmission || 'Automatic',
+        status: vehicleToEdit?.status || vehicleToEdit?.Status || 'available',
+        description: vehicleToEdit?.description || vehicleToEdit?.Description || '',
+        image: vehicleToEdit?.image || vehicleToEdit?.photo_url || vehicleToEdit?.photoUrl || vehicleToEdit?.PhotoUrl || '',
+        mapIconUrl: vehicleToEdit?.mapIconUrl || vehicleToEdit?.map_icon_url || vehicleToEdit?.model_3d_url || vehicleToEdit?.model3dUrl || '',
+        ltoExpiryDate: formatDateSafe(vehicleToEdit?.lto_expiry_date || vehicleToEdit?.ltoExpiryDate || vehicleToEdit?.documents?.ltoRegistrationExpiry, '2026-10-15'),
+        insuranceExpiryDate: formatDateSafe(vehicleToEdit?.insurance_expiry_date || vehicleToEdit?.insuranceExpiryDate || vehicleToEdit?.documents?.insuranceExpiry, '2026-11-20'),
+        orCrUrl: vehicleToEdit?.orCrUrl || vehicleToEdit?.or_cr_url || vehicleToEdit?.OrCrUrl || vehicleToEdit?.documents?.orCrUrl || vehicleToEdit?.documents?.or_cr_url || '',
+        insuranceUrl: vehicleToEdit?.insuranceUrl || vehicleToEdit?.insurance_url || vehicleToEdit?.InsuranceUrl || vehicleToEdit?.documents?.insuranceUrl || vehicleToEdit?.documents?.insurance_url || ''
     });
 
     const [isSaving, setIsSaving] = useState(false);
@@ -719,10 +834,41 @@ const AddVehicleModal = ({ onClose, onSave, vehicleToEdit }) => {
 
     const handleMediaUpload = (e) => {
         const file = e.target.files && e.target.files[0];
-        if (file) {
-            processTransparentImage(file, (transparentDataUrl) => {
-                setForm(f => ({ ...f, image: transparentDataUrl }));
-            });
+        if (!file) return;
+        if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width || 800;
+                    let height = img.height || 800;
+                    const MAX_DIM = 1200;
+                    if (width > MAX_DIM || height > MAX_DIM) {
+                        if (width > height) {
+                            height = Math.round((height * MAX_DIM) / width);
+                            width = MAX_DIM;
+                        } else {
+                            width = Math.round((width * MAX_DIM) / height);
+                            height = MAX_DIM;
+                        }
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                    setForm(f => ({ ...f, image: compressedDataUrl }));
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        } else {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                setForm(f => ({ ...f, image: ev.target.result }));
+            };
+            reader.readAsDataURL(file);
         }
     };
 
@@ -890,7 +1036,49 @@ const AddVehicleModal = ({ onClose, onSave, vehicleToEdit }) => {
 
             if (res.ok || res.status === 201 || res.status === 204) {
                 const resData = await res.json().catch(() => ({}));
-                onSave(resData?.message || (shouldUpdate ? "Vehicle updated successfully!" : "Vehicle added to fleet successfully!"));
+                const finalId = targetId || resData?.vehicleId || resData?.VehicleId || resData?.vehicle_id || form.vehicleId;
+                const updatedVehicleObj = normVehicle({
+                    ...(vehicleToEdit || {}),
+                    ...form,
+                    vehicle_id: finalId,
+                    vehicleId: finalId,
+                    VehicleId: finalId,
+                    id: finalId,
+                    plate_no: form.plateNumber,
+                    plateNumber: form.plateNumber,
+                    brand: form.brand,
+                    model: form.model,
+                    type: form.type,
+                    rate_per_day: form.dailyRatePHP,
+                    dailyRatePHP: form.dailyRatePHP,
+                    rate_with_driver: form.rateWithDriverPHP,
+                    rateWithDriverPHP: form.rateWithDriverPHP,
+                    cc: form.engineCc,
+                    engineCc: form.engineCc,
+                    seat_capacity: form.seatCapacity,
+                    seatCapacity: form.seatCapacity,
+                    transmission: form.transmission,
+                    status: form.status,
+                    description: form.description,
+                    photo_url: form.image || '',
+                    image: form.image || '',
+                    model_3d_url: form.mapIconUrl || '',
+                    map_icon_url: form.mapIconUrl || '',
+                    mapIconUrl: form.mapIconUrl || '',
+                    lto_expiry_date: form.ltoExpiryDate,
+                    insurance_expiry_date: form.insuranceExpiryDate,
+                    or_cr_url: form.orCrUrl || '',
+                    orCrUrl: form.orCrUrl || '',
+                    insurance_url: form.insuranceUrl || '',
+                    insuranceUrl: form.insuranceUrl || '',
+                    documents: {
+                        ltoRegistrationExpiry: formatDateSafe(form.ltoExpiryDate, '2026-10-15'),
+                        insuranceExpiry: formatDateSafe(form.insuranceExpiryDate, '2026-11-20'),
+                        orCrUrl: form.orCrUrl || '',
+                        insuranceUrl: form.insuranceUrl || ''
+                    }
+                });
+                onSave(resData?.message || (shouldUpdate ? "Vehicle updated successfully!" : "Vehicle added to fleet successfully!"), updatedVehicleObj);
             } else {
                 const rawErrText = await res.text().catch(() => '');
                 let parsedMsg = '';
@@ -911,8 +1099,19 @@ const AddVehicleModal = ({ onClose, onSave, vehicleToEdit }) => {
 
     return (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-xl p-4 sm:p-6 animate-fade-in" onClick={onClose}>
-            <div className="bg-[#0d0e17]/90 backdrop-blur-2xl border border-white/20 rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.8)] w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-scale-up" onClick={e => e.stopPropagation()}>
+            <div className="bg-[#0d0e17]/90 backdrop-blur-2xl border border-white/20 rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.8)] w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden relative animate-scale-up" onClick={e => e.stopPropagation()}>
                 
+                {/* Visual Glass Saving Overlay Loading State */}
+                {isSaving && (
+                    <div className="absolute inset-0 z-50 bg-black/70 backdrop-blur-md flex flex-col items-center justify-center gap-3 animate-fade-in">
+                        <div className="w-16 h-16 rounded-2xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center text-orange-500 shadow-2xl shadow-orange-500/30">
+                            <IconRefreshCw sz={32} c="animate-spin" />
+                        </div>
+                        <div className="text-base font-black text-white tracking-wide">Saving Changes...</div>
+                        <div className="text-xs text-orange-300/80 font-medium">Updating vehicle specs & documents in database</div>
+                    </div>
+                )}
+
                 {/* Header */}
                 <div className="p-5 border-b border-white/10 flex justify-between items-center bg-white/5 backdrop-blur-md shrink-0">
                     <h2 className="text-lg font-black text-white flex items-center gap-2">
@@ -1015,11 +1214,19 @@ const AddVehicleModal = ({ onClose, onSave, vehicleToEdit }) => {
                             </div>
                             <div>
                                 <label className="text-xs font-semibold text-gray-400 mb-1 block">Status</label>
-                                <select value={form.status} onChange={e=>setForm({...form, status: e.target.value})} className="w-full p-3 rounded-xl bg-[#141625] border border-white/10 text-sm font-semibold text-white focus:border-orange-500 outline-none transition-all">
-                                    <option value="available">available</option>
-                                    <option value="rented">rented</option>
-                                    <option value="maintenance">maintenance</option>
-                                </select>
+                                {(form.status || '').toLowerCase() === 'rented' ? (
+                                    <div className="w-full p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-sm font-bold text-amber-400 flex items-center justify-between">
+                                        <span className="flex items-center gap-1.5 capitalize">
+                                            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span> rented
+                                        </span>
+                                        <span className="text-[10px] text-amber-400/80 font-normal">🔒 Auto-managed via active rental</span>
+                                    </div>
+                                ) : (
+                                    <select value={form.status} onChange={e=>setForm({...form, status: e.target.value})} className="w-full p-3 rounded-xl bg-[#141625] border border-white/10 text-sm font-semibold text-white focus:border-orange-500 outline-none transition-all capitalize">
+                                        <option value="available">available</option>
+                                        <option value="maintenance">maintenance</option>
+                                    </select>
+                                )}
                             </div>
                         </div>
 
@@ -1221,9 +1428,8 @@ const VehicleDrawer = ({ v, onClose, onRefresh, onEdit, onDelete, onShowQr, onPr
                 
                 {/* Header Image & Vehicle Details Banner */}
                 <div className="h-44 relative shrink-0">
-                    {v.image ? <img src={v.image} className="w-full h-full object-cover" onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}/> : null}
-                    <div className="w-full h-full bg-[var(--bg-tertiary)] flex items-center justify-center text-[var(--text-muted)]" style={{display: v.image ? 'none' : 'flex'}}><IconCar sz={64}/></div>
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#0d0e17] via-black/40 to-transparent"></div>
+                    <VehicleImageComponent src={v.image} alt={v.plateNumber} className="w-full h-full object-cover" iconSize={64} />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#0d0e17] via-black/40 to-transparent pointer-events-none"></div>
                     
                     {/* Close Button */}
                     <button onClick={onClose} className="absolute top-4 right-4 p-2 rounded-full bg-black/60 text-white hover:bg-black/90 backdrop-blur border border-white/20 transition-all hover:scale-110"><IconX sz={18}/></button>
@@ -1366,7 +1572,14 @@ const FleetOverview = () => {
     // Initial Fetch
     const fetchFleet = useCallback(async () => {
         try {
-            const res = await fetch(`${API}/api/vehicles`, { headers: HEADERS });
+            const res = await fetch(`${API}/api/vehicles?_t=${Date.now()}`, { 
+                headers: {
+                    ...HEADERS,
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache'
+                },
+                cache: 'no-store'
+            });
             if (res.ok) {
                 const data = await res.json();
                 const list = data.map((v, i) => {
@@ -1451,9 +1664,35 @@ const FleetOverview = () => {
         };
         // Auto-refresh every 30s
         const int = setInterval(fetchFleet, 30000);
+
+        // Live Telematics Odometer Simulation for Rented Units (Auto-increment + count-up animation)
+        const liveOdoInt = setInterval(() => {
+            setVehicles(prev => {
+                let changed = false;
+                const nextList = prev.map(v => {
+                    const st = (v.status || '').toLowerCase();
+                    if (st === 'rented') {
+                        changed = true;
+                        const step = Math.floor(Math.random() * 2) + 1; // +1 to +2 km per ticker
+                        const newOdo = (v.odometerKm || 0) + step;
+                        const updated = {
+                            ...v,
+                            odometerKm: newOdo,
+                            currentSpeedKmh: Math.floor(Math.random() * 30) + 40,
+                        };
+                        setSelectedVehicle(curr => (curr && (String(curr.id) === String(v.id) || String(curr.vehicle_id) === String(v.id))) ? updated : curr);
+                        return updated;
+                    }
+                    return v;
+                });
+                return changed ? nextList : prev;
+            });
+        }, 3500);
+
         return () => {
             clearTimeout(splashTimer);
             clearInterval(int);
+            clearInterval(liveOdoInt);
         };
     }, [fetchFleet]);
 
@@ -1488,7 +1727,14 @@ const FleetOverview = () => {
 
         if (vId) {
             try {
-                const res = await fetch(`${API}/api/vehicles/${vId}`, { headers: HEADERS });
+                const res = await fetch(`${API}/api/vehicles/${vId}?_t=${Date.now()}`, { 
+                    headers: {
+                        ...HEADERS,
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache'
+                    },
+                    cache: 'no-store'
+                });
                 if (res.ok) {
                     const fullData = await res.json();
                     vObj = { ...vObj, ...normVehicle(fullData, 0), vehicle_id: vId, vehicleId: vId, VehicleId: vId, id: vId };
@@ -1570,111 +1816,127 @@ const FleetOverview = () => {
             {/* LEFT COLUMN: KPI Stats, Search & Filters, 3-Col Vehicle Cards (~58% width) */}
             <div className="flex-1 lg:max-w-[58%] h-full overflow-y-auto p-5 flex flex-col gap-5 custom-scrollbar">
                 
-                {/* KPI STAT CARDS BENTO GRID */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                    
-                    {/* 1. Total Fleet */}
-                    <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-color)] shadow-[var(--shadow-card)] flex flex-col justify-between">
-                        <div className="w-9 h-9 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center mb-2">
-                            <IconCar sz={20} />
-                        </div>
-                        <div>
-                            <div className="text-xs text-[var(--text-muted)] font-medium">Total Fleet</div>
-                            <div className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">{stats.total.toLocaleString()}</div>
-                        </div>
-                    </div>
-
-                    {/* 2. Available */}
-                    <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-color)] shadow-[var(--shadow-card)] flex flex-col justify-between">
-                        <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center mb-2">
-                            <IconCheck sz={20} />
-                        </div>
-                        <div>
-                            <div className="text-xs text-[var(--text-muted)] font-medium">Available</div>
-                            <div className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">{stats.avail.toLocaleString()}</div>
-                        </div>
-                    </div>
-
-                    {/* 3. Combined Total / Rented */}
-                    <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-color)] shadow-[var(--shadow-card)] flex flex-col justify-between">
-                        <div>
-                            <div className="text-[10px] text-[var(--text-muted)] font-medium uppercase">Total Active</div>
-                            <div className="text-lg font-bold text-[var(--text-primary)]">{stats.total.toLocaleString()}</div>
-                        </div>
-                        <div className="pt-2 border-t border-[var(--border-color)]">
-                            <div className="text-[10px] text-[var(--text-muted)] font-medium uppercase">Rented</div>
-                            <div className="text-lg font-bold text-amber-500">{stats.rent.toLocaleString()}</div>
-                        </div>
-                    </div>
-
-                    {/* 4. Maintenance */}
-                    <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-color)] shadow-[var(--shadow-card)] flex flex-col justify-between">
-                        <div className="w-9 h-9 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center mb-2">
-                            <IconSettings sz={20} />
-                        </div>
-                        <div>
-                            <div className="text-xs text-[var(--text-muted)] font-medium">Maintenance</div>
-                            <div className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">{stats.maint.toLocaleString()}</div>
-                        </div>
-                    </div>
-
-                    {/* 5. Health & Low RFID Box */}
-                    <div className="flex flex-col gap-2">
-                        <div className="p-3 rounded-xl bg-[var(--bg-card)] border border-[var(--border-color)] flex items-center gap-2">
-                            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                            <div>
-                                <div className="text-[10px] text-[var(--text-muted)] font-medium">Avg Health Percentage</div>
-                                <div className="text-base font-bold text-[var(--text-primary)]">{stats.avgHealth}%</div>
-                            </div>
-                        </div>
-                        <div className="p-3 rounded-xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-between">
-                            <div>
-                                <div className="text-[10px] text-orange-400 font-semibold flex items-center gap-1">
-                                    <IconAlertTriangle sz={10} /> Low RFID Balance !
+                {/* KPI STAT CARDS BENTO GRID (Clean 4-Col Layout + Status Bar) */}
+                <div className="flex flex-col gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {/* 1. Total Fleet */}
+                        <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-color)] shadow-[var(--shadow-card)] hover:-translate-y-1 hover:border-orange-500/40 transition-all duration-300 flex flex-col justify-between h-28 cursor-pointer group">
+                            <div className="flex justify-between items-center">
+                                <div className="w-9 h-9 rounded-xl bg-orange-500/15 text-orange-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                    <IconCar sz={18} />
                                 </div>
-                                <div className="text-base font-bold text-orange-500">{stats.lowRfid} Vehicles</div>
+                                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">Live</span>
+                            </div>
+                            <div>
+                                <div className="text-2xl font-black tracking-tight text-[var(--text-primary)]">{stats.total.toLocaleString()}</div>
+                                <div className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Total Fleet</div>
+                            </div>
+                        </div>
+
+                        {/* 2. Available */}
+                        <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-color)] shadow-[var(--shadow-card)] hover:-translate-y-1 hover:border-emerald-500/40 transition-all duration-300 flex flex-col justify-between h-28 cursor-pointer group">
+                            <div className="flex justify-between items-center">
+                                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                    <IconCheck sz={18} />
+                                </div>
+                                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">Ready</span>
+                            </div>
+                            <div>
+                                <div className="text-2xl font-black tracking-tight text-emerald-400">{stats.avail.toLocaleString()}</div>
+                                <div className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Available</div>
+                            </div>
+                        </div>
+
+                        {/* 3. Rented */}
+                        <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-color)] shadow-[var(--shadow-card)] hover:-translate-y-1 hover:border-amber-500/40 transition-all duration-300 flex flex-col justify-between h-28 cursor-pointer group">
+                            <div className="flex justify-between items-center">
+                                <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                    <IconZap sz={18} />
+                                </div>
+                                <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">Active</span>
+                            </div>
+                            <div>
+                                <div className="text-2xl font-black tracking-tight text-amber-400">{stats.rent.toLocaleString()}</div>
+                                <div className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">On Rent</div>
+                            </div>
+                        </div>
+
+                        {/* 4. Maintenance */}
+                        <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-color)] shadow-[var(--shadow-card)] hover:-translate-y-1 hover:border-orange-500/40 transition-all duration-300 flex flex-col justify-between h-28 cursor-pointer group">
+                            <div className="flex justify-between items-center">
+                                <div className="w-9 h-9 rounded-xl bg-orange-500/15 text-orange-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                    <IconSettings sz={18} />
+                                </div>
+                                <span className="text-[10px] font-bold text-gray-400 bg-white/5 px-2 py-0.5 rounded-full border border-white/10">In Shop</span>
+                            </div>
+                            <div>
+                                <div className="text-2xl font-black tracking-tight text-[var(--text-primary)]">{stats.maint.toLocaleString()}</div>
+                                <div className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Maintenance</div>
                             </div>
                         </div>
                     </div>
 
+                    {/* Fleet Health & RFID Status Bar */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="p-3 px-4 rounded-xl bg-[var(--bg-card)] border border-[var(--border-color)] flex items-center justify-between shadow-sm hover:border-emerald-500/30 transition-colors">
+                            <div className="flex items-center gap-2">
+                                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                                <span className="text-xs text-[var(--text-muted)] font-bold uppercase tracking-wider">Avg Fleet Health</span>
+                            </div>
+                            <span className="text-sm font-black text-emerald-400">{stats.avgHealth}%</span>
+                        </div>
+                        <div className="p-3 px-4 rounded-xl bg-orange-500/15 border border-orange-500/40 flex items-center justify-between shadow-sm hover:bg-orange-500/25 transition-colors">
+                            <div className="flex items-center gap-2 text-orange-400">
+                                <IconAlertTriangle sz={14} />
+                                <span className="text-xs font-bold uppercase tracking-wider">Low RFID Balance</span>
+                            </div>
+                            <span className="text-sm font-black text-orange-500">{stats.lowRfid} Vehicles</span>
+                        </div>
+                    </div>
                 </div>
 
-                {/* CONTROL & FILTER BAR */}
-                <div className="flex flex-col sm:flex-row justify-between items-center gap-3 bg-[var(--bg-card)] p-2 pl-4 rounded-2xl border border-[var(--border-color)] shadow-[var(--shadow-card)]">
-                    <div className="flex items-center gap-2 flex-1 w-full">
-                        <IconSearch sz={18} c="text-[var(--text-muted)]" />
+                {/* CONTROL & FILTER BAR (Prominent Search + Status Combobox) */}
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-3 bg-[var(--bg-card)] p-2.5 px-4 rounded-2xl border border-[var(--border-color)] shadow-[var(--shadow-card)]">
+                    {/* PROMINENT EXPANDED SEARCH BAR */}
+                    <div className="flex items-center gap-2.5 flex-1 w-full bg-[var(--bg-tertiary)] px-3.5 py-2 rounded-xl border border-[var(--border-color)] focus-within:border-orange-500/60 transition-colors">
+                        <IconSearch sz={18} c="text-orange-500 shrink-0" />
                         <input 
                             type="text" 
-                            placeholder="Search..." 
+                            placeholder="Search in fleet..." 
                             value={searchTerm}
                             onChange={e=>setSearchTerm(e.target.value)}
-                            className="bg-transparent border-none outline-none text-sm w-full text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+                            className="bg-transparent border-none outline-none text-sm w-full text-[var(--text-primary)] placeholder-[var(--text-muted)] font-medium"
                         />
+                        {searchTerm && (
+                            <button onClick={() => setSearchTerm('')} className="text-xs text-[var(--text-muted)] hover:text-white px-1 font-bold">✕</button>
+                        )}
                     </div>
-                    <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 hide-scrollbar">
-                        <div className="flex bg-[var(--bg-tertiary)] p-1 rounded-xl border border-[var(--border-color)]">
-                            {['all','available','rented','maintenance'].map(f => (
-                                <button key={f} onClick={()=>setFilterStatus(f)} className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all whitespace-nowrap ${filterStatus===f ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}>
-                                    {f}
-                                </button>
-                            ))}
+
+                    {/* RIGHT CONTROLS: STATUS COMBOBOX + VIEW TOGGLE + ADD UNIT */}
+                    <div className="flex items-center gap-2.5 w-full sm:w-auto shrink-0 justify-between sm:justify-end">
+                        {/* Interactive Brand Orange Status Combobox */}
+                        <StatusCombobox value={filterStatus} onChange={setFilterStatus} />
+
+                        <div className="h-6 w-px bg-[var(--border-color)] hidden sm:block"></div>
+
+                        {/* View Mode Icons */}
+                        <div className="flex gap-1 shrink-0 bg-[var(--bg-tertiary)] p-1 rounded-xl border border-[var(--border-color)]">
+                            <button onClick={()=>setViewMode('grid')} className={`p-1.5 rounded-lg transition-all ${viewMode==='grid'?'bg-orange-500 text-white shadow-md shadow-orange-500/30':'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`} title="Grid View"><IconGrid sz={16}/></button>
+                            <button onClick={()=>setViewMode('table')} className={`p-1.5 rounded-lg transition-all ${viewMode==='table'?'bg-orange-500 text-white shadow-md shadow-orange-500/30':'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`} title="List View"><IconList sz={16}/></button>
                         </div>
-                        <div className="h-6 w-px bg-[var(--border-color)] mx-1 hidden sm:block"></div>
-                        <div className="flex gap-1 shrink-0">
-                            <button onClick={()=>setViewMode('grid')} className={`p-2 rounded-xl transition-colors ${viewMode==='grid'?'bg-orange-500/10 text-orange-500':'text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)]'}`}><IconGrid sz={18}/></button>
-                            <button onClick={()=>setViewMode('table')} className={`p-2 rounded-xl transition-colors ${viewMode==='table'?'bg-orange-500/10 text-orange-500':'text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)]'}`}><IconList sz={18}/></button>
-                        </div>
-                        <button onClick={() => setShowAddModal(true)} className="ml-1 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-orange-500/20 flex items-center gap-2 shrink-0 transition-colors">
+
+                        {/* Add Unit Button */}
+                        <button onClick={() => setShowAddModal(true)} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-orange-500/20 flex items-center gap-2 shrink-0 transition-colors">
                             <IconPlus sz={16} /> Add Unit
                         </button>
                     </div>
                 </div>
 
-                {/* VEHICLE GRID (3 COLUMNS) */}
+                {/* VEHICLE GRID (LARGER DASHBOARD CARDS) */}
                 {loading && vehicles.length === 0 ? (
                     <div className="flex justify-center items-center py-20 text-[var(--text-muted)]"><IconRefreshCw sz={32} c="animate-spin" /></div>
                 ) : viewMode === 'grid' ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pb-6">
                         {filteredVehicles.map(v => (
                             <VehicleCard key={v.id} v={v} onClick={setSelectedVehicle} onMapFocus={setSelectedVehicle} />
                         ))}
@@ -1711,10 +1973,35 @@ const FleetOverview = () => {
                 <AddVehicleModal 
                     vehicleToEdit={editingVehicle} 
                     onClose={() => { setShowAddModal(false); setEditingVehicle(null); }} 
-                    onSave={async (successMsg) => { 
+                    onSave={async (successMsg, updatedVehicle) => { 
                         setShowAddModal(false); 
                         setEditingVehicle(null); 
                         showToast(successMsg || "Vehicle updated successfully!", 'success');
+
+                        // Instant Optimistic Local State Update (0ms immediate refresh!)
+                        if (updatedVehicle) {
+                            const uId = String(updatedVehicle.id || updatedVehicle.vehicle_id || updatedVehicle.vehicleId || '');
+                            const uPlate = (updatedVehicle.plateNumber || updatedVehicle.plate_no || '').trim().toLowerCase();
+
+                            setVehicles(prev => {
+                                const isMatch = v => (uId && String(v.id || v.vehicle_id || v.vehicleId || '') === uId) || 
+                                                     (uPlate && (v.plateNumber || v.plate_no || '').trim().toLowerCase() === uPlate);
+                                const exists = prev.some(isMatch);
+                                if (exists) {
+                                    return prev.map(v => isMatch(v) ? { ...v, ...updatedVehicle } : v);
+                                }
+                                return [updatedVehicle, ...prev];
+                            });
+
+                            setSelectedVehicle(prev => {
+                                if (!prev) return null;
+                                const isMatch = (uId && String(prev.id || prev.vehicle_id || prev.vehicleId || '') === uId) || 
+                                                (uPlate && (prev.plateNumber || prev.plate_no || '').trim().toLowerCase() === uPlate);
+                                return isMatch ? { ...prev, ...updatedVehicle } : prev;
+                            });
+                        }
+
+                        // Re-fetch fresh live data from database with no-cache
                         await fetchFleet(); 
                     }} 
                 />

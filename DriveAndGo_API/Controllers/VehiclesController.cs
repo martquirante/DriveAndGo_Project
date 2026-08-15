@@ -35,10 +35,14 @@ public class VehiclesController : ControllerBase
     }
 
     [HttpGet]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public IActionResult GetVehicles()
     {
         try
         {
+            Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+            Response.Headers["Pragma"] = "no-cache";
+            Response.Headers["Expires"] = "0";
             return Ok(ReadVehicles());
         }
         catch (Exception ex)
@@ -48,16 +52,20 @@ public class VehiclesController : ControllerBase
     }
 
     [HttpGet("fleet")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public IActionResult GetFleetVehicles()
     {
         try
         {
+            Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+            Response.Headers["Pragma"] = "no-cache";
+            Response.Headers["Expires"] = "0";
             var fleet = new List<DriveAndGo_API.Models.VehicleFleetDto>();
             using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
             using var command = new NpgsqlCommand(
-                @"SELECT vehicle_id, brand, model, plate_no, type, rate_per_day, status, photo_url, latitude, longitude 
+                @"SELECT vehicle_id, brand, model, plate_no, type, rate_per_day, status, photo_url, latitude, longitude, COALESCE(color, 'Pearl White') AS color 
                   FROM vehicles 
                   ORDER BY brand ASC, model ASC", connection);
 
@@ -75,7 +83,8 @@ public class VehiclesController : ControllerBase
                     Status = reader["status"]?.ToString() ?? "available",
                     PhotoUrl = reader["photo_url"]?.ToString() ?? string.Empty,
                     Latitude = reader["latitude"] == DBNull.Value ? null : Convert.ToDouble(reader["latitude"]),
-                    Longitude = reader["longitude"] == DBNull.Value ? null : Convert.ToDouble(reader["longitude"])
+                    Longitude = reader["longitude"] == DBNull.Value ? null : Convert.ToDouble(reader["longitude"]),
+                    Color = reader["color"]?.ToString() ?? "Pearl White"
                 });
             }
             return Ok(fleet);
@@ -87,10 +96,14 @@ public class VehiclesController : ControllerBase
     }
 
     [HttpGet("{id:int}")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public IActionResult GetVehicleById(int id)
     {
         try
         {
+            Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+            Response.Headers["Pragma"] = "no-cache";
+            Response.Headers["Expires"] = "0";
             using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
 
@@ -112,10 +125,14 @@ public class VehiclesController : ControllerBase
     }
 
     [HttpGet("available")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public IActionResult GetAvailableVehicles()
     {
         try
         {
+            Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+            Response.Headers["Pragma"] = "no-cache";
+            Response.Headers["Expires"] = "0";
             return Ok(ReadVehicles("WHERE LOWER(status) = 'available'"));
         }
         catch (Exception ex)
@@ -166,11 +183,11 @@ public class VehiclesController : ControllerBase
                 @"INSERT INTO vehicles
                     (plate_no, brand, model, type, cc, status, rate_per_day, rate_with_driver, photo_url, description,
                      seat_capacity, transmission, model_3d_url, created_at, latitude, longitude, current_speed, last_update, in_garage,
-                     lto_expiry_date, insurance_expiry_date, or_cr_url, insurance_url)
+                     lto_expiry_date, insurance_expiry_date, or_cr_url, insurance_url, color)
                   VALUES
                     (@plate_no, @brand, @model, @type, @cc, @status, @rate_per_day, @rate_with_driver, @photo_url, @description,
                      @seat_capacity, @transmission, @model_3d_url, @created_at, @latitude, @longitude, @current_speed, @last_update, @in_garage,
-                     @lto_expiry_date, @insurance_expiry_date, @or_cr_url, @insurance_url)
+                     @lto_expiry_date, @insurance_expiry_date, @or_cr_url, @insurance_url, @color)
                   RETURNING vehicle_id",
                 connection);
 
@@ -197,6 +214,7 @@ public class VehiclesController : ControllerBase
             insertCommand.Parameters.AddWithValue("@insurance_expiry_date", vehicle.InsuranceExpiryDate.HasValue ? vehicle.InsuranceExpiryDate.Value : DBNull.Value);
             insertCommand.Parameters.AddWithValue("@or_cr_url", string.IsNullOrWhiteSpace(vehicle.OrCrUrl) ? "" : vehicle.OrCrUrl.Trim());
             insertCommand.Parameters.AddWithValue("@insurance_url", string.IsNullOrWhiteSpace(vehicle.InsuranceUrl) ? "" : vehicle.InsuranceUrl.Trim());
+            insertCommand.Parameters.AddWithValue("@color", string.IsNullOrWhiteSpace(vehicle.Color) ? "Pearl White" : vehicle.Color.Trim());
 
             var vehicleId = Convert.ToInt32(insertCommand.ExecuteScalar());
 
@@ -285,9 +303,10 @@ public class VehiclesController : ControllerBase
                       in_garage = @in_garage,
                       lto_expiry_date = @lto_expiry_date,
                       insurance_expiry_date = @insurance_expiry_date,
-                      or_cr_url = @or_cr_url,
-                      insurance_url = @insurance_url
-                  WHERE vehicle_id = @id",
+                       or_cr_url = @or_cr_url,
+                       insurance_url = @insurance_url,
+                       color = @color
+                   WHERE vehicle_id = @id",
                 connection);
 
             updateCommand.Parameters.AddWithValue("@plate_no", vehicle.PlateNo.Trim());
@@ -312,6 +331,7 @@ public class VehiclesController : ControllerBase
             updateCommand.Parameters.AddWithValue("@insurance_expiry_date", vehicle.InsuranceExpiryDate.HasValue ? vehicle.InsuranceExpiryDate.Value : DBNull.Value);
             updateCommand.Parameters.AddWithValue("@or_cr_url", string.IsNullOrWhiteSpace(vehicle.OrCrUrl) ? "" : vehicle.OrCrUrl.Trim());
             updateCommand.Parameters.AddWithValue("@insurance_url", string.IsNullOrWhiteSpace(vehicle.InsuranceUrl) ? "" : vehicle.InsuranceUrl.Trim());
+            updateCommand.Parameters.AddWithValue("@color", string.IsNullOrWhiteSpace(vehicle.Color) ? "Pearl White" : vehicle.Color.Trim());
             updateCommand.Parameters.AddWithValue("@id", targetVehicleId);
 
             if (updateCommand.ExecuteNonQuery() == 0)
@@ -344,12 +364,28 @@ public class VehiclesController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    public async Task<IActionResult> DeleteVehicle(int id)
+    public async Task<IActionResult> DeleteVehicle(int id, [FromQuery] string? reason = null, [FromQuery] string? notes = null, [FromBody] DecommissionVehicleRequest? bodyReq = null)
     {
         try
         {
             using var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
+
+            string vehicleBrand = "";
+            string vehicleModel = "";
+            string vehiclePlate = "";
+
+            using (var infoCmd = new NpgsqlCommand("SELECT brand, model, plate_no FROM vehicles WHERE vehicle_id = @id", connection))
+            {
+                infoCmd.Parameters.AddWithValue("@id", id);
+                using var infoReader = infoCmd.ExecuteReader();
+                if (infoReader.Read())
+                {
+                    vehicleBrand = infoReader["brand"]?.ToString() ?? "";
+                    vehicleModel = infoReader["model"]?.ToString() ?? "";
+                    vehiclePlate = infoReader["plate_no"]?.ToString() ?? "";
+                }
+            }
 
             using var rentalCommand = new NpgsqlCommand(
                 @"SELECT COUNT(*) FROM rentals
@@ -360,7 +396,7 @@ public class VehiclesController : ControllerBase
 
             if (Convert.ToInt32(rentalCommand.ExecuteScalar()) > 0)
             {
-                return Conflict(new { Message = "Cannot delete a vehicle with active or pending rentals." });
+                return Conflict(new { Message = "Cannot decommission or delete a vehicle with active or pending rentals." });
             }
 
             using var tx = connection.BeginTransaction();
@@ -380,24 +416,38 @@ public class VehiclesController : ControllerBase
                     }
                 }
 
-                void SafeDeleteNested(string table, string parentTable, string keyCol, string targetCol, int vid)
+                void SafeDeleteByRental(string table)
                 {
                     using var chk = new NpgsqlCommand(
-                        @"SELECT 1 FROM information_schema.columns c1
-                          JOIN information_schema.columns c2 ON c2.table_name = @ptbl AND c2.column_name = @tgt
-                          WHERE c1.table_name = @tbl AND c1.column_name = @key", connection, tx);
+                        @"SELECT 1 FROM information_schema.columns 
+                          WHERE table_schema = 'public' AND table_name = @tbl AND column_name = 'rental_id'", connection, tx);
                     chk.Parameters.AddWithValue("@tbl", table);
-                    chk.Parameters.AddWithValue("@key", keyCol);
-                    chk.Parameters.AddWithValue("@ptbl", parentTable);
-                    chk.Parameters.AddWithValue("@tgt", targetCol);
                     if (chk.ExecuteScalar() != null)
                     {
-                        using var del = new NpgsqlCommand($"DELETE FROM {table} WHERE {keyCol} IN (SELECT {keyCol} FROM {parentTable} WHERE {targetCol} = @id)", connection, tx);
-                        del.Parameters.AddWithValue("@id", vid);
+                        using var del = new NpgsqlCommand(
+                            $"DELETE FROM {table} WHERE rental_id IN (SELECT rental_id FROM rentals WHERE vehicle_id = @id)", connection, tx);
+                        del.Parameters.AddWithValue("@id", id);
                         del.ExecuteNonQuery();
                     }
                 }
 
+                // First delete all child records referencing rentals by rental_id
+                SafeDeleteByRental("gps_logs");
+                SafeDeleteByRental("location_logs");
+                SafeDeleteByRental("fuel_logs");
+                SafeDeleteByRental("vehicle_telematics");
+                SafeDeleteByRental("payments");
+                SafeDeleteByRental("invoices");
+                SafeDeleteByRental("refunds");
+                SafeDeleteByRental("rental_documents");
+                SafeDeleteByRental("reviews");
+                SafeDeleteByRental("transactions");
+                SafeDeleteByRental("extensions");
+                SafeDeleteByRental("issues");
+                SafeDeleteByRental("messages");
+                SafeDeleteByRental("ratings");
+
+                // Then delete all child records referencing vehicles by vehicle_id
                 SafeDelete("location_logs", "vehicle_id", id);
                 SafeDelete("gps_logs", "vehicle_id", id);
                 SafeDelete("fuel_logs", "vehicle_id", id);
@@ -406,12 +456,7 @@ public class VehiclesController : ControllerBase
                 SafeDelete("expenses", "vehicle_id", id);
                 SafeDelete("vehicle_telematics", "vehicle_id", id);
 
-                SafeDeleteNested("transactions", "rentals", "rental_id", "vehicle_id", id);
-                SafeDeleteNested("extensions", "rentals", "rental_id", "vehicle_id", id);
-                SafeDeleteNested("issues", "rentals", "rental_id", "vehicle_id", id);
-                SafeDeleteNested("messages", "rentals", "rental_id", "vehicle_id", id);
-                SafeDeleteNested("ratings", "rentals", "rental_id", "vehicle_id", id);
-
+                // Finally delete rentals and the vehicle itself
                 SafeDelete("rentals", "vehicle_id", id);
 
                 using (var cleanCmd = new NpgsqlCommand("DELETE FROM vehicles WHERE vehicle_id = @id", connection, tx))
@@ -432,28 +477,46 @@ public class VehiclesController : ControllerBase
                 throw;
             }
 
+            string finalReason = !string.IsNullOrWhiteSpace(bodyReq?.Reason) ? bodyReq.Reason : (!string.IsNullOrWhiteSpace(reason) ? reason : "Unit Sold / Liquidated");
+            string finalNotes = !string.IsNullOrWhiteSpace(bodyReq?.Notes) ? bodyReq.Notes : (!string.IsNullOrWhiteSpace(notes) ? notes : "");
+
             // System-wide audit trail logging
             string adminNameDel = GetAdminName();
             string clientIpDel = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
             _ = _auditService.LogActionAsync(
                 adminUserId: 0,
                 adminName: adminNameDel,
-                actionType: "VEHICLE_DELETED",
+                actionType: "VEHICLE_DECOMMISSIONED",
                 targetUserId: 0,
                 ipAddress: clientIpDel,
-                oldValues: new { vehicleId = id },
-                newValues: new { description = $"{adminNameDel} deleted vehicle ID #{id}" }
+                oldValues: new { vehicleId = id, brand = vehicleBrand, model = vehicleModel, plateNo = vehiclePlate },
+                newValues: new { reason = finalReason, notes = finalNotes, description = $"{adminNameDel} decommissioned vehicle {vehicleBrand} {vehicleModel} ({vehiclePlate}). Reason: {finalReason}" }
             );
 
             await _hubContext.Clients.All.SendAsync("ReceiveVehicleUpdate");
             await _hubContext.Clients.All.SendAsync("ReceiveDashboardUpdate");
 
-            return Ok(new { Message = "Vehicle deleted successfully.", VehicleId = id });
+            return Ok(new { 
+                Message = $"Vehicle {vehicleBrand} {vehicleModel} ({vehiclePlate}) decommissioned successfully.", 
+                VehicleId = id,
+                Brand = vehicleBrand,
+                Model = vehicleModel,
+                PlateNo = vehiclePlate,
+                Reason = finalReason,
+                Notes = finalNotes,
+                Timestamp = DateTime.UtcNow
+            });
         }
         catch (Exception ex)
         {
             return StatusCode(500, new { Message = "DB Error: " + ex.Message });
         }
+    }
+
+    public class DecommissionVehicleRequest
+    {
+        public string? Reason { get; set; } = "Unit Sold / Liquidated";
+        public string? Notes { get; set; } = "";
     }
 
     [HttpPatch("{id:int}/status")]
@@ -811,7 +874,12 @@ public class VehiclesController : ControllerBase
                 COALESCE(safety_score, 95) AS safety_score,
                 COALESCE(idle_minutes, 0) AS idle_minutes,
                 COALESCE(rfid_balance_autosweep, 500.00) AS rfid_balance_autosweep,
-                COALESCE(rfid_balance_easytrip, 500.00) AS rfid_balance_easytrip
+                COALESCE(rfid_balance_easytrip, 500.00) AS rfid_balance_easytrip,
+                COALESCE(rfid_balance_easytrip, 500.00) AS rfid_balance_easytrip,
+                COALESCE(color, 'Pearl White') AS color,
+                COALESCE(flood_risk_status, 'safe') AS flood_risk_status,
+                COALESCE(engine_water_ingress_alert, false) AS engine_water_ingress_alert,
+                COALESCE(last_weather_temp, 28.5) AS last_weather_temp
               FROM vehicles ";
 
         if (!string.IsNullOrWhiteSpace(whereClause))
@@ -861,7 +929,11 @@ public class VehiclesController : ControllerBase
             SafetyScore      = reader["safety_score"] == DBNull.Value ? 95 : Convert.ToInt32(reader["safety_score"]),
             IdleMinutes      = reader["idle_minutes"] == DBNull.Value ? 0 : Convert.ToInt32(reader["idle_minutes"]),
             RfidBalanceAutosweep = reader["rfid_balance_autosweep"] == DBNull.Value ? 500m : Convert.ToDecimal(reader["rfid_balance_autosweep"]),
-            RfidBalanceEasytrip  = reader["rfid_balance_easytrip"] == DBNull.Value ? 500m : Convert.ToDecimal(reader["rfid_balance_easytrip"])
+            RfidBalanceEasytrip  = reader["rfid_balance_easytrip"] == DBNull.Value ? 500m : Convert.ToDecimal(reader["rfid_balance_easytrip"]),
+            Color                = reader["color"]?.ToString() ?? "Pearl White",
+            FloodRiskStatus      = reader["flood_risk_status"]?.ToString() ?? "safe",
+            EngineWaterIngressAlert = reader["engine_water_ingress_alert"] != DBNull.Value && Convert.ToBoolean(reader["engine_water_ingress_alert"]),
+            LastWeatherTemp      = reader["last_weather_temp"] == DBNull.Value ? 28.5m : Convert.ToDecimal(reader["last_weather_temp"])
         };
     }
 }
