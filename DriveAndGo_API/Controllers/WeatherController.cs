@@ -12,11 +12,13 @@ namespace DriveAndGo_API.Controllers
     [Route("api/[controller]")]
     public class WeatherController : ControllerBase
     {
+        private readonly IConfiguration _configuration;
         private readonly string _connectionString;
         private static readonly HttpClient _httpClient = new HttpClient();
 
         public WeatherController(IConfiguration configuration)
         {
+            _configuration = configuration;
             _connectionString = configuration.GetConnectionString("DefaultConnection") ?? "";
         }
 
@@ -26,7 +28,7 @@ namespace DriveAndGo_API.Controllers
             // 1. Try WeatherAPI.com (Primary - Target: Rental Garage Hub Lat: 14.871116, Lon: 121.048088)
             try
             {
-                var weatherApiKey = _configuration["WEATHERAPI_KEY"] ?? "";
+                var weatherApiKey = _configuration["WEATHERAPI_KEY"] ?? Environment.GetEnvironmentVariable("WEATHERAPI_KEY") ?? "";
                 if (!string.IsNullOrWhiteSpace(weatherApiKey) && weatherApiKey != "YOUR_WEATHERAPI_KEY")
                 {
                     var url = $"https://api.weatherapi.com/v1/current.json?key={weatherApiKey}&q=14.871116,121.048088&aqi=no";
@@ -73,44 +75,45 @@ namespace DriveAndGo_API.Controllers
             // 2. Try OpenWeatherMap (Secondary Failover)
             try
             {
-                var openWeatherKey = _configuration["OPENWEATHER_API_KEY"] ?? "";
+                var openWeatherKey = _configuration["OPENWEATHER_API_KEY"] ?? Environment.GetEnvironmentVariable("OPENWEATHER_API_KEY") ?? "";
                 if (!string.IsNullOrWhiteSpace(openWeatherKey) && openWeatherKey != "YOUR_OPENWEATHER_API_KEY")
                 {
                     var url = $"https://api.openweathermap.org/data/2.5/weather?lat=14.871116&lon=121.048088&units=metric&appid={openWeatherKey}";
-                var res = await _httpClient.GetAsync(url);
-                if (res.IsSuccessStatusCode)
-                {
-                    var jsonStr = await res.Content.ReadAsStringAsync();
-                    using var doc = JsonDocument.Parse(jsonStr);
-                    var root = doc.RootElement;
-                    var main = root.GetProperty("main");
-                    var temp = main.GetProperty("temp").GetDouble();
-                    var humidity = main.GetProperty("humidity").GetInt32();
-
-                    double rain = 0.0;
-                    if (root.TryGetProperty("rain", out var rainObj) && rainObj.TryGetProperty("1h", out var rain1h))
+                    var res = await _httpClient.GetAsync(url);
+                    if (res.IsSuccessStatusCode)
                     {
-                        rain = rain1h.GetDouble();
+                        var jsonStr = await res.Content.ReadAsStringAsync();
+                        using var doc = JsonDocument.Parse(jsonStr);
+                        var root = doc.RootElement;
+                        var main = root.GetProperty("main");
+                        var temp = main.GetProperty("temp").GetDouble();
+                        var humidity = main.GetProperty("humidity").GetInt32();
+
+                        double rain = 0.0;
+                        if (root.TryGetProperty("rain", out var rainObj) && rainObj.TryGetProperty("1h", out var rain1h))
+                        {
+                            rain = rain1h.GetDouble();
+                        }
+
+                        string pagasaSignal = rain > 15 ? "PAGASA Signal #2 - Heavy Rainfall Warning" :
+                                             rain > 5 ? "PAGASA Yellow Rainfall Advisory" : "Normal Conditions";
+
+                        return Ok(new
+                        {
+                            provider = "OpenWeatherMap",
+                            location = "Rental Garage Hub (SJDM / Metro Manila)",
+                            target_coordinates = "14.871116, 121.048088",
+                            temperature = temp,
+                            humidity = humidity,
+                            precipitation_mm_hr = rain,
+                            weather_code = rain > 10 ? 95 : 61,
+                            condition = "Monsoon Surge / Rain",
+                            wind_speed_kmh = 18.5,
+                            pagasa_alert = pagasaSignal,
+                            active_flood_zones_count = 4,
+                            timestamp = DateTime.UtcNow
+                        });
                     }
-
-                    string pagasaSignal = rain > 15 ? "PAGASA Signal #2 - Heavy Rainfall Warning" :
-                                         rain > 5 ? "PAGASA Yellow Rainfall Advisory" : "Normal Conditions";
-
-                    return Ok(new
-                    {
-                        provider = "OpenWeatherMap",
-                        location = "Rental Garage Hub (SJDM / Metro Manila)",
-                        target_coordinates = "14.871116, 121.048088",
-                        temperature = temp,
-                        humidity = humidity,
-                        precipitation_mm_hr = rain,
-                        weather_code = rain > 10 ? 95 : 61,
-                        condition = "Monsoon Surge / Rain",
-                        wind_speed_kmh = 18.5,
-                        pagasa_alert = pagasaSignal,
-                        active_flood_zones_count = 4,
-                        timestamp = DateTime.UtcNow
-                    });
                 }
             }
             catch (Exception ex)
@@ -137,8 +140,8 @@ namespace DriveAndGo_API.Controllers
                     var humidity = current.GetProperty("relative_humidity_2m").GetInt32();
 
                     string condition = weatherCode >= 95 ? "Severe Thunderstorm" :
-                                      weatherCode >= 61 ? "Heavy Rain Showers" :
-                                      weatherCode >= 51 ? "Light Drizzle / Moderate Rain" : "Clear Skies";
+                                       weatherCode >= 61 ? "Heavy Rain Showers" :
+                                       weatherCode >= 51 ? "Light Drizzle / Moderate Rain" : "Clear Skies";
 
                     return Ok(new
                     {

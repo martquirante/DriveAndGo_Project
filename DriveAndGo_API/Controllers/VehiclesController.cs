@@ -733,28 +733,48 @@ public class VehiclesController : ControllerBase
         }
     }
 
-    // GET /api/vehicles/suggest-rate — Dynamic Pricing Suggestion Engine
+    // GET /api/vehicles/suggest-rate — Comprehensive AI Dynamic Pricing Engine
     [HttpGet("suggest-rate")]
-    public IActionResult SuggestRate([FromQuery] decimal? baseRate, [FromQuery] int? vehicleId)
+    public IActionResult SuggestRate(
+        [FromQuery] decimal? baseRate, 
+        [FromQuery] int? vehicleId,
+        [FromQuery] string? type,
+        [FromQuery] string? transmission,
+        [FromQuery] int? engineCc,
+        [FromQuery] int? seatingCapacity,
+        [FromQuery] int? odometerKm)
     {
         try
         {
             decimal rate = baseRate ?? 2000.00m;
             int ageYears = 0;
             string brandModel = "Vehicle";
+            string vType = type ?? "";
+            string vTrans = transmission ?? "";
+            int vCc = engineCc ?? 1500;
+            int vSeats = seatingCapacity ?? 5;
+            int vOdo = odometerKm ?? 30000;
+
+            using var conn = new NpgsqlConnection(_connectionString);
+            conn.Open();
 
             if (vehicleId.HasValue)
             {
-                using var conn = new NpgsqlConnection(_connectionString);
-                conn.Open();
                 using var cmd = new NpgsqlCommand(
-                    "SELECT rate_per_day, brand, model, created_at FROM vehicles WHERE vehicle_id = @id", conn);
+                    @"SELECT rate_per_day, brand, model, type, transmission, engine_cc, seating_capacity, odometer_km, created_at 
+                      FROM vehicles WHERE vehicle_id = @id", conn);
                 cmd.Parameters.AddWithValue("@id", vehicleId.Value);
                 using var reader = cmd.ExecuteReader();
                 if (reader.Read())
                 {
                     rate = reader["rate_per_day"] == DBNull.Value ? rate : Convert.ToDecimal(reader["rate_per_day"]);
                     brandModel = $"{reader["brand"]} {reader["model"]}";
+                    vType = reader["type"]?.ToString() ?? vType;
+                    vTrans = reader["transmission"]?.ToString() ?? vTrans;
+                    vCc = reader["engine_cc"] == DBNull.Value ? vCc : Convert.ToInt32(reader["engine_cc"]);
+                    vSeats = reader["seating_capacity"] == DBNull.Value ? vSeats : Convert.ToInt32(reader["seating_capacity"]);
+                    vOdo = reader["odometer_km"] == DBNull.Value ? vOdo : Convert.ToInt32(reader["odometer_km"]);
+
                     if (reader["created_at"] != DBNull.Value)
                     {
                         var created = Convert.ToDateTime(reader["created_at"]);
@@ -763,54 +783,204 @@ public class VehiclesController : ControllerBase
                 }
             }
 
-            // Calculations based on actual inflation index and demand triggers
-            var now = DateTime.Now;
-            
-            // 1. Seasonality Multiplier (e.g., Summer in PH April-May or Christmas in Dec)
-            decimal seasonalityMarkup = 0;
-            string seasonalityReason = "Normal Season";
-            if (now.Month == 12 || now.Month == 4 || now.Month == 5)
+            // 1. Real-time Fleet Occupancy & Demand Rate
+            int totalVehicles = 0;
+            int rentedVehicles = 0;
+            using (var utilCmd = new NpgsqlCommand("SELECT COUNT(*), COUNT(*) FILTER (WHERE LOWER(COALESCE(status, '')) IN ('rented', 'active', 'in-use')) FROM vehicles", conn))
+            using (var utilReader = utilCmd.ExecuteReader())
             {
-                seasonalityMarkup = rate * 0.15m; // +15%
-                seasonalityReason = "Peak Season (Summer / Holiday)";
+                if (utilReader.Read())
+                {
+                    totalVehicles = utilReader.GetInt32(0);
+                    rentedVehicles = utilReader.GetInt32(1);
+                }
             }
 
-            // 2. Weekend Demand Markup (Fri-Sun)
-            decimal weekendMarkup = 0;
+            decimal utilizationPct = totalVehicles > 0 ? ((decimal)rentedVehicles / totalVehicles) * 100m : 0m;
+            decimal demandMarkup = 0m;
+            string demandReason = "Normal Fleet Capacity";
+
+            if (utilizationPct >= 80m)
+            {
+                demandMarkup = rate * 0.15m;
+                demandReason = $"High Fleet Occupancy ({utilizationPct:F0}% booked, +15% surge)";
+            }
+            else if (utilizationPct >= 50m)
+            {
+                demandMarkup = rate * 0.08m;
+                demandReason = $"Moderate Fleet Occupancy ({utilizationPct:F0}% booked, +8% surge)";
+            }
+
+            // 2. Philippine Ber Months & Holiday Seasonality
+            var now = DateTime.Now;
+            int month = now.Month;
+            decimal seasonalityMarkup = 0m;
+            string seasonalityReason = "Standard Season";
+
+            if (month == 12)
+            {
+                seasonalityMarkup = rate * 0.25m;
+                seasonalityReason = "December Grand Christmas & New Year Peak (+25%)";
+            }
+            else if (month >= 9 && month <= 11)
+            {
+                seasonalityMarkup = rate * 0.15m;
+                seasonalityReason = $"Ber Month ({now:MMMM}) Holiday Season (+15%)";
+            }
+            else if (month == 4 || month == 5)
+            {
+                seasonalityMarkup = rate * 0.18m;
+                seasonalityReason = "PH Summer & Holy Week Vacation Peak (+18%)";
+            }
+            else if (month == 1)
+            {
+                seasonalityMarkup = rate * 0.08m;
+                seasonalityReason = "January Post-Holiday Travel Demand (+8%)";
+            }
+
+            // 3. Transmission & Comfort Premium (Automatic vs Manual)
+            decimal transmissionMarkup = 0m;
+            string transmissionReason = "Manual Transmission Baseline";
+            if (vTrans.ToLower().Contains("auto") || vTrans.ToLower().Contains("at") || vTrans.ToLower().Contains("cvt"))
+            {
+                transmissionMarkup = rate * 0.08m;
+                transmissionReason = "Automatic Transmission City Comfort Premium (+8%)";
+            }
+
+            // 4. Seating Capacity / Family Group Multiplier
+            decimal seatingMarkup = 0m;
+            string seatingReason = "Standard 5-Seater Capacity";
+            if (vSeats >= 7)
+            {
+                seatingMarkup = rate * 0.12m;
+                seatingReason = $"{vSeats}-Seater Large Group / Family Capacity (+12%)";
+            }
+
+            // 5. High Ground Clearance & Vehicle Type Factor
+            decimal typeMarkup = 0m;
+            string typeReason = "Standard Sedan/Compact Category";
+            string tLower = vType.ToLower();
+            if (tLower.Contains("suv") || tLower.Contains("pickup") || tLower.Contains("4x4"))
+            {
+                typeMarkup = rate * 0.10m;
+                typeReason = "High-Clearance SUV/Pickup All-Terrain Premium (+10%)";
+            }
+            else if (tLower.Contains("van"))
+            {
+                typeMarkup = rate * 0.15m;
+                typeReason = "Commercial Passenger Van Capacity Premium (+15%)";
+            }
+
+            // 6. Odometer Wear Index
+            decimal odoAdjustment = 0m;
+            string odoReason = "Standard Odometer Mileage";
+            if (vOdo < 35000 && vOdo > 0)
+            {
+                odoAdjustment = rate * 0.05m;
+                odoReason = $"Pristine Low-Mileage Unit ({vOdo:N0} km, +5% premium)";
+            }
+            else if (vOdo > 120000)
+            {
+                odoAdjustment = -(rate * 0.08m);
+                odoReason = $"High Mileage Fair Use Discount ({vOdo:N0} km, -8% discount)";
+            }
+
+            // 7. Weekend Surge (Fri-Sun)
+            decimal weekendMarkup = 0m;
             string weekendReason = "Weekday Baseline";
             if (now.DayOfWeek == DayOfWeek.Friday || now.DayOfWeek == DayOfWeek.Saturday || now.DayOfWeek == DayOfWeek.Sunday)
             {
-                weekendMarkup = rate * 0.10m; // +10%
-                weekendReason = "High Weekend Demand";
+                weekendMarkup = rate * 0.10m;
+                weekendReason = $"{now.DayOfWeek} Weekend Travel Demand (+10%)";
             }
 
-            // 3. Economy Inflation Adjustment Index (PH CPI index baseline)
-            decimal inflationRate = 0.042m; // 4.2% inflation baseline
+            // 8. PH Inflation Index (4.2% baseline)
+            decimal inflationRate = 0.042m;
             decimal economyMarkup = rate * inflationRate;
 
-            // 4. Age Depreciation Discount (reduces rate slightly for older models)
-            decimal depreciationDiscount = Math.Min(rate * 0.10m, rate * (ageYears * 0.02m)); // max 10%
+            // 9. MMDA Number Coding Exemption Advantage
+            decimal codingMarkup = 0m;
+            string codingReason = "Regular Plate Coding Schedule";
+            bool isCodingFreeToday = true;
+            if (vehicleId.HasValue && brandModel != "Vehicle")
+            {
+                // Check if EV or Hybrid or not coded on current day
+                if (tLower.Contains("hybrid") || tLower.Contains("ev") || tLower.Contains("electric"))
+                {
+                    codingMarkup = rate * 0.08m;
+                    codingReason = "EV/Hybrid Exempt from MMDA Number Coding (+8%)";
+                }
+                else
+                {
+                    codingMarkup = rate * 0.04m;
+                    codingReason = "Active Coding-Free Day Advantage (+4%)";
+                }
+            }
 
-            decimal suggested = rate + seasonalityMarkup + weekendMarkup + economyMarkup - depreciationDiscount;
-            
-            // Round to nearest 50 pesos for convenience
-            suggested = Math.Round(suggested / 50.0m) * 50.0m;
+            // 10. Fuel Type & Power Index
+            decimal fuelMarkup = 0m;
+            string fuelReason = "Standard Gasoline Baseline";
+            if (tLower.Contains("diesel"))
+            {
+                fuelMarkup = rate * 0.05m;
+                fuelReason = "High-Torque Fuel-Efficient Diesel Unit (+5%)";
+            }
+
+            // 11. Chauffeur Driver Shift Rate (Base + Night Differential)
+            decimal suggestedDriverRate = 1200m;
+            if (now.Hour >= 22 || now.Hour <= 5)
+            {
+                suggestedDriverRate += 300m; // Night shift differential
+            }
+
+            // 12. Age Depreciation Discount
+            decimal depreciationDiscount = Math.Min(rate * 0.10m, rate * (ageYears * 0.02m));
+
+            decimal suggested = rate + seasonalityMarkup + demandMarkup + weekendMarkup + transmissionMarkup + seatingMarkup + typeMarkup + odoAdjustment + codingMarkup + fuelMarkup + economyMarkup - depreciationDiscount;
+            suggested = Math.Max(500m, Math.Round(suggested / 50.0m) * 50.0m);
+
+            // 13. Tiered Duration Bulk Pricing Calculations
+            decimal rate3Day = Math.Round(suggested * 0.95m / 50.0m) * 50.0m;   // -5%
+            decimal rate7Day = Math.Round(suggested * 0.88m / 50.0m) * 50.0m;   // -12%
+            decimal rate30Day = Math.Round(suggested * 0.75m / 50.0m) * 50.0m;  // -25%
 
             return Ok(new {
                 vehicleId,
                 brandModel,
                 baseRate = rate,
                 suggestedRate = suggested,
+                suggestedRateWithDriver = suggested + suggestedDriverRate,
+                bulkTierRates = new {
+                    daily3DayRate = rate3Day,
+                    daily7DayWeeklyRate = rate7Day,
+                    daily30DayMonthlyRate = rate30Day
+                },
                 breakdown = new {
                     seasonalityMarkup = Math.Round(seasonalityMarkup, 2),
                     seasonalityReason,
+                    demandMarkup = Math.Round(demandMarkup, 2),
+                    demandReason,
                     weekendMarkup = Math.Round(weekendMarkup, 2),
                     weekendReason,
+                    transmissionMarkup = Math.Round(transmissionMarkup, 2),
+                    transmissionReason,
+                    seatingMarkup = Math.Round(seatingMarkup, 2),
+                    seatingReason,
+                    typeMarkup = Math.Round(typeMarkup, 2),
+                    typeReason,
+                    codingMarkup = Math.Round(codingMarkup, 2),
+                    codingReason,
+                    fuelMarkup = Math.Round(fuelMarkup, 2),
+                    fuelReason,
+                    odoAdjustment = Math.Round(odoAdjustment, 2),
+                    odoReason,
                     inflationMarkup = Math.Round(economyMarkup, 2),
                     inflationPercentage = "4.2%",
-                    depreciationDiscount = Math.Round(depreciationDiscount, 2)
+                    depreciationDiscount = Math.Round(depreciationDiscount, 2),
+                    fleetUtilizationPct = Math.Round(utilizationPct, 1),
+                    driverRatePerDay = suggestedDriverRate
                 },
-                message = $"Suggested rental price: ₱{suggested:N2} (based on {seasonalityReason}, {weekendReason}, and inflation adjustment)."
+                message = $"Suggested rental price: ₱{suggested:N2} (Factors: {seasonalityReason}, {demandReason}, {typeReason}, {codingReason}, & 4.2% PH Inflation Index)."
             });
         }
         catch (Exception ex)

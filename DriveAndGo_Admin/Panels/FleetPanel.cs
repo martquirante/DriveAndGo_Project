@@ -175,6 +175,20 @@ namespace DriveAndGo_Admin.Panels
             }));
         }
 
+        public void ExecuteScriptAsync(string script)
+        {
+            if (!this.IsHandleCreated || this.IsDisposed || _fleetWebView == null) return;
+            this.BeginInvoke((MethodInvoker)(async () =>
+            {
+                try
+                {
+                    if (_fleetWebView.IsDisposed || _fleetWebView.CoreWebView2 == null) return;
+                    await _fleetWebView.CoreWebView2.ExecuteScriptAsync(script);
+                }
+                catch { }
+            }));
+        }
+
         private async Task PollFirebaseGPS()
         {
             if (!this.IsHandleCreated || this.IsDisposed || _fleetWebView == null) return;

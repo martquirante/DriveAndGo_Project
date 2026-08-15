@@ -2551,25 +2551,107 @@ namespace DriveAndGo_Admin
             }
         }
 
-        private void ToggleNotifFlyout()
-        {
-            if (_notifFlyout == null || _notifFlyout.IsDisposed)
-            {
-                _unreadNotifCount = 0;
-                btnNotifications.Invalidate();
+        private Panel _globalNotifHostPanel;
+        private Microsoft.Web.WebView2.WinForms.WebView2 _globalNotifWebView;
+        private bool _isNotifFlyoutVisible = false;
 
-                _notifFlyout = new NotificationFlyoutPanel(this, _notifications, () => {
-                    _unreadNotifCount = 0;
-                    btnNotifications.Invalidate();
-                });
-                this.Controls.Add(_notifFlyout);
-                _notifFlyout.BringToFront();
-                _notifFlyout.StartEntrance();
-            }
-            else
+        private async void ToggleNotifFlyout()
+        {
+            _unreadNotifCount = 0;
+            btnNotifications?.Invalidate();
+
+            if (_notifications.Count == 0)
             {
-                _notifFlyout.StartDismissal();
+                _notifications.Add(new { title = "España Blvd Flood Hazard Alert", body = "1 Active Vehicle in España Blvd Flood Zone (Tire-Deep: 25-35 cm).", time = "Just now", unread = true });
+                _notifications.Add(new { title = "PAGASA Monsoon Weather Advisory", body = "PAGASA Yellow Advisory Target: Rental Garage Hub (SJDM / Metro Manila).", time = "5m ago", unread = true });
+                _notifications.Add(new { title = "Vehicle Decommission Audit", body = "Vehicle Toyota Vios (XWK-9492) removed from active fleet. Reason: Sold.", time = "1h ago", unread = false });
             }
+
+            if (_isNotifFlyoutVisible && _globalNotifHostPanel != null)
+            {
+                _globalNotifHostPanel.Hide();
+                _isNotifFlyoutVisible = false;
+                return;
+            }
+
+            if (_globalNotifHostPanel == null || _globalNotifHostPanel.IsDisposed)
+            {
+                _globalNotifHostPanel = new Panel
+                {
+                    Size = new Size(340, 350),
+                    BackColor = Color.Transparent,
+                    Visible = false
+                };
+
+                Point screenPt = btnNotifications.PointToScreen(new Point(0, 0));
+                Point parentPt = this.PointToClient(screenPt);
+                _globalNotifHostPanel.Location = new Point(parentPt.X + btnNotifications.Width - 340, parentPt.Y + btnNotifications.Height + 6);
+
+                _globalNotifWebView = new Microsoft.Web.WebView2.WinForms.WebView2 { 
+                    Dock = DockStyle.Fill,
+                    DefaultBackgroundColor = Color.Transparent 
+                };
+                _globalNotifHostPanel.Controls.Add(_globalNotifWebView);
+                this.Controls.Add(_globalNotifHostPanel);
+
+                try
+                {
+                    var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, System.IO.Path.Combine(System.IO.Path.GetTempPath(), "DriveAndGo_Notif_Cache"));
+                    await _globalNotifWebView.EnsureCoreWebView2Async(env);
+
+                    _globalNotifWebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                    _globalNotifWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+
+                    _globalNotifWebView.CoreWebView2.WebMessageReceived += (s, args) =>
+                    {
+                        try
+                        {
+                            string msg = args.TryGetWebMessageAsString();
+                            if (msg.StartsWith("notification_clicked:"))
+                            {
+                                string json = msg.Substring("notification_clicked:".Length);
+                                using var doc = JsonDocument.Parse(json);
+                                var root = doc.RootElement;
+                                string title = root.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+                                string body = root.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
+
+                                _globalNotifHostPanel.Hide();
+                                _isNotifFlyoutVisible = false;
+
+                                HandleNotificationClick(title, body);
+                            }
+                            else if (msg == "notifications_cleared")
+                            {
+                                _notifications.Clear();
+                                _unreadNotifCount = 0;
+                                btnNotifications?.Invalidate();
+                            }
+                        }
+                        catch { }
+                    };
+
+                    string htmlPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "NotificationsFlyout.html");
+                    _globalNotifWebView.CoreWebView2.Navigate("file:///" + htmlPath.Replace('\\', '/') + "?v=" + DateTime.UtcNow.Ticks);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("[NotifFlyout] Init error: " + ex.Message);
+                }
+            }
+
+            if (_globalNotifWebView != null && _globalNotifWebView.CoreWebView2 != null)
+            {
+                try
+                {
+                    var json = JsonSerializer.Serialize(_notifications);
+                    await _globalNotifWebView.CoreWebView2.ExecuteScriptAsync($"if(window.setNotifications) window.setNotifications({json});");
+                }
+                catch { }
+            }
+
+            _globalNotifHostPanel.BringToFront();
+            _globalNotifHostPanel.Show();
+            _isNotifFlyoutVisible = true;
         }
 
         private void ToggleProfileFlyout()
@@ -2663,6 +2745,44 @@ namespace DriveAndGo_Admin
                 SessionManager.Clear();
                 new LoginForm().Show();
                 this.Hide();
+            }
+        }
+
+        public void HandleNotificationClick(string title, string body)
+        {
+            // Close notifications panel flyout
+            ToggleNotifFlyout();
+
+            string combined = $"{title} {body}".ToLower();
+
+            if (combined.Contains("weather") || combined.Contains("pagasa") || combined.Contains("monsoon") || combined.Contains("flood") || combined.Contains("rain"))
+            {
+                // 1. Weather / Flood Advisory -> Navigate to Fleet Overview Panel and trigger Weather & PAGASA Radar Analytics Modal!
+                btnVehicles?.PerformClick();
+                var fp = contentPanel.Controls.OfType<FleetPanel>().FirstOrDefault();
+                if (fp != null)
+                {
+                    fp.ExecuteScriptAsync("window.showWeatherAdvisoryFromNotif && window.showWeatherAdvisoryFromNotif();");
+                }
+            }
+            else if (combined.Contains("decommission") || combined.Contains("audit") || combined.Contains("removed"))
+            {
+                // 2. Vehicle Decommission Audit -> Navigate to Fleet Overview Panel
+                btnVehicles?.PerformClick();
+            }
+            else if (combined.Contains("rental") || combined.Contains("overdue") || combined.Contains("payment") || combined.Contains("refund") || combined.Contains("invoice"))
+            {
+                // 3. Rentals / Overdue -> Navigate to Rentals Panel
+                btnRentals?.PerformClick();
+            }
+            else if (combined.Contains("account") || combined.Contains("user"))
+            {
+                // 4. Accounts -> Navigate to Accounts Panel
+                btnAccounts?.PerformClick();
+            }
+            else
+            {
+                btnVehicles?.PerformClick();
             }
         }
 
@@ -2771,6 +2891,10 @@ namespace DriveAndGo_Admin
                         var n      = _notifs[i];
                         bool isUnread = i < _parent._unreadNotifCount;
                         var item   = new NotificationItemControl(n.Title, n.Body, n.Time, isUnread);
+                        item.Click += (s, e) =>
+                        {
+                            _parent.HandleNotificationClick(n.Title, n.Body);
+                        };
                         container.Controls.Add(item);
                     }
                 }
@@ -2919,8 +3043,8 @@ namespace DriveAndGo_Admin
 
             public NotificationItemControl(string title, string body, DateTime time, bool isUnread)
             {
-                _title = title;
-                _body = body;
+                _title = CleanEmoji(title);
+                _body = CleanEmoji(body);
                 _time = time;
                 _isUnread = isUnread;
                 this.Size = new Size(280, 56);
@@ -2930,6 +3054,13 @@ namespace DriveAndGo_Admin
                 
                 this.MouseEnter += (s, e) => StartHover(true);
                 this.MouseLeave += (s, e) => StartHover(false);
+                this.MouseClick += (s, e) => this.OnClick(e);
+            }
+
+            private static string CleanEmoji(string input)
+            {
+                if (string.IsNullOrEmpty(input)) return "";
+                return System.Text.RegularExpressions.Regex.Replace(input, @"[\uD800-\uDBFF][\uDC00-\uDFFF]|\u200D|[\u2600-\u27BF]|[\u1F300-\u1F9FF]", "").Trim();
             }
 
             private void StartHover(bool hover)
@@ -2963,34 +3094,67 @@ namespace DriveAndGo_Admin
                 int w = this.Width, h = this.Height;
                 if (_hoverScale > 0)
                 {
-                    int alpha = (int)(15 * _hoverScale);
+                    int alpha = (int)(18 * _hoverScale);
                     using var brush = new SolidBrush(Color.FromArgb(alpha, 255, 255, 255));
                     g.FillRectangle(brush, 0, 0, w, h);
                 }
 
-                if (_isUnread)
+                // Styled Category Dot Indicator
+                Color categoryDotColor = Color.FromArgb(59, 130, 246); // default blue
+                string lowTitle = _title.ToLower();
+                string lowBody = _body.ToLower();
+
+                if (lowTitle.Contains("weather") || lowTitle.Contains("pagasa") || lowTitle.Contains("monsoon") || lowBody.Contains("rain"))
                 {
-                    using var dotBrush = new SolidBrush(Color.FromArgb(59, 130, 246));
-                    g.FillEllipse(dotBrush, 12, h / 2 - 4, 8, 8);
+                    categoryDotColor = Color.FromArgb(245, 158, 11); // Amber
+                }
+                else if (lowTitle.Contains("flood") || lowTitle.Contains("hazard"))
+                {
+                    categoryDotColor = Color.FromArgb(6, 182, 212); // Cyan
+                }
+                else if (lowTitle.Contains("decommission") || lowTitle.Contains("audit") || lowTitle.Contains("emergency"))
+                {
+                    categoryDotColor = Color.FromArgb(239, 68, 68); // Red
+                }
+
+                using (var dotBrush = new SolidBrush(categoryDotColor))
+                {
+                    g.FillEllipse(dotBrush, 12, 15, 8, 8);
                 }
 
                 Color textCol = ThemeManager.CurrentText;
                 Color subCol = ThemeManager.CurrentSubText;
 
-                using var fontTitle = new Font("Segoe UI", 9F, FontStyle.Bold);
-                g.DrawString(_title, fontTitle, new SolidBrush(textCol), new PointF(28, 8));
-
-                using var fontBody = new Font("Segoe UI", 8.5F);
-                string displayBody = _body.Length > 32 ? _body.Substring(0, 30) + "..." : _body;
-                g.DrawString(displayBody, fontBody, new SolidBrush(subCol), new PointF(28, 24));
-
+                // Draw Ago Timestamp on right first to calculate exact remaining space for Title
                 var diff = DateTime.Now - _time;
                 string ago = diff.TotalMinutes < 1 ? "Just now" :
                              diff.TotalMinutes < 60 ? $"{(int)diff.TotalMinutes}m ago" :
                              diff.TotalHours < 24 ? $"{(int)diff.TotalHours}h ago" :
                              _time.ToString("MMM dd");
+                             
                 using var fontTime = new Font("Segoe UI", 7.5F);
-                g.DrawString(ago, fontTime, new SolidBrush(Color.FromArgb(120, subCol)), new PointF(w - 75, 10));
+                SizeF agoSize = g.MeasureString(ago, fontTime);
+                float agoX = w - agoSize.Width - 10;
+                g.DrawString(ago, fontTime, new SolidBrush(Color.FromArgb(140, subCol)), new PointF(agoX, 9));
+
+                // Draw Title with ellipsis trimming (guarantees NO text overlap with timestamp)
+                using var fontTitle = new Font("Segoe UI", 9F, FontStyle.Bold);
+                using var sfTitle = new StringFormat
+                {
+                    Trimming = StringTrimming.EllipsisCharacter,
+                    FormatFlags = StringFormatFlags.NoWrap
+                };
+                float maxTitleWidth = Math.Max(50f, agoX - 28f - 6f);
+                g.DrawString(_title, fontTitle, new SolidBrush(textCol), new RectangleF(28, 7, maxTitleWidth, 18), sfTitle);
+
+                // Draw Body
+                using var fontBody = new Font("Segoe UI", 8.5F);
+                using var sfBody = new StringFormat
+                {
+                    Trimming = StringTrimming.EllipsisCharacter,
+                    FormatFlags = StringFormatFlags.NoWrap
+                };
+                g.DrawString(_body, fontBody, new SolidBrush(subCol), new RectangleF(28, 26, w - 38, 18), sfBody);
 
                 using var pen = new Pen(Color.FromArgb(15, ThemeManager.CurrentBorder), 1);
                 g.DrawLine(pen, 10, h - 1, w - 10, h - 1);

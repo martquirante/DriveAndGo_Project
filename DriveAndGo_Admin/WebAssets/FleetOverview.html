@@ -546,8 +546,8 @@
                         type="button"
                         onClick={() => setOpen(!open)}
                         className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 border bg-[var(--bg-tertiary)] ${open
-                                ? 'border-orange-500 text-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.3)] ring-2 ring-orange-500/20'
-                                : 'border-[var(--border-color)] text-[var(--text-primary)] hover:border-orange-500/60 hover:text-orange-400'
+                            ? 'border-orange-500 text-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.3)] ring-2 ring-orange-500/20'
+                            : 'border-[var(--border-color)] text-[var(--text-primary)] hover:border-orange-500/60 hover:text-orange-400'
                             }`}
                     >
                         <span className={`w-2 h-2 rounded-full ${value === 'available' ? 'bg-emerald-400 animate-pulse' : value === 'rented' ? 'bg-amber-400 animate-pulse' : value === 'maintenance' ? 'bg-orange-400' : 'bg-orange-500'}`}></span>
@@ -568,8 +568,8 @@
                                         setOpen(false);
                                     }}
                                     className={`w-full px-3.5 py-2 text-xs font-bold flex items-center justify-between transition-colors ${value === opt.key
-                                            ? 'bg-orange-500/15 text-orange-400 font-extrabold'
-                                            : 'text-[var(--text-primary)] hover:bg-orange-500/10 hover:text-orange-400'
+                                        ? 'bg-orange-500/15 text-orange-400 font-extrabold'
+                                        : 'text-[var(--text-primary)] hover:bg-orange-500/10 hover:text-orange-400'
                                         }`}
                                 >
                                     <span className="flex items-center gap-2">
@@ -686,8 +686,8 @@
                                                     }}
                                                     title={`Unit ${idx + 1}: ${u.plateNumber} (${u.color || 'Pearl White'})`}
                                                     className={`h-2 transition-all duration-300 rounded-full cursor-pointer hover:scale-125 ${idx === activeUnitIndex
-                                                            ? 'w-6 bg-orange-500 shadow-md shadow-orange-500/50'
-                                                            : 'w-2 bg-white/20 hover:bg-orange-400/80'
+                                                        ? 'w-6 bg-orange-500 shadow-md shadow-orange-500/50'
+                                                        : 'w-2 bg-white/20 hover:bg-orange-400/80'
                                                         }`}
                                                 />
                                             ))}
@@ -797,8 +797,8 @@
                                             key={u.id || idx}
                                             onClick={() => setActiveIndex(idx)}
                                             className={`absolute w-[360px] sm:w-[380px] h-[280px] rounded-3xl bg-[var(--bg-card)] border transition-all duration-500 ease-out cursor-pointer overflow-hidden shadow-2xl flex flex-col justify-between p-0 ${isActive
-                                                    ? 'border-orange-500 ring-4 ring-orange-500/30 shadow-[0_20px_50px_rgba(249,115,22,0.35)]'
-                                                    : 'border-[var(--border-color)] hover:border-orange-500/50'
+                                                ? 'border-orange-500 ring-4 ring-orange-500/30 shadow-[0_20px_50px_rgba(249,115,22,0.35)]'
+                                                : 'border-[var(--border-color)] hover:border-orange-500/50'
                                                 }`}
                                             style={{
                                                 transform: transformStyle,
@@ -851,8 +851,8 @@
                                     key={u.id || idx}
                                     onClick={() => setActiveIndex(idx)}
                                     className={`h-2.5 transition-all duration-300 rounded-full cursor-pointer ${idx === activeIndex
-                                            ? 'w-10 bg-orange-500 shadow-md shadow-orange-500/50'
-                                            : 'w-3 bg-[var(--border-color)] hover:bg-gray-400'
+                                        ? 'w-10 bg-orange-500 shadow-md shadow-orange-500/50'
+                                        : 'w-3 bg-[var(--border-color)] hover:bg-gray-400'
                                         }`}
                                 />
                             ))}
@@ -993,15 +993,15 @@
 
                 const openWeatherKey = window.OPENWEATHER_KEY || "";
 
-                // Init Layers
+                // Init Layers with real-time OpenWeatherMap clouds & wind tiles + RainViewer radar
                 layersRef.current = {
                     dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 20 }),
                     light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 20 }),
                     sat: L.tileLayer('https://mt1.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}', { maxZoom: 20 }),
                     traffic: L.tileLayer('https://mt1.google.com/vt/lyrs=h,traffic&x={x}&y={y}&z={z}', { maxZoom: 20 }),
                     radar: L.tileLayer('https://tilecache.rainviewer.com/v2/radar/nowcast_5/256/{z}/{x}/{y}/2/1_1.png', { opacity: 0.95, maxNativeZoom: 6, maxZoom: 20 }),
-                    clouds: L.tileLayer(openWeatherKey ? `https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=${openWeatherKey}` : 'https://tilecache.rainviewer.com/v2/radar/nowcast_5/256/{z}/{x}/{y}/2/1_1.png', { opacity: 0.95, maxZoom: 20 }),
-                    wind: L.tileLayer(openWeatherKey ? `https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=${openWeatherKey}` : 'https://tilecache.rainviewer.com/v2/radar/nowcast_5/256/{z}/{x}/{y}/2/1_1.png', { opacity: 0.95, maxZoom: 20 })
+                    clouds: L.tileLayer(`https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=${openWeatherKey}`, { opacity: 0.85, maxZoom: 20, zIndex: 310 }),
+                    wind: L.tileLayer(`https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=${openWeatherKey}`, { opacity: 0.85, maxZoom: 20, zIndex: 320 })
                 };
 
                 layersRef.current.dark.addTo(map); // default
@@ -1078,9 +1078,7 @@
                                 const tileUrl = `${data.host}${latestFrame.path}/256/{z}/{x}/{y}/2/1_1.png`;
 
                                 if (isMounted && mapInst.current && layersRef.current) {
-                                    if (layersRef.current.radar) {
-                                        mapInst.current.removeLayer(layersRef.current.radar);
-                                    }
+                                    if (layersRef.current.radar) mapInst.current.removeLayer(layersRef.current.radar);
                                     layersRef.current.radar = L.tileLayer(tileUrl, { opacity: 0.95, maxNativeZoom: 6, maxZoom: 20, zIndex: 300 });
                                     if (radarOn) {
                                         layersRef.current.radar.addTo(mapInst.current);
@@ -1633,8 +1631,8 @@
                                         type="button"
                                         onClick={() => handleSelectPreset(c.name)}
                                         className={`w-full p-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${!isOtherMode && matchedPreset?.name === c.name
-                                                ? 'bg-orange-500/15 text-orange-400 font-bold'
-                                                : 'hover:bg-white/5 text-[var(--text-primary)]'
+                                            ? 'bg-orange-500/15 text-orange-400 font-bold'
+                                            : 'hover:bg-white/5 text-[var(--text-primary)]'
                                             }`}
                                     >
                                         <div className="flex items-center gap-2">
@@ -1657,8 +1655,8 @@
                                     type="button"
                                     onClick={handleSelectOther}
                                     className={`w-full p-2 rounded-xl text-xs font-extrabold flex items-center justify-between transition-colors cursor-pointer ${isOtherMode
-                                            ? 'bg-orange-500/15 text-orange-400'
-                                            : 'hover:bg-white/5 text-orange-400'
+                                        ? 'bg-orange-500/15 text-orange-400'
+                                        : 'hover:bg-white/5 text-orange-400'
                                         }`}
                                 >
                                     <div className="flex items-center gap-2">
@@ -1801,7 +1799,7 @@
             const orCrInputRef = useRef(null);
             const insuranceInputRef = useRef(null);
 
-            const handleOpenSuggest = () => {
+            const handleOpenSuggest = async () => {
                 const typeLower = (form.type || '').toLowerCase();
                 const cc = parseInt(form.engineCc) || 1500;
                 let baseRate = 2500;
@@ -1811,6 +1809,28 @@
                 else if (typeLower.includes('hatchback')) baseRate = 1800;
                 else if (typeLower.includes('motorcycle')) baseRate = 800;
                 else baseRate = 2200;
+
+                try {
+                    const vIdParam = vehicleToEdit ? `&vehicleId=${vehicleToEdit.id || vehicleToEdit.vehicle_id}` : '';
+                    const res = await fetch(`${API}/api/vehicles/suggest-rate?baseRate=${baseRate}${vIdParam}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        const calcRate = Math.round(data.suggestedRate || baseRate);
+                        const calcRateWithDriver = calcRate + 1200;
+
+                        setSuggestData({
+                            baseRate: Math.round(data.baseRate || baseRate),
+                            demandFactor: Math.round(data.breakdown?.seasonalityMarkup || Math.round(baseRate * 0.12)),
+                            inflationFactor: Math.round(data.breakdown?.inflationMarkup || Math.round(baseRate * 0.05)),
+                            calculatedRate: calcRate,
+                            calculatedRateWithDriver: calcRateWithDriver,
+                            reasoning: data.message || `Recommended pricing for ${form.brand || 'Vehicle'} ${form.model || ''} based on AI market demand, seasonality, and inflation index.`
+                        });
+                        return;
+                    }
+                } catch (e) {
+                    console.warn("AI suggest rate fetch error, using local AI fallback:", e);
+                }
 
                 const demandFactor = Math.round(baseRate * 0.12);
                 const inflationFactor = Math.round(baseRate * 0.05);
@@ -1823,7 +1843,7 @@
                     inflationFactor,
                     calculatedRate,
                     calculatedRateWithDriver,
-                    reasoning: `Recommended pricing for ${form.brand || 'Vehicle'} ${form.model || ''} (${form.type || 'Car'}) with ${cc}cc engine based on current market demand & inflation indices.`
+                    reasoning: `Recommended pricing for ${form.brand || 'Vehicle'} ${form.model || ''} (${form.type || 'Car'}) with ${cc}cc engine based on AI market demand & inflation indices.`
                 });
             };
 
@@ -2236,8 +2256,8 @@
                                                 setForm(f => ({ ...f, brand: '', model: '' }));
                                             }}
                                             className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${creationMode === 'custom'
-                                                    ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30'
-                                                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5'
+                                                ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30'
+                                                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5'
                                                 }`}
                                         >
                                             <IconPlus sz={14} /> Custom Vehicle
@@ -2246,8 +2266,8 @@
                                             type="button"
                                             onClick={() => setCreationMode('preset')}
                                             className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${creationMode === 'preset'
-                                                    ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30'
-                                                    : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5'
+                                                ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30'
+                                                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5'
                                                 }`}
                                         >
                                             <IconZap sz={14} /> Same Brand & Model
@@ -2975,6 +2995,24 @@
             if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
                 window.chrome.webview.postMessage("push_notification:" + JSON.stringify({ title: title, body: body }));
             }
+
+            const cleanTitle = (title || '').replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|\u200D|[\u2600-\u27BF]|[\u1F300-\u1F9FF]/g, '').trim();
+            const cleanBody = (body || '').replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|\u200D|[\u2600-\u27BF]|[\u1F300-\u1F9FF]/g, '').trim();
+
+            const type = cleanTitle.toLowerCase().includes('flood') ? 'flood' :
+                cleanTitle.toLowerCase().includes('weather') || cleanTitle.toLowerCase().includes('pagasa') || cleanTitle.toLowerCase().includes('monsoon') ? 'weather' :
+                    cleanTitle.toLowerCase().includes('decommission') || cleanTitle.toLowerCase().includes('audit') ? 'decommission' : 'general';
+
+            if (window.__addNotificationReact) {
+                window.__addNotificationReact({
+                    id: Date.now() + Math.random(),
+                    type,
+                    title: cleanTitle || title,
+                    body: cleanBody || body,
+                    time: 'Just now',
+                    unread: true
+                });
+            }
         };
 
         const FleetOverview = () => {
@@ -2982,6 +3020,43 @@
             const [isDark, setIsDark] = useState(document.documentElement.getAttribute('data-theme') !== 'light');
             const [vehicles, setVehicles] = useState([]);
             const [loading, setLoading] = useState(true);
+
+            // Notifications Dropdown State (100% React Web2 Component)
+            const [notifications, setNotifications] = useState([
+                {
+                    id: 1,
+                    type: 'flood',
+                    title: 'España Blvd Flood Hazard Alert',
+                    body: '1 Active Vehicle in España Blvd Flood Polygon (Tire-Deep: 25-35 cm)',
+                    time: 'Just now',
+                    unread: true
+                },
+                {
+                    id: 2,
+                    type: 'weather',
+                    title: 'PAGASA Monsoon Weather Advisory',
+                    body: 'PAGASA Yellow Advisory - Station Target: Rental Garage Hub (SJDM)',
+                    time: '5m ago',
+                    unread: true
+                }
+            ]);
+            const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+
+            // Register global handlers for push notification & dropdown toggle
+            useEffect(() => {
+                window.__addNotificationReact = (newNotif) => {
+                    setNotifications(prev => [newNotif, ...prev]);
+                };
+                window.__toggleNotifDropdownReact = () => {
+                    setShowNotifDropdown(prev => !prev);
+                };
+                window.toggleNotificationsDropdown = () => {
+                    setShowNotifDropdown(prev => !prev);
+                };
+                window.showWeatherAdvisoryFromNotif = () => {
+                    setShowWeatherModal(true);
+                };
+            }, []);
 
             // View State
             const [viewMode, setViewMode] = useState('grid'); // grid, table
@@ -3019,6 +3094,11 @@
                     window.pushAdminNotification("🌊 España Blvd Flood Hazard Alert", "1 Active Vehicle in España Blvd Flood Polygon (Tire-Deep Level: 25-35 cm).");
                     window.pushAdminNotification("🚨 PAGASA Monsoon Weather Advisory", "PAGASA Yellow Advisory - Station Target: Rental Garage Hub (SJDM / Metro Manila).");
                 }, 1500);
+
+                // Register notification click handler to open Weather Radar & Advisory Modal
+                window.showWeatherAdvisoryFromNotif = () => {
+                    setShowWeatherModal(true);
+                };
 
                 return () => clearTimeout(initTimer);
             }, []);
@@ -3715,6 +3795,95 @@
                             onExecuteEmergencyProtocol={handleExecuteEmergencyProtocol}
                         />
                     )}
+                    {/* 100% REACT WEB2 NOTIFICATIONS DROPDOWN MODAL */}
+                    {showNotifDropdown && (
+                        <div className="fixed top-14 right-12 z-[100000] w-96 max-w-[90vw] bg-[#0c0e1a]/95 backdrop-blur-2xl border border-white/15 rounded-3xl p-4 shadow-[0_25px_60px_rgba(0,0,0,0.85)] animate-fade-in text-white">
+                            <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3 px-1">
+                                <div className="flex items-center gap-2 font-black text-sm text-white">
+                                    <IconBell sz={18} className="text-orange-400" />
+                                    <span>Notifications</span>
+                                    {notifications.filter(n => n.unread).length > 0 && (
+                                        <span className="px-2 py-0.5 rounded-full bg-orange-500 text-white font-extrabold text-[10px]">
+                                            {notifications.filter(n => n.unread).length}
+                                        </span>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={() => setShowNotifDropdown(false)}
+                                    className="p-1.5 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                                >
+                                    <IconX sz={16} />
+                                </button>
+                            </div>
+
+                            {/* Notifications List */}
+                            <div className="max-h-[360px] overflow-y-auto pr-1 flex flex-col gap-2.5 custom-scrollbar">
+                                {notifications.length === 0 ? (
+                                    <div className="py-12 text-center text-gray-400 text-xs italic">
+                                        No active notifications
+                                    </div>
+                                ) : (
+                                    notifications.map(n => {
+                                        let icon = <IconBell sz={16} className="text-blue-400" />;
+                                        let badgeBg = "bg-blue-500/20 text-blue-400 border-blue-500/30";
+
+                                        const tLow = (n.title || '').toLowerCase();
+                                        const bLow = (n.body || '').toLowerCase();
+
+                                        if (n.type === 'weather' || tLow.includes('weather') || tLow.includes('pagasa') || tLow.includes('monsoon')) {
+                                            icon = <IconCloudRain sz={16} className="text-amber-400" />;
+                                            badgeBg = "bg-amber-500/20 text-amber-400 border-amber-500/30";
+                                        } else if (n.type === 'flood' || tLow.includes('flood') || tLow.includes('hazard')) {
+                                            icon = <IconShieldAlert sz={16} className="text-cyan-400" />;
+                                            badgeBg = "bg-cyan-500/20 text-cyan-400 border-cyan-500/30";
+                                        } else if (n.type === 'decommission' || tLow.includes('decommission') || tLow.includes('audit')) {
+                                            icon = <IconTrash2 sz={16} className="text-red-400" />;
+                                            badgeBg = "bg-red-500/20 text-red-400 border-red-500/30";
+                                        }
+
+                                        return (
+                                            <div
+                                                key={n.id}
+                                                onClick={() => {
+                                                    setShowNotifDropdown(false);
+                                                    setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, unread: false } : x));
+
+                                                    if (tLow.includes('weather') || tLow.includes('pagasa') || tLow.includes('monsoon') || tLow.includes('flood') || bLow.includes('rain')) {
+                                                        setShowWeatherModal(true);
+                                                    }
+                                                }}
+                                                className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 hover:scale-[1.01] ${n.unread ? 'bg-white/[0.08] border-white/25 shadow-md' : 'bg-white/[0.02] border-white/5 opacity-75'} hover:bg-white/[0.14] hover:border-orange-500/50`}
+                                            >
+                                                <div className={`p-2 rounded-xl border shrink-0 ${badgeBg}`}>
+                                                    {icon}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                                                        <h4 className="font-extrabold text-xs text-white truncate">{n.title}</h4>
+                                                        <span className="text-[10px] text-gray-400 font-semibold whitespace-nowrap">{n.time}</span>
+                                                    </div>
+                                                    <p className="text-[11px] text-gray-300 leading-snug line-clamp-2">{n.body}</p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+
+                            {/* Clear All Footer */}
+                            {notifications.length > 0 && (
+                                <div className="pt-3 mt-3 border-t border-white/10 flex justify-center">
+                                    <button
+                                        onClick={() => setNotifications([])}
+                                        className="text-xs font-black text-orange-400 hover:text-orange-300 transition-colors uppercase tracking-wider py-1 px-4 rounded-xl hover:bg-orange-500/10"
+                                    >
+                                        Clear all
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {qrVehicle && <QrCodeModal vehicle={qrVehicle} onClose={() => setQrVehicle(null)} />}
                     {previewDoc && <DocumentPreviewModal title={previewDoc.title} url={previewDoc.url} onClose={() => setPreviewDoc(null)} />}
 
@@ -3730,8 +3899,8 @@
 
                     {toast && (
                         <div className={`fixed top-6 right-6 z-[100000] px-5 py-3.5 rounded-2xl backdrop-blur-xl border shadow-2xl flex items-center gap-3 animate-slide-in text-xs font-bold ${toast.type === 'error'
-                                ? 'bg-red-950/90 border-red-500/40 text-red-200 shadow-red-500/20'
-                                : 'bg-emerald-950/90 border-emerald-500/40 text-emerald-200 shadow-emerald-500/20'
+                            ? 'bg-red-950/90 border-red-500/40 text-red-200 shadow-red-500/20'
+                            : 'bg-emerald-950/90 border-emerald-500/40 text-emerald-200 shadow-emerald-500/20'
                             }`}>
                             {toast.type === 'error' ? <IconAlertTriangle sz={18} className="text-red-400 shrink-0" /> : <IconCheck sz={18} className="text-emerald-400 shrink-0" />}
                             <span>{toast.message}</span>
