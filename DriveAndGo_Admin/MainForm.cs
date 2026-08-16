@@ -93,6 +93,7 @@ namespace DriveAndGo_Admin
         private Button btnExpenses;
         private Button btnSplitPay;
         private Button btnAccounts;
+        private Button btnWeather;
         private Button btnLogout;
 
         // ── Sidebar dual-layer panels ─────────────────────────────────────────────
@@ -730,15 +731,16 @@ namespace DriveAndGo_Admin
             btnExpenses     = CreateNavButton("Expenses",     "\uE945", 426);
             btnSplitPay     = CreateNavButton("Split Pay",    "\uE8D4", 478);
             btnAccounts     = CreateNavButton("Accounts",     "\uE716", 530);
+            btnWeather      = CreateNavButton("Weather Radar", "\uE706", 582);
 
             _navContainer.Controls.AddRange(new Control[] {
                 activeIndicator, btnDashboard, btnVehicles, btnRentals, btnDrivers,
                 btnTransactions, btnReports, btnCalendar, btnDocVault,
-                btnExpenses, btnSplitPay, btnAccounts
+                btnExpenses, btnSplitPay, btnAccounts, btnWeather
             });
 
             // Smooth MouseWheel Logic
-            int totalNavHeight = 582; // 530 + btn.Height
+            int totalNavHeight = 634; // 582 + btn.Height
             _navContainer.MouseWheel += (s, e) => {
                 int maxScroll = Math.Max(0, totalNavHeight - _navContainer.Height);
                 if (maxScroll <= 0) return;
@@ -770,6 +772,7 @@ namespace DriveAndGo_Admin
             btnExpenses.Click     += (s, e) => { SetActiveButton(btnExpenses);     NavigateTo<ExpensesPanel>(); };
             btnSplitPay.Click     += (s, e) => { SetActiveButton(btnSplitPay);     NavigateTo<SplitPaymentsPanel>(); };
             btnAccounts.Click     += (s, e) => { SetActiveButton(btnAccounts);     NavigateTo<AccountsPanel>(); };
+            btnWeather.Click      += (s, e) => { SetActiveButton(btnWeather);      NavigateTo<WeatherPanel>(); };
 
             // ── Unified SaaS Profile Card (bottom-anchored) ─────────────────────────
             const int _cardH = 104;
@@ -1913,6 +1916,7 @@ namespace DriveAndGo_Admin
             else if (panelType == typeof(ExpensesPanel)) { SetActiveButton(btnExpenses); }
             else if (panelType == typeof(SplitPaymentsPanel)) { SetActiveButton(btnSplitPay); }
             else if (panelType == typeof(AccountsPanel)) { SetActiveButton(btnAccounts); }
+            else if (panelType == typeof(WeatherPanel)) { SetActiveButton(btnWeather); }
         }
 
         private void OnToggleSidebar(object sender, EventArgs e)

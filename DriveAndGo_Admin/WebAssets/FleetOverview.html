@@ -88,6 +88,11 @@
             border-radius: 3px;
         }
 
+        .rain-radar-tile {
+            filter: blur(6px) contrast(140%) saturate(140%);
+            transition: opacity 0.3s ease;
+        }
+
         ::-webkit-scrollbar-thumb:hover {
             background: rgba(255, 255, 255, 0.2);
         }
@@ -238,14 +243,26 @@
         window.API_BASE_URL = window.API_BASE_URL || '';
         window.AUTH_TOKEN = window.AUTH_TOKEN || '';
 
-        // Safety fallback: Auto-dismiss boot splash screen after 1s to prevent hanging
+        // Catch global JS/Babel initialization errors and display diagnostic info instead of blank screen
+        window.onerror = function (msg, url, lineNo, columnNo, error) {
+            console.error("Global JS Error:", msg, "at line", lineNo, "col", columnNo, error);
+            var root = document.getElementById('root');
+            if (root && (!root.innerHTML || root.innerHTML.trim() === '' || root.innerHTML.indexOf('boot-splash') !== -1)) {
+                root.innerHTML = '<div style="color:#ef4444;padding:30px;font-family:Segoe UI,sans-serif;background:#0d0e17;border:1px solid rgba(239,68,68,0.3);border-radius:20px;margin:20px;box-shadow:0 10px 30px rgba(0,0,0,0.8);"><h3 style="color:#f97316;margin-top:0;">Fleet Center Initialization Error</h3><p style="color:#94a3b8;font-size:13px;">' + msg + '</p><pre style="background:rgba(0,0,0,0.5);padding:12px;border-radius:10px;font-size:11px;color:#cbd5e1;white-space:pre-wrap;">Line: ' + lineNo + ' | Column: ' + columnNo + '\n' + (error && error.stack ? error.stack : '') + '</pre></div>';
+            }
+            var splash = document.getElementById('boot-splash');
+            if (splash) splash.remove();
+            return false;
+        };
+
+        // Safety fallback: Auto-dismiss boot splash screen after 1.5s
         setTimeout(function () {
             var splash = document.getElementById('boot-splash');
             if (splash) {
                 splash.classList.add('hide');
                 setTimeout(function () { if (splash && splash.parentNode) splash.parentNode.removeChild(splash); }, 400);
             }
-        }, 1000);
+        }, 1500);
     </script>
     <script src="react.production.min.js"></script>
     <script src="react-dom.production.min.js"></script>
@@ -973,6 +990,8 @@
             const markersRef = useRef({});
             const layersRef = useRef({});
             const floodPolygonsRef = useRef([]);
+            const garageMarkerRef = useRef(null);
+            const cityTempMarkersRef = useRef([]);
 
             const [mapType, setMapType] = useState('street');
             const [trafficOn, setTrafficOn] = useState(false);
@@ -980,28 +999,56 @@
             const [cloudsOn, setCloudsOn] = useState(false);
             const [windOn, setWindOn] = useState(false);
             const [floodZonesOn, setFloodZonesOn] = useState(true);
+            const [hoverInfo, setHoverInfo] = useState(null);
 
-            const garageMarkerRef = useRef(null);
+            const isAnyWeatherActive = radarOn || cloudsOn || windOn || floodZonesOn;
+
+            const cities = [
+                { name: 'Manila', lat: 14.5995, lng: 120.9842 },
+                { name: 'Tuguegarao', lat: 17.6132, lng: 121.7269 },
+                { name: 'Baguio', lat: 16.4023, lng: 120.5960 },
+                { name: 'Tarlac City', lat: 15.4802, lng: 120.5979 },
+                { name: 'Naga', lat: 13.6218, lng: 123.1948 },
+                { name: 'Puerto Princesa', lat: 9.7392, lng: 118.7353 },
+                { name: 'Roxas City', lat: 11.5853, lng: 122.7511 },
+                { name: 'Tacloban', lat: 11.2433, lng: 125.0047 },
+                { name: 'Cebu City', lat: 10.3157, lng: 123.8854 },
+                { name: 'Cagayan de Oro', lat: 8.4542, lng: 124.6319 },
+                { name: 'Davao City', lat: 7.1907, lng: 125.4553 },
+                { name: 'Zamboanga City', lat: 6.9214, lng: 122.0790 },
+                { name: 'General Santos', lat: 6.1164, lng: 125.1716 }
+            ];
 
             useEffect(() => {
                 if (!mapRef.current || mapInst.current) return;
 
-                // Init Map centered at Rental Station (14.871116, 121.048088)
-                const map = L.map(mapRef.current, { zoomControl: false, attributionControl: false }).setView([14.871116, 121.048088], 13);
+                // Init Map centered at Rental Station (14.871116, 121.048088) with Zoom Limits and Philippine bounds
+                const map = L.map(mapRef.current, {
+                    zoomControl: false,
+                    attributionControl: false,
+                    minZoom: 6,
+                    maxZoom: 19,
+                    maxBounds: [
+                        [4.0, 114.0],
+                        [22.0, 129.0]
+                    ],
+                    maxBoundsViscosity: 0.8
+                }).setView([14.871116, 121.048088], 13);
                 L.control.zoom({ position: 'bottomleft' }).addTo(map);
                 mapInst.current = map;
 
-                const openWeatherKey = window.OPENWEATHER_KEY || "";
+                window.OPENWEATHER_KEY = window.OPENWEATHER_KEY || "";
+                const openWeatherKey = window.OPENWEATHER_KEY;
 
                 // Init Layers with real-time OpenWeatherMap clouds & wind tiles + RainViewer radar
                 layersRef.current = {
-                    dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 20 }),
-                    light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 20 }),
-                    sat: L.tileLayer('https://mt1.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}', { maxZoom: 20 }),
-                    traffic: L.tileLayer('https://mt1.google.com/vt/lyrs=h,traffic&x={x}&y={y}&z={z}', { maxZoom: 20 }),
-                    radar: L.tileLayer('https://tilecache.rainviewer.com/v2/radar/nowcast_5/256/{z}/{x}/{y}/2/1_1.png', { opacity: 0.95, maxNativeZoom: 6, maxZoom: 20 }),
-                    clouds: L.tileLayer(`https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=${openWeatherKey}`, { opacity: 0.85, maxZoom: 20, zIndex: 310 }),
-                    wind: L.tileLayer(`https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=${openWeatherKey}`, { opacity: 0.85, maxZoom: 20, zIndex: 320 })
+                    dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { minZoom: 6, maxZoom: 20 }),
+                    light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { minZoom: 6, maxZoom: 20 }),
+                    sat: L.tileLayer('https://mt1.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}', { minZoom: 6, maxZoom: 20 }),
+                    traffic: L.tileLayer('https://mt1.google.com/vt/lyrs=h,traffic&x={x}&y={y}&z={z}', { minZoom: 6, maxZoom: 20 }),
+                    radar: L.tileLayer('https://tilecache.rainviewer.com/v2/radar/nowcast_5/512/{z}/{x}/{y}/2/1_1.png', { opacity: 0.75, minZoom: 6, maxNativeZoom: 6, maxZoom: 20, className: 'rain-radar-tile' }),
+                    clouds: L.tileLayer(`https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=${openWeatherKey}`, { opacity: 0.85, minZoom: 6, maxZoom: 20, zIndex: 310 }),
+                    wind: L.tileLayer(`https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=${openWeatherKey}`, { opacity: 0.85, minZoom: 6, maxZoom: 20, zIndex: 320 })
                 };
 
                 layersRef.current.dark.addTo(map); // default
@@ -1026,6 +1073,81 @@
 
                 return () => { map.remove(); mapInst.current = null; };
             }, []);
+
+            // Render Weather Station Markers & Interactive Hover Inspection ONLY if any weather layer is active
+            useEffect(() => {
+                if (!mapInst.current) return;
+                const map = mapInst.current;
+
+                cityTempMarkersRef.current.forEach(m => map.removeLayer(m));
+                cityTempMarkersRef.current = [];
+                setHoverInfo(null);
+
+                if (!isAnyWeatherActive) return;
+
+                async function fetchCityTemps() {
+                    const lats = cities.map(c => c.lat).join(',');
+                    const lngs = cities.map(c => c.lng).join(',');
+                    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&current=temperature_2m,wind_speed_10m`;
+
+                    try {
+                        const res = await fetch(url);
+                        if (res.ok) {
+                            const data = await res.json();
+                            const results = Array.isArray(data) ? data : [data];
+
+                            results.forEach((item, idx) => {
+                                const c = cities[idx];
+                                const temp = item.current ? Math.round(item.current.temperature_2m) : 27;
+                                const windSpeed = item.current ? Math.round(item.current.wind_speed_10m || 14) : 14;
+
+                                const cityIcon = L.divIcon({
+                                    className: 'city-weather-beacon',
+                                    html: `<div class="relative flex items-center justify-center w-8 h-8 cursor-pointer group">
+                                             <div class="absolute w-6 h-6 rounded-full bg-orange-500/25 animate-ping pointer-events-none"></div>
+                                             <div class="relative w-3.5 h-3.5 rounded-full bg-gradient-to-tr from-amber-500 to-orange-500 border-2 border-white/90 shadow-[0_0_12px_rgba(249,115,22,0.9)] transition-transform duration-200 group-hover:scale-150"></div>
+                                           </div>`,
+                                    iconSize: [32, 32],
+                                    iconAnchor: [16, 16]
+                                });
+
+                                const marker = L.marker([c.lat, c.lng], { icon: cityIcon, zIndexOffset: 200 }).addTo(map);
+
+                                marker.on('mouseover', (e) => {
+                                    setHoverInfo({
+                                        location: c.name,
+                                        temp: temp,
+                                        windSpeed: windSpeed,
+                                        x: e.containerPoint.x + 14,
+                                        y: e.containerPoint.y + 14
+                                    });
+                                });
+                                marker.on('mousemove', (e) => {
+                                    setHoverInfo(prev => prev ? {
+                                        ...prev,
+                                        x: e.containerPoint.x + 14,
+                                        y: e.containerPoint.y + 14
+                                    } : null);
+                                });
+                                marker.on('mouseout', () => {
+                                    setHoverInfo(null);
+                                });
+
+                                cityTempMarkersRef.current.push(marker);
+                            });
+                        }
+                    } catch (err) {
+                        console.warn("City temp fetch error:", err);
+                    }
+                }
+                fetchCityTemps();
+
+                return () => {
+                    cityTempMarkersRef.current.forEach(m => map.removeLayer(m));
+                    cityTempMarkersRef.current = [];
+                    setHoverInfo(null);
+                };
+            }, [radarOn, cloudsOn, windOn, floodZonesOn, isAnyWeatherActive]);
 
             // Handle Theme & Layer switching
             useEffect(() => {
@@ -1075,11 +1197,11 @@
                             const data = await res.json();
                             if (data && data.radar && data.radar.past && data.radar.past.length > 0) {
                                 const latestFrame = data.radar.past[data.radar.past.length - 1];
-                                const tileUrl = `${data.host}${latestFrame.path}/256/{z}/{x}/{y}/2/1_1.png`;
+                                const tileUrl = `${data.host}${latestFrame.path}/512/{z}/{x}/{y}/2/1_1.png`;
 
                                 if (isMounted && mapInst.current && layersRef.current) {
                                     if (layersRef.current.radar) mapInst.current.removeLayer(layersRef.current.radar);
-                                    layersRef.current.radar = L.tileLayer(tileUrl, { opacity: 0.95, maxNativeZoom: 6, maxZoom: 20, zIndex: 300 });
+                                    layersRef.current.radar = L.tileLayer(tileUrl, { opacity: 0.75, maxNativeZoom: 6, maxZoom: 20, zIndex: 300, className: 'rain-radar-tile' });
                                     if (radarOn) {
                                         layersRef.current.radar.addTo(mapInst.current);
                                         layersRef.current.radar.bringToFront();
@@ -1092,8 +1214,235 @@
                     }
                 }
                 fetchLatestRadarTile();
-                return () => { isMounted = false; };
+                const intervalId = setInterval(fetchLatestRadarTile, 180000); // Auto-refresh radar tiles every 3 mins
+                return () => { isMounted = false; clearInterval(intervalId); };
             }, [radarOn]);
+
+            // Render Live Animated Wind Particle Streamlines ("guhit-guhit na may circulation")
+            const windParticleCanvasRef = useRef(null);
+            const windAnimFrameRef = useRef(null);
+
+            useEffect(() => {
+                if (!mapInst.current) return;
+                const map = mapInst.current;
+
+                if (!windOn) {
+                    if (windAnimFrameRef.current) cancelAnimationFrame(windAnimFrameRef.current);
+                    if (windParticleCanvasRef.current && map.getPanes().overlayPane.contains(windParticleCanvasRef.current)) {
+                        map.getPanes().overlayPane.removeChild(windParticleCanvasRef.current);
+                    }
+                    windParticleCanvasRef.current = null;
+                    return;
+                }
+
+                // Create full-map canvas overlay inside Leaflet overlayPane
+                const canvas = document.createElement('canvas');
+                canvas.style.position = 'absolute';
+                canvas.style.top = '0';
+                canvas.style.left = '0';
+                canvas.style.pointerEvents = 'none';
+                canvas.style.zIndex = '350';
+                canvas.className = 'wind-particle-canvas';
+
+                map.getPanes().overlayPane.appendChild(canvas);
+                windParticleCanvasRef.current = canvas;
+
+                const ctx = canvas.getContext('2d');
+
+                function resizeCanvas() {
+                    if (!mapInst.current || !canvas) return;
+                    const size = map.getSize();
+                    const topLeft = map.containerPointToLayerPoint([0, 0]);
+                    canvas.width = size.x;
+                    canvas.height = size.y;
+                    L.DomUtil.setPosition(canvas, topLeft);
+                }
+                resizeCanvas();
+
+                map.on('move', resizeCanvas);
+                map.on('zoomend', resizeCanvas);
+                map.on('resize', resizeCanvas);
+
+                // Windy API Key Integration
+                window.WINDY_API_KEY = "NUf5PoFljfP8oDLuM3ihNOC7zCqwgsl4";
+
+                // Generate Particles with Calibrated Lifespan (120 - 180 frames)
+                const particleCount = 450;
+                const particles = [];
+
+                function resetParticle(p) {
+                    const size = map.getSize();
+                    p.x = Math.random() * size.x;
+                    p.y = Math.random() * size.y;
+                    p.age = 0;
+                    p.maxAge = 120 + Math.floor(Math.random() * 60); // 120 - 180 frames
+                    return p;
+                }
+
+                for (let i = 0; i < particleCount; i++) {
+                    particles.push(resetParticle({}));
+                }
+
+                // Real-time Worldwide API Wind Vector Grid from Open-Meteo Global Meteorological Engine
+                let liveWindGrid = [];
+                let isWindApiLoaded = false;
+                let fetchDebounceTimer = null;
+
+                async function fetchWorldwideWindGrid() {
+                    if (!mapInst.current) return;
+                    const bounds = mapInst.current.getBounds();
+                    const s = Math.max(-85, bounds.getSouth());
+                    const n = Math.min(85, bounds.getNorth());
+                    let w = bounds.getWest();
+                    let e = bounds.getEast();
+
+                    // Create dynamic 8x8 geographic sampling grid (64 live API stations) over currently visible world viewport
+                    const lats = [];
+                    const lngs = [];
+                    const steps = 7;
+
+                    const latStep = (n - s) / steps;
+                    const lngStep = (e - w) / steps;
+
+                    for (let i = 0; i <= steps; i++) {
+                        for (let j = 0; j <= steps; j++) {
+                            let latVal = s + i * latStep;
+                            let lngVal = w + j * lngStep;
+                            latVal = Math.round(Math.max(-89, Math.min(89, latVal)) * 100) / 100;
+                            lngVal = Math.round((((lngVal + 180) % 360) - 180) * 100) / 100;
+                            lats.push(latVal);
+                            lngs.push(lngVal);
+                        }
+                    }
+
+                    const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lngs.join(',')}&current=wind_speed_10m,wind_direction_10m`;
+
+                    try {
+                        const res = await fetch(apiUrl);
+                        if (res.ok) {
+                            const data = await res.json();
+                            const results = Array.isArray(data) ? data : [data];
+                            liveWindGrid = results.map((item, idx) => {
+                                const speedKmh = item.current ? item.current.wind_speed_10m : 14;
+                                const dirDeg = item.current ? item.current.wind_direction_10m : 230;
+                                const rad = (dirDeg * Math.PI) / 180;
+                                const speedMs = speedKmh / 3.6;
+
+                                // Scale velocity step delta dynamically between 0.0018 (calm) and 0.0035 (storm)
+                                const normSpeed = Math.min(Math.max((speedKmh - 5) / 55, 0), 1);
+                                const velocityScale = 0.0018 + normSpeed * 0.0017;
+
+                                const u = -speedMs * Math.sin(rad) * velocityScale * 45;
+                                const v = -speedMs * Math.cos(rad) * velocityScale * 45;
+                                return { lat: lats[idx], lng: lngs[idx], u, v, speedKmh };
+                            });
+                            isWindApiLoaded = true;
+                        }
+                    } catch (err) {
+                        console.warn("Worldwide wind grid fetch error:", err);
+                    }
+                }
+
+                function debouncedFetchWind() {
+                    if (fetchDebounceTimer) clearTimeout(fetchDebounceTimer);
+                    fetchDebounceTimer = setTimeout(fetchWorldwideWindGrid, 350);
+                }
+
+                fetchWorldwideWindGrid();
+                map.on('moveend', debouncedFetchWind);
+
+                // Live API Wind Vector Field Interpolation (IDW)
+                function getWindVector(px, py) {
+                    const latLng = map.containerPointToLatLng([px, py]);
+                    const lat = latLng.lat;
+                    const lng = latLng.lng;
+
+                    if (isWindApiLoaded && liveWindGrid.length > 0) {
+                        let totalWeight = 0;
+                        let sumU = 0;
+                        let sumV = 0;
+
+                        liveWindGrid.forEach(pt => {
+                            const dLat = lat - pt.lat;
+                            const dLng = lng - pt.lng;
+                            const distSq = dLat * dLat + dLng * dLng + 0.01;
+                            const weight = 1.0 / distSq;
+                            sumU += pt.u * weight;
+                            sumV += pt.v * weight;
+                            totalWeight += weight;
+                        });
+
+                        if (totalWeight > 0) {
+                            return { u: sumU / totalWeight, v: sumV / totalWeight };
+                        }
+                    }
+
+                    // Fallback calm stream
+                    return { u: 0.08, v: 0.04 };
+                }
+
+                // Capped FPS Animation Loop (Target 38 FPS for silky organic motion on 60-240Hz monitors)
+                let lastFrameTime = performance.now();
+                const targetFps = 38;
+                const frameInterval = 1000 / targetFps;
+
+                function drawFrame(currentTime) {
+                    if (!windParticleCanvasRef.current) return;
+                    windAnimFrameRef.current = requestAnimationFrame(drawFrame);
+
+                    const delta = currentTime - lastFrameTime;
+                    if (delta < frameInterval) return; // Cap FPS on high refresh rate monitors
+                    lastFrameTime = currentTime - (delta % frameInterval);
+
+                    const size = map.getSize();
+
+                    // Silky trail clear effect (0.96 trail opacity for organic fading tails)
+                    ctx.fillStyle = 'rgba(15, 23, 42, 0.96)';
+                    ctx.globalCompositeOperation = 'destination-in';
+                    ctx.fillRect(0, 0, size.x, size.y);
+
+                    ctx.globalCompositeOperation = 'source-over';
+                    ctx.lineWidth = 1.5;
+
+                    particles.forEach(p => {
+                        if (p.age > p.maxAge || p.x < 0 || p.x > size.x || p.y < 0 || p.y > size.y) {
+                            resetParticle(p);
+                        }
+
+                        const vec = getWindVector(p.x, p.y);
+                        const nextX = p.x + vec.u;
+                        const nextY = p.y - vec.v; // Canvas Y goes down
+
+                        const stepMagnitude = Math.sqrt(vec.u * vec.u + vec.v * vec.v);
+                        let color = 'rgba(52, 211, 153, 0.75)'; // Emerald calm
+                        if (stepMagnitude > 0.15) color = 'rgba(251, 146, 60, 0.9)'; // Orange gust
+                        else if (stepMagnitude > 0.09) color = 'rgba(56, 189, 248, 0.85)'; // Sky blue breeze
+
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(nextX, nextY);
+                        ctx.strokeStyle = color;
+                        ctx.stroke();
+
+                        p.x = nextX;
+                        p.y = nextY;
+                        p.age++;
+                    });
+                }
+
+                windAnimFrameRef.current = requestAnimationFrame(drawFrame);
+
+                return () => {
+                    if (windAnimFrameRef.current) cancelAnimationFrame(windAnimFrameRef.current);
+                    map.off('move', resizeCanvas);
+                    map.off('zoomend', resizeCanvas);
+                    map.off('resize', resizeCanvas);
+                    if (windParticleCanvasRef.current && map.getPanes().overlayPane.contains(windParticleCanvasRef.current)) {
+                        map.getPanes().overlayPane.removeChild(windParticleCanvasRef.current);
+                    }
+                    windParticleCanvasRef.current = null;
+                };
+            }, [windOn]);
 
             // Render Animated GeoJSON Flood Hazard Polygons
             useEffect(() => {
@@ -1305,8 +1654,29 @@
                                 </div>
                             </div>
                         </div>
-
                     </div>
+
+                    {/* FLOATING MOUSE HOVER WEATHER INSPECTOR TOOLTIP BADGE */}
+                    {hoverInfo && (
+                        <div
+                            className="absolute z-[9999] pointer-events-none transition-all duration-75"
+                            style={{ left: `${hoverInfo.x}px`, top: `${hoverInfo.y}px` }}
+                        >
+                            <div className="bg-[#0d0e17]/95 backdrop-blur-xl border border-white/25 px-3 py-2 rounded-2xl text-white shadow-2xl min-w-[155px] flex flex-col gap-1 border-b-2 border-b-orange-500">
+                                <div className="text-[10px] font-black text-orange-400 uppercase tracking-wider flex items-center gap-1.5">
+                                    <IconMapPin sz={11} className="text-orange-400 shrink-0" />
+                                    <span>{hoverInfo.location}</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 text-xs font-bold mt-0.5">
+                                    <span className="text-white text-sm font-black">{hoverInfo.temp}°C</span>
+                                    <span className="text-sky-400 font-extrabold flex items-center gap-1">
+                                        <IconWind sz={12} className="text-sky-400 shrink-0" />
+                                        <span>{hoverInfo.windSpeed} km/h</span>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <div ref={mapRef} className="w-full h-full bg-[var(--bg-tertiary)]" style={{ zIndex: 1 }}></div>
                 </div>
@@ -3077,9 +3447,9 @@
                                 const temp = Math.round(data.current.temperature_2m || 28);
                                 const rain = data.current.precipitation || 0;
                                 if (rain > 15) {
-                                    window.pushAdminNotification("🚨 CRITICAL WEATHER & FLOOD HAZARD", `PAGASA Signal Warning (${temp}°C, ${rain}mm/h Heavy Torrential Rain). España Blvd Flood Polygon active!`);
+                                    window.pushAdminNotification("CRITICAL WEATHER & FLOOD HAZARD", `PAGASA Signal Warning (${temp}°C, ${rain}mm/h Heavy Torrential Rain). España Blvd Flood Polygon active!`);
                                 } else if (rain > 5) {
-                                    window.pushAdminNotification("🌧️ PAGASA Yellow Rainfall Advisory", `Active Monsoon Surge (${temp}°C, ${rain}mm/h Rain) across Metro Manila / SJDM routes.`);
+                                    window.pushAdminNotification("PAGASA Yellow Rainfall Advisory", `Active Monsoon Surge (${temp}°C, ${rain}mm/h Rain) across Metro Manila / SJDM routes.`);
                                 }
                             }
                         }
@@ -3091,8 +3461,8 @@
 
                 // Seed initial weather & flood notifications to top header bell icon
                 const initTimer = setTimeout(() => {
-                    window.pushAdminNotification("🌊 España Blvd Flood Hazard Alert", "1 Active Vehicle in España Blvd Flood Polygon (Tire-Deep Level: 25-35 cm).");
-                    window.pushAdminNotification("🚨 PAGASA Monsoon Weather Advisory", "PAGASA Yellow Advisory - Station Target: Rental Garage Hub (SJDM / Metro Manila).");
+                    window.pushAdminNotification("España Blvd Flood Hazard Alert", "1 Active Vehicle in España Blvd Flood Polygon (Tire-Deep Level: 25-35 cm).");
+                    window.pushAdminNotification("PAGASA Monsoon Weather Advisory", "PAGASA Yellow Advisory - Station Target: Rental Garage Hub (SJDM / Metro Manila).");
                 }, 1500);
 
                 // Register notification click handler to open Weather Radar & Advisory Modal
@@ -3169,16 +3539,16 @@
             }, []);
 
             const handleExecuteEmergencyProtocol = async (actionName) => {
-                let detailMsg = `⚡ EMERGENCY PROTOCOL EXECUTED: ${actionName}`;
-                let notifTitle = "⚡ EMERGENCY PROTOCOL DISPATCH";
+                let detailMsg = `EMERGENCY PROTOCOL EXECUTED: ${actionName}`;
+                let notifTitle = "EMERGENCY PROTOCOL DISPATCH";
                 if (actionName.includes("SMS")) {
-                    detailMsg = `📱 EVACUATION SMS SENT to Driver: "Flood Hazard on España Blvd! Reroute via Lacson Ave."`;
-                    notifTitle = "📱 EVACUATION SMS DISPATCHED";
+                    detailMsg = `EVACUATION SMS SENT to Driver: "Flood Hazard on España Blvd! Reroute via Lacson Ave."`;
+                    notifTitle = "EVACUATION SMS DISPATCHED";
                 } else if (actionName.includes("Hazard")) {
-                    detailMsg = `🚨 REMOTE TELEMATICS TRIGGERED: Hazard Lights & Horn activated via CAN-Bus signal!`;
-                    notifTitle = "🚨 REMOTE CAN-BUS HAZARD ACTIVATED";
+                    detailMsg = `REMOTE TELEMATICS TRIGGERED: Hazard Lights & Horn activated via CAN-Bus signal!`;
+                    notifTitle = "REMOTE CAN-BUS HAZARD ACTIVATED";
                 } else if (actionName.includes("Towing")) {
-                    detailMsg = `🚛 EMERGENCY TOWING DISPATCHED: Towing service requested for España Blvd Flood Zone!`;
+                    detailMsg = `EMERGENCY TOWING DISPATCHED: Towing service requested for España Blvd Flood Zone!`;
                 }
 
                 showToast(detailMsg, 'success');
@@ -3626,7 +3996,7 @@
                                     className="bg-transparent border-none outline-none text-sm w-full text-[var(--text-primary)] placeholder-[var(--text-muted)] font-medium"
                                 />
                                 {searchTerm && (
-                                    <button onClick={() => setSearchTerm('')} className="text-xs text-[var(--text-muted)] hover:text-white px-1 font-bold">✕</button>
+                                    <button onClick={() => setSearchTerm('')} className="p-0.5 text-[var(--text-muted)] hover:text-white rounded-full transition-colors flex items-center justify-center"><IconX sz={13} /></button>
                                 )}
                             </div>
 
@@ -3945,21 +4315,35 @@
             }
         }
 
-        // Mount
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(
-            <ErrorBoundary>
-                <FleetOverview />
-            </ErrorBoundary>
-        );
-
+        // Mount with fallback support for ReactDOM.createRoot and ReactDOM.render
+        try {
+            const rootEl = document.getElementById('root');
+            if (ReactDOM.createRoot) {
+                const root = ReactDOM.createRoot(rootEl);
+                root.render(
+                    <ErrorBoundary>
+                        <FleetOverview />
+                    </ErrorBoundary>
+                );
+            } else {
+                ReactDOM.render(
+                    <ErrorBoundary>
+                        <FleetOverview />
+                    </ErrorBoundary>,
+                    rootEl
+                );
+            }
+        } catch (mountErr) {
+            console.error("ReactDOM Mount Error:", mountErr);
+            document.getElementById('root').innerHTML = '<div style="color:#ef4444;padding:30px;font-family:Segoe UI,sans-serif;background:#0d0e17;border:1px solid rgba(239,68,68,0.3);border-radius:20px;margin:20px;"><h3 style="color:#f97316;">ReactDOM Mounting Failure</h3><pre style="background:rgba(0,0,0,0.5);padding:12px;border-radius:10px;font-size:11px;color:#cbd5e1;">' + (mountErr.stack || mountErr.message) + '</pre></div>';
+        }
 
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 const splash = document.getElementById('boot-splash');
                 if (splash) {
                     splash.classList.add('hide');
-                    setTimeout(() => splash.remove(), 400);
+                    setTimeout(() => { if (splash && splash.parentNode) splash.parentNode.removeChild(splash); }, 400);
                 }
             });
         });
