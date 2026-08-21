@@ -131,7 +131,7 @@ namespace DriveAndGo_Admin.Panels
 
             var btnRefresh = CreateBtn("⟳ Reload", ColSub, 506, 58, 90);
             btnRefresh.Click += (s, e) => LoadFromDB();
-            btnReconcile = CreateBtn("🛠 Repair Logs", ColAccent, 602, 58, 120);
+            btnReconcile = CreateBtn("Repair Logs", ColAccent, 602, 58, 120);
             btnReconcile.Click += (s, e) => ReconcilePaymentLogs();
 
             topBar.Controls.Add(lblTitle);
@@ -187,7 +187,7 @@ namespace DriveAndGo_Admin.Panels
 
             // Action Buttons Panel
             Panel pnlActions = new Panel { Dock = DockStyle.Bottom, Height = 60, BackColor = WinColor.Transparent };
-            btnExportPDF = CreateBtn("📄 Download PDF Receipt", ColBlue, 0, 12, 200);
+            btnExportPDF = CreateBtn("Download PDF Receipt", ColBlue, 0, 12, 200);
             btnExportPDF.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             btnExportPDF.Location = new Point(rightPanel.Width - 220, 12);
             btnExportPDF.Enabled = false;

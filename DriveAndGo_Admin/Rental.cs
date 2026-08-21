@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace DriveAndGo_Admin // <-- DAPAT DriveAndGo_Admin ITO!
 {
@@ -17,6 +17,16 @@ namespace DriveAndGo_Admin // <-- DAPAT DriveAndGo_Admin ITO!
         public string PaymentStatus { get; set; }
 
         public string CustomerName { get; set; }
+        public string CustomerPhone { get; set; }
+        public string CustomerEmail { get; set; }
         public string VehicleName { get; set; }
+        public string VehiclePlateNo { get; set; }
+        public string DriverName { get; set; }
+        public string DriverPhone { get; set; }
+        public decimal? OdometerStart { get; set; }
+        public string FuelLevel { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        public string RentalCode => $"RN-{CreatedAt:yyMMdd}-{RentalId:D3}";
     }
 }

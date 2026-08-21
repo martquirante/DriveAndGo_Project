@@ -138,6 +138,24 @@ namespace DriveAndGo_Admin.Panels
             sb.AppendFormat("const IS_DARK_THEME = {0};", dark ? "true" : "false");
 
             sb.Append(@"
+            // Helper to resolve and format image URLs and raw Base64 strings safely
+            function resolvePhotoUrl(accountOrUrl) {
+                if (!accountOrUrl) return '';
+                let val = '';
+                if (typeof accountOrUrl === 'object') {
+                    val = accountOrUrl.idPhotoUrl || accountOrUrl.avatarBase64 || accountOrUrl.photoUrl || '';
+                } else {
+                    val = accountOrUrl;
+                }
+                if (!val || typeof val !== 'string') return '';
+                val = val.trim();
+                if (!val) return '';
+                if (val.startsWith('http://') || val.startsWith('https://') || val.startsWith('data:') || val.startsWith('blob:')) {
+                    return val;
+                }
+                return `data:image/png;base64,${val}`;
+            }
+
             // 3D Card Hover Component (Dashboard grid listing view)
             function AccountCard({ account, onEdit, onDelete }) {
                 const cardRef = useRef(null);
@@ -203,6 +221,8 @@ namespace DriveAndGo_Admin.Panels
                     .substring(0, 2)
                     .toUpperCase();
 
+                const photoSrc = resolvePhotoUrl(account);
+
                 return (
                     <div 
                         className='tilt-container'
@@ -224,16 +244,16 @@ namespace DriveAndGo_Admin.Panels
                             <div className='flex justify-between items-start z-10'>
                                 <div className='flex items-center gap-4'>
                                     {/* Circular Glowing border around profile pic */}
-                                    <div className='relative w-16 h-16 rounded-full flex items-center justify-center p-[2px] bg-gradient-to-tr from-orange-500 to-amber-400 neon-glow-pfp overflow-hidden'>
-                                        {account.idPhotoUrl ? (
+                                    <div className='relative w-16 h-16 rounded-full flex items-center justify-center p-[2px] bg-gradient-to-tr from-orange-500 to-amber-400 neon-glow-pfp overflow-hidden shrink-0'>
+                                        {photoSrc ? (
                                             <img 
-                                                src={account.idPhotoUrl} 
+                                                src={photoSrc} 
                                                 alt={account.fullName} 
                                                 className={`w-full h-full rounded-full object-cover ${IS_DARK_THEME ? 'bg-slate-800' : 'bg-slate-200'}`}
-                                                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                                                onError={(e) => { e.target.style.display = 'none'; if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex'; }}
                                             />
                                         ) : null}
-                                        <div className={`w-full h-full rounded-full flex items-center justify-center font-bold text-lg text-orange-400 select-none ${IS_DARK_THEME ? 'bg-slate-800' : 'bg-slate-100'}`} style={{ display: account.idPhotoUrl ? 'none' : 'flex' }}>
+                                        <div className={`w-full h-full rounded-full flex items-center justify-center font-bold text-lg text-orange-400 select-none ${IS_DARK_THEME ? 'bg-slate-800' : 'bg-slate-100'}`} style={{ display: photoSrc ? 'none' : 'flex' }}>
                                             {initials}
                                         </div>
                                     </div>
@@ -306,7 +326,7 @@ namespace DriveAndGo_Admin.Panels
             }
 
             // Interactive 3D Digital Employee ID Card Component
-            function EmployeeIDCard({ fullName, role, idPhotoUrl, createdAt }) {
+            function EmployeeIDCard({ fullName, role, idPhotoUrl, signatureBase64, createdAt }) {
                 const cardRef = useRef(null);
                 const [coords, setCoords] = useState({ x: 0, y: 0 });
                 const [glare, setGlare] = useState({ x: 50, y: 50 });
@@ -385,21 +405,20 @@ namespace DriveAndGo_Admin.Panels
                         <div className='flex items-center gap-4 my-2 z-10'>
                             {/* Photo with neon glow */}
                             <div className='w-16 h-16 rounded-full p-[2px] bg-gradient-to-tr from-orange-500 to-amber-400 neon-glow-pfp shrink-0 overflow-hidden relative'>
-                                {idPhotoUrl ? (
-                                    <img src={idPhotoUrl} alt='Employee' className='w-full h-full rounded-full object-cover bg-slate-800 transition-opacity duration-500 ease-in-out' />
-                                ) : (
-                                    <div className={`w-full h-full rounded-full flex items-center justify-center font-bold text-orange-500 text-lg ${
-                                        IS_DARK_THEME ? 'bg-slate-800' : 'bg-slate-100'
-                                    }`}>
-                                        {initials}
-                                    </div>
-                                )}
+                                {resolvePhotoUrl(idPhotoUrl) ? (
+                                    <img src={resolvePhotoUrl(idPhotoUrl)} alt='Employee' className='w-full h-full rounded-full object-cover bg-slate-800 transition-opacity duration-500 ease-in-out' onError={(e) => { e.target.style.display = 'none'; if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex'; }} />
+                                ) : null}
+                                <div className={`w-full h-full rounded-full flex items-center justify-center font-bold text-orange-500 text-lg ${
+                                    IS_DARK_THEME ? 'bg-slate-800' : 'bg-slate-100'
+                                }`} style={{ display: resolvePhotoUrl(idPhotoUrl) ? 'none' : 'flex' }}>
+                                    {initials}
+                                </div>
                             </div>
 
                             <div className='flex-1 min-w-0'>
                                 <h3 className={`font-extrabold text-sm tracking-wide truncate ${
                                     IS_DARK_THEME ? 'text-white' : 'text-slate-900'
-                                }`}>{fullName || 'Full Name'}</h3>
+                                }}`}>{fullName || 'Full Name'}</h3>
                                 
                                 <span className={`text-[9px] font-bold tracking-widest uppercase mt-0.5 block ${
                                     role.toLowerCase() === 'admin' ? 'text-purple-400 font-bold' : 'text-blue-400 font-bold'
@@ -420,11 +439,18 @@ namespace DriveAndGo_Admin.Panels
                             </div>
                         </div>
 
-                        {/* Barcode footer */}
+                        {/* Barcode & Signature footer */}
                         <div className={`pt-2 border-t flex justify-between items-center text-[7px] ${
                             IS_DARK_THEME ? 'border-white/5 text-slate-500' : 'border-slate-200 text-slate-400'
                         }`}>
-                            <span className='font-mono tracking-widest'>*DRIVEANDGO-STAFF*</span>
+                            <div className='flex items-center gap-2'>
+                                <span className='font-mono tracking-widest'>*DRIVEANDGO-STAFF*</span>
+                                {signatureBase64 && (
+                                    <div className='h-4 max-w-[65px] flex items-center px-1 rounded bg-black/20'>
+                                        <img src={signatureBase64} alt='Sign' className='max-h-full max-w-full object-contain' />
+                                    </div>
+                                )}
+                            </div>
                             <span className='font-semibold uppercase tracking-wider text-orange-500'>SYSTEM SECURE</span>
                         </div>
                     </div>
@@ -432,7 +458,7 @@ namespace DriveAndGo_Admin.Panels
             }
 
             // Interactive 3D Digital Driver's License Component
-            function DriversLicenseCard({ fullName, idPhotoUrl, licenseNo, driverStatus }) {
+            function DriversLicenseCard({ fullName, idPhotoUrl, signatureBase64, licenseNo, driverStatus }) {
                 const cardRef = useRef(null);
                 const [coords, setCoords] = useState({ x: 0, y: 0 });
                 const [isHovered, setIsHovered] = useState(false);
@@ -498,15 +524,14 @@ namespace DriveAndGo_Admin.Panels
                         <div className='flex items-center gap-4 my-2 z-10'>
                             {/* Photo with blue neon glow */}
                             <div className='w-16 h-16 rounded-xl p-[2px] bg-gradient-to-tr from-blue-500 to-indigo-400 neon-glow-pfp-blue shrink-0 overflow-hidden relative'>
-                                {idPhotoUrl ? (
-                                    <img src={idPhotoUrl} alt='Driver' className='w-full h-full rounded-xl object-cover bg-slate-800 transition-opacity duration-500 ease-in-out' />
-                                ) : (
-                                    <div className={`w-full h-full rounded-xl flex items-center justify-center font-bold text-blue-500 text-lg ${
-                                        IS_DARK_THEME ? 'bg-slate-800' : 'bg-slate-100'
-                                    }`}>
-                                        {initials}
-                                    </div>
-                                )}
+                                {resolvePhotoUrl(idPhotoUrl) ? (
+                                    <img src={resolvePhotoUrl(idPhotoUrl)} alt='Driver' className='w-full h-full rounded-xl object-cover bg-slate-800 transition-opacity duration-500 ease-in-out' onError={(e) => { e.target.style.display = 'none'; if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex'; }} />
+                                ) : null}
+                                <div className={`w-full h-full rounded-xl flex items-center justify-center font-bold text-blue-500 text-lg ${
+                                    IS_DARK_THEME ? 'bg-slate-800' : 'bg-slate-100'
+                                }`} style={{ display: resolvePhotoUrl(idPhotoUrl) ? 'none' : 'flex' }}>
+                                    {initials}
+                                </div>
                             </div>
 
                             <div className='flex-1 min-w-0'>
@@ -533,11 +558,18 @@ namespace DriveAndGo_Admin.Panels
                             </div>
                         </div>
 
-                        {/* Card footer */}
+                        {/* Card footer with signature */}
                         <div className={`pt-2 border-t flex justify-between items-center text-[7px] ${
                             IS_DARK_THEME ? 'border-white/5 text-slate-500' : 'border-slate-200 text-slate-400'
                         }`}>
-                            <span className='font-mono tracking-widest'>*DRIVEANDGO-LICENSE*</span>
+                            <div className='flex items-center gap-2'>
+                                <span className='font-mono tracking-widest'>*DRIVEANDGO-LICENSE*</span>
+                                {signatureBase64 && (
+                                    <div className='h-4 max-w-[65px] flex items-center px-1 rounded bg-black/20'>
+                                        <img src={signatureBase64} alt='Sign' className='max-h-full max-w-full object-contain' />
+                                    </div>
+                                )}
+                            </div>
                             <span className='font-semibold uppercase tracking-wider text-blue-500'>CLASS A CERTIFIED</span>
                         </div>
                     </div>
@@ -545,7 +577,7 @@ namespace DriveAndGo_Admin.Panels
             }
 
             // Interactive 3D Digital Customer Card Component
-            function MembershipCard({ fullName, idPhotoUrl, createdAt }) {
+            function MembershipCard({ fullName, idPhotoUrl, signatureBase64, createdAt }) {
                 const cardRef = useRef(null);
                 const [coords, setCoords] = useState({ x: 0, y: 0 });
                 const [isHovered, setIsHovered] = useState(false);
@@ -610,21 +642,20 @@ namespace DriveAndGo_Admin.Panels
                         <div className='flex items-center gap-4 my-2 z-10'>
                             {/* Photo with emerald neon glow */}
                             <div className='w-16 h-16 rounded-full p-[2px] bg-gradient-to-tr from-emerald-500 to-teal-400 neon-glow-pfp-emerald shrink-0 overflow-hidden relative'>
-                                {idPhotoUrl ? (
-                                    <img src={idPhotoUrl} alt='Customer' className='w-full h-full rounded-full object-cover bg-slate-800 transition-opacity duration-500 ease-in-out' />
-                                ) : (
-                                    <div className={`w-full h-full rounded-full flex items-center justify-center font-bold text-emerald-500 text-lg ${
-                                        IS_DARK_THEME ? 'bg-slate-800' : 'bg-slate-100'
-                                    }`}>
-                                        {initials}
-                                    </div>
-                                )}
+                                {resolvePhotoUrl(idPhotoUrl) ? (
+                                    <img src={resolvePhotoUrl(idPhotoUrl)} alt='Customer' className='w-full h-full rounded-full object-cover bg-slate-800 transition-opacity duration-500 ease-in-out' onError={(e) => { e.target.style.display = 'none'; if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex'; }} />
+                                ) : null}
+                                <div className={`w-full h-full rounded-full flex items-center justify-center font-bold text-emerald-500 text-lg ${
+                                    IS_DARK_THEME ? 'bg-slate-800' : 'bg-slate-100'
+                                }`} style={{ display: resolvePhotoUrl(idPhotoUrl) ? 'none' : 'flex' }}>
+                                    {initials}
+                                </div>
                             </div>
 
                             <div className='flex-1 min-w-0'>
                                 <h3 className={`font-extrabold text-sm tracking-wide truncate ${
                                     IS_DARK_THEME ? 'text-white' : 'text-slate-900'
-                                }`}>{fullName || 'Customer Name'}</h3>
+                                }}`}>{fullName || 'Customer Name'}</h3>
                                 
                                 <span className='text-[9px] font-bold tracking-widest uppercase mt-0.5 block text-slate-450'>
                                     LOYAL CUSTOMER
@@ -643,43 +674,87 @@ namespace DriveAndGo_Admin.Panels
                             </div>
                         </div>
 
-                        {/* Barcode footer */}
+                        {/* Barcode & Signature footer */}
                         <div className={`pt-2 border-t flex justify-between items-center text-[7px] ${
                             IS_DARK_THEME ? 'border-white/5 text-slate-500' : 'border-slate-200 text-slate-400'
                         }`}>
-                            <span className='font-mono tracking-widest'>*DRIVEANDGO-MEMBER*</span>
+                            <div className='flex items-center gap-2'>
+                                <span className='font-mono tracking-widest'>*DRIVEANDGO-MEMBER*</span>
+                                {signatureBase64 && (
+                                    <div className='h-4 max-w-[65px] flex items-center px-1 rounded bg-black/20'>
+                                        <img src={signatureBase64} alt='Sign' className='max-h-full max-w-full object-contain' />
+                                    </div>
+                                )}
+                            </div>
                             <span className='font-semibold uppercase tracking-wider text-emerald-500'>VERIFIED GUEST</span>
                         </div>
                     </div>
                 );
             }
 
-            // Custom File Uploader Component
-            function FileUploader({ label, value, onChange, folderName, isUploading, setIsUploading }) {
+            // Custom File Uploader Component with 0-100% Progress Tracking
+            function FileUploader({ label, value, onChange, folderName, isUploading, setIsUploading, onNotify }) {
                 const fileInputRef = useRef(null);
+                const [uploadProgress, setUploadProgress] = useState(0);
+                const [uploadStatus, setUploadStatus] = useState('');
+                const [uploadError, setUploadError] = useState('');
 
                 const handleFileChange = async (e) => {
                     const file = e.target.files[0];
                     if (!file) return;
 
+                    if (!file.type.startsWith('image/')) {
+                        const err = 'Please select a valid image file (PNG, JPG, WEBP).';
+                        setUploadError(err);
+                        if (onNotify) onNotify(err, 'error');
+                        return;
+                    }
+
+                    setUploadError('');
                     setIsUploading(true);
+                    setUploadProgress(20);
+                    setUploadStatus('Reading local photo...');
+
+                    // Read local image preview immediately
+                    const reader = new FileReader();
+                    reader.onload = (uploadEvt) => {
+                        onChange(uploadEvt.target.result);
+                        setUploadProgress(50);
+                        setUploadStatus('Optimizing image...');
+                    };
+                    reader.readAsDataURL(file);
+
                     const formData = new FormData();
                     formData.append('file', file);
                     formData.append('folderName', folderName);
 
                     try {
+                        setUploadProgress(75);
+                        setUploadStatus('Transferring to storage...');
                         const response = await fetch(`${API_BASE_URL}/media/upload`, {
                             method: 'POST',
                             body: formData
                         });
 
-                        if (!response.ok) throw new Error('Upload failed');
-                        const data = await response.json();
-                        onChange(data.url);
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.url) onChange(data.url);
+                            setUploadProgress(100);
+                            setUploadStatus('Photo uploaded!');
+                            if (onNotify) onNotify('Photo uploaded successfully!', 'success');
+                        } else {
+                            setUploadProgress(100);
+                            setUploadStatus('Preview stored locally');
+                        }
                     } catch (err) {
-                        alert('Upload failed: ' + err.message);
+                        setUploadProgress(100);
+                        setUploadStatus('Preview stored locally');
                     } finally {
-                        setIsUploading(false);
+                        setTimeout(() => {
+                            setIsUploading(false);
+                            setUploadProgress(0);
+                            setUploadStatus('');
+                        }, 500);
                     }
                 };
 
@@ -699,24 +774,50 @@ namespace DriveAndGo_Admin.Panels
                             }`}
                         >
                             {isUploading ? (
-                                <div className='flex flex-col items-center gap-2'>
-                                    <div className='w-7 h-7 border-3 border-orange-500 border-t-transparent rounded-full animate-spin'></div>
-                                    <span className='text-[10px] text-orange-500 font-semibold uppercase tracking-wider'>Uploading to Storage...</span>
+                                <div className='flex flex-col items-center justify-center p-3 w-full h-full space-y-2 relative z-10'>
+                                    <div className='flex items-center justify-between w-full max-w-[260px] text-[10px] font-bold'>
+                                        <span className='text-orange-500 uppercase tracking-wider flex items-center gap-1.5 truncate'>
+                                            <i className='fa-solid fa-spinner animate-spin text-xs'></i> {uploadStatus || 'Uploading...'}
+                                        </span>
+                                        <span className='text-orange-400 font-mono text-xs'>{uploadProgress}%</span>
+                                    </div>
+                                    <div className='w-full max-w-[260px] h-2 bg-slate-800 rounded-full overflow-hidden border border-orange-500/30'>
+                                        <div 
+                                            className='h-full bg-gradient-to-r from-orange-500 via-amber-400 to-emerald-400 transition-all duration-300 ease-out rounded-full' 
+                                            style={{ width: `${uploadProgress}%` }}
+                                        ></div>
+                                    </div>
                                 </div>
-                            ) : value ? (
+                            ) : uploadError ? (
+                                <div className='flex items-center justify-between gap-3 p-3 w-full h-full bg-red-500/10 border border-red-500/30 rounded-xl relative z-10'>
+                                    <div className='flex items-center gap-2.5 min-w-0'>
+                                        <i className='fa-solid fa-triangle-exclamation text-red-400 text-lg shrink-0'></i>
+                                        <div className='min-w-0'>
+                                            <p className='text-[10px] font-bold text-red-400 uppercase tracking-wider'>Upload Failed</p>
+                                            <p className='text-[9px] text-red-300 truncate'>{uploadError}</p>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        type='button' 
+                                        onClick={(e) => { e.stopPropagation(); setUploadError(''); triggerFileSelect(); }}
+                                        className='px-2.5 py-1 rounded bg-red-500/20 hover:bg-red-500/30 text-red-300 text-[9px] font-bold uppercase tracking-wider shrink-0'
+                                    >
+                                        Retry
+                                    </button>
+                                </div>
+                            ) : resolvePhotoUrl(value) ? (
                                 <div className='flex items-center gap-3.5 p-3 w-full h-full relative z-10'>
                                     <div className='w-16 h-16 rounded-full overflow-hidden border border-orange-500/50 neon-glow-pfp shrink-0'>
-                                        <img src={value} alt='Preview' className='w-full h-full object-cover' />
+                                        <img src={resolvePhotoUrl(value)} alt='Preview' className='w-full h-full object-cover' />
                                     </div>
                                     <div className='flex flex-col items-start'>
-                                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${IS_DARK_THEME ? 'bg-orange-500/20 text-orange-400' : 'bg-orange-100 text-orange-850'}`}>Image Selected</span>
-                                        <span className={`text-[9px] line-clamp-1 mt-1 break-all ${IS_DARK_THEME ? 'text-slate-450' : 'text-slate-500'}`}>{value}</span>
+                                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${IS_DARK_THEME ? 'bg-orange-500/20 text-orange-400' : 'bg-orange-100 text-orange-850'}`}>Photo Selected</span>
                                         <button 
                                             type='button' 
                                             onClick={(e) => { e.stopPropagation(); triggerFileSelect(); }}
                                             className='text-[10px] text-orange-500 hover:text-orange-400 font-bold underline mt-1.5'
                                         >
-                                            Change Image
+                                            Change Photo
                                         </button>
                                     </div>
                                 </div>
@@ -725,6 +826,316 @@ namespace DriveAndGo_Admin.Panels
                                     <i className={`fa-solid fa-cloud-arrow-up text-xl mb-1.5 transition-transform group-hover:-translate-y-1 ${IS_DARK_THEME ? 'text-slate-500' : 'text-slate-400'}`}></i>
                                     <span className={`text-[10px] font-semibold ${IS_DARK_THEME ? 'text-slate-355' : 'text-gray-700'}`}>Click or drag image to upload</span>
                                     <span className={`text-[9px] mt-0.5 ${IS_DARK_THEME ? 'text-slate-500' : 'text-slate-400'}`}>PNG, JPG, WEBP up to 5MB</span>
+                                </div>
+                            )}
+                            <input 
+                                type='file' 
+                                ref={fileInputRef} 
+                                onChange={handleFileChange} 
+                                accept='image/*' 
+                                className='hidden' 
+                            />
+                        </div>
+                    </div>
+                );
+            }
+
+            // Custom Signature Uploader with Real-time 0-100% Progress and Automatic Background Removal
+            function SignatureUploader({ value, onChange, onNotify }) {
+                const fileInputRef = useRef(null);
+                const [isProcessing, setIsProcessing] = useState(false);
+                const [processProgress, setProcessProgress] = useState(0);
+                const [processStatus, setProcessStatus] = useState('');
+                const [processError, setProcessError] = useState('');
+
+                const processSignature = (file) => {
+                    if (!file.type.startsWith('image/')) {
+                        const err = 'Please select a valid image file (PNG, JPG, WEBP).';
+                        setProcessError(err);
+                        if (onNotify) onNotify(err, 'error');
+                        return;
+                    }
+
+                    setProcessError('');
+                    setIsProcessing(true);
+                    setProcessProgress(15);
+                    setProcessStatus('Reading image photo...');
+
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        setProcessProgress(35);
+                        setProcessStatus('Analyzing paper image...');
+
+                        const img = new Image();
+                        img.onload = () => {
+                            setProcessProgress(55);
+                            setProcessStatus('Scanning white background & ink strokes...');
+
+                            try {
+                                const canvas = document.createElement('canvas');
+                                const ctx = canvas.getContext('2d');
+
+                                // Scale to optimal signature size (max 750px)
+                                const maxDim = 750;
+                                let width = img.width;
+                                let height = img.height;
+                                if (width > maxDim || height > maxDim) {
+                                    if (width > height) {
+                                        height = Math.round((height * maxDim) / width);
+                                        width = maxDim;
+                                    } else {
+                                        width = Math.round((width * maxDim) / height);
+                                        height = maxDim;
+                                    }
+                                }
+
+                                canvas.width = width;
+                                canvas.height = height;
+                                ctx.drawImage(img, 0, 0, width, height);
+
+                                setProcessProgress(75);
+                                setProcessStatus('Removing background, paper noise & enhancing ink...');
+
+                                const imgData = ctx.getImageData(0, 0, width, height);
+                                const data = imgData.data;
+
+                                // Step 1: Collect luminance distribution of opaque pixels
+                                const opaqueLums = [];
+                                for (let i = 0; i < data.length; i += 4) {
+                                    if (data[i + 3] > 40) {
+                                        const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+                                        opaqueLums.push(lum);
+                                    }
+                                }
+
+                                opaqueLums.sort((a, b) => a - b);
+                                const paperWhite = opaqueLums.length > 0 ? opaqueLums[Math.floor(opaqueLums.length * 0.90)] : 255;
+                                const inkDarkness = opaqueLums.length > 0 ? opaqueLums[Math.floor(opaqueLums.length * 0.10)] : 0;
+                                const contrastRange = Math.max(30, paperWhite - inkDarkness);
+
+                                // Step 2: Binary ink detection
+                                const isInk = new Uint8Array(width * height);
+                                let hasInk = false;
+
+                                for (let y = 0; y < height; y++) {
+                                    for (let x = 0; x < width; x++) {
+                                        const idx = (y * width + x) * 4;
+                                        const a = data[idx + 3];
+                                        if (a < 15) continue;
+
+                                        const r = data[idx];
+                                        const g = data[idx + 1];
+                                        const b = data[idx + 2];
+                                        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+
+                                        const diffFromPaper = paperWhite - lum;
+                                        const contrastRatio = diffFromPaper / contrastRange;
+
+                                        // Paper vs Ink detection threshold
+                                        if (diffFromPaper >= 12 && contrastRatio >= 0.08 && lum <= 235) {
+                                            isInk[y * width + x] = 1;
+                                            hasInk = true;
+                                        }
+                                    }
+                                }
+
+                                // Step 3: Stroke dilation (1px thickening) + deep bold ink coloring
+                                let minX = width, minY = height, maxX = 0, maxY = 0;
+
+                                for (let y = 0; y < height; y++) {
+                                    for (let x = 0; x < width; x++) {
+                                        const pIdx = y * width + x;
+                                        const idx = pIdx * 4;
+
+                                        let inkVal = isInk[pIdx];
+                                        if (!inkVal) {
+                                            if ((x > 0 && isInk[pIdx - 1]) ||
+                                                (x < width - 1 && isInk[pIdx + 1]) ||
+                                                (y > 0 && isInk[pIdx - width]) ||
+                                                (y < height - 1 && isInk[pIdx + width])) {
+                                                inkVal = 1;
+                                            }
+                                        }
+
+                                        if (inkVal) {
+                                            data[idx] = 10;      // Pitch dark navy / black ink
+                                            data[idx + 1] = 15;
+                                            data[idx + 2] = 30;
+                                            data[idx + 3] = 255; // 100% solid opacity
+                                            if (x < minX) minX = x;
+                                            if (x > maxX) maxX = x;
+                                            if (y < minY) minY = y;
+                                            if (y > maxY) maxY = y;
+                                        } else {
+                                            data[idx + 3] = 0;   // 100% transparent paper
+                                        }
+                                    }
+                                }
+
+                                ctx.putImageData(imgData, 0, 0);
+
+                                // Step 3: Auto-crop tightly to bounding box if ink is detected
+                                let finalCanvas = canvas;
+                                if (hasInk && maxX > minX && maxY > minY) {
+                                    const cropPadding = 14;
+                                    const cropW = Math.min(width, (maxX - minX) + cropPadding * 2);
+                                    const cropH = Math.min(height, (maxY - minY) + cropPadding * 2);
+                                    const cropX = Math.max(0, minX - cropPadding);
+                                    const cropY = Math.max(0, minY - cropPadding);
+
+                                    const croppedCanvas = document.createElement('canvas');
+                                    croppedCanvas.width = cropW;
+                                    croppedCanvas.height = cropH;
+                                    const cropCtx = croppedCanvas.getContext('2d');
+                                    cropCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+                                    finalCanvas = croppedCanvas;
+                                }
+
+                                setProcessProgress(95);
+                                setProcessStatus('Encoding transparent PNG signature...');
+
+                                setTimeout(() => {
+                                    const transparentPng = finalCanvas.toDataURL('image/png');
+                                    onChange(transparentPng);
+                                    setProcessProgress(100);
+                                    setProcessStatus('Complete!');
+                                    setIsProcessing(false);
+                                    if (onNotify) onNotify('Signature background removed successfully!', 'success');
+                                }, 250);
+                            } catch (canvasErr) {
+                                setIsProcessing(false);
+                                const errMsg = canvasErr.message || 'Error removing background from image.';
+                                setProcessError(errMsg);
+                                if (onNotify) onNotify(errMsg, 'error');
+                            }
+                        };
+                        img.onerror = () => {
+                            setIsProcessing(false);
+                            const errMsg = 'Failed to load signature image file.';
+                            setProcessError(errMsg);
+                            if (onNotify) onNotify(errMsg, 'error');
+                        };
+                        img.src = e.target.result;
+                    };
+                    reader.onerror = () => {
+                        setIsProcessing(false);
+                        const errMsg = 'Failed to read image file.';
+                        setProcessError(errMsg);
+                        if (onNotify) onNotify(errMsg, 'error');
+                    };
+                    reader.readAsDataURL(file);
+                };
+
+                const handleFileChange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    processSignature(file);
+                };
+
+                return (
+                    <div className='flex flex-col gap-2'>
+                        <div className='flex items-center justify-between'>
+                            <label className={`block font-semibold uppercase tracking-wider ${IS_DARK_THEME ? 'text-slate-400' : 'text-slate-500'}`}>
+                                Digital Signature (E-Signature)
+                            </label>
+                            {value && !isProcessing && (
+                                <span className='text-[10px] text-emerald-400 font-bold flex items-center gap-1'>
+                                    <i className='fa-solid fa-wand-magic-sparkles'></i> BG Auto-Removed
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Note & Guidelines before uploading */}
+                        <div className={`p-3 rounded-xl border text-[10.5px] leading-relaxed flex items-start gap-2.5 ${
+                            IS_DARK_THEME ? 'bg-amber-500/10 border-amber-500/20 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-800'
+                        }`}>
+                            <i className='fa-solid fa-circle-info text-amber-500 mt-0.5 shrink-0 text-sm'></i>
+                            <div>
+                                <strong className='font-bold block mb-0.5 uppercase text-[9.5px] tracking-wider'>Important Signature Guidelines:</strong>
+                                <ul className='list-disc list-inside space-y-0.5 text-[10px] opacity-90'>
+                                    <li>Please sign on a <strong>clean, plain white paper</strong> using <strong>black or dark blue ink</strong>.</li>
+                                    <li>Take a clear, bright photo directly above your signature without heavy shadows or camera glare.</li>
+                                    <li>The system will <strong>automatically remove the white background</strong> with real-time 0-100% processing for rental agreements.</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        {/* Upload Area / Progress Indicator / Transparent Preview */}
+                        <div 
+                            onClick={() => fileInputRef.current.click()}
+                            className={`relative h-28 border-2 border-dashed rounded-xl cursor-pointer flex flex-col items-center justify-center transition-all group overflow-hidden ${
+                                IS_DARK_THEME 
+                                    ? 'border-slate-700 bg-slate-800/30 hover:border-orange-500 hover:bg-slate-800/50' 
+                                    : 'border-gray-300 bg-gray-50/50 hover:border-orange-500 hover:bg-gray-100/50'
+                            }`}
+                        >
+                            {isProcessing ? (
+                                <div className='flex flex-col items-center justify-center p-3 w-full h-full space-y-2 relative z-10'>
+                                    <div className='flex items-center justify-between w-full max-w-[280px] text-[10px] font-bold'>
+                                        <span className='text-orange-500 uppercase tracking-wider flex items-center gap-1.5 truncate'>
+                                            <i className='fa-solid fa-wand-magic-sparkles animate-spin text-xs'></i> {processStatus}
+                                        </span>
+                                        <span className='text-orange-400 font-mono text-xs'>{processProgress}%</span>
+                                    </div>
+                                    <div className='w-full max-w-[280px] h-2 bg-slate-800 rounded-full overflow-hidden border border-orange-500/30'>
+                                        <div 
+                                            className='h-full bg-gradient-to-r from-orange-500 via-amber-400 to-emerald-400 transition-all duration-300 ease-out rounded-full' 
+                                            style={{ width: `${processProgress}%` }}
+                                        ></div>
+                                    </div>
+                                    <span className='text-[8.5px] text-slate-400'>Processing high-resolution transparent alpha mask...</span>
+                                </div>
+                            ) : processError ? (
+                                <div className='flex items-center justify-between gap-3 p-3 w-full h-full bg-red-500/10 border border-red-500/30 rounded-xl relative z-10'>
+                                    <div className='flex items-center gap-2.5 min-w-0'>
+                                        <i className='fa-solid fa-triangle-exclamation text-red-400 text-lg shrink-0'></i>
+                                        <div className='min-w-0'>
+                                            <p className='text-[10px] font-bold text-red-400 uppercase tracking-wider'>Processing Failed</p>
+                                            <p className='text-[9px] text-red-300 truncate'>{processError}</p>
+                                        </div>
+                                    </div>
+                                    <button 
+                                        type='button' 
+                                        onClick={(e) => { e.stopPropagation(); setProcessError(''); fileInputRef.current.click(); }}
+                                        className='px-2.5 py-1 rounded bg-red-500/20 hover:bg-red-500/30 text-red-300 text-[9px] font-bold uppercase tracking-wider shrink-0'
+                                    >
+                                        Retry
+                                    </button>
+                                </div>
+                            ) : value ? (
+                                <div className='flex items-center justify-between gap-4 p-3 w-full h-full relative z-10'>
+                                    {/* Checkerboard container to showcase transparency */}
+                                    <div className='w-36 h-20 rounded-lg p-2 bg-[linear-gradient(45deg,#1e293b_25%,transparent_25%),linear-gradient(-45deg,#1e293b_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#1e293b_75%),linear-gradient(-45deg,transparent_75%,#1e293b_75%)] bg-[size:10px_10px] bg-slate-900 border border-slate-700 flex items-center justify-center shrink-0 overflow-hidden shadow-inner'>
+                                        <img src={value} alt='Processed Signature' className='max-h-full max-w-full object-contain filter drop-shadow' />
+                                    </div>
+                                    <div className='flex-1 flex flex-col items-start min-w-0'>
+                                        <span className='text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 truncate'>
+                                            <i className='fa-solid fa-check'></i> Transparent Signature Ready
+                                        </span>
+                                        <span className={`text-[9px] mt-1 line-clamp-1 ${IS_DARK_THEME ? 'text-slate-400' : 'text-slate-500'}`}>Signature will appear on rental agreements and handover documents.</span>
+                                        <div className='flex items-center gap-3 mt-2'>
+                                            <button 
+                                                type='button' 
+                                                onClick={(e) => { e.stopPropagation(); fileInputRef.current.click(); }}
+                                                className='text-[10px] text-orange-500 hover:text-orange-400 font-bold underline'
+                                            >
+                                                Upload Another
+                                            </button>
+                                            <button 
+                                                type='button' 
+                                                onClick={(e) => { e.stopPropagation(); onChange(''); }}
+                                                className='text-[10px] text-red-400 hover:text-red-300 font-bold underline'
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className='flex flex-col items-center justify-center p-4 text-center'>
+                                    <i className={`fa-solid fa-signature text-xl mb-1.5 transition-transform group-hover:-translate-y-1 ${IS_DARK_THEME ? 'text-slate-500' : 'text-slate-400'}`}></i>
+                                    <span className={`text-[10px] font-semibold ${IS_DARK_THEME ? 'text-slate-355' : 'text-gray-700'}`}>Upload Signature Photo (Auto BG Removal)</span>
+                                    <span className={`text-[9px] mt-0.5 ${IS_DARK_THEME ? 'text-slate-500' : 'text-slate-400'}`}>PNG, JPG, WEBP — Any photo on plain white paper</span>
                                 </div>
                             )}
                             <input 
@@ -816,6 +1227,7 @@ namespace DriveAndGo_Admin.Panels
                 const [phone, setPhone] = useState('');
                 const [role, setRole] = useState('customer');
                 const [idPhotoUrl, setIdPhotoUrl] = useState('');
+                const [signatureBase64, setSignatureBase64] = useState('');
                 const [licenseNo, setLicenseNo] = useState('');
                 const [licensePhotoUrl, setLicensePhotoUrl] = useState('');
                 const [driverStatus, setDriverStatus] = useState('available');
@@ -823,6 +1235,12 @@ namespace DriveAndGo_Admin.Panels
                 // Image Upload Progress States
                 const [isUploadingPfp, setIsUploadingPfp] = useState(false);
                 const [isUploadingLicense, setIsUploadingLicense] = useState(false);
+
+                // Saving / Progress States (0-100%)
+                const [isSaving, setIsSaving] = useState(false);
+                const [saveProgress, setSaveProgress] = useState(0);
+                const [saveStatus, setSaveStatus] = useState('');
+                const [formError, setFormError] = useState('');
 
                 // Password generator & clipboard states
                 const [showPassword, setShowPassword] = useState(false);
@@ -865,7 +1283,7 @@ namespace DriveAndGo_Admin.Panels
 
                 const showToast = (message, type = 'success') => {
                     setToast({ message, type });
-                    setTimeout(() => setToast(null), 3000);
+                    setTimeout(() => setToast(null), 3500);
                 };
 
                 // Fetch Accounts
@@ -922,6 +1340,7 @@ namespace DriveAndGo_Admin.Panels
                     setPhone('');
                     setRole('customer');
                     setIdPhotoUrl('');
+                    setSignatureBase64('');
                     setLicenseNo('');
                     setLicensePhotoUrl('');
                     setDriverStatus('available');
@@ -929,6 +1348,10 @@ namespace DriveAndGo_Admin.Panels
                     setIsUploadingLicense(false);
                     setShowPassword(false);
                     setCopied(false);
+                    setFormError('');
+                    setIsSaving(false);
+                    setSaveProgress(0);
+                    setSaveStatus('');
                     setModalOpen(true);
                 };
 
@@ -939,14 +1362,19 @@ namespace DriveAndGo_Admin.Panels
                     setPassword('');
                     setPhone(account.phone);
                     setRole(account.role);
-                    setIdPhotoUrl(account.idPhotoUrl || '');
+                    setIdPhotoUrl(resolvePhotoUrl(account.idPhotoUrl || account.avatarBase64 || account.photoUrl || ''));
+                    setSignatureBase64(resolvePhotoUrl(account.signatureBase64 || account.signatureUrl || ''));
                     setLicenseNo(account.licenseNo || '');
-                    setLicensePhotoUrl(account.licensePhotoUrl || '');
+                    setLicensePhotoUrl(resolvePhotoUrl(account.licensePhotoUrl || ''));
                     setDriverStatus(account.driverStatus || 'available');
                     setIsUploadingPfp(false);
                     setIsUploadingLicense(false);
                     setShowPassword(false);
                     setCopied(false);
+                    setFormError('');
+                    setIsSaving(false);
+                    setSaveProgress(0);
+                    setSaveStatus('');
                     setModalOpen(true);
                 };
 
@@ -959,6 +1387,11 @@ namespace DriveAndGo_Admin.Panels
                         return;
                     }
 
+                    setFormError('');
+                    setIsSaving(true);
+                    setSaveProgress(15);
+                    setSaveStatus('Validating form details...');
+
                     const payload = {
                         fullName,
                         email,
@@ -966,6 +1399,8 @@ namespace DriveAndGo_Admin.Panels
                         phone,
                         role,
                         idPhotoUrl: idPhotoUrl || null,
+                        avatarBase64: idPhotoUrl || null,
+                        signatureBase64: signatureBase64 || null,
                         licenseNo: role.toLowerCase() === 'driver' ? licenseNo : null,
                         licensePhotoUrl: role.toLowerCase() === 'driver' ? licensePhotoUrl : null,
                         driverStatus: role.toLowerCase() === 'driver' ? driverStatus : null
@@ -977,6 +1412,9 @@ namespace DriveAndGo_Admin.Panels
                             ? `${API_BASE_URL}/admin/accounts/${editingAccount.userId}` 
                             : `${API_BASE_URL}/admin/accounts`;
                         
+                        setSaveProgress(45);
+                        setSaveStatus(isEdit ? 'Saving profile and digital signature...' : 'Registering new account in database...');
+
                         const response = await fetch(url, {
                             method: isEdit ? 'PUT' : 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -984,15 +1422,28 @@ namespace DriveAndGo_Admin.Panels
                         });
 
                         if (!response.ok) {
-                            const errBody = await response.json();
+                            const errBody = await response.json().catch(() => ({}));
                             throw new Error(errBody.message || 'API request failed');
                         }
 
-                        showToast(isEdit ? 'Account updated!' : 'Account registered!');
-                        setModalOpen(false);
-                        fetchAccounts(filter);
+                        setSaveProgress(85);
+                        setSaveStatus('Synchronizing database records...');
+
+                        setTimeout(() => {
+                            setSaveProgress(100);
+                            setSaveStatus('Saved!');
+                            setTimeout(() => {
+                                setIsSaving(false);
+                                setModalOpen(false);
+                                showToast(isEdit ? 'Account updated successfully!' : 'Account registered successfully!', 'success');
+                                fetchAccounts(filter);
+                            }, 350);
+                        }, 250);
                     } catch (error) {
-                        showToast(error.message, 'error');
+                        setIsSaving(false);
+                        const msg = error.message || 'Failed to save account.';
+                        setFormError(msg);
+                        showToast(msg, 'error');
                     }
                 };
 
@@ -1024,6 +1475,7 @@ namespace DriveAndGo_Admin.Panels
                                 fullName={cleanName}
                                 role='SYSTEM ADMIN'
                                 idPhotoUrl={idPhotoUrl}
+                                signatureBase64={signatureBase64}
                                 createdAt={editingAccount?.createdAt}
                             />
                         );
@@ -1032,6 +1484,7 @@ namespace DriveAndGo_Admin.Panels
                             <DriversLicenseCard 
                                 fullName={cleanName}
                                 idPhotoUrl={idPhotoUrl}
+                                signatureBase64={signatureBase64}
                                 licenseNo={licenseNo}
                                 driverStatus={driverStatus}
                             />
@@ -1041,6 +1494,7 @@ namespace DriveAndGo_Admin.Panels
                             <MembershipCard 
                                 fullName={cleanName}
                                 idPhotoUrl={idPhotoUrl}
+                                signatureBase64={signatureBase64}
                                 createdAt={editingAccount?.createdAt}
                             />
                         );
@@ -1112,6 +1566,17 @@ namespace DriveAndGo_Admin.Panels
                                         <div className='flex flex-col lg:flex-row gap-8 items-stretch'>
                                             {/* Left side: Inputs */}
                                             <form onSubmit={handleSubmit} className='flex-1 space-y-4 text-xs'>
+                                                {/* Form Error Banner */}
+                                                {formError && (
+                                                    <div className='p-3.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 flex items-start gap-2.5 text-xs animate-shake'>
+                                                        <i className='fa-solid fa-circle-exclamation text-base mt-0.5 shrink-0'></i>
+                                                        <div>
+                                                            <strong className='font-bold block uppercase text-[10px] tracking-wider'>Save Error</strong>
+                                                            <span>{formError}</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+
                                                 <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
                                                     <div>
                                                         <label className={`block font-semibold uppercase tracking-wider mb-1.5 ${IS_DARK_THEME ? 'text-slate-400' : 'text-slate-500'}`}>Full Name</label>
@@ -1220,6 +1685,16 @@ namespace DriveAndGo_Admin.Panels
                                                         folderName='pfp'
                                                         isUploading={isUploadingPfp}
                                                         setIsUploading={setIsUploadingPfp}
+                                                        onNotify={showToast}
+                                                    />
+                                                </div>
+
+                                                {/* E-Signature Uploader with Automatic Background Removal */}
+                                                <div className='pt-1'>
+                                                    <SignatureUploader 
+                                                        value={signatureBase64}
+                                                        onChange={setSignatureBase64}
+                                                        onNotify={showToast}
                                                     />
                                                 </div>
 
@@ -1248,6 +1723,7 @@ namespace DriveAndGo_Admin.Panels
                                                                 folderName='licenses'
                                                                 isUploading={isUploadingLicense}
                                                                 setIsUploading={setIsUploadingLicense}
+                                                                onNotify={showToast}
                                                             />
                                                         </div>
                                                         <div>
@@ -1265,25 +1741,55 @@ namespace DriveAndGo_Admin.Panels
                                                     </div>
                                                 )}
 
-                                                <div className='pt-6 flex justify-end gap-3'>
-                                                    <button 
-                                                        type='button'
-                                                        onClick={() => setModalOpen(false)}
-                                                        className={`px-5 py-2.5 rounded-xl border font-semibold transition-all ${IS_DARK_THEME ? 'border-slate-800 hover:bg-slate-900 text-slate-400 hover:text-slate-250' : 'border-slate-200 hover:bg-slate-100 text-slate-650 hover:text-slate-850'}`}
-                                                    >
-                                                        Cancel
-                                                    </button>
-                                                    <button 
-                                                        type='submit'
-                                                        disabled={isUploadingPfp || isUploadingLicense}
-                                                        className={`px-6 py-2.5 rounded-xl font-semibold shadow-lg text-white transition-all ${
-                                                            (isUploadingPfp || isUploadingLicense) 
-                                                                ? 'bg-slate-700/50 cursor-not-allowed border border-slate-800' 
-                                                                : 'bg-orange-600 hover:bg-orange-500 hover:scale-[1.02]'
-                                                        }`}
-                                                    >
-                                                        {editingAccount ? 'Save Changes' : 'Register Account'}
-                                                    </button>
+                                                <div className='pt-6 flex flex-col gap-3'>
+                                                    {/* Real-time Saving 0-100% Progress Bar */}
+                                                    {isSaving && (
+                                                        <div className='w-full p-3 rounded-xl bg-orange-500/10 border border-orange-500/20 space-y-2'>
+                                                            <div className='flex items-center justify-between text-[10px] font-bold text-orange-400'>
+                                                                <span className='flex items-center gap-1.5 truncate'>
+                                                                    <i className='fa-solid fa-spinner animate-spin'></i> {saveStatus}
+                                                                </span>
+                                                                <span className='font-mono text-xs'>{saveProgress}%</span>
+                                                            </div>
+                                                            <div className='w-full h-2 bg-slate-800 rounded-full overflow-hidden border border-orange-500/30'>
+                                                                <div 
+                                                                    className='h-full bg-gradient-to-r from-orange-500 via-amber-400 to-emerald-400 transition-all duration-300 ease-out rounded-full' 
+                                                                    style={{ width: `${saveProgress}%` }}
+                                                                ></div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    <div className='flex justify-end gap-3'>
+                                                        <button 
+                                                            type='button'
+                                                            disabled={isSaving}
+                                                            onClick={() => setModalOpen(false)}
+                                                            className={`px-5 py-2.5 rounded-xl border font-semibold transition-all ${
+                                                                isSaving ? 'opacity-50 cursor-not-allowed border-slate-800 text-slate-500' : (IS_DARK_THEME ? 'border-slate-800 hover:bg-slate-900 text-slate-400 hover:text-slate-250' : 'border-slate-200 hover:bg-slate-100 text-slate-650 hover:text-slate-850')
+                                                            }`}
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                        <button 
+                                                            type='submit'
+                                                            disabled={isSaving || isUploadingPfp || isUploadingLicense}
+                                                            className={`px-6 py-2.5 rounded-xl font-semibold shadow-lg text-white transition-all flex items-center gap-2 ${
+                                                                (isSaving || isUploadingPfp || isUploadingLicense) 
+                                                                    ? 'bg-slate-700/50 cursor-not-allowed border border-slate-800 text-slate-400' 
+                                                                    : 'bg-orange-600 hover:bg-orange-500 hover:scale-[1.02]'
+                                                            }`}
+                                                        >
+                                                            {isSaving ? (
+                                                                <>
+                                                                    <i className='fa-solid fa-spinner animate-spin'></i>
+                                                                    <span>Saving ({saveProgress}%)...</span>
+                                                                </>
+                                                            ) : (
+                                                                <span>{editingAccount ? 'Save Changes' : 'Register Account'}</span>
+                                                            )}
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </form>
 

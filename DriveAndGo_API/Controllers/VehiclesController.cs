@@ -901,7 +901,6 @@ public class VehiclesController : ControllerBase
             // 9. MMDA Number Coding Exemption Advantage
             decimal codingMarkup = 0m;
             string codingReason = "Regular Plate Coding Schedule";
-            bool isCodingFreeToday = true;
             if (vehicleId.HasValue && brandModel != "Vehicle")
             {
                 // Check if EV or Hybrid or not coded on current day

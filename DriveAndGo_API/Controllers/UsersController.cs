@@ -91,7 +91,8 @@ public class UsersController : ControllerBase
                     u.email,
                     u.phone,
                     u.role,
-                    u.avatar_base64,
+                    COALESCE(u.avatar_base64, u.id_photo_url) AS avatar_base64,
+                    COALESCE(u.id_photo_url, u.avatar_base64) AS id_photo_url,
                     u.two_factor_enabled,
                     u.login_alerts_enabled,
                     u.pin_required,
@@ -119,6 +120,7 @@ public class UsersController : ControllerBase
                 Phone = reader["phone"]?.ToString() ?? string.Empty,
                 Role = reader["role"]?.ToString() ?? string.Empty,
                 AvatarBase64 = reader["avatar_base64"] == DBNull.Value ? string.Empty : reader["avatar_base64"]?.ToString(),
+                IdPhotoUrl = reader["id_photo_url"] == DBNull.Value ? string.Empty : reader["id_photo_url"]?.ToString(),
                 TwoFactorEnabled = reader["two_factor_enabled"] != DBNull.Value && Convert.ToBoolean(reader["two_factor_enabled"]),
                 LoginAlertsEnabled = reader["login_alerts_enabled"] == DBNull.Value || Convert.ToBoolean(reader["login_alerts_enabled"]),
                 PinRequired = reader["pin_required"] != DBNull.Value && Convert.ToBoolean(reader["pin_required"])

@@ -82,16 +82,16 @@ namespace DriveAndGo_Admin.Panels
                 BackColor = Color.Transparent
             };
 
-            var btnWind = CreateFilterButton("🌀 Wind Streamlines", "wind", true);
-            var btnRain = CreateFilterButton("🌧️ Rain & Thunder", "rain", false);
-            var btnTemp = CreateFilterButton("🌡️ Temperature", "temp", false);
-            var btnWaves = CreateFilterButton("🌊 Waves & Swell", "waves", false);
-            var btnTyphoon = CreateFilterButton("🌀 Typhoon Tracker", "gust", false);
+            var btnWind = CreateFilterButton("Wind Streamlines", "wind", true);
+            var btnRain = CreateFilterButton("Rain & Thunder", "rain", false);
+            var btnTemp = CreateFilterButton("Temperature", "temp", false);
+            var btnWaves = CreateFilterButton("Waves & Swell", "waves", false);
+            var btnTyphoon = CreateFilterButton("Typhoon Tracker", "gust", false);
 
-            var btnManila = CreateLocationButton("📍 Manila (Luzon)", 14.5995, 120.9842, 8);
-            var btnCebu = CreateLocationButton("📍 Cebu (Visayas)", 10.3157, 123.8854, 8);
-            var btnDavao = CreateLocationButton("📍 Davao (Mindanao)", 7.1907, 125.4553, 8);
-            var btnPHAll = CreateLocationButton("🇵🇭 Entire Philippines", 12.8797, 121.7740, 6);
+            var btnManila = CreateLocationButton("Manila (Luzon)", 14.5995, 120.9842, 8);
+            var btnCebu = CreateLocationButton("Cebu (Visayas)", 10.3157, 123.8854, 8);
+            var btnDavao = CreateLocationButton("Davao (Mindanao)", 7.1907, 125.4553, 8);
+            var btnPHAll = CreateLocationButton("Entire Philippines", 12.8797, 121.7740, 6);
 
             flow.Controls.Add(btnWind);
             flow.Controls.Add(btnRain);
@@ -271,7 +271,7 @@ namespace DriveAndGo_Admin.Panels
 
     <div class='advisory-badge'>
         <div class='advisory-title'>
-            <span>🌀 Live Fleet Dispatch Advisory</span>
+            <span>Live Fleet Dispatch Advisory</span>
         </div>
         <div class='advisory-text'>
             Real-time particle wind vectors active over Philippines airspace. Check wind gusts (>25 kt) before dispatching high-profile passenger vans or rental SUVs on highway routes.

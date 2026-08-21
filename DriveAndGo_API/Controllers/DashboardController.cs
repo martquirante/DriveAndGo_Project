@@ -30,9 +30,7 @@ namespace DriveAndGo_API.Controllers
         /// properties populated by raw SQL in other controllers). This endpoint performs explicit JOINs
         /// against the Users and Vehicles DbSets to resolve the real names — no dummy data used.
         /// </summary>
-        [HttpGet]
         [HttpGet("summary")]
-        [HttpGet("stats")]
         [AllowAnonymous]
         public async Task<IActionResult> GetSummary()
         {

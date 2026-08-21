@@ -1,6 +1,8 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using DriveAndGo_API.Helpers;
+using DriveAndGo_API.Models;
 
 namespace DriveAndGo_API.Services
 {
@@ -8,6 +10,13 @@ namespace DriveAndGo_API.Services
     {
         Task<bool> SendEmailAsync(string toEmail, string subject, string htmlBody);
         Task<bool> SendOtpEmailAsync(string toEmail, string otpCode, string purpose);
+        Task<(bool Success, string Message, string? ResendId)> SendRentalAgreementAsync(
+            string toEmail,
+            string? ccEmail,
+            string? subject,
+            string? personalMessage,
+            RentalAgreementEmailData data,
+            byte[]? pdfAttachment = null);
     }
 
     public class EmailService : IEmailService
@@ -21,8 +30,77 @@ namespace DriveAndGo_API.Services
             _httpClient = httpClient;
         }
 
+        private async Task<bool> TrySendViaSmtpAsync(string toEmail, string? ccEmail, string subject, string htmlBody, byte[]? pdfAttachment = null, string? attachmentFilename = null)
+        {
+            string? smtpEmail = _configuration["Smtp:Email"] ?? Environment.GetEnvironmentVariable("SMTP_EMAIL");
+            string? smtpPass = _configuration["Smtp:AppPassword"] ?? _configuration["Smtp:Password"] ?? Environment.GetEnvironmentVariable("SMTP_APP_PASSWORD");
+
+            if (string.IsNullOrWhiteSpace(smtpEmail) || string.IsNullOrWhiteSpace(smtpPass) || smtpPass.Contains("YOUR_") || smtpEmail.Contains("YOUR_"))
+            {
+                return false;
+            }
+
+            try
+            {
+                using var client = new System.Net.Mail.SmtpClient("smtp.gmail.com", 587)
+                {
+                    EnableSsl = true,
+                    Credentials = new System.Net.NetworkCredential(smtpEmail.Trim(), smtpPass.Trim().Replace(" ", "")),
+                    DeliveryMethod = System.Net.Mail.SmtpDeliveryMethod.Network,
+                    Timeout = 20000
+                };
+
+                using var message = new System.Net.Mail.MailMessage
+                {
+                    From = new System.Net.Mail.MailAddress(smtpEmail.Trim(), "DriveAndGo Inc."),
+                    Subject = subject,
+                    Body = htmlBody,
+                    IsBodyHtml = true
+                };
+
+                message.To.Add(toEmail.Trim());
+
+                if (!string.IsNullOrWhiteSpace(ccEmail))
+                {
+                    foreach (var cc in ccEmail.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        var trimmed = cc.Trim();
+                        if (!string.IsNullOrWhiteSpace(trimmed)) message.CC.Add(trimmed);
+                    }
+                }
+
+                if (pdfAttachment != null && pdfAttachment.Length > 0)
+                {
+                    var stream = new MemoryStream(pdfAttachment);
+                    var attachment = new System.Net.Mail.Attachment(stream, attachmentFilename ?? "Rental_Agreement.pdf", "application/pdf");
+                    message.Attachments.Add(attachment);
+                }
+
+                await client.SendMailAsync(message);
+                Console.WriteLine($"[GMAIL SMTP SUCCESS] Sent email to {toEmail} with subject: {subject}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[GMAIL SMTP ERROR] Failed to send via SMTP: {ex.Message}");
+                throw;
+            }
+        }
+
         public async Task<bool> SendEmailAsync(string toEmail, string subject, string htmlBody)
         {
+            try
+            {
+                if (await TrySendViaSmtpAsync(toEmail, null, subject, htmlBody))
+                {
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SMTP FALLBACK TO RESEND] SMTP failed: {ex.Message}");
+            }
+
             string? apiKey = _configuration["RESEND_API_KEY"];
             if (string.IsNullOrWhiteSpace(apiKey))
             {
@@ -190,7 +268,7 @@ namespace DriveAndGo_API.Services
                             <table border=""0"" cellpadding=""0"" cellspacing=""0"" width=""100%"" style=""background-color: #FFF7ED; border: 1px solid #FDBA74; border-radius: 8px; margin-bottom: 8px;"">
                                 <tr>
                                     <td align=""center"" style=""padding: 10px 14px; color: #C2410C; font-size: 12.5px; font-weight: 600;"">
-                                        ⚠️ This verification code will expire in <strong>exactly 2 minutes</strong>.
+                                        This verification code will expire in <strong>exactly 2 minutes</strong>.
                                     </td>
                                 </tr>
                             </table>
@@ -254,6 +332,161 @@ namespace DriveAndGo_API.Services
             // Send clean email subject WITHOUT exposing OTP code in subject line
             await SendEmailAsync(toEmail, $"Drive & Go: {title}", htmlTemplate);
             return true;
+        }
+
+        public async Task<(bool Success, string Message, string? ResendId)> SendRentalAgreementAsync(
+            string toEmail,
+            string? ccEmail,
+            string? subject,
+            string? personalMessage,
+            RentalAgreementEmailData data,
+            byte[]? pdfAttachment = null)
+        {
+            try
+            {
+                var htmlBody = BuildRentalAgreementHtmlBody(data, personalMessage);
+                var emailSubject = !string.IsNullOrWhiteSpace(subject) 
+                    ? subject 
+                    : $"Rental Agreement & Booking Confirmation - {data.AgreementCode}";
+
+                // 1. Try Gmail SMTP first if configured (Allows sending to ANY recipient email!)
+                try
+                {
+                    if (await TrySendViaSmtpAsync(toEmail, ccEmail, emailSubject, htmlBody, pdfAttachment, $"Rental_Agreement_{data.AgreementCode}.pdf"))
+                    {
+                        return (true, "Email dispatched successfully via Gmail SMTP.", "smtp-msg-" + Guid.NewGuid().ToString("N")[..8]);
+                    }
+                }
+                catch (Exception smtpEx)
+                {
+                    Console.WriteLine($"[SMTP ATTEMPT FAILED] {smtpEx.Message}. Falling back to Resend API.");
+                }
+
+                // 2. Fallback to Resend API
+                string? apiKey = _configuration["RESEND_API_KEY"] ?? Environment.GetEnvironmentVariable("RESEND_API_KEY");
+
+                if (string.IsNullOrWhiteSpace(apiKey) || apiKey.Contains("YOUR_API_KEY"))
+                {
+                    Console.WriteLine($"[DEV MODE] Simulated sending rental agreement email to {toEmail} for {data.AgreementCode}");
+                    return (true, "Resend API simulated in Development Mode", "dev-simulated-id");
+                }
+
+                var toList = new List<string> { toEmail.Trim() };
+                var ccList = new List<string>();
+                if (!string.IsNullOrWhiteSpace(ccEmail))
+                {
+                    foreach (var cc in ccEmail.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        var trimmed = cc.Trim();
+                        if (!string.IsNullOrWhiteSpace(trimmed)) ccList.Add(trimmed);
+                    }
+                }
+
+                var payload = new Dictionary<string, object?>
+                {
+                    { "from", "DriveAndGo <onboarding@resend.dev>" },
+                    { "to", toList },
+                    { "subject", emailSubject },
+                    { "html", htmlBody }
+                };
+
+                if (ccList.Count > 0)
+                {
+                    payload["cc"] = ccList;
+                }
+
+                if (pdfAttachment != null && pdfAttachment.Length > 0)
+                {
+                    payload["attachments"] = new[]
+                    {
+                        new
+                        {
+                            filename = $"Rental_Agreement_{data.AgreementCode}.pdf",
+                            content = Convert.ToBase64String(pdfAttachment)
+                        }
+                    };
+                }
+
+                var requestMessage = new HttpRequestMessage(HttpMethod.Post, "https://api.resend.com/emails");
+                requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey.Trim());
+                requestMessage.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.SendAsync(requestMessage);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    using var doc = JsonDocument.Parse(responseContent);
+                    var id = doc.RootElement.TryGetProperty("id", out var idProp) ? idProp.GetString() : null;
+                    return (true, "Email dispatched successfully via Resend.", id);
+                }
+                else
+                {
+                    Console.WriteLine($"[RESEND ERROR] ({response.StatusCode}): {responseContent}");
+                    return (false, $"Resend API error: {responseContent}", null);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[RESEND EXCEPTION] Failed to send email agreement: {ex.Message}");
+                return (false, $"Email delivery error: {ex.Message}", null);
+            }
+        }
+
+        private string BuildRentalAgreementHtmlBody(RentalAgreementEmailData data, string? personalMessage)
+        {
+            var templatePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "EmailTemplates", "RentalAgreement.html");
+            if (!File.Exists(templatePath))
+            {
+                templatePath = Path.Combine(Directory.GetCurrentDirectory(), "EmailTemplates", "RentalAgreement.html");
+            }
+
+            string template;
+            if (File.Exists(templatePath))
+            {
+                template = File.ReadAllText(templatePath);
+            }
+            else
+            {
+                template = @"<!DOCTYPE html><html><body style='font-family:sans-serif;padding:20px;'>
+                            <h2>Drive&Go Rental Agreement: {{AgreementCode}}</h2>
+                            <p>Hello {{CustomerName}}, your booking for {{VehicleName}} ({{PlateNo}}) is confirmed.</p>
+                            <p>Total Paid: PHP {{TotalAmount}}</p>
+                            </body></html>";
+            }
+
+            var personalMessageHtml = !string.IsNullOrWhiteSpace(personalMessage)
+                ? $"<div style='margin-top:12px; padding:10px 14px; background:rgba(255,107,0,0.08); border-left:3px solid #FF6B00; border-radius:6px; font-size:13px; color:#334155;'><strong>Note from Drive&Go:</strong><br/>{System.Web.HttpUtility.HtmlEncode(personalMessage)}</div>"
+                : "";
+
+            string logoSrc = "https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png";
+            string serverBase = NetworkHelper.GetServerBaseUrl(_configuration);
+            var verificationUrl = $"{serverBase}/api/Rentals/verify/{data.AgreementCode}";
+            var verificationUrlEncoded = System.Web.HttpUtility.UrlEncode(verificationUrl);
+            var pdfDownloadUrl = $"{serverBase}/api/Rentals/code/{data.AgreementCode}/pdf";
+            var appDeepLink = $"driveandgo://booking/{data.AgreementCode}";
+
+            return template
+                .Replace("{{LogoSrc}}", logoSrc)
+                .Replace("{{AgreementCode}}", data.AgreementCode)
+                .Replace("{{CustomerName}}", data.CustomerName)
+                .Replace("{{VehicleName}}", data.VehicleName)
+                .Replace("{{PlateNo}}", data.PlateNo)
+                .Replace("{{VehicleColor}}", string.IsNullOrWhiteSpace(data.VehicleColor) ? "Standard" : data.VehicleColor)
+                .Replace("{{PickupDate}}", data.PickupDate)
+                .Replace("{{DropoffDate}}", data.DropoffDate)
+                .Replace("{{DurationDays}}", data.DurationDays.ToString())
+                .Replace("{{DailyTotal}}", data.DailyTotal.ToString("N2"))
+                .Replace("{{InsuranceFee}}", data.InsuranceFee.ToString("N2"))
+                .Replace("{{VatAmount}}", data.VatAmount.ToString("N2"))
+                .Replace("{{TotalAmount}}", data.TotalAmount.ToString("N2"))
+                .Replace("{{PersonalMessageBlock}}", personalMessageHtml)
+                .Replace("{{VerificationUrlEncoded}}", verificationUrlEncoded)
+                .Replace("{{PdfDownloadUrl}}", pdfDownloadUrl)
+                .Replace("{{AppDeepLink}}", appDeepLink)
+                .Replace("{{CompanyPhone}}", data.CompanyPhone)
+                .Replace("{{CompanyEmail}}", data.CompanyEmail)
+                .Replace("{{CompanyAddress}}", data.CompanyAddress);
         }
     }
 }

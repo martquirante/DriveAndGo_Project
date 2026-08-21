@@ -123,7 +123,7 @@ namespace DriveAndGo_Admin
         {
             _pnlStep1 = CreateStepPanel();
 
-            var lblTitle = MakeHeaderLabel("🔑 Reset Account Password", 30);
+            var lblTitle = MakeHeaderLabel("Reset Account Password", 30);
             _pnlStep1.Controls.Add(lblTitle);
 
             var lblSub = MakeSubLabel("Enter your registered email address to receive a 6-digit security code.", 68, 388, 38);
@@ -183,7 +183,7 @@ namespace DriveAndGo_Admin
         {
             _pnlStep2 = CreateStepPanel();
 
-            var lblTitle = MakeHeaderLabel("🔐 Security Verification", 30);
+            var lblTitle = MakeHeaderLabel("Security Verification", 30);
             _pnlStep2.Controls.Add(lblTitle);
 
             var lblSub = MakeSubLabel("Enter the 6-digit verification code sent to your email address.", 68, 388, 38);
@@ -378,7 +378,7 @@ namespace DriveAndGo_Admin
         {
             _pnlStep3 = CreateStepPanel();
 
-            var lblTitle = MakeHeaderLabel("🔒 Create New Password", 24);
+            var lblTitle = MakeHeaderLabel("Create New Password", 24);
             _pnlStep3.Controls.Add(lblTitle);
 
             var lblSub = MakeSubLabel("Your identity has been verified. Enter your new password below.", 56, 388, 36);
@@ -395,8 +395,8 @@ namespace DriveAndGo_Admin
 
             _btnShowPass = new Button
             {
-                Text = "👁",
-                Font = new Font("Segoe UI Emoji", 10F),
+                Text = "Show",
+                Font = new Font("Segoe UI", 9F),
                 ForeColor = ThemeManager.CurrentSubText,
                 BackColor = Color.Transparent,
                 FlatStyle = FlatStyle.Flat,

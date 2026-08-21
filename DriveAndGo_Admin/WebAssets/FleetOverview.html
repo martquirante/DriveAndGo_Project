@@ -272,8 +272,7 @@
         // DriveAndGo Fleet Management Overview - Advanced React Application (FleetOps Pro Architecture)
         const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
-        // ─── UTILS ──────────────────────────────────────────────────────────────────
-        const rawApi = (window.API_BASE_URL || 'http://localhost:5233/api').trim();
+        const rawApi = (window.API_BASE_URL || (window.location.origin.startsWith('http') && !window.location.origin.includes('appassets') ? window.location.origin + '/api' : 'http://localhost:5233/api')).trim();
         const API = rawApi.replace(/\/$/, '').replace(/\/api$/, '');
         const HEADERS = {
             'Content-Type': 'application/json',
@@ -318,6 +317,221 @@
             } catch (e) {
                 return fallback;
             }
+        };
+
+        const detectVehicleCategory = (type = '', brand = '', model = '') => {
+            const str = `${type || ''} ${brand || ''} ${model || ''}`.toLowerCase();
+            if (str.includes('pickup') || str.includes('truck') || str.includes('hilux') || str.includes('navara') || str.includes('ranger') || str.includes('d-max') || str.includes('dmax') || str.includes('strada') || str.includes('triton')) {
+                return 'pickup';
+            }
+            if (str.includes('suv') || str.includes('fortuner') || str.includes('montero') || str.includes('everest') || str.includes('cr-v') || str.includes('crv') || str.includes('rav4') || str.includes('terra') || str.includes('crossover') || str.includes('pajero') || str.includes('jimny') || str.includes('land cruiser')) {
+                return 'suv';
+            }
+            if (str.includes('van') || str.includes('hiace') || str.includes('urvan') || str.includes('alphard') || str.includes('starex') || str.includes('staria') || str.includes('mpv') || str.includes('innova') || str.includes('ertiga') || str.includes('avanza') || str.includes('xpander') || str.includes('livina') || str.includes('carnival')) {
+                return 'van';
+            }
+            if (str.includes('hatchback') || str.includes('wigo') || str.includes('yaris') || str.includes('mirage') || str.includes('swift') || str.includes('brio') || str.includes('compact') || str.includes('mini')) {
+                return 'hatchback';
+            }
+            if (str.includes('motorcycle') || str.includes('scooter') || str.includes('bike') || str.includes('nmax') || str.includes('aerox') || str.includes('pcx') || str.includes('click') || str.includes('vespa') || str.includes('adv') || str.includes('sniper')) {
+                return 'motorcycle';
+            }
+            if (str.includes('coupe') || str.includes('sports') || str.includes('mustang') || str.includes('supra') || str.includes('gt86') || str.includes('brz') || str.includes('miata') || str.includes('z4') || str.includes('porsche')) {
+                return 'coupe';
+            }
+            return 'sedan';
+        };
+
+        const renderDefaultTopDownVehicleSvg = (v, hex = '#38bdf8') => {
+            const category = detectVehicleCategory(v?.type, v?.brand, v?.model);
+            const uid = (v?.id || v?.plateNumber || Math.random().toString(36).substring(2, 7)).toString().replace(/[^a-zA-Z0-9]/g, '_');
+
+            if (category === 'pickup') {
+                return `
+                    <svg viewBox="0 0 44 80" class="w-12 h-20 filter drop-shadow-[0_8px_14px_rgba(0,0,0,0.7)]" style="display:block;">
+                        <defs>
+                            <linearGradient id="pBody_${uid}" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stop-color="#334155"/>
+                                <stop offset="50%" stop-color="#1e293b"/>
+                                <stop offset="100%" stop-color="#0f172a"/>
+                            </linearGradient>
+                            <linearGradient id="pBed_${uid}" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="#090d16"/>
+                                <stop offset="100%" stop-color="#161e2e"/>
+                            </linearGradient>
+                        </defs>
+                        <rect x="2" y="24" width="4" height="6" rx="2" fill="#475569" stroke="#64748b" stroke-width="0.5"/>
+                        <rect x="38" y="24" width="4" height="6" rx="2" fill="#475569" stroke="#64748b" stroke-width="0.5"/>
+                        <path d="M 8 16 Q 8 6 22 4 Q 36 6 36 16 L 36 70 Q 36 76 22 76 Q 8 76 8 70 Z" fill="url(#pBody_${uid})" stroke="${hex}" stroke-width="1.5"/>
+                        <path d="M 12 10 L 14 20 M 32 10 L 30 20" stroke="#475569" stroke-width="1"/>
+                        <path d="M 11 23 Q 22 20 33 23 L 31 32 Q 22 30 13 32 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="0.8" opacity="0.95"/>
+                        <rect x="13" y="32" width="18" height="15" rx="2" fill="#1e293b" stroke="#334155" stroke-width="0.8"/>
+                        <rect x="14" y="47" width="16" height="3" rx="1" fill="#0f172a" stroke="#38bdf8" stroke-width="0.6"/>
+                        <rect x="11" y="52" width="22" height="21" rx="2" fill="url(#pBed_${uid})" stroke="#334155" stroke-width="1"/>
+                        <line x1="15" y1="55" x2="15" y2="70" stroke="#1e293b" stroke-width="1"/>
+                        <line x1="22" y1="55" x2="22" y2="70" stroke="#1e293b" stroke-width="1"/>
+                        <line x1="29" y1="55" x2="29" y2="70" stroke="#1e293b" stroke-width="1"/>
+                        <rect x="18" y="74" width="8" height="1.5" rx="0.5" fill="#64748b"/>
+                        <rect x="9" y="5" width="5" height="3" rx="1.5" fill="#38bdf8"/>
+                        <rect x="30" y="5" width="5" height="3" rx="1.5" fill="#38bdf8"/>
+                        <rect x="8.5" y="72" width="3" height="4" rx="1" fill="#ef4444"/>
+                        <rect x="32.5" y="72" width="3" height="4" rx="1" fill="#ef4444"/>
+                    </svg>
+                `;
+            }
+
+            if (category === 'suv') {
+                return `
+                    <svg viewBox="0 0 44 76" class="w-12 h-19 filter drop-shadow-[0_8px_14px_rgba(0,0,0,0.7)]" style="display:block;">
+                        <defs>
+                            <linearGradient id="suvBody_${uid}" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stop-color="#334155"/>
+                                <stop offset="50%" stop-color="#1e293b"/>
+                                <stop offset="100%" stop-color="#0f172a"/>
+                            </linearGradient>
+                        </defs>
+                        <rect x="2" y="22" width="4" height="6" rx="2" fill="#475569" stroke="#64748b" stroke-width="0.5"/>
+                        <rect x="38" y="22" width="4" height="6" rx="2" fill="#475569" stroke="#64748b" stroke-width="0.5"/>
+                        <path d="M 8 14 Q 8 4 22 3 Q 36 4 36 14 L 37 66 Q 37 72 22 73 Q 7 72 7 66 Z" fill="url(#suvBody_${uid})" stroke="${hex}" stroke-width="1.5"/>
+                        <path d="M 14 6 L 16 18 M 30 6 L 28 18" stroke="#475569" stroke-width="1.2"/>
+                        <path d="M 10 21 Q 22 18 34 21 L 32 32 Q 22 30 12 32 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="0.8"/>
+                        <rect x="12" y="32" width="20" height="26" rx="2" fill="#1e293b" stroke="#334155" stroke-width="0.8"/>
+                        <rect x="15" y="34" width="14" height="10" rx="1.5" fill="#0f172a" stroke="#38bdf8" stroke-width="0.6"/>
+                        <rect x="10.5" y="28" width="1.5" height="28" rx="0.5" fill="#94a3b8"/>
+                        <rect x="32" y="28" width="1.5" height="28" rx="0.5" fill="#94a3b8"/>
+                        <path d="M 12 59 Q 22 57 32 59 L 33 66 Q 22 65 11 66 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="0.7"/>
+                        <rect x="8.5" y="4" width="6" height="3.5" rx="1.5" fill="#38bdf8"/>
+                        <rect x="29.5" y="4" width="6" height="3.5" rx="1.5" fill="#38bdf8"/>
+                        <rect x="8" y="69" width="7" height="3" rx="1" fill="#ef4444"/>
+                        <line x1="15" y1="70.5" x2="29" y2="70.5" stroke="#ef4444" stroke-width="1.2"/>
+                        <rect x="29" y="69" width="7" height="3" rx="1" fill="#ef4444"/>
+                    </svg>
+                `;
+            }
+
+            if (category === 'van') {
+                return `
+                    <svg viewBox="0 0 44 82" class="w-12 h-21 filter drop-shadow-[0_8px_14px_rgba(0,0,0,0.7)]" style="display:block;">
+                        <defs>
+                            <linearGradient id="vanBody_${uid}" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stop-color="#334155"/>
+                                <stop offset="50%" stop-color="#1e293b"/>
+                                <stop offset="100%" stop-color="#0f172a"/>
+                            </linearGradient>
+                        </defs>
+                        <rect x="1" y="20" width="4.5" height="6.5" rx="2" fill="#475569" stroke="#64748b" stroke-width="0.5"/>
+                        <rect x="38.5" y="20" width="4.5" height="6.5" rx="2" fill="#475569" stroke="#64748b" stroke-width="0.5"/>
+                        <path d="M 8 12 Q 8 3 22 2 Q 36 3 36 12 L 36 74 Q 36 79 22 79 Q 8 79 8 74 Z" fill="url(#vanBody_${uid})" stroke="${hex}" stroke-width="1.5"/>
+                        <path d="M 12 4 L 14 12 M 32 4 L 30 12" stroke="#475569" stroke-width="1"/>
+                        <path d="M 10 14 Q 22 11 34 14 L 33 24 Q 22 22 11 24 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="0.8"/>
+                        <rect x="11" y="24" width="22" height="46" rx="2" fill="#1e293b" stroke="#334155" stroke-width="0.8"/>
+                        <line x1="16" y1="28" x2="16" y2="66" stroke="#0f172a" stroke-width="1.2"/>
+                        <line x1="22" y1="28" x2="22" y2="66" stroke="#0f172a" stroke-width="1.2"/>
+                        <line x1="28" y1="28" x2="28" y2="66" stroke="#0f172a" stroke-width="1.2"/>
+                        <rect x="12" y="70" width="20" height="5" rx="1.5" fill="#0f172a" stroke="#38bdf8" stroke-width="0.7"/>
+                        <rect x="9" y="3" width="6" height="3" rx="1.5" fill="#38bdf8"/>
+                        <rect x="29" y="3" width="6" height="3" rx="1.5" fill="#38bdf8"/>
+                        <rect x="8.5" y="72" width="2.5" height="5" rx="1" fill="#ef4444"/>
+                        <rect x="33" y="72" width="2.5" height="5" rx="1" fill="#ef4444"/>
+                    </svg>
+                `;
+            }
+
+            if (category === 'hatchback') {
+                return `
+                    <svg viewBox="0 0 40 64" class="w-11 h-17 filter drop-shadow-[0_8px_14px_rgba(0,0,0,0.7)]" style="display:block;">
+                        <defs>
+                            <linearGradient id="hbBody_${uid}" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stop-color="#334155"/>
+                                <stop offset="50%" stop-color="#1e293b"/>
+                                <stop offset="100%" stop-color="#0f172a"/>
+                            </linearGradient>
+                        </defs>
+                        <rect x="1.5" y="19" width="3.5" height="5.5" rx="1.5" fill="#475569" stroke="#64748b" stroke-width="0.5"/>
+                        <rect x="35" y="19" width="3.5" height="5.5" rx="1.5" fill="#475569" stroke="#64748b" stroke-width="0.5"/>
+                        <path d="M 7 14 Q 7 5 20 4 Q 33 5 33 14 L 33 54 Q 33 60 20 60 Q 7 60 7 54 Z" fill="url(#hbBody_${uid})" stroke="${hex}" stroke-width="1.5"/>
+                        <path d="M 9 18 Q 20 15 31 18 L 29 27 Q 20 25 11 27 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="0.8"/>
+                        <rect x="11" y="27" width="18" height="18" rx="2" fill="#1e293b" stroke="#334155" stroke-width="0.8"/>
+                        <path d="M 10 46 Q 20 44 30 46 L 31 54 Q 20 53 9 54 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="0.7"/>
+                        <rect x="12" y="44" width="16" height="2" rx="1" fill="#475569"/>
+                        <rect x="8" y="5" width="5" height="3" rx="1.5" fill="#38bdf8"/>
+                        <rect x="27" y="5" width="5" height="3" rx="1.5" fill="#38bdf8"/>
+                        <rect x="7.5" y="54" width="4" height="3" rx="1" fill="#ef4444"/>
+                        <rect x="28.5" y="54" width="4" height="3" rx="1" fill="#ef4444"/>
+                    </svg>
+                `;
+            }
+
+            if (category === 'motorcycle') {
+                return `
+                    <svg viewBox="0 0 36 68" class="w-10 h-18 filter drop-shadow-[0_8px_14px_rgba(0,0,0,0.7)]" style="display:block;">
+                        <rect x="15" y="3" width="6" height="12" rx="3" fill="#0f172a" stroke="#475569" stroke-width="1"/>
+                        <rect x="14" y="6" width="8" height="6" rx="2" fill="${hex}" opacity="0.9"/>
+                        <line x1="4" y1="18" x2="32" y2="18" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round"/>
+                        <circle cx="5" cy="18" r="2.5" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
+                        <circle cx="31" cy="18" r="2.5" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
+                        <polygon points="18,12 14,16 22,16" fill="#38bdf8"/>
+                        <path d="M 13 20 Q 18 19 23 20 L 22 34 Q 18 36 14 34 Z" fill="#1e293b" stroke="${hex}" stroke-width="1.5"/>
+                        <path d="M 14 34 Q 18 33 22 34 L 21 48 Q 18 49 15 48 Z" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+                        <rect x="23" y="36" width="3" height="16" rx="1" fill="#94a3b8" stroke="#64748b" stroke-width="0.6"/>
+                        <rect x="14.5" y="48" width="7" height="14" rx="3.5" fill="#0f172a" stroke="#475569" stroke-width="1"/>
+                        <rect x="15.5" y="63" width="5" height="2.5" rx="1" fill="#ef4444"/>
+                    </svg>
+                `;
+            }
+
+            if (category === 'coupe') {
+                return `
+                    <svg viewBox="0 0 42 72" class="w-12 h-19 filter drop-shadow-[0_8px_14px_rgba(0,0,0,0.7)]" style="display:block;">
+                        <defs>
+                            <linearGradient id="cpBody_${uid}" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stop-color="#334155"/>
+                                <stop offset="50%" stop-color="#1e293b"/>
+                                <stop offset="100%" stop-color="#0f172a"/>
+                            </linearGradient>
+                        </defs>
+                        <rect x="1" y="24" width="4" height="5" rx="1.5" fill="#475569" stroke="#64748b" stroke-width="0.5"/>
+                        <rect x="37" y="24" width="4" height="5" rx="1.5" fill="#475569" stroke="#64748b" stroke-width="0.5"/>
+                        <path d="M 10 15 Q 10 5 21 4 Q 32 5 32 15 L 30 38 Q 36 44 36 58 Q 36 67 21 67 Q 6 67 6 58 Q 6 44 12 38 Z" fill="url(#cpBody_${uid})" stroke="${hex}" stroke-width="1.5"/>
+                        <rect x="14" y="11" width="3" height="7" rx="1" fill="#0f172a" stroke="#475569" stroke-width="0.6"/>
+                        <rect x="25" y="11" width="3" height="7" rx="1" fill="#0f172a" stroke="#475569" stroke-width="0.6"/>
+                        <path d="M 11 21 Q 21 18 31 21 L 28 32 Q 21 30 14 32 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="0.8"/>
+                        <path d="M 14 32 L 28 32 L 26 48 L 16 48 Z" fill="#1e293b" stroke="#334155" stroke-width="0.8"/>
+                        <path d="M 16 48 L 26 48 L 27 57 Q 21 56 15 57 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="0.7"/>
+                        <rect x="10" y="66" width="3" height="2" rx="1" fill="#94a3b8"/>
+                        <rect x="29" y="66" width="3" height="2" rx="1" fill="#94a3b8"/>
+                        <polygon points="10,6 16,6 14,9 9,9" fill="#38bdf8"/>
+                        <polygon points="32,6 26,6 28,9 33,9" fill="#38bdf8"/>
+                        <rect x="8" y="61" width="7" height="2.5" rx="1" fill="#ef4444"/>
+                        <rect x="27" y="61" width="7" height="2.5" rx="1" fill="#ef4444"/>
+                    </svg>
+                `;
+            }
+
+            // Default: Sedan
+            return `
+                <svg viewBox="0 0 40 70" class="w-12 h-19 filter drop-shadow-[0_8px_14px_rgba(0,0,0,0.7)]" style="display:block;">
+                    <defs>
+                        <linearGradient id="sedanBody_${uid}" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stop-color="#334155"/>
+                            <stop offset="50%" stop-color="#1e293b"/>
+                            <stop offset="100%" stop-color="#0f172a"/>
+                        </linearGradient>
+                    </defs>
+                    <rect x="1.5" y="21" width="3.5" height="5.5" rx="1.5" fill="#475569" stroke="#64748b" stroke-width="0.5"/>
+                    <rect x="35" y="21" width="3.5" height="5.5" rx="1.5" fill="#475569" stroke="#64748b" stroke-width="0.5"/>
+                    <path d="M 8 14 Q 8 4 20 3 Q 32 4 32 14 L 33 60 Q 33 66 20 66 Q 7 66 7 60 Z" fill="url(#sedanBody_${uid})" stroke="${hex}" stroke-width="1.5"/>
+                    <path d="M 12 7 L 14 18 M 28 7 L 26 18" stroke="#475569" stroke-width="1"/>
+                    <path d="M 10 20 Q 20 17 30 20 L 28 30 Q 20 28 12 30 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="0.8"/>
+                    <rect x="12" y="30" width="16" height="18" rx="2" fill="#1e293b" stroke="#334155" stroke-width="0.8"/>
+                    <path d="M 12 48 Q 20 46 28 48 L 29 55 Q 20 54 11 55 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="0.7"/>
+                    <line x1="11" y1="58" x2="29" y2="58" stroke="#475569" stroke-width="0.8"/>
+                    <rect x="8.5" y="4" width="5.5" height="3" rx="1.5" fill="#38bdf8"/>
+                    <rect x="26" y="4" width="5.5" height="3" rx="1.5" fill="#38bdf8"/>
+                    <rect x="8" y="62" width="5" height="3" rx="1" fill="#ef4444"/>
+                    <rect x="27" y="62" width="5" height="3" rx="1" fill="#ef4444"/>
+                </svg>
+            `;
         };
 
         // Normalizes camelCase, PascalCase, and snake_case API responses
@@ -387,7 +601,9 @@
                 autosweepTag: v.autosweepTag || 'AUTOSWEEP-' + (v.vehicle_id || v.id || 1),
                 easytripTag: v.easytripTag || 'EASYTRIP-' + (v.vehicle_id || v.id || 1),
                 image: mainPhoto,
-                mapIconUrl: v.map_icon_url || v.mapIconUrl || v.model_3d_url || v.model3dUrl || '',
+                map3DIconUrl: (v.map3DIconUrl || v.map3dIconUrl || v.mapIconUrl || v.map_icon_url || v.model_3d_url || v.model3dUrl || v.Model3DUrl || '').includes('/uploads/vehicles/') ? '' : (v.map3DIconUrl || v.map3dIconUrl || v.mapIconUrl || v.map_icon_url || v.model_3d_url || v.model3dUrl || v.Model3DUrl || '').trim(),
+                mapIconUrl: (v.map3DIconUrl || v.map3dIconUrl || v.mapIconUrl || v.map_icon_url || v.model_3d_url || v.model3dUrl || v.Model3DUrl || '').includes('/uploads/vehicles/') ? '' : (v.map3DIconUrl || v.map3dIconUrl || v.mapIconUrl || v.map_icon_url || v.model_3d_url || v.model3dUrl || v.Model3DUrl || '').trim(),
+                heading: parseFloat(v.heading || v.bearing || v.direction || v.Heading || v.Bearing || 0),
                 orCrUrl: v.or_cr_url || v.orCrUrl || v.OrCrUrl || '',
                 insuranceUrl: v.insurance_url || v.insuranceUrl || v.InsuranceUrl || '',
                 coordinates: [finalLat, finalLng],
@@ -431,8 +647,14 @@
         const IconClock = ({ sz, c }) => <S sz={sz} c={c} ch={<><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>} />;
         const IconX = ({ sz, c }) => <S sz={sz} c={c} ch={<><line x1="18" x2="6" y1="6" y2="18" /><line x1="6" x2="18" y1="6" y2="18" /></>} />;
         const IconCheck = ({ sz, c }) => <S sz={sz} c={c} ch={<polyline points="20 6 9 17 4 12" />} />;
-        const IconEdit2 = ({ sz, c }) => <S sz={sz} c={c} ch={<><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></>} />;
-        const IconTrash2 = ({ sz, c }) => <S sz={sz} c={c} ch={<><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></>} />;
+        const IconEdit = ({ sz, c }) => <S sz={sz} c={c} ch={<><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></>} />;
+        const IconEdit2 = IconEdit;
+        const IconTrash = ({ sz, c }) => <S sz={sz} c={c} ch={<><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></>} />;
+        const IconTrash2 = IconTrash;
+        const IconUpload = ({ sz, c }) => <S sz={sz} c={c} ch={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" /></>} />;
+        const IconRotateCcw = ({ sz, c }) => <S sz={sz} c={c} ch={<><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></>} />;
+        const IconRotateCw = ({ sz, c }) => <S sz={sz} c={c} ch={<><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /></>} />;
+        const IconCompass = ({ sz, c }) => <S sz={sz} c={c} ch={<><circle cx="12" cy="12" r="10" /><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" /></>} />;
         const IconPlus = ({ sz, c }) => <S sz={sz} c={c} ch={<><line x1="12" x2="12" y1="5" y2="19" /><line x1="5" x2="19" y1="12" y2="12" /></>} />;
         const IconAlertTriangle = ({ sz, c }) => <S sz={sz} c={c} ch={<><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" /><line x1="12" x2="12" y1="9" y2="13" /><line x1="12" x2="12.01" y1="17" y2="17" /></>} />;
         const IconCreditCard = ({ sz, c }) => <S sz={sz} c={c} ch={<><rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" /></>} />;
@@ -453,7 +675,6 @@
         const IconChevronDown = ({ sz, c }) => <S sz={sz} c={c} ch={<path d="m6 9 6 6 6-6" />} />;
         const IconChevronLeft = ({ sz, c }) => <S sz={sz} c={c} ch={<path d="m15 18-6-6 6-6" />} />;
         const IconChevronRight = ({ sz, c }) => <S sz={sz} c={c} ch={<path d="m9 18 6-6-6-6" />} />;
-        const IconEdit = ({ sz, c }) => <S sz={sz} c={c} ch={<><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></>} />;
         const IconZap = ({ sz, c }) => <S sz={sz} c={c} ch={<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />} />;
         const IconFolder = ({ sz, c }) => <S sz={sz} c={c} ch={<><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 8 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2z" /></>} />;
         const IconPrinter = ({ sz, c }) => <S sz={sz} c={c} ch={<><polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect width="12" height="8" x="6" y="14" /></>} />;
@@ -602,13 +823,141 @@
             );
         };
 
+        // ─── 3D KPI METRIC CARD (Ported from DashboardOverview) ─────────────────────
+        const FleetKpiCard3D = ({ icon, title, value, tag, tagClass, glowColor, borderHoverColor, valueColor, onClick }) => {
+            const cardRef = useRef(null);
+            const rafRef = useRef(null);
+            const [tilt, setTilt] = useState({ x: 0, y: 0 });
+            const [glare, setGlare] = useState({ x: 50, y: 50, opacity: 0 });
+            const [hovered, setHovered] = useState(false);
+
+            const handleMouseMove = useCallback((e) => {
+                if (!cardRef.current) return;
+                cancelAnimationFrame(rafRef.current);
+                rafRef.current = requestAnimationFrame(() => {
+                    if (!cardRef.current) return;
+                    const rect = cardRef.current.getBoundingClientRect();
+                    const relX = e.clientX - rect.left;
+                    const relY = e.clientY - rect.top;
+                    const centerX = rect.width / 2;
+                    const centerY = rect.height / 2;
+                    const normX = (relX - centerX) / centerX;
+                    const normY = (relY - centerY) / centerY;
+                    setTilt({ x: normY * -12, y: normX * 12 });
+                    setGlare({
+                        x: (relX / rect.width) * 100,
+                        y: (relY / rect.height) * 100,
+                        opacity: 0.28
+                    });
+                });
+            }, []);
+
+            const handleMouseEnter = useCallback(() => setHovered(true), []);
+            const handleMouseLeave = useCallback(() => {
+                cancelAnimationFrame(rafRef.current);
+                setHovered(false);
+                setTilt({ x: 0, y: 0 });
+                setGlare(g => ({ ...g, opacity: 0 }));
+            }, []);
+
+            return (
+                <div
+                    ref={cardRef}
+                    onMouseMove={handleMouseMove}
+                    onMouseEnter={handleMouseEnter}
+                    onMouseLeave={handleMouseLeave}
+                    onClick={onClick}
+                    style={{
+                        perspective: '1000px',
+                        transformStyle: 'preserve-3d',
+                        transform: hovered
+                            ? `perspective(1000px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) scale(1.03) translateZ(8px)`
+                            : 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale(1) translateZ(0px)',
+                        transition: hovered
+                            ? 'transform 0.1s ease-out, box-shadow 0.25s ease, border-color 0.2s ease, background 0.2s ease'
+                            : 'transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s ease, border-color 0.3s ease, background 0.3s ease',
+                        boxShadow: hovered ? `0 18px 36px ${glowColor || 'rgba(249, 115, 22, 0.25)'}, 0 0 0 1px rgba(255,255,255,0.08)` : 'var(--shadow-card)',
+                        willChange: 'transform',
+                        position: 'relative',
+                        overflow: 'hidden'
+                    }}
+                    className={`p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-color)] flex flex-col justify-between h-28 cursor-pointer group select-none ${hovered ? borderHoverColor : ''}`}
+                >
+                    {/* Top Shine */}
+                    <div
+                        style={{
+                            position: 'absolute', top: 0, left: 0, right: 0, height: '45%',
+                            borderRadius: '16px 16px 0 0',
+                            background: 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, transparent 100%)',
+                            pointerEvents: 'none', zIndex: 1
+                        }}
+                    />
+                    {/* Radial Glare */}
+                    <div
+                        style={{
+                            position: 'absolute', inset: 0, borderRadius: '16px', pointerEvents: 'none',
+                            background: `radial-gradient(circle at ${glare.x}% ${glare.y}%, rgba(255,255,255,${glare.opacity}) 0%, rgba(255,255,255,0) 65%)`,
+                            transition: hovered ? 'none' : 'opacity 0.4s ease',
+                            zIndex: 2
+                        }}
+                    />
+                    {/* Content */}
+                    <div className="relative z-10 flex justify-between items-center">
+                        <div className="w-9 h-9 rounded-xl bg-orange-500/15 text-orange-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            {icon}
+                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${tagClass}`}>{tag}</span>
+                    </div>
+                    <div className="relative z-10">
+                        <div className={`text-2xl font-black tracking-tight ${valueColor || 'text-[var(--text-primary)]'}`}>{value}</div>
+                        <div className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">{title}</div>
+                    </div>
+                </div>
+            );
+        };
+
         const GroupedVehicleCard = ({ cluster, onClickCluster }) => {
+            const cardRef = useRef(null);
+            const rafRef = useRef(null);
+            const [tilt, setTilt] = useState({ x: 0, y: 0 });
+            const [glare, setGlare] = useState({ x: 50, y: 50, opacity: 0 });
+            const [hovered, setHovered] = useState(false);
+
             const [activeUnitIndex, setActiveUnitIndex] = useState(0);
             const isGrouped = cluster.totalUnits > 1;
             const activeUnit = isGrouped ? (cluster.units[activeUnitIndex] || cluster.primaryUnit) : cluster.primaryUnit;
             const v = activeUnit;
             const st = getStatusStyle(v.status);
             const isRented = (v.status || '').toLowerCase() === 'rented';
+
+            const handleMouseMove = useCallback((e) => {
+                if (!cardRef.current) return;
+                cancelAnimationFrame(rafRef.current);
+                rafRef.current = requestAnimationFrame(() => {
+                    if (!cardRef.current) return;
+                    const rect = cardRef.current.getBoundingClientRect();
+                    const relX = e.clientX - rect.left;
+                    const relY = e.clientY - rect.top;
+                    const centerX = rect.width / 2;
+                    const centerY = rect.height / 2;
+                    const normX = (relX - centerX) / centerX;
+                    const normY = (relY - centerY) / centerY;
+                    setTilt({ x: normY * -8, y: normX * 8 });
+                    setGlare({
+                        x: (relX / rect.width) * 100,
+                        y: (relY / rect.height) * 100,
+                        opacity: 0.22
+                    });
+                });
+            }, []);
+
+            const handleMouseEnter = useCallback(() => setHovered(true), []);
+            const handleMouseLeave = useCallback(() => {
+                cancelAnimationFrame(rafRef.current);
+                setHovered(false);
+                setTilt({ x: 0, y: 0 });
+                setGlare(g => ({ ...g, opacity: 0 }));
+            }, []);
 
             return (
                 <div className="relative group/stack h-full flex flex-col">
@@ -621,9 +970,43 @@
                     )}
 
                     <div
-                        className="group flex flex-col h-full rounded-3xl bg-[var(--bg-card)] border border-[var(--border-color)] hover:border-orange-500/60 transition-all duration-300 ease-out shadow-lg hover:-translate-y-2 hover:scale-[1.01] hover:z-20 hover:shadow-[0_16px_36px_rgba(249,115,22,0.25)] cursor-pointer overflow-hidden relative justify-between p-0 pb-5.5"
+                        ref={cardRef}
+                        onMouseMove={handleMouseMove}
+                        onMouseEnter={handleMouseEnter}
+                        onMouseLeave={handleMouseLeave}
+                        style={{
+                            perspective: '1000px',
+                            transformStyle: 'preserve-3d',
+                            transform: hovered
+                                ? `perspective(1000px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) scale(1.015) translateZ(6px)`
+                                : 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale(1) translateZ(0px)',
+                            transition: hovered
+                                ? 'transform 0.1s ease-out, box-shadow 0.25s ease, border-color 0.2s ease, background 0.2s ease'
+                                : 'transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s ease, border-color 0.3s ease, background 0.3s ease',
+                            boxShadow: hovered ? '0 20px 40px rgba(249, 115, 22, 0.22), 0 0 0 1px rgba(255,255,255,0.08)' : 'var(--shadow-card)',
+                            willChange: 'transform'
+                        }}
+                        className="group flex flex-col h-full rounded-3xl bg-[var(--bg-card)] border border-[var(--border-color)] hover:border-orange-500/60 cursor-pointer overflow-hidden relative justify-between p-0 pb-5.5"
                         onClick={onClickCluster}
                     >
+                        {/* Top Shine */}
+                        <div
+                            style={{
+                                position: 'absolute', top: 0, left: 0, right: 0, height: '35%',
+                                borderRadius: '24px 24px 0 0',
+                                background: 'linear-gradient(180deg, rgba(255,255,255,0.07) 0%, transparent 100%)',
+                                pointerEvents: 'none', zIndex: 3
+                            }}
+                        />
+                        {/* Radial Glare */}
+                        <div
+                            style={{
+                                position: 'absolute', inset: 0, borderRadius: '24px', pointerEvents: 'none',
+                                background: `radial-gradient(circle at ${glare.x}% ${glare.y}%, rgba(255,255,255,${glare.opacity}) 0%, rgba(255,255,255,0) 65%)`,
+                                transition: hovered ? 'none' : 'opacity 0.4s ease',
+                                zIndex: 4
+                            }}
+                        />
                         {/* Ambient Soft Glow Overlay on Hover */}
                         <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-orange-500/10 opacity-0 group-hover:opacity-100 blur-xl transition-opacity duration-500 pointer-events-none"></div>
 
@@ -879,9 +1262,9 @@
                         <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-5 flex flex-col gap-4 shadow-xl">
                             <div className="flex justify-between items-center flex-wrap gap-3">
                                 <div className="flex items-center gap-2.5">
-                                    <span className="text-xs font-extrabold text-[var(--text-muted)] uppercase tracking-wider">Unit Focused:</span>
+                                    <span className="text-xs font-extrabold text-[var(--text-secondary)] uppercase tracking-wider">Unit Focused:</span>
                                     <span className="text-lg font-black text-orange-500">{activeUnit.brand} {activeUnit.model} ({activeUnit.plateNumber})</span>
-                                    <span className="px-3 py-1 rounded-lg text-xs font-extrabold bg-white/10 border border-white/10 text-white flex items-center gap-2">
+                                    <span className="px-3 py-1 rounded-lg text-xs font-extrabold bg-[var(--bg-card)] border border-[var(--border-color)] text-[var(--text-primary)] flex items-center gap-2">
                                         <span className="w-3 h-3 rounded border shrink-0" style={{ backgroundColor: getColorBoxHex(activeUnit.color).hex, borderColor: getColorBoxHex(activeUnit.color).border }}></span>
                                         <span>{activeUnit.color || 'Pearl White'}</span>
                                     </span>
@@ -988,6 +1371,7 @@
             const mapRef = useRef(null);
             const mapInst = useRef(null);
             const markersRef = useRef({});
+            const animFramesRef = useRef({});
             const layersRef = useRef({});
             const floodPolygonsRef = useRef([]);
             const garageMarkerRef = useRef(null);
@@ -1037,18 +1421,15 @@
                 L.control.zoom({ position: 'bottomleft' }).addTo(map);
                 mapInst.current = map;
 
-                window.OPENWEATHER_KEY = window.OPENWEATHER_KEY || "";
-                const openWeatherKey = window.OPENWEATHER_KEY;
-
-                // Init Layers with real-time OpenWeatherMap clouds & wind tiles + RainViewer radar
+                // Init Layers with real-time OpenWeatherMap clouds & wind tiles (secured via API backend proxy) + RainViewer radar
                 layersRef.current = {
                     dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { minZoom: 6, maxZoom: 20 }),
                     light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { minZoom: 6, maxZoom: 20 }),
                     sat: L.tileLayer('https://mt1.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}', { minZoom: 6, maxZoom: 20 }),
                     traffic: L.tileLayer('https://mt1.google.com/vt/lyrs=h,traffic&x={x}&y={y}&z={z}', { minZoom: 6, maxZoom: 20 }),
                     radar: L.tileLayer('https://tilecache.rainviewer.com/v2/radar/nowcast_5/512/{z}/{x}/{y}/2/1_1.png', { opacity: 0.75, minZoom: 6, maxNativeZoom: 6, maxZoom: 20, className: 'rain-radar-tile' }),
-                    clouds: L.tileLayer(`https://tile.openweathermap.org/map/clouds_new/{z}/{x}/{y}.png?appid=${openWeatherKey}`, { opacity: 0.85, minZoom: 6, maxZoom: 20, zIndex: 310 }),
-                    wind: L.tileLayer(`https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=${openWeatherKey}`, { opacity: 0.85, minZoom: 6, maxZoom: 20, zIndex: 320 })
+                    clouds: L.tileLayer(`${API}/weather/tile/clouds/{z}/{x}/{y}.png`, { opacity: 0.85, minZoom: 6, maxZoom: 20, zIndex: 310 }),
+                    wind: L.tileLayer(`${API}/weather/tile/wind/{z}/{x}/{y}.png`, { opacity: 0.85, minZoom: 6, maxZoom: 20, zIndex: 320 })
                 };
 
                 layersRef.current.dark.addTo(map); // default
@@ -1056,7 +1437,7 @@
                 // Add 3D Garage Hub Marker (using garage_3D.png from WebAssets)
                 const garageIcon = L.divIcon({
                     className: '',
-                    html: `<div class='flex flex-col items-center group cursor-pointer drop-shadow-[0_12px_24px_rgba(249,115,22,0.7)] hover:scale-105 transition-transform'>
+                    html: `<div id='garage-hub-container' class='flex flex-col items-center group cursor-pointer drop-shadow-[0_12px_24px_rgba(249,115,22,0.7)] hover:scale-105 transition-all duration-300 origin-bottom'>
                      <div class='w-24 h-24 relative flex items-center justify-center bg-transparent p-0 overflow-visible'>
                          <img src='garage_3D.png' class='w-full h-full object-contain filter drop-shadow-[0_10px_20px_rgba(249,115,22,0.8)]' alt='Garage Hub'/>
                      </div>
@@ -1070,6 +1451,28 @@
                 });
                 const hqMarker = L.marker([14.871116, 121.048088], { icon: garageIcon, zIndexOffset: 1000 }).addTo(map);
                 garageMarkerRef.current = hqMarker;
+
+                // Dynamic zoom scaling handler to keep Garage Hub icon proportional when zooming out
+                const updateGarageScale = () => {
+                    const z = map.getZoom();
+                    const el = document.getElementById('garage-hub-container');
+                    if (!el) return;
+                    if (z <= 7) {
+                        el.style.transform = 'scale(0.35)';
+                    } else if (z <= 9) {
+                        el.style.transform = 'scale(0.48)';
+                    } else if (z <= 11) {
+                        el.style.transform = 'scale(0.68)';
+                    } else if (z <= 12) {
+                        el.style.transform = 'scale(0.85)';
+                    } else {
+                        el.style.transform = 'scale(1.0)';
+                    }
+                };
+
+                map.on('zoom', updateGarageScale);
+                map.on('zoomend', updateGarageScale);
+                setTimeout(updateGarageScale, 100);
 
                 return () => { map.remove(); mapInst.current = null; };
             }, []);
@@ -1544,6 +1947,10 @@
                 // Remove markers for vehicles parked inside garage or removed
                 Object.keys(markersRef.current).forEach(id => {
                     if (!activeIds.has(String(id))) {
+                        if (animFramesRef.current[id]) {
+                            cancelAnimationFrame(animFramesRef.current[id]);
+                            delete animFramesRef.current[id];
+                        }
                         m.removeLayer(markersRef.current[id]);
                         delete markersRef.current[id];
                     }
@@ -1553,27 +1960,42 @@
                 activeVehicles.forEach(v => {
                     const hex = statusColorMap[v.status.toLowerCase()]?.hex || '#60a5fa';
                     const isSelected = v.id === selectedVehicleId;
-                    const iconUrl = v.mapIconUrl || v.image;
-                    const hasCustomIcon = iconUrl && iconUrl.trim() && iconUrl !== 'null';
+                    
+                    // Strictly use 3D Map Marker Icon only (NEVER use media/card photo)
+                    const rawIcon = (v.map3DIconUrl || v.mapIconUrl || v.map_icon_url || v.model_3d_url || v.model3dUrl || '').trim();
+                    const isCardPhoto = Boolean(rawIcon && (rawIcon.includes('/uploads/vehicles/') || rawIcon === (v.image || '').trim()));
+                    const hasCustomIcon = Boolean(
+                        rawIcon && 
+                        !isCardPhoto &&
+                        rawIcon !== 'null' && 
+                        rawIcon !== 'undefined' && 
+                        rawIcon.length > 10 && 
+                        (rawIcon.startsWith('data:image/') || rawIcon.startsWith('http://') || rawIcon.startsWith('https://') || rawIcon.startsWith('/uploads/3d/'))
+                    );
+                    const iconImage = hasCustomIcon ? rawIcon : '';
+                    const headingDeg = v.heading || v.bearing || v.direction || 0;
 
                     const iconHtml = `
-                <div class='relative flex flex-col items-center cursor-pointer group' style='perspective: 500px;'>
+                <div class='relative flex flex-col items-center cursor-pointer group bg-transparent' style='perspective: 600px;'>
                     ${isSelected ? `<div class='absolute -inset-3 rounded-full border-2 animate-ping opacity-60 z-0' style='border-color: ${hex}'></div>` : ''}
                     
+                    <!-- Forward Headlight Beam Cone (Google Maps Style Front Navigation Light) -->
+                    <div class='absolute -top-7 left-1/2 -translate-x-1/2 pointer-events-none z-0' style='transform: rotate(${headingDeg}deg); transform-origin: center 48px; transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);'>
+                        <div style='width: 32px; height: 40px; background: radial-gradient(ellipse at bottom, rgba(56, 189, 248, 0.45) 0%, rgba(56, 189, 248, 0.12) 55%, transparent 85%); clip-path: polygon(25% 100%, 75% 100%, 100% 0%, 0% 0%);'></div>
+                    </div>
+
                     <!-- Isometric 3D Floor Shadow -->
-                    <div class='absolute bottom-3 w-12 h-5 rounded-[100%] bg-black/80 blur-[3px] transform rotateX(65deg) scale-110 z-0 shadow-2xl border border-black/40'></div>
+                    <div class='absolute bottom-3 w-12 h-5 rounded-[100%] bg-black/40 blur-[3px] transform rotateX(65deg) scale-110 z-0 shadow-2xl border border-black/20 pointer-events-none'></div>
                     
-                    <!-- Isometric 3D Vehicle Icon -->
-                    <div class='relative z-10 transition-all duration-300 transform ${isSelected ? 'scale-125 -translate-y-2' : 'group-hover:scale-110 group-hover:-translate-y-1'}'>
+                    <!-- Isometric 3D Vehicle Icon Wrapper with Smooth Rotation -->
+                    <div class='relative z-10 bg-transparent transform ${isSelected ? 'scale-125 -translate-y-2' : 'group-hover:scale-110 group-hover:-translate-y-1'}' style='transition: transform 0.3s ease;'>
                         ${hasCustomIcon ? `
-                            <div style='transform-style: preserve-3d; transform: rotateX(42deg) rotateZ(-22deg); filter: drop-shadow(0px 10px 10px rgba(0,0,0,0.75));'>
-                                <img src='${iconUrl}' class='w-14 h-14 object-contain filter drop-shadow-[0_8px_12px_rgba(0,0,0,0.8)] transition-all'/>
+                            <div class='bg-transparent flex items-center justify-center' style='transform-style: preserve-3d; filter: drop-shadow(0px 10px 10px rgba(0,0,0,0.6));'>
+                                <img src='${iconImage}' class='w-14 h-14 object-contain bg-transparent filter drop-shadow-[0_8px_12px_rgba(0,0,0,0.7)]' style='transform: rotate(${headingDeg}deg); transform-origin: center center; transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);' onerror="this.onerror=null; this.parentElement.innerHTML=\`${renderDefaultTopDownVehicleSvg(v, hex).replace(/\n/g, '').replace(/"/g, "'")}\`;"/>
                             </div>
                         ` : `
-                            <div class='w-11 h-11 rounded-full border-[2.5px] shadow-[0_8px_16px_rgba(0,0,0,0.4)] flex items-center justify-center overflow-hidden z-10 transition-transform' style='border-color: ${hex}; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(8px);'>
-                                <svg class='w-6 h-6' style='color:${hex}' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                                    <path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M8 17a2 2 0 100 4 2 2 0 000-4zm10 0a2 2 0 100 4 2 2 0 000-4zM4 9h16l-1.5 5h-13L4 9z'/>
-                                </svg>
+                            <div class='bg-transparent flex items-center justify-center' style='transform-style: preserve-3d; transform: rotate(${headingDeg}deg); transform-origin: center center; transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);'>
+                                ${renderDefaultTopDownVehicleSvg(v, hex)}
                             </div>
                         `}
                     </div>
@@ -1581,7 +2003,7 @@
                     <!-- Plate Label -->
                     <div class='mt-1 bg-[#0d0e17]/90 backdrop-blur-md border border-white/20 text-white px-2.5 py-0.5 rounded-full text-[9px] font-extrabold shadow-lg whitespace-nowrap z-10 tracking-wider flex items-center gap-1 border-b-2' style='border-bottom-color: ${hex}'>
                         <span class='w-1.5 h-1.5 rounded-full' style='background-color: ${hex}'></span>
-                        ${v.plateNumber}
+                        ${v.plateNumber || ''}
                     </div>
                 </div>
             `;
@@ -1589,14 +2011,53 @@
                     const icon = L.divIcon({ className: '', html: iconHtml, iconSize: [50, 70], iconAnchor: [25, 35] });
 
                     if (markersRef.current[v.id]) {
-                        markersRef.current[v.id].setLatLng(v.coordinates);
-                        markersRef.current[v.id].setIcon(icon);
+                        const existingMarker = markersRef.current[v.id];
+                        existingMarker.setIcon(icon);
+
+                        // Smooth programmatic GPS coordinate interpolation over 1.5s
+                        const curLatLng = existingMarker.getLatLng();
+                        const targetLat = v.coordinates[0];
+                        const targetLng = v.coordinates[1];
+                        const dLat = Math.abs(curLatLng.lat - targetLat);
+                        const dLng = Math.abs(curLatLng.lng - targetLng);
+
+                        if (dLat > 0.000005 || dLng > 0.000005) {
+                            if (animFramesRef.current[v.id]) {
+                                cancelAnimationFrame(animFramesRef.current[v.id]);
+                            }
+                            const startLat = curLatLng.lat;
+                            const startLng = curLatLng.lng;
+                            const startTime = performance.now();
+                            const duration = 1500;
+
+                            const step = (now) => {
+                                const elapsed = now - startTime;
+                                const progress = Math.min(1, elapsed / duration);
+                                const curL = startLat + (targetLat - startLat) * progress;
+                                const curG = startLng + (targetLng - startLng) * progress;
+                                existingMarker.setLatLng([curL, curG]);
+
+                                if (progress < 1) {
+                                    animFramesRef.current[v.id] = requestAnimationFrame(step);
+                                } else {
+                                    delete animFramesRef.current[v.id];
+                                }
+                            };
+                            animFramesRef.current[v.id] = requestAnimationFrame(step);
+                        }
                     } else {
                         const marker = L.marker(v.coordinates, { icon }).addTo(m);
                         marker.on('click', () => onSelectVehicle(v));
                         markersRef.current[v.id] = marker;
                     }
                 });
+
+                return () => {
+                    Object.keys(animFramesRef.current).forEach(id => {
+                        cancelAnimationFrame(animFramesRef.current[id]);
+                    });
+                    animFramesRef.current = {};
+                };
             }, [vehicles, selectedVehicleId]);
 
             // Focus selected vehicle
@@ -1735,12 +2196,12 @@
         };
 
         const formatHumanRisk = (riskRaw) => {
-            if (!riskRaw) return { label: 'MODERATE FLOOD', bg: 'bg-amber-500/20 text-amber-400 border border-amber-500/30' };
+            if (!riskRaw) return { label: 'MODERATE FLOOD', bg: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30' };
             const str = String(riskRaw).toLowerCase().trim();
-            if (str.includes('impassable')) return { label: 'IMPASSABLE (BAWAL DUMAAN)', bg: 'bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse' };
-            if (str.includes('severe')) return { label: 'SEVERE HAZARD', bg: 'bg-orange-500/20 text-orange-400 border border-orange-500/30' };
-            if (str.includes('moderate')) return { label: 'MODERATE FLOOD', bg: 'bg-amber-500/20 text-amber-400 border border-amber-500/30' };
-            return { label: str.toUpperCase(), bg: 'bg-blue-500/20 text-blue-400 border border-blue-500/30' };
+            if (str.includes('impassable')) return { label: 'IMPASSABLE (BAWAL DUMAAN)', bg: 'bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30 animate-pulse' };
+            if (str.includes('severe')) return { label: 'SEVERE HAZARD', bg: 'bg-orange-500/15 text-orange-700 dark:text-orange-300 border border-orange-500/30' };
+            if (str.includes('moderate')) return { label: 'MODERATE FLOOD', bg: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30' };
+            return { label: str.toUpperCase(), bg: 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30' };
         };
 
         // ─── LIVE WEATHER INTELLIGENCE & FLOOD DRAWER MODAL ───────────────────────────
@@ -1763,23 +2224,23 @@
                     <div className="bg-[var(--bg-secondary)] border border-[var(--border-color)] text-[var(--text-primary)] rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden relative animate-scale-up" onClick={e => e.stopPropagation()}>
 
                         {/* Header */}
-                        <div className="p-5 border-b border-[var(--border-color)] flex justify-between items-center bg-gradient-to-r from-blue-950/40 via-amber-950/30 to-orange-950/40 shrink-0">
+                        <div className="p-5 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-card)] shrink-0">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shadow-lg shadow-amber-500/20">
+                                <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-500 shadow-lg shadow-amber-500/10">
                                     <IconCloudRain sz={22} />
                                 </div>
                                 <div>
-                                    <h2 className="text-base font-black text-white flex items-center gap-2">
+                                    <h2 className="text-base font-black text-[var(--text-primary)] flex items-center gap-2">
                                         <span>Weather Radar & Flood Hazard Telematics</span>
-                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">PAGASA LIVE</span>
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-500/20 text-amber-600 dark:text-amber-300 border border-amber-500/30 animate-pulse">PAGASA LIVE</span>
                                     </h2>
-                                    <p className="text-xs text-[var(--text-muted)] font-medium flex items-center gap-1 mt-0.5">
-                                        <IconMapPin sz={12} className="text-orange-400 shrink-0" />
-                                        <span>Station Target: <strong>Rental Garage Hub (San Jose del Monte / Metro Manila)</strong></span>
+                                    <p className="text-xs text-[var(--text-secondary)] font-medium flex items-center gap-1 mt-0.5">
+                                        <IconMapPin sz={12} className="text-orange-500 shrink-0" />
+                                        <span>Station Target: <strong className="text-[var(--text-primary)]">Rental Garage Hub (San Jose del Monte / Metro Manila)</strong></span>
                                     </p>
                                 </div>
                             </div>
-                            <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10 text-gray-300 hover:text-white transition-colors"><IconX sz={18} /></button>
+                            <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"><IconX sz={18} /></button>
                         </div>
 
                         {/* Body Content */}
@@ -1788,35 +2249,35 @@
                             {/* Live Weather Metrics Dashboard Grid */}
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                 <div className="bg-[var(--bg-tertiary)] p-3.5 rounded-2xl border border-[var(--border-color)] flex flex-col justify-between">
-                                    <span className="text-[10px] font-bold uppercase text-[var(--text-muted)] tracking-wider flex items-center gap-1"><IconMapPin sz={10} className="text-orange-400" /> Garage Hub Temp</span>
-                                    <div className="text-2xl font-black text-amber-400 mt-1">{temp}°C</div>
-                                    <span className="text-[10px] text-gray-400 font-semibold mt-1">SJDM, MM (Humidity: {humidity}%)</span>
+                                    <span className="text-[10px] font-bold uppercase text-[var(--text-secondary)] tracking-wider flex items-center gap-1"><IconMapPin sz={10} className="text-orange-500" /> Garage Hub Temp</span>
+                                    <div className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1">{temp}°C</div>
+                                    <span className="text-[10px] text-[var(--text-secondary)] font-semibold mt-1">SJDM, MM (Humidity: {humidity}%)</span>
                                 </div>
                                 <div className="bg-[var(--bg-tertiary)] p-3.5 rounded-2xl border border-[var(--border-color)] flex flex-col justify-between">
-                                    <span className="text-[10px] font-bold uppercase text-[var(--text-muted)] tracking-wider">Precipitation</span>
-                                    <div className="text-2xl font-black text-blue-400 mt-1">{rain} <span className="text-xs font-normal">mm/h</span></div>
-                                    <span className="text-[10px] text-blue-300 font-semibold mt-1">Monsoon Rain Surge</span>
+                                    <span className="text-[10px] font-bold uppercase text-[var(--text-secondary)] tracking-wider">Precipitation</span>
+                                    <div className="text-2xl font-black text-blue-600 dark:text-blue-400 mt-1">{rain} <span className="text-xs font-normal">mm/h</span></div>
+                                    <span className="text-[10px] text-blue-600 dark:text-blue-300 font-semibold mt-1">Monsoon Rain Surge</span>
                                 </div>
                                 <div className="bg-[var(--bg-tertiary)] p-3.5 rounded-2xl border border-[var(--border-color)] flex flex-col justify-between">
-                                    <span className="text-[10px] font-bold uppercase text-[var(--text-muted)] tracking-wider">PAGASA Alert</span>
-                                    <div className="text-xs font-black text-orange-400 mt-1">Yellow Advisory</div>
-                                    <span className="text-[10px] text-orange-300 font-semibold mt-1">High Flood Hazard</span>
+                                    <span className="text-[10px] font-bold uppercase text-[var(--text-secondary)] tracking-wider">PAGASA Alert</span>
+                                    <div className="text-xs font-black text-orange-600 dark:text-orange-400 mt-1">Yellow Advisory</div>
+                                    <span className="text-[10px] text-orange-600 dark:text-orange-300 font-semibold mt-1">High Flood Hazard</span>
                                 </div>
                                 <div className="bg-[var(--bg-tertiary)] p-3.5 rounded-2xl border border-[var(--border-color)] flex flex-col justify-between">
-                                    <span className="text-[10px] font-bold uppercase text-[var(--text-muted)] tracking-wider">Flood Zones</span>
-                                    <div className="text-2xl font-black text-red-400 mt-1">{zonesList.length} <span className="text-xs font-normal">Active</span></div>
-                                    <span className="text-[10px] text-red-300 font-semibold mt-1">Impassable Areas</span>
+                                    <span className="text-[10px] font-bold uppercase text-[var(--text-secondary)] tracking-wider">Flood Zones</span>
+                                    <div className="text-2xl font-black text-red-600 dark:text-red-400 mt-1">{zonesList.length} <span className="text-xs font-normal">Active</span></div>
+                                    <span className="text-[10px] text-red-600 dark:text-red-300 font-semibold mt-1">Impassable Areas</span>
                                 </div>
                             </div>
 
                             {/* Active Emergency Submersion Alert Banner if vehicles in flood risk */}
-                            <div className="p-4 rounded-2xl bg-red-950/40 border border-red-500/40 flex flex-col gap-3 shadow-xl">
+                            <div className="p-4 rounded-2xl bg-red-500/10 dark:bg-red-950/40 border border-red-500/30 dark:border-red-500/40 flex flex-col gap-3 shadow-xl">
                                 <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2 text-xs font-bold text-red-400">
-                                        <IconAlertTriangle sz={18} className="text-red-400 animate-bounce shrink-0" />
+                                    <div className="flex items-center gap-2 text-xs font-bold text-red-600 dark:text-red-400">
+                                        <IconAlertTriangle sz={18} className="text-red-600 dark:text-red-400 animate-bounce shrink-0" />
                                         <span>CRITICAL SUBMERSION TELEMATICS: 1 Active Vehicle in España Blvd Flood Polygon (Tire Deep)</span>
                                     </div>
-                                    <span className="text-[10px] font-extrabold bg-red-500/20 text-red-300 px-2 py-0.5 rounded border border-red-500/30">Ingress Risk: HIGH</span>
+                                    <span className="text-[10px] font-extrabold bg-red-500/15 text-red-700 dark:text-red-300 px-2 py-0.5 rounded border border-red-500/30">Ingress Risk: HIGH</span>
                                 </div>
 
                                 {/* 1-Click Emergency Protocol Action Buttons */}
@@ -1844,8 +2305,8 @@
 
                             {/* Active Flood Hazard Zones List */}
                             <div className="flex flex-col gap-3">
-                                <h3 className="text-xs font-extrabold text-[var(--text-secondary)] uppercase tracking-wider flex items-center gap-2">
-                                    <IconMapPin sz={14} className="text-orange-400" />
+                                <h3 className="text-xs font-extrabold text-[var(--text-primary)] uppercase tracking-wider flex items-center gap-2">
+                                    <IconMapPin sz={14} className="text-orange-500" />
                                     <span>Active Metro Manila Flood Hazard Zones</span>
                                 </h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1855,16 +2316,16 @@
                                         return (
                                             <div key={z.id || z.name} className="p-3.5 rounded-2xl bg-[var(--bg-tertiary)] border border-[var(--border-color)] flex flex-col justify-between gap-2">
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-xs font-black text-white">{z.zone_name || z.name}</span>
+                                                    <span className="text-xs font-black text-[var(--text-primary)]">{z.zone_name || z.name}</span>
                                                     <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${riskObj.bg}`}>
                                                         {riskObj.label}
                                                     </span>
                                                 </div>
-                                                <div className="text-xs text-gray-300 font-semibold flex items-center gap-1.5">
-                                                    <span className="text-amber-400 font-bold">Water Depth:</span> {depthText}
+                                                <div className="text-xs text-[var(--text-secondary)] font-semibold flex items-center gap-1.5">
+                                                    <span className="text-amber-600 dark:text-amber-400 font-bold">Water Depth:</span> {depthText}
                                                 </div>
                                                 <div className="text-[11px] text-[var(--text-muted)] font-medium">
-                                                    <span className="text-emerald-400 font-bold">Reroute:</span> {z.recommended_reroute || z.reroute}
+                                                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">Reroute:</span> {z.recommended_reroute || z.reroute}
                                                 </div>
                                             </div>
                                         );
@@ -1875,8 +2336,8 @@
                             {/* 24-Hour Precipitation Timeline Visual */}
                             <div className="bg-[var(--bg-tertiary)] p-4 rounded-2xl border border-[var(--border-color)] flex flex-col gap-3">
                                 <div className="flex justify-between items-center">
-                                    <span className="text-xs font-extrabold text-[var(--text-secondary)] uppercase tracking-wider">24-Hour Precipitation Forecast (mm/hr)</span>
-                                    <span className="text-[10px] text-amber-400 font-bold">Peak Surge: 17:00 - 20:00 (25 mm/h)</span>
+                                    <span className="text-xs font-extrabold text-[var(--text-primary)] uppercase tracking-wider">24-Hour Precipitation Forecast (mm/hr)</span>
+                                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">Peak Surge: 17:00 - 20:00 (25 mm/h)</span>
                                 </div>
                                 <div className="flex items-end gap-1.5 h-32 pt-10 pb-1 border-b border-[var(--border-color)] overflow-visible">
                                     {[2, 3, 4, 8, 12, 18, 22, 15, 9, 5, 3, 2, 1, 4, 7, 14, 20, 25, 18, 10, 6, 4, 2, 1].map((hVal, idx) => {
@@ -1919,7 +2380,7 @@
                                                 ></div>
 
                                                 {/* HOUR LABEL */}
-                                                <span className="text-[8px] text-[var(--text-muted)] font-mono shrink-0 group-hover:text-amber-400 group-hover:font-bold transition-colors">{idx}:00</span>
+                                                <span className="text-[8px] text-[var(--text-secondary)] font-mono shrink-0 group-hover:text-orange-500 group-hover:font-bold transition-colors">{idx}:00</span>
                                             </div>
                                         );
                                     })}
@@ -2083,27 +2544,35 @@
                 }
             }
 
-            const [form, setForm] = useState({
-                vehicleId: initialId,
-                brand: vehicleToEdit?.brand || vehicleToEdit?.Brand || '',
-                model: vehicleToEdit?.model || vehicleToEdit?.Model || '',
-                plateNumber: vehicleToEdit?.plateNumber || vehicleToEdit?.plate_no || vehicleToEdit?.plateNo || vehicleToEdit?.PlateNumber || '',
-                type: vehicleToEdit?.type || vehicleToEdit?.Type || 'Car',
-                engineCc: vehicleToEdit?.engineCc || vehicleToEdit?.cc || vehicleToEdit?.EngineCc || 1500,
-                dailyRatePHP: vehicleToEdit?.dailyRatePHP || vehicleToEdit?.rate_per_day || vehicleToEdit?.ratePerDay || vehicleToEdit?.RatePerDay || 2500,
-                rateWithDriverPHP: vehicleToEdit?.rateWithDriverPHP || vehicleToEdit?.rate_with_driver || vehicleToEdit?.rateWithDriver || vehicleToEdit?.RateWithDriver || 3500,
-                seatCapacity: vehicleToEdit?.seatCapacity || vehicleToEdit?.seat_capacity || vehicleToEdit?.SeatCapacity || 5,
-                transmission: vehicleToEdit?.transmission || vehicleToEdit?.Transmission || 'Automatic',
-                status: vehicleToEdit?.status || vehicleToEdit?.Status || 'available',
-                description: vehicleToEdit?.description || vehicleToEdit?.Description || '',
-                image: vehicleToEdit?.image || vehicleToEdit?.photo_url || vehicleToEdit?.photoUrl || vehicleToEdit?.PhotoUrl || '',
-                mapIconUrl: vehicleToEdit?.mapIconUrl || vehicleToEdit?.map_icon_url || vehicleToEdit?.model_3d_url || vehicleToEdit?.model3dUrl || '',
-                ltoExpiryDate: formatDateSafe(vehicleToEdit?.lto_expiry_date || vehicleToEdit?.ltoExpiryDate || vehicleToEdit?.documents?.ltoRegistrationExpiry, '2026-10-15'),
-                insuranceExpiryDate: formatDateSafe(vehicleToEdit?.insurance_expiry_date || vehicleToEdit?.insuranceExpiryDate || vehicleToEdit?.documents?.insuranceExpiry, '2026-11-20'),
-                orCrUrl: vehicleToEdit?.orCrUrl || vehicleToEdit?.or_cr_url || vehicleToEdit?.OrCrUrl || vehicleToEdit?.documents?.orCrUrl || vehicleToEdit?.documents?.or_cr_url || '',
-                insuranceUrl: vehicleToEdit?.insuranceUrl || vehicleToEdit?.insurance_url || vehicleToEdit?.InsuranceUrl || vehicleToEdit?.documents?.insuranceUrl || vehicleToEdit?.documents?.insurance_url || '',
-                color: vehicleToEdit?.color || vehicleToEdit?.Color || 'Pearl White'
+            const getInitialForm = (v) => ({
+                vehicleId: v?.id || v?.vehicle_id || v?.vehicleId || v?.VehicleId || initialId,
+                brand: v?.brand || v?.Brand || '',
+                model: v?.model || v?.Model || '',
+                plateNumber: v?.plateNumber || v?.plate_no || v?.plateNo || v?.PlateNumber || '',
+                type: v?.type || v?.Type || 'Car',
+                engineCc: v?.engineCc || v?.cc || v?.EngineCc || 1500,
+                dailyRatePHP: v?.dailyRatePHP || v?.rate_per_day || v?.ratePerDay || v?.RatePerDay || 2500,
+                rateWithDriverPHP: v?.rateWithDriverPHP || v?.rate_with_driver || v?.rateWithDriver || v?.RateWithDriver || 3500,
+                seatCapacity: v?.seatCapacity || v?.seat_capacity || v?.SeatCapacity || 5,
+                transmission: v?.transmission || v?.Transmission || 'Automatic',
+                status: v?.status || v?.Status || 'available',
+                description: v?.description || v?.Description || '',
+                image: v?.image || v?.photo_url || v?.photoUrl || v?.PhotoUrl || '',
+                mapIconUrl: v?.mapIconUrl || v?.map_icon_url || v?.map3DIconUrl || v?.map3dIconUrl || v?.model_3d_url || v?.model3dUrl || v?.Model3dUrl || v?.Model3DUrl || '',
+                ltoExpiryDate: formatDateSafe(v?.lto_expiry_date || v?.ltoExpiryDate || v?.documents?.ltoRegistrationExpiry, '2026-10-15'),
+                insuranceExpiryDate: formatDateSafe(v?.insurance_expiry_date || v?.insuranceExpiryDate || v?.documents?.insuranceExpiry, '2026-11-20'),
+                orCrUrl: v?.orCrUrl || v?.or_cr_url || v?.OrCrUrl || v?.documents?.orCrUrl || v?.documents?.or_cr_url || '',
+                insuranceUrl: v?.insuranceUrl || v?.insurance_url || v?.InsuranceUrl || v?.documents?.insuranceUrl || v?.documents?.insurance_url || '',
+                color: v?.color || v?.Color || 'Pearl White'
             });
+
+            const [form, setForm] = useState(() => getInitialForm(vehicleToEdit));
+
+            useEffect(() => {
+                if (vehicleToEdit) {
+                    setForm(getInitialForm(vehicleToEdit));
+                }
+            }, [vehicleToEdit]);
 
             const [creationMode, setCreationMode] = useState('custom'); // 'custom' | 'preset'
             const [selectedBrandPreset, setSelectedBrandPreset] = useState('');
@@ -2168,6 +2637,13 @@
             const iconInputRef = useRef(null);
             const orCrInputRef = useRef(null);
             const insuranceInputRef = useRef(null);
+
+            const [uploadProgress, setUploadProgress] = useState({
+                image: { active: false, percent: 0, error: '' },
+                mapIconUrl: { active: false, percent: 0, error: '' },
+                orCrUrl: { active: false, percent: 0, error: '' },
+                insuranceUrl: { active: false, percent: 0, error: '' }
+            });
 
             const handleOpenSuggest = async () => {
                 const typeLower = (form.type || '').toLowerCase();
@@ -2269,11 +2745,16 @@
                         }
 
                         ctx.putImageData(imgData, 0, 0);
-                        onComplete(canvas.toDataURL('image/png'));
+                        onComplete(canvas.toDataURL('image/png'), null);
                     } catch (e) {
                         console.error("Canvas transparent processing failed:", e);
-                        if (typeof fileOrUrl === 'string') onComplete(fileOrUrl);
+                        if (typeof fileOrUrl === 'string') onComplete(fileOrUrl, null);
+                        else onComplete(null, "Could not extract transparent marker background: " + (e?.message || e));
                     }
+                };
+
+                img.onerror = () => {
+                    onComplete(null, "Failed to load image for transparent processing.");
                 };
 
                 if (typeof fileOrUrl === 'string') {
@@ -2286,6 +2767,7 @@
                         img.src = e.target.result;
                         img.onload = onLoad;
                     };
+                    reader.onerror = () => onComplete(null, "Failed to read file.");
                     reader.readAsDataURL(fileOrUrl);
                 }
             };
@@ -2293,11 +2775,30 @@
             const handleMediaUpload = (e) => {
                 const file = e.target.files && e.target.files[0];
                 if (!file) return;
-                if (file.type.startsWith('image/')) {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                        const img = new Image();
-                        img.onload = () => {
+
+                if (!file.type.startsWith('image/')) {
+                    setUploadProgress(p => ({ ...p, image: { active: false, percent: 0, error: 'Invalid file format. Please upload an image (JPG, PNG, WEBP).' } }));
+                    return;
+                }
+                if (file.size > 10 * 1024 * 1024) {
+                    setUploadProgress(p => ({ ...p, image: { active: false, percent: 0, error: 'Image is too large. Please select a file under 10MB.' } }));
+                    return;
+                }
+
+                setUploadProgress(p => ({ ...p, image: { active: true, percent: 20, error: '' } }));
+
+                const reader = new FileReader();
+                reader.onprogress = (pe) => {
+                    if (pe.lengthComputable) {
+                        const pct = Math.round((pe.loaded / pe.total) * 60) + 15;
+                        setUploadProgress(p => ({ ...p, image: { active: true, percent: Math.min(80, pct), error: '' } }));
+                    }
+                };
+                reader.onload = (ev) => {
+                    setUploadProgress(p => ({ ...p, image: { active: true, percent: 85, error: '' } }));
+                    const img = new Image();
+                    img.onload = () => {
+                        try {
                             const canvas = document.createElement('canvas');
                             let width = img.width || 800;
                             let height = img.height || 800;
@@ -2316,83 +2817,203 @@
                             const ctx = canvas.getContext('2d');
                             ctx.drawImage(img, 0, 0, width, height);
                             const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
-                            setForm(f => ({ ...f, image: compressedDataUrl }));
-                        };
-                        img.src = ev.target.result;
+
+                            setUploadProgress(p => ({ ...p, image: { active: true, percent: 100, error: '' } }));
+                            setTimeout(() => {
+                                setForm(f => ({ ...f, image: compressedDataUrl }));
+                                setUploadProgress(p => ({ ...p, image: { active: false, percent: 0, error: '' } }));
+                            }, 450);
+                        } catch (err) {
+                            setUploadProgress(p => ({ ...p, image: { active: false, percent: 0, error: 'Compression error: ' + (err?.message || err) } }));
+                        }
                     };
-                    reader.readAsDataURL(file);
-                } else {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                        setForm(f => ({ ...f, image: ev.target.result }));
+                    img.onerror = () => {
+                        setUploadProgress(p => ({ ...p, image: { active: false, percent: 0, error: 'Failed to load image file. File may be corrupted.' } }));
                     };
-                    reader.readAsDataURL(file);
-                }
+                    img.src = ev.target.result;
+                };
+                reader.onerror = () => {
+                    setUploadProgress(p => ({ ...p, image: { active: false, percent: 0, error: 'Error reading file from disk.' } }));
+                };
+                reader.readAsDataURL(file);
             };
 
             const handleIconUpload = (e) => {
                 const file = e.target.files && e.target.files[0];
-                if (file) {
-                    processTransparentImage(file, (transparentDataUrl) => {
-                        setForm(f => ({ ...f, mapIconUrl: transparentDataUrl }));
-                    });
+                if (!file) return;
+
+                if (!file.type.startsWith('image/')) {
+                    setUploadProgress(p => ({ ...p, mapIconUrl: { active: false, percent: 0, error: 'Invalid icon format. Please upload an image.' } }));
+                    return;
                 }
+                if (file.size > 8 * 1024 * 1024) {
+                    setUploadProgress(p => ({ ...p, mapIconUrl: { active: false, percent: 0, error: 'Icon file is too large (max 8MB).' } }));
+                    return;
+                }
+
+                setUploadProgress(p => ({ ...p, mapIconUrl: { active: true, percent: 25, error: '' } }));
+                setTimeout(() => setUploadProgress(p => ({ ...p, mapIconUrl: { active: true, percent: 70, error: '' } })), 180);
+
+                processTransparentImage(file, (transparentDataUrl, err) => {
+                    if (err || !transparentDataUrl) {
+                        setUploadProgress(p => ({ ...p, mapIconUrl: { active: false, percent: 0, error: err || 'Failed to process 3D marker icon.' } }));
+                    } else {
+                        setUploadProgress(p => ({ ...p, mapIconUrl: { active: true, percent: 100, error: '' } }));
+                        setTimeout(() => {
+                            setForm(f => ({ ...f, mapIconUrl: transparentDataUrl }));
+                            setUploadProgress(p => ({ ...p, mapIconUrl: { active: false, percent: 0, error: '' } }));
+                        }, 450);
+                    }
+                });
             };
 
             const handleAuto3DTransparent = () => {
                 const targetSrc = form.mapIconUrl || form.image;
                 if (!targetSrc) {
-                    alert("Please paste an Image URL or Browse a file first.");
+                    setUploadProgress(p => ({ ...p, mapIconUrl: { active: false, percent: 0, error: 'Upload a Vehicle Photo first or browse an image to convert.' } }));
                     return;
                 }
-                processTransparentImage(targetSrc, (transparentDataUrl) => {
-                    setForm(f => ({ ...f, mapIconUrl: transparentDataUrl }));
-                    alert("Success! Background automatically removed & converted to 3D Transparent Icon.");
+                setUploadProgress(p => ({ ...p, mapIconUrl: { active: true, percent: 30, error: '' } }));
+                setTimeout(() => setUploadProgress(p => ({ ...p, mapIconUrl: { active: true, percent: 75, error: '' } })), 220);
+
+                processTransparentImage(targetSrc, (transparentDataUrl, err) => {
+                    if (err || !transparentDataUrl) {
+                        setUploadProgress(p => ({ ...p, mapIconUrl: { active: false, percent: 0, error: err || 'Background removal failed.' } }));
+                    } else {
+                        setUploadProgress(p => ({ ...p, mapIconUrl: { active: true, percent: 100, error: '' } }));
+                        setTimeout(() => {
+                            setForm(f => ({ ...f, mapIconUrl: transparentDataUrl }));
+                            setUploadProgress(p => ({ ...p, mapIconUrl: { active: false, percent: 0, error: '' } }));
+                        }, 450);
+                    }
                 });
+            };
+
+            const [isRotating, setIsRotating] = useState(false);
+
+            const rotateMarkerImage = (angleDeltaDeg) => {
+                const src = form.mapIconUrl;
+                if (!src || isRotating) return;
+                setIsRotating(true);
+                const img = new Image();
+                img.crossOrigin = 'Anonymous';
+                img.onload = () => {
+                    try {
+                        const rad = (angleDeltaDeg * Math.PI) / 180;
+                        const sin = Math.abs(Math.sin(rad));
+                        const cos = Math.abs(Math.cos(rad));
+                        const origW = img.naturalWidth || img.width || 200;
+                        const origH = img.naturalHeight || img.height || 200;
+                        const newW = Math.round(origW * cos + origH * sin);
+                        const newH = Math.round(origW * sin + origH * cos);
+
+                        const canvas = document.createElement('canvas');
+                        canvas.width = Math.max(newW, 32);
+                        canvas.height = Math.max(newH, 32);
+                        const ctx = canvas.getContext('2d');
+                        ctx.imageSmoothingEnabled = true;
+                        ctx.imageSmoothingQuality = 'high';
+
+                        ctx.translate(canvas.width / 2, canvas.height / 2);
+                        ctx.rotate(rad);
+                        ctx.drawImage(img, -origW / 2, -origH / 2);
+
+                        const rotatedDataUrl = canvas.toDataURL('image/png');
+                        setForm(f => ({ ...f, mapIconUrl: rotatedDataUrl }));
+                    } catch (err) {
+                        console.error('Marker rotation error:', err);
+                    } finally {
+                        setIsRotating(false);
+                    }
+                };
+                img.onerror = () => setIsRotating(false);
+                img.src = src;
             };
 
             const handleDocUpload = (e, fieldName) => {
                 const file = e.target.files && e.target.files[0];
                 if (!file) return;
 
-                if (file.type.startsWith('image/')) {
+                const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+                const isImg = file.type.startsWith('image/');
+                if (!isPdf && !isImg) {
+                    setUploadProgress(p => ({ ...p, [fieldName]: { active: false, percent: 0, error: 'Invalid document format. Please upload a PDF or image file.' } }));
+                    return;
+                }
+
+                if (file.size > 8 * 1024 * 1024) {
+                    setUploadProgress(p => ({ ...p, [fieldName]: { active: false, percent: 0, error: 'Document is too large. Max file size is 8MB.' } }));
+                    return;
+                }
+
+                setUploadProgress(p => ({ ...p, [fieldName]: { active: true, percent: 25, error: '' } }));
+
+                if (isImg) {
                     const reader = new FileReader();
+                    reader.onprogress = (pe) => {
+                        if (pe.lengthComputable) {
+                            const pct = Math.round((pe.loaded / pe.total) * 60) + 20;
+                            setUploadProgress(p => ({ ...p, [fieldName]: { active: true, percent: Math.min(85, pct), error: '' } }));
+                        }
+                    };
                     reader.onload = (ev) => {
                         const img = new Image();
                         img.onload = () => {
-                            const canvas = document.createElement('canvas');
-                            let width = img.width || 800;
-                            let height = img.height || 800;
-                            const MAX_DIM = 1200;
-
-                            if (width > MAX_DIM || height > MAX_DIM) {
-                                if (width > height) {
-                                    height = Math.round((height * MAX_DIM) / width);
-                                    width = MAX_DIM;
-                                } else {
-                                    width = Math.round((width * MAX_DIM) / height);
-                                    height = MAX_DIM;
+                            try {
+                                const canvas = document.createElement('canvas');
+                                let width = img.width || 800;
+                                let height = img.height || 800;
+                                const MAX_DIM = 1200;
+                                if (width > MAX_DIM || height > MAX_DIM) {
+                                    if (width > height) {
+                                        height = Math.round((height * MAX_DIM) / width);
+                                        width = MAX_DIM;
+                                    } else {
+                                        width = Math.round((width * MAX_DIM) / height);
+                                        height = MAX_DIM;
+                                    }
                                 }
-                            }
+                                canvas.width = width;
+                                canvas.height = height;
+                                const ctx = canvas.getContext('2d');
+                                ctx.drawImage(img, 0, 0, width, height);
+                                const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
 
-                            canvas.width = width;
-                            canvas.height = height;
-                            const ctx = canvas.getContext('2d');
-                            ctx.drawImage(img, 0, 0, width, height);
-                            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
-                            setForm(f => ({ ...f, [fieldName]: compressedDataUrl }));
+                                setUploadProgress(p => ({ ...p, [fieldName]: { active: true, percent: 100, error: '' } }));
+                                setTimeout(() => {
+                                    setForm(f => ({ ...f, [fieldName]: compressedDataUrl }));
+                                    setUploadProgress(p => ({ ...p, [fieldName]: { active: false, percent: 0, error: '' } }));
+                                }, 450);
+                            } catch (err) {
+                                setUploadProgress(p => ({ ...p, [fieldName]: { active: false, percent: 0, error: 'Image compression failed: ' + (err?.message || err) } }));
+                            }
+                        };
+                        img.onerror = () => {
+                            setUploadProgress(p => ({ ...p, [fieldName]: { active: false, percent: 0, error: 'Failed to load document image file.' } }));
                         };
                         img.src = ev.target.result;
                     };
+                    reader.onerror = () => {
+                        setUploadProgress(p => ({ ...p, [fieldName]: { active: false, percent: 0, error: 'Failed to read file from disk.' } }));
+                    };
                     reader.readAsDataURL(file);
                 } else {
-                    if (file.size > 4 * 1024 * 1024) {
-                        alert("Document file is too large. Please upload a file under 4MB.");
-                        return;
-                    }
                     const reader = new FileReader();
+                    reader.onprogress = (pe) => {
+                        if (pe.lengthComputable) {
+                            const pct = Math.round((pe.loaded / pe.total) * 70) + 20;
+                            setUploadProgress(p => ({ ...p, [fieldName]: { active: true, percent: Math.min(90, pct), error: '' } }));
+                        }
+                    };
                     reader.onload = (ev) => {
-                        setForm(f => ({ ...f, [fieldName]: ev.target.result }));
+                        setUploadProgress(p => ({ ...p, [fieldName]: { active: true, percent: 100, error: '' } }));
+                        setTimeout(() => {
+                            setForm(f => ({ ...f, [fieldName]: ev.target.result }));
+                            setUploadProgress(p => ({ ...p, [fieldName]: { active: false, percent: 0, error: '' } }));
+                        }, 450);
+                    };
+                    reader.onerror = () => {
+                        setUploadProgress(p => ({ ...p, [fieldName]: { active: false, percent: 0, error: 'Failed to read PDF document.' } }));
                     };
                     reader.readAsDataURL(file);
                 }
@@ -2855,75 +3476,428 @@
                                     </div>
                                 </div>
 
-                                {/* Vehicle Media Gallery Uploader */}
-                                <div>
-                                    <div className="flex justify-between items-center mb-2">
+                                {/* 1. Vehicle Photo / Media Drag & Drop Dropzone with Live Preview */}
+                                <div className="space-y-1.5">
+                                    <div className="flex justify-between items-center">
                                         <label className="text-xs font-bold text-[var(--text-secondary)]">Vehicle Photo / Media</label>
-                                        <button type="button" onClick={() => mediaInputRef.current?.click()} className="px-3 py-1.5 rounded-xl bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/30 hover:bg-orange-500/20 font-bold text-xs transition-all flex items-center gap-1">
-                                            + Add Media
-                                        </button>
                                         <input type="file" ref={mediaInputRef} onChange={handleMediaUpload} accept="image/*" className="hidden" />
                                     </div>
-                                    <input type="text" value={form.image} onChange={e => setForm({ ...form, image: e.target.value })} className="w-full p-2.5 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none" placeholder="Paste photo URL or click Add Media..." />
+
+                                    {/* Upload Progress Bar (0-100%) */}
+                                    {uploadProgress.image?.active && (
+                                        <div className="p-3 rounded-2xl bg-[var(--bg-tertiary)] border border-orange-500/40 space-y-2 animate-fade-in">
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                                                    <span className="animate-spin text-orange-500"><IconRefreshCw sz={13} /></span>
+                                                    <span>{uploadProgress.image.percent < 100 ? 'Uploading & Optimizing Photo...' : 'Upload Complete!'}</span>
+                                                </span>
+                                                <span className="font-black text-orange-500">{uploadProgress.image.percent}%</span>
+                                            </div>
+                                            <div className="w-full h-2 rounded-full bg-slate-700/40 overflow-hidden relative">
+                                                <div
+                                                    className="h-full bg-gradient-to-r from-amber-500 via-orange-500 to-orange-400 rounded-full transition-all duration-300 ease-out"
+                                                    style={{ width: `${uploadProgress.image.percent}%` }}
+                                                ></div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Upload Error Alert */}
+                                    {uploadProgress.image?.error && (
+                                        <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 text-xs flex items-center justify-between gap-2 animate-fade-in">
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                <IconAlertTriangle sz={14} className="shrink-0 text-red-500" />
+                                                <span className="truncate">{uploadProgress.image.error}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setUploadProgress(p => ({ ...p, image: { active: false, percent: 0, error: '' } }))}
+                                                className="text-red-400 hover:text-red-600 shrink-0 text-[10px] font-bold uppercase underline cursor-pointer"
+                                            >
+                                                Dismiss
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {!uploadProgress.image?.active && form.image ? (
+                                        <div className="relative rounded-2xl overflow-hidden border border-orange-500/40 bg-black/40 p-1.5 flex items-center gap-3">
+                                            <div className="w-24 h-16 rounded-xl overflow-hidden bg-[var(--bg-tertiary)] shrink-0 border border-white/10">
+                                                <img src={form.image} alt="Vehicle Preview" className="w-full h-full object-cover" />
+                                            </div>
+                                            <div className="flex-1 min-w-0 pr-2">
+                                                <div className="text-xs font-black text-[var(--text-primary)] truncate">Vehicle Main Photo</div>
+                                                <div className="text-[10px] text-emerald-500 font-bold flex items-center gap-1 mt-0.5">
+                                                    <IconCheck sz={12} /> Image Ready
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 shrink-0 pr-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => mediaInputRef.current?.click()}
+                                                    className="px-2.5 py-1.5 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 text-[11px] font-bold transition-all flex items-center gap-1"
+                                                    title="Change Photo"
+                                                >
+                                                    <IconEdit sz={12} /> Change
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setForm(f => ({ ...f, image: '' }))}
+                                                    className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30 transition-all"
+                                                    title="Remove Photo"
+                                                >
+                                                    <IconTrash sz={13} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : !uploadProgress.image?.active ? (
+                                        <div
+                                            onClick={() => mediaInputRef.current?.click()}
+                                            onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-orange-500', 'bg-orange-500/10'); }}
+                                            onDragLeave={(e) => { e.preventDefault(); e.currentTarget.classList.remove('border-orange-500', 'bg-orange-500/10'); }}
+                                            onDrop={(e) => {
+                                                e.preventDefault();
+                                                e.currentTarget.classList.remove('border-orange-500', 'bg-orange-500/10');
+                                                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                                                    const fakeEv = { target: { files: e.dataTransfer.files } };
+                                                    handleMediaUpload(fakeEv);
+                                                }
+                                            }}
+                                            className="border-2 border-dashed border-[var(--border-color)] hover:border-orange-500/60 p-4 rounded-2xl text-center cursor-pointer transition-all bg-[var(--bg-tertiary)]/40 hover:bg-orange-500/5 flex flex-col items-center justify-center gap-1.5 group select-none"
+                                        >
+                                            <div className="w-10 h-10 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                                <IconUpload sz={18} />
+                                            </div>
+                                            <div className="text-xs font-bold text-[var(--text-primary)]">Drag & drop vehicle photo here, or <span className="text-orange-500 underline">browse</span></div>
+                                            <div className="text-[10px] text-[var(--text-muted)]">Supports JPG, PNG, WEBP (Auto-optimized)</div>
+                                        </div>
+                                    ) : null}
                                 </div>
 
-                                {/* Map / 3D Icon Uploader */}
-                                <div>
-                                    <div className="flex justify-between items-center mb-1">
-                                        <label className="text-xs font-bold text-[var(--text-secondary)]">Map / 3D Icon URL</label>
+                                {/* 2. Map / 3D Icon Drag & Drop Dropzone with Live 3D Marker Preview */}
+                                <div className="space-y-1.5">
+                                    <div className="flex justify-between items-center">
+                                        <label className="text-xs font-bold text-[var(--text-secondary)]">Map / 3D Car Marker Icon</label>
                                         <button type="button" onClick={handleAuto3DTransparent} className="px-2.5 py-1 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 font-bold text-[10px] transition-all flex items-center gap-1">
                                             <IconZap sz={12} /> AI 3D Transparent
                                         </button>
-                                    </div>
-                                    <div className="text-[10px] text-[var(--text-muted)] mb-2">(image used for 3D marker preview on map):</div>
-                                    <div className="flex gap-2">
-                                        <input type="text" value={form.mapIconUrl} onChange={e => setForm({ ...form, mapIconUrl: e.target.value })} className="w-full p-2.5 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none" placeholder="https://... (Upload or paste icon URL)" />
-                                        <button type="button" onClick={() => iconInputRef.current?.click()} className="px-4 py-2.5 rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)] font-bold text-xs border border-[var(--border-color)] transition-all flex items-center gap-1.5 shrink-0 shadow-sm">
-                                            <IconFolder sz={14} /> Browse
-                                        </button>
                                         <input type="file" ref={iconInputRef} onChange={handleIconUpload} accept="image/*" className="hidden" />
                                     </div>
+
+                                    {/* Upload Progress Bar (0-100%) */}
+                                    {uploadProgress.mapIconUrl?.active && (
+                                        <div className="p-3 rounded-2xl bg-[var(--bg-tertiary)] border border-orange-500/40 space-y-2 animate-fade-in">
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                                                    <span className="animate-spin text-orange-500"><IconRefreshCw sz={13} /></span>
+                                                    <span>{uploadProgress.mapIconUrl.percent < 100 ? 'Rendering 3D Transparent Marker...' : 'Marker Generated!'}</span>
+                                                </span>
+                                                <span className="font-black text-orange-500">{uploadProgress.mapIconUrl.percent}%</span>
+                                            </div>
+                                            <div className="w-full h-2 rounded-full bg-slate-700/40 overflow-hidden relative">
+                                                <div
+                                                    className="h-full bg-gradient-to-r from-amber-500 via-orange-500 to-orange-400 rounded-full transition-all duration-300 ease-out"
+                                                    style={{ width: `${uploadProgress.mapIconUrl.percent}%` }}
+                                                ></div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Upload Error Alert */}
+                                    {uploadProgress.mapIconUrl?.error && (
+                                        <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 text-xs flex items-center justify-between gap-2 animate-fade-in">
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                <IconAlertTriangle sz={14} className="shrink-0 text-red-500" />
+                                                <span className="truncate">{uploadProgress.mapIconUrl.error}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setUploadProgress(p => ({ ...p, mapIconUrl: { active: false, percent: 0, error: '' } }))}
+                                                className="text-red-400 hover:text-red-600 shrink-0 text-[10px] font-bold uppercase underline cursor-pointer"
+                                            >
+                                                Dismiss
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {!uploadProgress.mapIconUrl?.active && form.mapIconUrl ? (
+                                        <div className="rounded-2xl border-2 border-orange-500/40 bg-slate-950/80 p-3 space-y-3 shadow-xl relative overflow-hidden animate-fade-in">
+                                            {/* Compass / Orientation Header Banner */}
+                                            <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                                    <span className="text-xs font-black tracking-wide text-white uppercase flex items-center gap-1.5">
+                                                        <IconCompass sz={14} className="text-orange-500" /> 3D Marker Orientation
+                                                    </span>
+                                                </div>
+                                                <div className="text-[10px] font-extrabold text-cyan-300 bg-cyan-500/10 px-2.5 py-0.5 rounded-full border border-cyan-500/30 flex items-center gap-1">
+                                                    <span>Front = Facing Up</span> <span className="text-xs font-black">↑</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Live Compass Radar Target Box */}
+                                            <div className="relative w-full h-40 rounded-xl bg-[#080d1a] border border-cyan-500/20 flex items-center justify-center overflow-hidden select-none">
+                                                {/* Radar Concentric Rings & Crosshair Grid */}
+                                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
+                                                    <div className="w-32 h-32 rounded-full border border-cyan-400"></div>
+                                                    <div className="w-20 h-20 rounded-full border border-dashed border-cyan-400 absolute"></div>
+                                                    <div className="w-10 h-10 rounded-full border border-cyan-400 absolute"></div>
+                                                    <div className="w-full h-[1px] bg-cyan-400/40 absolute"></div>
+                                                    <div className="h-full w-[1px] bg-cyan-400/40 absolute"></div>
+                                                </div>
+
+                                                {/* Forward Headlight Beam Indicator (Top / 0° North) */}
+                                                <div className="absolute top-1 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none z-0">
+                                                    <div className="px-2 py-0.5 rounded-full bg-cyan-500/25 border border-cyan-400 text-cyan-200 text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-[0_0_12px_rgba(6,182,212,0.7)]">
+                                                        <span>▲ FRONT (Nose)</span>
+                                                    </div>
+                                                    <div style={{ width: '48px', height: '36px', background: 'radial-gradient(ellipse at bottom, rgba(56, 189, 248, 0.45) 0%, rgba(56, 189, 248, 0.08) 60%, transparent 85%)', clipPath: 'polygon(20% 100%, 80% 100%, 100% 0%, 0% 0%)' }}></div>
+                                                </div>
+
+                                                {/* Center 3D Vehicle Marker Image */}
+                                                <div className="relative z-10 w-24 h-24 flex items-center justify-center p-1">
+                                                    <img
+                                                        src={form.mapIconUrl}
+                                                        alt="3D GPS Marker"
+                                                        className={`max-w-full max-h-full object-contain filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.9)] transition-transform duration-200 ${isRotating ? 'scale-90 opacity-70' : 'scale-100 opacity-100'}`}
+                                                    />
+                                                </div>
+
+                                                {/* Rear Indicator */}
+                                                <div className="absolute bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.2 rounded bg-black/60 text-[8px] font-bold text-slate-400 border border-white/5 pointer-events-none">
+                                                    ▼ REAR (Tail)
+                                                </div>
+                                            </div>
+
+                                            {/* Rotation Control Toolbar */}
+                                            <div className="space-y-2">
+                                                <div className="flex items-center justify-between text-[11px]">
+                                                    <span className="font-bold text-[var(--text-secondary)]">Rotate until vehicle front points UP (▲):</span>
+                                                    <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                                                        <IconCheck sz={11} /> Auto-Saved
+                                                    </span>
+                                                </div>
+
+                                                {/* Quick Rotate Buttons */}
+                                                <div className="grid grid-cols-5 gap-1.5">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => rotateMarkerImage(-90)}
+                                                        disabled={isRotating}
+                                                        className="py-1.5 px-1 rounded-xl bg-[var(--bg-tertiary)] hover:bg-orange-500/20 text-white hover:text-orange-400 border border-white/10 hover:border-orange-500/40 text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                                                        title="Rotate -90° Counter-Clockwise"
+                                                    >
+                                                        <IconRotateCcw sz={12} /> -90°
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => rotateMarkerImage(90)}
+                                                        disabled={isRotating}
+                                                        className="py-1.5 px-1 rounded-xl bg-[var(--bg-tertiary)] hover:bg-orange-500/20 text-white hover:text-orange-400 border border-white/10 hover:border-orange-500/40 text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                                                        title="Rotate +90° Clockwise"
+                                                    >
+                                                        <IconRotateCw sz={12} /> +90°
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => rotateMarkerImage(-15)}
+                                                        disabled={isRotating}
+                                                        className="py-1.5 px-1 rounded-xl bg-[var(--bg-tertiary)] hover:bg-orange-500/20 text-white hover:text-orange-400 border border-white/10 hover:border-orange-500/40 text-xs font-bold transition-all flex items-center justify-center gap-0.5 cursor-pointer disabled:opacity-50"
+                                                        title="Fine-tune -15°"
+                                                    >
+                                                        <IconRotateCcw sz={10} /> -15°
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => rotateMarkerImage(15)}
+                                                        disabled={isRotating}
+                                                        className="py-1.5 px-1 rounded-xl bg-[var(--bg-tertiary)] hover:bg-orange-500/20 text-white hover:text-orange-400 border border-white/10 hover:border-orange-500/40 text-xs font-bold transition-all flex items-center justify-center gap-0.5 cursor-pointer disabled:opacity-50"
+                                                        title="Fine-tune +15°"
+                                                    >
+                                                        <IconRotateCw sz={10} /> +15°
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => rotateMarkerImage(180)}
+                                                        disabled={isRotating}
+                                                        className="py-1.5 px-1 rounded-xl bg-[var(--bg-tertiary)] hover:bg-orange-500/20 text-white hover:text-orange-400 border border-white/10 hover:border-orange-500/40 text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                                                        title="Flip 180°"
+                                                    >
+                                                        ↕ 180°
+                                                    </button>
+                                                </div>
+
+                                                {/* Bottom Actions: Change, AI Re-extract, Remove */}
+                                                <div className="flex items-center justify-between pt-1 border-t border-white/10">
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => iconInputRef.current?.click()}
+                                                            className="px-2.5 py-1 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30 text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                                        >
+                                                            <IconEdit sz={12} /> Change File
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleAuto3DTransparent}
+                                                            className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                                        >
+                                                            <IconZap sz={12} /> AI 3D Transparent
+                                                        </button>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setForm(f => ({ ...f, mapIconUrl: '' }))}
+                                                        className="px-2 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 transition-all cursor-pointer flex items-center gap-1 text-[11px] font-bold"
+                                                        title="Remove 3D Icon"
+                                                    >
+                                                        <IconTrash sz={12} /> Remove
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : !uploadProgress.mapIconUrl?.active ? (
+                                        <div
+                                            onClick={() => iconInputRef.current?.click()}
+                                            onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-orange-500', 'bg-orange-500/10'); }}
+                                            onDragLeave={(e) => { e.preventDefault(); e.currentTarget.classList.remove('border-orange-500', 'bg-orange-500/10'); }}
+                                            onDrop={(e) => {
+                                                e.preventDefault();
+                                                e.currentTarget.classList.remove('border-orange-500', 'bg-orange-500/10');
+                                                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                                                    const fakeEv = { target: { files: e.dataTransfer.files } };
+                                                    handleIconUpload(fakeEv);
+                                                }
+                                            }}
+                                            className="border-2 border-dashed border-[var(--border-color)] hover:border-orange-500/60 p-3.5 rounded-2xl text-center cursor-pointer transition-all bg-[var(--bg-tertiary)]/40 hover:bg-orange-500/5 flex flex-col items-center justify-center gap-1 group select-none"
+                                        >
+                                            <div className="w-9 h-9 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                                <IconCompass sz={18} />
+                                            </div>
+                                            <div className="text-xs font-bold text-[var(--text-primary)]">Drop 3D marker icon or click <span className="text-orange-500 font-black">AI 3D Transparent</span></div>
+                                            <div className="text-[10px] text-[var(--text-muted)]">Automatic 3D car icon orientation on GPS Map</div>
+                                        </div>
+                                    ) : null}
                                 </div>
 
-                                {/* Legal Expiry & OR/CR / Insurance Documents Upload */}
-                                <div className="pt-4 border-t border-[var(--border-color)] space-y-4">
+                                {/* 3 & 4. Legal Expiry & OR/CR / Insurance Documents Upload */}
+                                <div className="pt-3 border-t border-[var(--border-color)] space-y-3">
                                     <div className="text-xs font-black text-orange-500 uppercase tracking-widest flex items-center gap-1.5">
                                         <IconFileText sz={14} /> Legal & Vehicle Registration Documents
                                     </div>
 
-                                    {/* LTO Registration (OR/CR) Expiry & File */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3.5 rounded-2xl bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
+                                    {/* LTO Registration (OR/CR) */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 rounded-2xl bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
                                         <div>
                                             <label className="text-[11px] font-bold text-[var(--text-secondary)] block mb-1">LTO Registration (OR/CR) Expiry</label>
                                             <input type="date" value={form.ltoExpiryDate} onChange={e => setForm({ ...form, ltoExpiryDate: e.target.value })} className="w-full p-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] outline-none" />
                                         </div>
                                         <div>
-                                            <div className="flex justify-between items-center mb-1">
-                                                <label className="text-[11px] font-bold text-[var(--text-secondary)]">OR/CR Document File/URL</label>
-                                                <button type="button" onClick={() => orCrInputRef.current?.click()} className="px-2.5 py-1 rounded-lg bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/30 text-[10px] font-bold hover:bg-orange-500/20 transition-all">
-                                                    Upload File
-                                                </button>
-                                                <input type="file" ref={orCrInputRef} onChange={(e) => handleDocUpload(e, 'orCrUrl')} accept="image/*,.pdf" className="hidden" />
-                                            </div>
-                                            <input type="text" value={form.orCrUrl} onChange={e => setForm({ ...form, orCrUrl: e.target.value })} className="w-full p-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none" placeholder="Paste OR/CR URL or Upload..." />
+                                            <label className="text-[11px] font-bold text-[var(--text-secondary)] block mb-1">OR/CR Document File</label>
+                                            <input type="file" ref={orCrInputRef} onChange={(e) => handleDocUpload(e, 'orCrUrl')} accept="image/*,.pdf" className="hidden" />
+
+                                            {/* OR/CR Upload Progress */}
+                                            {uploadProgress.orCrUrl?.active && (
+                                                <div className="p-2.5 rounded-xl bg-[var(--bg-card)] border border-orange-500/40 space-y-1.5 animate-fade-in">
+                                                    <div className="flex justify-between items-center text-[10px]">
+                                                        <span className="font-bold text-[var(--text-primary)] flex items-center gap-1">
+                                                            <span className="animate-spin text-orange-500"><IconRefreshCw sz={11} /></span>
+                                                            <span>Uploading OR/CR...</span>
+                                                        </span>
+                                                        <span className="font-black text-orange-500">{uploadProgress.orCrUrl.percent}%</span>
+                                                    </div>
+                                                    <div className="w-full h-1.5 rounded-full bg-slate-700/40 overflow-hidden">
+                                                        <div className="h-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all duration-300" style={{ width: `${uploadProgress.orCrUrl.percent}%` }}></div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* OR/CR Error */}
+                                            {uploadProgress.orCrUrl?.error && (
+                                                <div className="p-2 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 text-[10px] flex items-center justify-between gap-1 mb-1.5 animate-fade-in">
+                                                    <span className="truncate">{uploadProgress.orCrUrl.error}</span>
+                                                    <button type="button" onClick={() => setUploadProgress(p => ({ ...p, orCrUrl: { active: false, percent: 0, error: '' } }))} className="text-red-400 font-bold underline">Dismiss</button>
+                                                </div>
+                                            )}
+
+                                            {!uploadProgress.orCrUrl?.active && form.orCrUrl ? (
+                                                <div className="flex items-center justify-between p-2 rounded-xl bg-[var(--bg-card)] border border-emerald-500/30">
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <span className="w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0">
+                                                            <IconFileText sz={12} />
+                                                        </span>
+                                                        <span className="text-[11px] font-bold text-[var(--text-primary)] truncate">OR/CR File Attached</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 shrink-0">
+                                                        <button type="button" onClick={() => orCrInputRef.current?.click()} className="p-1 rounded text-orange-500 hover:bg-orange-500/10 text-[10px] font-bold">Replace</button>
+                                                        <button type="button" onClick={() => setForm(f => ({ ...f, orCrUrl: '' }))} className="p-1 rounded text-red-500 hover:bg-red-500/10"><IconTrash sz={12} /></button>
+                                                    </div>
+                                                </div>
+                                            ) : !uploadProgress.orCrUrl?.active ? (
+                                                <div
+                                                    onClick={() => orCrInputRef.current?.click()}
+                                                    className="border border-dashed border-[var(--border-color)] hover:border-orange-500/60 p-2 rounded-xl text-center cursor-pointer bg-[var(--bg-card)] text-[10.5px] font-bold text-[var(--text-secondary)] hover:text-orange-500 transition-all flex items-center justify-center gap-1.5 select-none"
+                                                >
+                                                    <IconUpload sz={13} /> Upload OR/CR (PDF/IMG)
+                                                </div>
+                                            ) : null}
                                         </div>
                                     </div>
 
-                                    {/* CTPL Insurance Expiry & File */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3.5 rounded-2xl bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
+                                    {/* CTPL Insurance Policy */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 rounded-2xl bg-[var(--bg-tertiary)] border border-[var(--border-color)]">
                                         <div>
                                             <label className="text-[11px] font-bold text-[var(--text-secondary)] block mb-1">CTPL Insurance Expiry</label>
                                             <input type="date" value={form.insuranceExpiryDate} onChange={e => setForm({ ...form, insuranceExpiryDate: e.target.value })} className="w-full p-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] outline-none" />
                                         </div>
                                         <div>
-                                            <div className="flex justify-between items-center mb-1">
-                                                <label className="text-[11px] font-bold text-[var(--text-secondary)]">Insurance Policy File/URL</label>
-                                                <button type="button" onClick={() => insuranceInputRef.current?.click()} className="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-bold hover:bg-emerald-500/20 transition-all">
-                                                    Upload File
-                                                </button>
-                                                <input type="file" ref={insuranceInputRef} onChange={(e) => handleDocUpload(e, 'insuranceUrl')} accept="image/*,.pdf" className="hidden" />
-                                            </div>
-                                            <input type="text" value={form.insuranceUrl} onChange={e => setForm({ ...form, insuranceUrl: e.target.value })} className="w-full p-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none" placeholder="Paste Policy URL or Upload..." />
+                                            <label className="text-[11px] font-bold text-[var(--text-secondary)] block mb-1">Insurance Policy Document</label>
+                                            <input type="file" ref={insuranceInputRef} onChange={(e) => handleDocUpload(e, 'insuranceUrl')} accept="image/*,.pdf" className="hidden" />
+
+                                            {/* Policy Upload Progress */}
+                                            {uploadProgress.insuranceUrl?.active && (
+                                                <div className="p-2.5 rounded-xl bg-[var(--bg-card)] border border-emerald-500/40 space-y-1.5 animate-fade-in">
+                                                    <div className="flex justify-between items-center text-[10px]">
+                                                        <span className="font-bold text-[var(--text-primary)] flex items-center gap-1">
+                                                            <span className="animate-spin text-emerald-500"><IconRefreshCw sz={11} /></span>
+                                                            <span>Uploading Policy...</span>
+                                                        </span>
+                                                        <span className="font-black text-emerald-500">{uploadProgress.insuranceUrl.percent}%</span>
+                                                    </div>
+                                                    <div className="w-full h-1.5 rounded-full bg-slate-700/40 overflow-hidden">
+                                                        <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300" style={{ width: `${uploadProgress.insuranceUrl.percent}%` }}></div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Policy Error */}
+                                            {uploadProgress.insuranceUrl?.error && (
+                                                <div className="p-2 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 text-[10px] flex items-center justify-between gap-1 mb-1.5 animate-fade-in">
+                                                    <span className="truncate">{uploadProgress.insuranceUrl.error}</span>
+                                                    <button type="button" onClick={() => setUploadProgress(p => ({ ...p, insuranceUrl: { active: false, percent: 0, error: '' } }))} className="text-red-400 font-bold underline">Dismiss</button>
+                                                </div>
+                                            )}
+
+                                            {!uploadProgress.insuranceUrl?.active && form.insuranceUrl ? (
+                                                <div className="flex items-center justify-between p-2 rounded-xl bg-[var(--bg-card)] border border-emerald-500/30">
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <span className="w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0">
+                                                            <IconShield sz={12} />
+                                                        </span>
+                                                        <span className="text-[11px] font-bold text-[var(--text-primary)] truncate">Policy File Attached</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 shrink-0">
+                                                        <button type="button" onClick={() => insuranceInputRef.current?.click()} className="p-1 rounded text-orange-500 hover:bg-orange-500/10 text-[10px] font-bold">Replace</button>
+                                                        <button type="button" onClick={() => setForm(f => ({ ...f, insuranceUrl: '' }))} className="p-1 rounded text-red-500 hover:bg-red-500/10"><IconTrash sz={12} /></button>
+                                                    </div>
+                                                </div>
+                                            ) : !uploadProgress.insuranceUrl?.active ? (
+                                                <div
+                                                    onClick={() => insuranceInputRef.current?.click()}
+                                                    className="border border-dashed border-[var(--border-color)] hover:border-emerald-500/60 p-2 rounded-xl text-center cursor-pointer bg-[var(--bg-card)] text-[10.5px] font-bold text-[var(--text-secondary)] hover:text-emerald-500 transition-all flex items-center justify-center gap-1.5 select-none"
+                                                >
+                                                    <IconUpload sz={13} /> Upload Policy (PDF/IMG)
+                                                </div>
+                                            ) : null}
                                         </div>
                                     </div>
                                 </div>
@@ -3366,8 +4340,8 @@
                 window.chrome.webview.postMessage("push_notification:" + JSON.stringify({ title: title, body: body }));
             }
 
-            const cleanTitle = (title || '').replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|\u200D|[\u2600-\u27BF]|[\u1F300-\u1F9FF]/g, '').trim();
-            const cleanBody = (body || '').replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|\u200D|[\u2600-\u27BF]|[\u1F300-\u1F9FF]/g, '').trim();
+            const cleanTitle = String(title || '').trim();
+            const cleanBody = String(body || '').trim();
 
             const type = cleanTitle.toLowerCase().includes('flood') ? 'flood' :
                 cleanTitle.toLowerCase().includes('weather') || cleanTitle.toLowerCase().includes('pagasa') || cleanTitle.toLowerCase().includes('monsoon') ? 'weather' :
@@ -3377,8 +4351,8 @@
                 window.__addNotificationReact({
                     id: Date.now() + Math.random(),
                     type,
-                    title: cleanTitle || title,
-                    body: cleanBody || body,
+                    title: cleanTitle || 'Fleet Advisory',
+                    body: cleanBody || 'Notification details',
                     time: 'Just now',
                     unread: true
                 });
@@ -3640,11 +4614,36 @@
                     document.documentElement.setAttribute('data-theme', theme);
                 };
                 window.refreshFleetData = fetchFleet;
-                window.liveUpdateGPS = (vid, lat, lng, speed) => {
+
+                const calcBearing = (lat1, lng1, lat2, lng2) => {
+                    const toRad = Math.PI / 180;
+                    const dLng = (lng2 - lng1) * toRad;
+                    const phi1 = lat1 * toRad;
+                    const phi2 = lat2 * toRad;
+                    const y = Math.sin(dLng) * Math.cos(phi2);
+                    const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLng);
+                    const brng = Math.atan2(y, x) * (180 / Math.PI);
+                    return Math.round((brng + 360) % 360);
+                };
+
+                // Real API & Firebase Telematics GPS Live Update Listener
+                // ONLY moves vehicle and rotates bearing when genuine coordinates arrive from API / GPS sensor
+                window.liveUpdateGPS = (vid, lat, lng, speed, heading) => {
                     setVehicles(prev => prev.map(v => {
                         if (String(v.id) === String(vid) || String(v.vehicle_id) === String(vid)) {
                             const oldLat = v.coordinates ? v.coordinates[0] : lat;
                             const oldLng = v.coordinates ? v.coordinates[1] : lng;
+
+                            // Calculate forward bearing angle only if location actually shifted
+                            let newHeading = heading;
+                            if (newHeading === undefined || newHeading === null) {
+                                if (Math.abs(lat - oldLat) > 0.00001 || Math.abs(lng - oldLng) > 0.00001) {
+                                    newHeading = calcBearing(oldLat, oldLng, lat, lng);
+                                } else {
+                                    newHeading = v.heading || 0;
+                                }
+                            }
+
                             const R = 6371; // Earth radius in km
                             const dLat = (lat - oldLat) * Math.PI / 180;
                             const dLng = (lng - oldLng) * Math.PI / 180;
@@ -3660,7 +4659,9 @@
                             const updated = {
                                 ...v,
                                 coordinates: [lat, lng],
-                                currentSpeedKmh: speed,
+                                heading: newHeading,
+                                bearing: newHeading,
+                                currentSpeedKmh: speed !== undefined ? speed : (distKm > 0.001 ? 35 : 0),
                                 odometerKm: newOdo,
                             };
 
@@ -3671,37 +4672,13 @@
                         return v;
                     }));
                 };
-                // Auto-refresh every 30s
-                const int = setInterval(fetchFleet, 30000);
 
-                // Live Telematics Odometer Simulation for Rented Units (Auto-increment + count-up animation)
-                const liveOdoInt = setInterval(() => {
-                    setVehicles(prev => {
-                        let changed = false;
-                        const nextList = prev.map(v => {
-                            const st = (v.status || '').toLowerCase();
-                            if (st === 'rented') {
-                                changed = true;
-                                const step = Math.floor(Math.random() * 2) + 1; // +1 to +2 km per ticker
-                                const newOdo = (v.odometerKm || 0) + step;
-                                const updated = {
-                                    ...v,
-                                    odometerKm: newOdo,
-                                    currentSpeedKmh: Math.floor(Math.random() * 30) + 40,
-                                };
-                                setSelectedVehicle(curr => (curr && (String(curr.id) === String(v.id) || String(curr.vehicle_id) === String(v.id))) ? updated : curr);
-                                return updated;
-                            }
-                            return v;
-                        });
-                        return changed ? nextList : prev;
-                    });
-                }, 3500);
+                // Auto-refresh fleet from API every 30s
+                const int = setInterval(fetchFleet, 30000);
 
                 return () => {
                     clearTimeout(splashTimer);
                     clearInterval(int);
-                    clearInterval(liveOdoInt);
                 };
             }, [fetchFleet]);
 
@@ -3908,60 +4885,56 @@
                         <div className="flex flex-col gap-3">
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                 {/* 1. Total Fleet */}
-                                <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-color)] shadow-[var(--shadow-card)] hover:-translate-y-1 hover:border-orange-500/40 transition-all duration-300 flex flex-col justify-between h-28 cursor-pointer group">
-                                    <div className="flex justify-between items-center">
-                                        <div className="w-9 h-9 rounded-xl bg-orange-500/15 text-orange-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                            <IconCar sz={18} />
-                                        </div>
-                                        <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">Live</span>
-                                    </div>
-                                    <div>
-                                        <div className="text-2xl font-black tracking-tight text-[var(--text-primary)]">{stats.total.toLocaleString()}</div>
-                                        <div className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Total Fleet</div>
-                                    </div>
-                                </div>
+                                <FleetKpiCard3D
+                                    icon={<IconCar sz={18} />}
+                                    title="Total Fleet"
+                                    value={stats.total.toLocaleString()}
+                                    tag="Live"
+                                    tagClass="text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+                                    glowColor="rgba(249, 115, 22, 0.28)"
+                                    borderHoverColor="border-orange-500/50"
+                                    valueColor="text-[var(--text-primary)]"
+                                    onClick={() => setFilterStatus('all')}
+                                />
 
                                 {/* 2. Available */}
-                                <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-color)] shadow-[var(--shadow-card)] hover:-translate-y-1 hover:border-emerald-500/40 transition-all duration-300 flex flex-col justify-between h-28 cursor-pointer group">
-                                    <div className="flex justify-between items-center">
-                                        <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                            <IconCheck sz={18} />
-                                        </div>
-                                        <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">Ready</span>
-                                    </div>
-                                    <div>
-                                        <div className="text-2xl font-black tracking-tight text-emerald-400">{stats.avail.toLocaleString()}</div>
-                                        <div className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Available</div>
-                                    </div>
-                                </div>
+                                <FleetKpiCard3D
+                                    icon={<IconCheck sz={18} />}
+                                    title="Available"
+                                    value={stats.avail.toLocaleString()}
+                                    tag="Ready"
+                                    tagClass="text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+                                    glowColor="rgba(52, 211, 153, 0.28)"
+                                    borderHoverColor="border-emerald-500/50"
+                                    valueColor="text-emerald-400"
+                                    onClick={() => setFilterStatus('available')}
+                                />
 
                                 {/* 3. Rented */}
-                                <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-color)] shadow-[var(--shadow-card)] hover:-translate-y-1 hover:border-amber-500/40 transition-all duration-300 flex flex-col justify-between h-28 cursor-pointer group">
-                                    <div className="flex justify-between items-center">
-                                        <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                            <IconZap sz={18} />
-                                        </div>
-                                        <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">Active</span>
-                                    </div>
-                                    <div>
-                                        <div className="text-2xl font-black tracking-tight text-amber-400">{stats.rent.toLocaleString()}</div>
-                                        <div className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">On Rent</div>
-                                    </div>
-                                </div>
+                                <FleetKpiCard3D
+                                    icon={<IconZap sz={18} />}
+                                    title="On Rent"
+                                    value={stats.rent.toLocaleString()}
+                                    tag="Active"
+                                    tagClass="text-amber-400 bg-amber-500/10 border-amber-500/20"
+                                    glowColor="rgba(251, 191, 36, 0.28)"
+                                    borderHoverColor="border-amber-500/50"
+                                    valueColor="text-amber-400"
+                                    onClick={() => setFilterStatus('rented')}
+                                />
 
                                 {/* 4. Maintenance */}
-                                <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-color)] shadow-[var(--shadow-card)] hover:-translate-y-1 hover:border-orange-500/40 transition-all duration-300 flex flex-col justify-between h-28 cursor-pointer group">
-                                    <div className="flex justify-between items-center">
-                                        <div className="w-9 h-9 rounded-xl bg-orange-500/15 text-orange-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                            <IconSettings sz={18} />
-                                        </div>
-                                        <span className="text-[10px] font-bold text-gray-400 bg-white/5 px-2 py-0.5 rounded-full border border-white/10">In Shop</span>
-                                    </div>
-                                    <div>
-                                        <div className="text-2xl font-black tracking-tight text-[var(--text-primary)]">{stats.maint.toLocaleString()}</div>
-                                        <div className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider">Maintenance</div>
-                                    </div>
-                                </div>
+                                <FleetKpiCard3D
+                                    icon={<IconSettings sz={18} />}
+                                    title="Maintenance"
+                                    value={stats.maint.toLocaleString()}
+                                    tag="In Shop"
+                                    tagClass="text-gray-400 bg-white/5 border-white/10"
+                                    glowColor="rgba(192, 132, 252, 0.25)"
+                                    borderHoverColor="border-purple-500/50"
+                                    valueColor="text-[var(--text-primary)]"
+                                    onClick={() => setFilterStatus('maintenance')}
+                                />
                             </div>
 
                             {/* Fleet Health & RFID Status Bar */}
@@ -4167,10 +5140,18 @@
                     )}
                     {/* 100% REACT WEB2 NOTIFICATIONS DROPDOWN MODAL */}
                     {showNotifDropdown && (
-                        <div className="fixed top-14 right-12 z-[100000] w-96 max-w-[90vw] bg-[#0c0e1a]/95 backdrop-blur-2xl border border-white/15 rounded-3xl p-4 shadow-[0_25px_60px_rgba(0,0,0,0.85)] animate-fade-in text-white">
-                            <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3 px-1">
-                                <div className="flex items-center gap-2 font-black text-sm text-white">
-                                    <IconBell sz={18} className="text-orange-400" />
+                        <div className="fixed inset-0 z-[99999] bg-transparent" onClick={() => setShowNotifDropdown(false)}>
+                            <div 
+                                className={`fixed top-14 right-12 z-[100000] w-96 max-w-[90vw] backdrop-blur-2xl border rounded-3xl p-4 animate-fade-in overflow-hidden transition-colors duration-200 ${
+                                    isDark 
+                                      ? 'bg-[#0c0e1a]/95 border-white/15 text-white shadow-[0_25px_60px_rgba(0,0,0,0.85)]' 
+                                      : 'bg-white/95 border-slate-200 text-slate-900 shadow-[0_25px_60px_rgba(0,0,0,0.15)]'
+                                }`}
+                                onClick={e => e.stopPropagation()}
+                            >
+                            <div className={`flex items-center justify-between pb-3 border-b mb-3 px-1 ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
+                                <div className={`flex items-center gap-2 font-black text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                    <IconBell sz={18} className={isDark ? "text-orange-400" : "text-orange-600"} />
                                     <span>Notifications</span>
                                     {notifications.filter(n => n.unread).length > 0 && (
                                         <span className="px-2 py-0.5 rounded-full bg-orange-500 text-white font-extrabold text-[10px]">
@@ -4180,7 +5161,9 @@
                                 </div>
                                 <button
                                     onClick={() => setShowNotifDropdown(false)}
-                                    className="p-1.5 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                                    className={`p-1.5 rounded-full transition-colors ${
+                                        isDark ? 'hover:bg-white/10 text-gray-400 hover:text-white' : 'hover:bg-slate-100 text-slate-400 hover:text-slate-700'
+                                    }`}
                                 >
                                     <IconX sz={16} />
                                 </button>
@@ -4189,27 +5172,31 @@
                             {/* Notifications List */}
                             <div className="max-h-[360px] overflow-y-auto pr-1 flex flex-col gap-2.5 custom-scrollbar">
                                 {notifications.length === 0 ? (
-                                    <div className="py-12 text-center text-gray-400 text-xs italic">
+                                    <div className={`py-12 text-center text-xs italic ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>
                                         No active notifications
                                     </div>
                                 ) : (
                                     notifications.map(n => {
-                                        let icon = <IconBell sz={16} className="text-blue-400" />;
-                                        let badgeBg = "bg-blue-500/20 text-blue-400 border-blue-500/30";
+                                        let icon = <IconBell sz={16} className={isDark ? "text-blue-400" : "text-blue-600"} />;
+                                        let badgeBg = isDark ? "bg-blue-500/20 text-blue-400 border-blue-500/30" : "bg-blue-500/15 text-blue-600 border-blue-500/25";
 
                                         const tLow = (n.title || '').toLowerCase();
                                         const bLow = (n.body || '').toLowerCase();
 
                                         if (n.type === 'weather' || tLow.includes('weather') || tLow.includes('pagasa') || tLow.includes('monsoon')) {
-                                            icon = <IconCloudRain sz={16} className="text-amber-400" />;
-                                            badgeBg = "bg-amber-500/20 text-amber-400 border-amber-500/30";
+                                            icon = <IconCloudRain sz={16} className={isDark ? "text-amber-400" : "text-amber-600"} />;
+                                            badgeBg = isDark ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : "bg-amber-500/15 text-amber-600 border-amber-500/25";
                                         } else if (n.type === 'flood' || tLow.includes('flood') || tLow.includes('hazard')) {
-                                            icon = <IconShieldAlert sz={16} className="text-cyan-400" />;
-                                            badgeBg = "bg-cyan-500/20 text-cyan-400 border-cyan-500/30";
+                                            icon = <IconShieldAlert sz={16} className={isDark ? "text-cyan-400" : "text-cyan-600"} />;
+                                            badgeBg = isDark ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/30" : "bg-cyan-500/15 text-cyan-600 border-cyan-500/25";
                                         } else if (n.type === 'decommission' || tLow.includes('decommission') || tLow.includes('audit')) {
-                                            icon = <IconTrash2 sz={16} className="text-red-400" />;
-                                            badgeBg = "bg-red-500/20 text-red-400 border-red-500/30";
+                                            icon = <IconTrash2 sz={16} className={isDark ? "text-red-400" : "text-red-600"} />;
+                                            badgeBg = isDark ? "bg-red-500/20 text-red-400 border-red-500/30" : "bg-red-500/15 text-red-600 border-red-500/25";
                                         }
+
+                                        const itemBg = isDark
+                                            ? (n.unread ? 'bg-white/[0.08] border-white/25 shadow-md hover:bg-white/[0.14] hover:border-orange-500/50' : 'bg-white/[0.02] border-white/5 opacity-75 hover:bg-white/[0.14] hover:border-orange-500/50')
+                                            : (n.unread ? 'bg-slate-50 border-slate-200 shadow-sm hover:bg-slate-100 hover:border-orange-500/50' : 'bg-slate-100/40 border-slate-100 opacity-80 hover:bg-slate-100 hover:border-orange-500/50');
 
                                         return (
                                             <div
@@ -4222,17 +5209,17 @@
                                                         setShowWeatherModal(true);
                                                     }
                                                 }}
-                                                className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 hover:scale-[1.01] ${n.unread ? 'bg-white/[0.08] border-white/25 shadow-md' : 'bg-white/[0.02] border-white/5 opacity-75'} hover:bg-white/[0.14] hover:border-orange-500/50`}
+                                                className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 hover:scale-[1.01] ${itemBg}`}
                                             >
                                                 <div className={`p-2 rounded-xl border shrink-0 ${badgeBg}`}>
                                                     {icon}
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center justify-between gap-2 mb-0.5">
-                                                        <h4 className="font-extrabold text-xs text-white truncate">{n.title}</h4>
-                                                        <span className="text-[10px] text-gray-400 font-semibold whitespace-nowrap">{n.time}</span>
+                                                        <h4 className={`font-extrabold text-xs truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{n.title}</h4>
+                                                        <span className={`text-[10px] font-semibold whitespace-nowrap ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{n.time}</span>
                                                     </div>
-                                                    <p className="text-[11px] text-gray-300 leading-snug line-clamp-2">{n.body}</p>
+                                                    <p className={`text-[11px] leading-snug line-clamp-2 ${isDark ? 'text-gray-300' : 'text-slate-600'}`}>{n.body}</p>
                                                 </div>
                                             </div>
                                         );
@@ -4242,16 +5229,21 @@
 
                             {/* Clear All Footer */}
                             {notifications.length > 0 && (
-                                <div className="pt-3 mt-3 border-t border-white/10 flex justify-center">
+                                <div className={`pt-3 mt-3 border-t flex justify-center ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
                                     <button
                                         onClick={() => setNotifications([])}
-                                        className="text-xs font-black text-orange-400 hover:text-orange-300 transition-colors uppercase tracking-wider py-1 px-4 rounded-xl hover:bg-orange-500/10"
+                                        className={`text-xs font-black transition-colors uppercase tracking-wider py-1 px-4 rounded-xl ${
+                                            isDark 
+                                              ? 'text-orange-400 hover:text-orange-300 hover:bg-orange-500/10' 
+                                              : 'text-orange-600 hover:text-orange-700 hover:bg-orange-500/10'
+                                        }`}
                                     >
                                         Clear all
                                     </button>
                                 </div>
                             )}
                         </div>
+                    </div>
                     )}
 
                     {qrVehicle && <QrCodeModal vehicle={qrVehicle} onClose={() => setQrVehicle(null)} />}

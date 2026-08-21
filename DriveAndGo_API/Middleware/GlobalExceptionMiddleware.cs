@@ -36,7 +36,9 @@ namespace DriveAndGo_API.Middleware
         {
             context.Response.ContentType = "application/problem+json";
             
-            string friendlyDetail = Services.UserFriendlyErrorMessage.Clean(exception.Message);
+            string friendlyDetail = context.Request.Path.Value?.Contains("swagger", StringComparison.OrdinalIgnoreCase) == true
+                ? exception.ToString()
+                : Services.UserFriendlyErrorMessage.Clean(exception.Message);
 
             var problem = new ProblemDetails
             {

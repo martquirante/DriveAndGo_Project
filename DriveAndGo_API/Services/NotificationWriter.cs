@@ -26,42 +26,71 @@ public class NotificationWriter
         string type,
         NpgsqlTransaction? transaction = null)
     {
-        using var command = new NpgsqlCommand(
-            @"INSERT INTO notifications
-                (user_id, title, body, type, is_read, sent_at)
-              VALUES
-                (@user_id, @title, @body, @type, false, NOW())
-              RETURNING notif_id",
-            connection,
-            transaction);
-
-        command.Parameters.AddWithValue("@user_id", userId);
-        command.Parameters.AddWithValue("@title", title);
-        command.Parameters.AddWithValue("@body", body);
-        command.Parameters.AddWithValue("@type", type);
-        
-        int newNotifId = Convert.ToInt32(command.ExecuteScalar());
-
-        // Broadcast the notification via SignalR in real-time
-        _ = Task.Run(async () =>
+        try
         {
-            try
+            int targetUserId = userId;
+            using (var checkCmd = new NpgsqlCommand("SELECT user_id FROM users WHERE user_id = @uid", connection, transaction))
             {
-                await _hubContext.Clients.All.SendAsync("ReceiveNotification", new
+                checkCmd.Parameters.AddWithValue("@uid", userId);
+                var exists = checkCmd.ExecuteScalar();
+                if (exists == null || exists == DBNull.Value)
                 {
-                    notifId = newNotifId,
-                    userId = userId,
-                    title = title,
-                    body = body,
-                    type = type,
-                    isRead = false,
-                    sentAt = DateTime.UtcNow
-                });
+                    // Fall back to first available admin or registered user
+                    using var fallbackCmd = new NpgsqlCommand("SELECT user_id FROM users ORDER BY (role = 'admin') DESC, user_id ASC LIMIT 1", connection, transaction);
+                    var fallbackId = fallbackCmd.ExecuteScalar();
+                    if (fallbackId != null && fallbackId != DBNull.Value)
+                    {
+                        targetUserId = Convert.ToInt32(fallbackId);
+                    }
+                    else
+                    {
+                        // No users exist in table
+                        return;
+                    }
+                }
             }
-            catch (Exception ex)
+
+            using var command = new NpgsqlCommand(
+                @"INSERT INTO notifications
+                    (user_id, title, body, type, is_read, sent_at)
+                  VALUES
+                    (@user_id, @title, @body, @type, false, NOW())
+                  RETURNING notif_id",
+                connection,
+                transaction);
+
+            command.Parameters.AddWithValue("@user_id", targetUserId);
+            command.Parameters.AddWithValue("@title", title);
+            command.Parameters.AddWithValue("@body", body);
+            command.Parameters.AddWithValue("@type", type);
+            
+            int newNotifId = Convert.ToInt32(command.ExecuteScalar());
+
+            // Broadcast the notification via SignalR in real-time
+            _ = Task.Run(async () =>
             {
-                Console.WriteLine("SignalR Notification broadcast error: " + ex.Message);
-            }
-        });
+                try
+                {
+                    await _hubContext.Clients.All.SendAsync("ReceiveNotification", new
+                    {
+                        notifId = newNotifId,
+                        userId = targetUserId,
+                        title = title,
+                        body = body,
+                        type = type,
+                        isRead = false,
+                        sentAt = DateTime.UtcNow
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("SignalR Notification broadcast error: " + ex.Message);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("[NotificationWriter] Notice: " + ex.Message);
+        }
     }
 }

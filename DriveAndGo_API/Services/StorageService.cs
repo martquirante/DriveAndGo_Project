@@ -95,8 +95,9 @@ namespace DriveAndGo_API.Services
                 await file.CopyToAsync(localStream);
             }
 
-            // Return local hosting address
-            return $"http://localhost:5233/uploads/{folderName}/{localFileName}";
+            // Return network-accessible local hosting address
+            string serverBase = DriveAndGo_API.Helpers.NetworkHelper.GetServerBaseUrl(_configuration);
+            return $"{serverBase}/uploads/{folderName}/{localFileName}";
         }
     }
 }

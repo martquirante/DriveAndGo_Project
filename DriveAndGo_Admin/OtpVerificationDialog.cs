@@ -134,7 +134,7 @@ namespace DriveAndGo_Admin
 
             _lblTitle = new Label
             {
-                Text = "🔐 " + _title,
+                Text = _title,
                 Font = new Font("Segoe UI", 13.5F, FontStyle.Bold),
                 ForeColor = ThemeManager.CurrentText,
                 Location = new Point(24, 28),

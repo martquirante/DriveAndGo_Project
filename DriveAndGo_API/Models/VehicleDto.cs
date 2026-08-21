@@ -21,7 +21,10 @@ namespace DriveAndGo_API.Models
         public string Description { get; set; } = "";
         public int SeatCapacity { get; set; }
         public string Transmission { get; set; } = "Automatic";
+        [JsonPropertyName("model_3d_url")]
         public string Model3DUrl { get; set; } = "";
+        [JsonPropertyName("map_icon_url")]
+        public string? MapIconUrl => Model3DUrl;
         public DateTime? CreatedAt { get; set; }
         public double? Latitude { get; set; }
         public double? Longitude { get; set; }

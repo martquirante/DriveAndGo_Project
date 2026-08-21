@@ -150,9 +150,14 @@ namespace DriveAndGo_API.Services
                     cmd.ExecuteNonQuery();
                 }
 
-                // 10. rentals penalty_fee column migration
+                // 10. rentals penalty_fee and return inspection columns migration
                 using (var cmd = new NpgsqlCommand(@"
                     ALTER TABLE rentals ADD COLUMN IF NOT EXISTS penalty_fee NUMERIC DEFAULT 0;
+                    ALTER TABLE rentals ADD COLUMN IF NOT EXISTS return_date TIMESTAMP;
+                    ALTER TABLE rentals ADD COLUMN IF NOT EXISTS return_odometer NUMERIC;
+                    ALTER TABLE rentals ADD COLUMN IF NOT EXISTS return_fuel_level VARCHAR(20);
+                    ALTER TABLE rentals ADD COLUMN IF NOT EXISTS return_notes TEXT;
+                    ALTER TABLE rentals ADD COLUMN IF NOT EXISTS damage_fee NUMERIC DEFAULT 0;
                 ", conn))
                 {
                     cmd.ExecuteNonQuery();
@@ -178,7 +183,10 @@ namespace DriveAndGo_API.Services
                         photo_url TEXT,
                         liability_cost NUMERIC DEFAULT 0,
                         created_at TIMESTAMP NOT NULL DEFAULT NOW()
-                    );", conn))
+                    );
+                    ALTER TABLE damage_claims ADD COLUMN IF NOT EXISTS photo_urls JSONB DEFAULT '[]'::jsonb;
+                    ALTER TABLE rentals ADD COLUMN IF NOT EXISTS return_photos JSONB DEFAULT '[]'::jsonb;
+                ", conn))
                 {
                     cmd.ExecuteNonQuery();
                 }

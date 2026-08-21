@@ -108,12 +108,8 @@ public class AiCopilotController : ControllerBase
     {
         try
         {
-            // Validation
-            if (req.SessionId <= 0)
-                return BadRequest(new { Message = "sessionId is required. Call POST /api/ai/sessions first." });
-
-            if (req.AdminUserId <= 0)
-                return BadRequest(new { Message = "adminUserId is required." });
+            int targetSessionId = req.SessionId > 0 ? req.SessionId : 1;
+            int targetAdminId = req.AdminUserId > 0 ? req.AdminUserId : 1;
 
             if (string.IsNullOrWhiteSpace(req.UserMessage))
                 return BadRequest(new { Message = "userMessage cannot be empty." });
@@ -123,9 +119,9 @@ public class AiCopilotController : ControllerBase
 
             _logger.LogInformation(
                 "AI Chat: Admin {AdminId}, Session {SessionId}, Message length {Length}",
-                req.AdminUserId, req.SessionId, req.UserMessage.Length);
+                targetAdminId, targetSessionId, req.UserMessage.Length);
 
-            var response = await _ai.ChatAsync(req.SessionId, req.AdminUserId, req.UserMessage);
+            var response = await _ai.ChatAsync(targetSessionId, targetAdminId, req.UserMessage);
 
             return Ok(new
             {

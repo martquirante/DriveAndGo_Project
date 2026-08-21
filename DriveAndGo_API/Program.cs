@@ -58,6 +58,21 @@ if (!string.IsNullOrWhiteSpace(envFirebaseUrl))
     builder.Configuration["Firebase:DatabaseUrl"] = envFirebaseUrl;
 }
 
+var envSmtpEmail = Environment.GetEnvironmentVariable("SMTP_EMAIL")
+    ?? Environment.GetEnvironmentVariable("Smtp__Email");
+if (!string.IsNullOrWhiteSpace(envSmtpEmail))
+{
+    builder.Configuration["Smtp:Email"] = envSmtpEmail;
+}
+
+var envSmtpPass = Environment.GetEnvironmentVariable("SMTP_APP_PASSWORD")
+    ?? Environment.GetEnvironmentVariable("SMTP_PASSWORD")
+    ?? Environment.GetEnvironmentVariable("Smtp__AppPassword");
+if (!string.IsNullOrWhiteSpace(envSmtpPass))
+{
+    builder.Configuration["Smtp:AppPassword"] = envSmtpPass;
+}
+
 // ─────────────────────────────────────────────────────────────
 //  2.  Controllers & Swagger
 // ─────────────────────────────────────────────────────────────
@@ -72,6 +87,9 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "DriveAndGo API", Version = "v1" });
+
+    c.CustomSchemaIds(type => type.FullName?.Replace("+", "."));
+    c.ResolveConflictingActions(apiDescriptions => apiDescriptions.First());
 
     // Add JWT Bearer to Swagger UI
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -112,6 +130,7 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(optio
 builder.WebHost.ConfigureKestrel(kestrel =>
 {
     kestrel.Limits.MaxRequestBodySize = null; // Unlimited max request body size
+    kestrel.Listen(System.Net.IPAddress.Any, 5233);
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -153,7 +172,9 @@ builder.Services.AddScoped<NotificationWriter>();
 builder.Services.AddScoped<IFirebaseService, FirebaseService>();
 builder.Services.AddScoped<IAdminDashboardService, AdminDashboardService>();
 builder.Services.AddHttpClient();
+builder.Services.AddScoped<PdfService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<EmailService>();
 builder.Services.AddScoped<IStorageService, StorageService>();
 builder.Services.AddScoped<DriveAndGo_API.Services.AuditService>();
 builder.Services.AddHostedService<DriveAndGo_API.Services.RentalComplianceWorker>();

@@ -1,10 +1,12 @@
 using System;
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace DriveAndGo_Admin.Helpers
 {
@@ -37,11 +39,39 @@ namespace DriveAndGo_Admin.Helpers
     // ──────────────────────────────────────────────────────────────────────
     public static class ApiService
     {
-        // ── Base URL: local dev = http://localhost:5233
-        //              production = set via environment variable API_BASE_URL
-        public static readonly string BaseUrl =
-            Environment.GetEnvironmentVariable("API_BASE_URL")
-            ?? "http://localhost:5233/api";
+        // ── Base URL: dynamically resolves active local Wi-Fi / LAN IP or Cloudflare/DevTunnel
+        //              or production URL via environment variable API_BASE_URL / appsettings.json
+        public static string ResolveNetworkBaseUrl()
+        {
+            var env = Environment.GetEnvironmentVariable("API_BASE_URL");
+            if (!string.IsNullOrWhiteSpace(env)) return env.TrimEnd('/') + (env.EndsWith("/api", StringComparison.OrdinalIgnoreCase) ? "" : "/api");
+
+            // Check if appsettings.json explicitly defines a BaseUrl in the Admin directory
+            try
+            {
+                var localConfig = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "appsettings.json");
+                if (File.Exists(localConfig))
+                {
+                    var json = File.ReadAllText(localConfig);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("ApiSettings", out var apiSettings) &&
+                        apiSettings.TryGetProperty("BaseUrl", out var baseUrlProp))
+                    {
+                        var bUrl = baseUrlProp.GetString();
+                        if (!string.IsNullOrWhiteSpace(bUrl))
+                        {
+                            return bUrl.TrimEnd('/') + (bUrl.EndsWith("/api", StringComparison.OrdinalIgnoreCase) ? "" : "/api");
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // Default to local development API server
+            return "http://localhost:5233/api";
+        }
+
+        public static readonly string BaseUrl = ResolveNetworkBaseUrl();
 
         private static readonly HttpClient _client = new HttpClient
         {

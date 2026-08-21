@@ -50,7 +50,7 @@ namespace DriveAndGo_Admin
 
             var lblTitle = new Label
             {
-                Text = "🎫  PROMO CODES MANAGEMENT",
+                Text = "PROMO CODES MANAGEMENT",
                 Font = new Font("Segoe UI", 11F, FontStyle.Bold),
                 ForeColor = Color.White,
                 AutoSize = true,

@@ -103,20 +103,33 @@ namespace DriveAndGo_Admin
                 _deviceLocation = await GeoLocationService.GetDeviceLocationAsync();
 
                 // ── Retrieve User Profile & Security Settings from Database ──
-                int uid = SessionManager.UserId > 0 ? SessionManager.UserId : 1;
-                var userRes = await ApiService.GetAsync($"users/{uid}");
-                if (!userRes.Success)
-                {
-                    userRes = await ApiService.GetAsync("users/profile");
-                }
+                int uid = SessionManager.UserId;
+                string queryUrl = uid > 0 ? $"users/{uid}" : "admin/accounts?role=admin";
+                var userRes = await ApiService.GetAsync(queryUrl);
 
                 if (userRes.Success && !string.IsNullOrWhiteSpace(userRes.Body))
                 {
                     try
                     {
                         using var doc = JsonDocument.Parse(userRes.Body);
-                        var root = doc.RootElement;
+                        JsonElement root;
+                        if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                        {
+                            if (doc.RootElement.GetArrayLength() > 0)
+                                root = doc.RootElement[0];
+                            else
+                                return;
+                        }
+                        else
+                        {
+                            root = doc.RootElement;
+                        }
 
+                        if (root.TryGetProperty("userId", out var uProp) && uProp.GetInt32() > 0)
+                        {
+                            SessionManager.UserId = uProp.GetInt32();
+                            uid = SessionManager.UserId;
+                        }
                         if (root.TryGetProperty("fullName", out var fn) && !string.IsNullOrWhiteSpace(fn.GetString()))
                         {
                             SessionManager.FullName = fn.GetString();
@@ -135,17 +148,24 @@ namespace DriveAndGo_Admin
                             _userContact = ph.GetString();
                         }
 
+                        string photoStr = null;
                         if (root.TryGetProperty("avatarBase64", out var av) && !string.IsNullOrWhiteSpace(av.GetString()))
                         {
-                            try
-                            {
-                                byte[] bytes = Convert.FromBase64String(av.GetString());
-                                using var ms = new MemoryStream(bytes);
-                                Image img = Image.FromStream(ms);
-                                _customAvatarImage = (Image)img.Clone();
-                                SessionManager.CustomAvatar = _customAvatarImage;
-                            }
-                            catch { }
+                            photoStr = av.GetString();
+                        }
+                        else if (root.TryGetProperty("idPhotoUrl", out var ip) && !string.IsNullOrWhiteSpace(ip.GetString()))
+                        {
+                            photoStr = ip.GetString();
+                        }
+                        else if (root.TryGetProperty("photoUrl", out var pu) && !string.IsNullOrWhiteSpace(pu.GetString()))
+                        {
+                            photoStr = pu.GetString();
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(photoStr))
+                        {
+                            await SessionManager.SetAvatarFromRawAsync(photoStr);
+                            _customAvatarImage = SessionManager.CustomAvatar;
                         }
                     }
                     catch { }
@@ -183,13 +203,7 @@ namespace DriveAndGo_Admin
                 _activityLogs.Clear();
                 foreach (var log in rawLogs)
                 {
-                    string icon = log.ActionType switch
-                    {
-                        "USER_LOGIN" => "🚪",
-                        "SECURITY_UPDATE" => "🛡️",
-                        "PASSWORD_CHANGE" => "🔑",
-                        _ => "📋"
-                    };
+                    string icon = "";
                     string relativeTime = GetRelativeTimeString(log.Timestamp);
                     _activityLogs.Add(new ActivityLogItem
                     {
@@ -485,9 +499,9 @@ namespace DriveAndGo_Admin
             int rowH = 44;
             int gap = 6;
 
-            var rowProfile  = CreateMenuRow("👤", "My Profile", menuY, () => _currentView = SubView.Profile);
-            var rowSecurity = CreateMenuRow("🛡️", "Security Settings", menuY + rowH + gap, () => _currentView = SubView.Security);
-            var rowActivity = CreateMenuRow("📜", "Activity Log", menuY + (rowH + gap) * 2, () => _currentView = SubView.Activity);
+            var rowProfile  = CreateMenuRow("", "My Profile", menuY, () => _currentView = SubView.Profile);
+            var rowSecurity = CreateMenuRow("", "Security Settings", menuY + rowH + gap, () => _currentView = SubView.Security);
+            var rowActivity = CreateMenuRow("", "Activity Log", menuY + (rowH + gap) * 2, () => _currentView = SubView.Activity);
 
             _pnlMain.Controls.Add(rowProfile);
             _pnlMain.Controls.Add(rowSecurity);
@@ -505,7 +519,7 @@ namespace DriveAndGo_Admin
             // Logout Button - Positioned neatly at Y=318
             var btnLogout = new Button
             {
-                Text = "🚪   Log Out",
+                Text = "Log Out",
                 Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
                 Size = new Size(268, 42),
                 Location = new Point(16, 318),
@@ -569,7 +583,7 @@ namespace DriveAndGo_Admin
                             _uploadTimer.Stop();
                             pnlAvatar.Invalidate();
                             _parent?.RefreshHeaderUserInfo();
-                            AddActivityLogEntry("🖼️", "Avatar picture updated", Color.FromArgb(34, 197, 94));
+                            AddActivityLogEntry("", "Avatar picture updated", Color.FromArgb(34, 197, 94));
 
                             if (imageBytes != null && imageBytes.Length > 0)
                             {
@@ -613,17 +627,10 @@ namespace DriveAndGo_Admin
             };
             SetDoubleBuffer(row);
 
-            var lblIcon = new Label
-            {
-                Text = icon, Font = new Font("Segoe UI", 11F),
-                ForeColor = ThemeManager.CurrentText, Location = new Point(10, 11),
-                AutoSize = true, BackColor = Color.Transparent, Cursor = Cursors.Hand
-            };
-
             var lblTitle = new Label
             {
                 Text = title, Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
-                ForeColor = ThemeManager.CurrentText, Location = new Point(40, 12),
+                ForeColor = ThemeManager.CurrentText, Location = new Point(16, 12),
                 AutoSize = true, BackColor = Color.Transparent, Cursor = Cursors.Hand
             };
 
@@ -634,11 +641,10 @@ namespace DriveAndGo_Admin
                 AutoSize = true, BackColor = Color.Transparent, Cursor = Cursors.Hand
             };
 
-            row.Controls.Add(lblIcon);
             row.Controls.Add(lblTitle);
             row.Controls.Add(lblChevron);
 
-            Control[] group = { row, lblIcon, lblTitle, lblChevron };
+            Control[] group = { row, lblTitle, lblChevron };
             foreach (Control c in group)
             {
                 c.MouseEnter += (s, e) =>
@@ -670,7 +676,7 @@ namespace DriveAndGo_Admin
         private void BuildProfileView()
         {
             _pnlProfile.Controls.Clear();
-            AddSubViewHeader(_pnlProfile, "👤 My Profile");
+            AddSubViewHeader(_pnlProfile, "My Profile");
 
             var wrapper = new Panel
             {
@@ -697,7 +703,7 @@ namespace DriveAndGo_Admin
 
             var btnSave = new Button
             {
-                Text      = "💾  Save Profile Changes",
+                Text      = "Save Profile Changes",
                 Font      = new Font("Segoe UI", 9.5F, FontStyle.Bold),
                 Size      = new Size(250, 40),
                 Location  = new Point(2, y + 10),
@@ -733,7 +739,7 @@ namespace DriveAndGo_Admin
 
                 _parent?.RefreshHeaderUserInfo();
                 BuildMainView();
-                AddActivityLogEntry("👤", "Profile details updated", Color.FromArgb(34, 197, 94));
+                AddActivityLogEntry("", "Profile details updated", Color.FromArgb(34, 197, 94));
 
                 MessageBox.Show("Profile details updated successfully!", "DriveAndGo Dispatch", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 _currentView = SubView.Main;
@@ -753,7 +759,7 @@ namespace DriveAndGo_Admin
         private void BuildSecurityView()
         {
             _pnlSecurity.Controls.Clear();
-            AddSubViewHeader(_pnlSecurity, "🛡️ Security Settings");
+            AddSubViewHeader(_pnlSecurity, "Security Settings");
 
             var wrapper = new Panel
             {
@@ -764,21 +770,21 @@ namespace DriveAndGo_Admin
             SetDoubleBuffer(wrapper);
 
             int y = 8;
-            AddToggleRow(wrapper, "🔑 Two-Factor Auth (2FA)", "Requires OTP code on login", _is2FAEnabled, async (v) =>
+            AddToggleRow(wrapper, "Two-Factor Auth (2FA)", "Requires OTP code on login", _is2FAEnabled, async (v) =>
             {
                 _is2FAEnabled = v;
                 int uid = SessionManager.UserId > 0 ? SessionManager.UserId : 1;
                 await ApiService.UpdateSecuritySettingsAsync(uid, _is2FAEnabled, _isAlertsEnabled, _isPinReqEnabled);
                 await RefreshActivityLogsAsync(uid);
             }, ref y);
-            AddToggleRow(wrapper, "🔔 New Device Login Alerts", "Get emails for unknown devices", _isAlertsEnabled, async (v) =>
+            AddToggleRow(wrapper, "New Device Login Alerts", "Get emails for unknown devices", _isAlertsEnabled, async (v) =>
             {
                 _isAlertsEnabled = v;
                 int uid = SessionManager.UserId > 0 ? SessionManager.UserId : 1;
                 await ApiService.UpdateSecuritySettingsAsync(uid, _is2FAEnabled, _isAlertsEnabled, _isPinReqEnabled);
                 await RefreshActivityLogsAsync(uid);
             }, ref y);
-            AddToggleRow(wrapper, "📌 Dispatch PIN Requirement", "Require 4-digit PIN for bookings", _isPinReqEnabled, async (v) =>
+            AddToggleRow(wrapper, "Dispatch PIN Requirement", "Require 4-digit PIN for bookings", _isPinReqEnabled, async (v) =>
             {
                 _isPinReqEnabled = v;
                 int uid = SessionManager.UserId > 0 ? SessionManager.UserId : 1;
@@ -805,7 +811,7 @@ namespace DriveAndGo_Admin
 
             var btnPassSave = new Button
             {
-                Text      = "🔒 Update Password",
+                Text      = "Update Password",
                 Font      = new Font("Segoe UI", 9F, FontStyle.Bold),
                 Size      = new Size(250, 36),
                 Location  = new Point(2, y + 4),
@@ -822,31 +828,19 @@ namespace DriveAndGo_Admin
                 string newP = txtNew.Text.Trim();
                 string conf = txtConf.Text.Trim();
 
-                if (string.IsNullOrWhiteSpace(curr))
+                if (string.IsNullOrEmpty(curr))
                 {
-                    MessageBox.Show("Please enter your current password.", "Security Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    txtCurr.Focus();
+                    MessageBox.Show("Please enter your current password.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
-
-                if (string.IsNullOrWhiteSpace(newP))
+                if (string.IsNullOrEmpty(newP) || newP.Length < 6)
                 {
-                    MessageBox.Show("Please enter a new password.", "Security Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    txtNew.Focus();
+                    MessageBox.Show("New password must be at least 6 characters.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
-
-                if (newP.Length < 6)
-                {
-                    MessageBox.Show("New password must be at least 6 characters long.", "Security Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    txtNew.Focus();
-                    return;
-                }
-
                 if (newP != conf)
                 {
-                    MessageBox.Show("New Password and Confirm Password do not match! Please check your entries.", "Password Mismatch", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    txtConf.Focus();
+                    MessageBox.Show("New passwords do not match.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
 
@@ -857,7 +851,7 @@ namespace DriveAndGo_Admin
                 var (otpSent, reqMsg) = await ApiService.RequestPasswordChangeOtpAsync(uid, curr);
 
                 btnPassSave.Enabled = true;
-                btnPassSave.Text = "🔒 Update Password";
+                btnPassSave.Text = "Update Password";
 
                 if (!otpSent)
                 {
@@ -889,7 +883,7 @@ namespace DriveAndGo_Admin
 
                 if (otpDlg.ShowDialog(this) == DialogResult.OK)
                 {
-                    AddActivityLogEntry("🔑", "Password updated successfully", ThemeManager.CurrentPrimary);
+                    AddActivityLogEntry("", "Password updated successfully", ThemeManager.CurrentPrimary);
                     MessageBox.Show("Password updated successfully!", "Security Alert", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     txtCurr.Text = "";
                     txtNew.Text = "";
@@ -916,16 +910,16 @@ namespace DriveAndGo_Admin
 
                 using var fBold = new Font("Segoe UI", 8.5F, FontStyle.Bold);
                 using var fSub  = new Font("Segoe UI", 7.5F);
-                g.DrawString($"💻 {Environment.MachineName}", fBold, new SolidBrush(ThemeManager.CurrentText), new PointF(10, 10));
+                g.DrawString($"{Environment.MachineName}", fBold, new SolidBrush(ThemeManager.CurrentText), new PointF(10, 10));
                 g.DrawString($"Location: {_deviceLocation}", fSub, new SolidBrush(ThemeManager.CurrentSubText), new PointF(10, 30));
-                g.DrawString("🟢 Active Session (Current Device)", fSub, Brushes.MediumSeaGreen, new PointF(10, 46));
+                g.DrawString("Active Session (Current Device)", fSub, Brushes.MediumSeaGreen, new PointF(10, 46));
             };
             wrapper.Controls.Add(cardSession);
             y += 76;
 
             var btnLogoutOthers = new Button
             {
-                Text      = "🚪 Log out all other devices",
+                Text      = "Log out all other devices",
                 Font      = new Font("Segoe UI", 8.5F, FontStyle.Bold),
                 Size      = new Size(250, 34),
                 Location  = new Point(2, y),
@@ -955,13 +949,13 @@ namespace DriveAndGo_Admin
         private void BuildActivityView()
         {
             _pnlActivity.Controls.Clear();
-            AddSubViewHeader(_pnlActivity, "📜 Activity Log");
+            AddSubViewHeader(_pnlActivity, "Activity Log");
 
             if (_activityLogs.Count == 0)
             {
                 var lblEmpty = new Label
                 {
-                    Text = "📋 No recent activity recorded.",
+                    Text = "No recent activity recorded.",
                     Font = new Font("Segoe UI", 9F, FontStyle.Italic),
                     ForeColor = ThemeManager.CurrentSubText,
                     Location = new Point(14, 60),
@@ -1193,11 +1187,11 @@ namespace DriveAndGo_Admin
 
             var btnEye = new Label
             {
-                Text = "👁",
-                Font = new Font("Segoe UI", 10F),
+                Text = "Show",
+                Font = new Font("Segoe UI", 7.5F, FontStyle.Bold),
                 ForeColor = ThemeManager.CurrentSubText,
-                Size = new Size(28, 28),
-                Location = new Point(218, 2),
+                Size = new Size(36, 28),
+                Location = new Point(210, 2),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Cursor = Cursors.Hand,
                 BackColor = Color.Transparent
@@ -1205,6 +1199,7 @@ namespace DriveAndGo_Admin
             btnEye.Click += (s, e) =>
             {
                 txt.PasswordChar = txt.PasswordChar == '•' ? '\0' : '•';
+                btnEye.Text = txt.PasswordChar == '\0' ? "Hide" : "Show";
                 btnEye.ForeColor = txt.PasswordChar == '\0' ? ThemeManager.CurrentPrimary : ThemeManager.CurrentSubText;
             };
             txtWrap.Controls.Add(btnEye);

@@ -1,0 +1,622 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="format-detection" content="telephone=no" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
+  <title>Rental Agreement &amp; Booking Confirmation - Drive&amp;Go</title>
+  <style type="text/css">
+    /* Base Resets */
+    body, table, td, p, a, li, blockquote { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+    * { box-sizing: border-box; }
+
+    :root {
+      color-scheme: light dark;
+      supported-color-schemes: light dark;
+    }
+
+    body {
+      margin: 0 !important;
+      padding: 24px 12px !important;
+      width: 100% !important;
+      background-color: #F1F5F9;
+      color: #0F172A;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Light Mode (Default) Theme Classes */
+    .email-outer-wrapper {
+      width: 100%;
+      background-color: #F1F5F9;
+      padding: 20px 0;
+    }
+    .email-card {
+      max-width: 580px;
+      margin: 0 auto;
+      background-color: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    }
+    .inner-padding {
+      padding: 32px 28px;
+    }
+
+    .main-title {
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.25;
+      text-align: center;
+      color: #0B192C;
+      margin: 16px 0 14px 0;
+      letter-spacing: -0.01em;
+    }
+
+    .badge-pill-container {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .badge-ref {
+      display: inline-block;
+      padding: 5px 12px;
+      border: 1px solid #CBD5E1;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #334155;
+      background-color: #F8FAFC;
+      letter-spacing: 0.04em;
+      margin: 0 4px 6px 4px;
+    }
+    .badge-ref strong {
+      color: #0F172A;
+      font-family: 'Courier New', Courier, monospace;
+      font-weight: 700;
+    }
+    .badge-confirmed {
+      display: inline-block;
+      padding: 5px 14px;
+      background-color: #059669;
+      color: #FFFFFF !important;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin: 0 4px 6px 4px;
+    }
+
+    .greeting-text {
+      font-size: 13.5px;
+      line-height: 1.55;
+      color: #334155;
+      margin-bottom: 20px;
+    }
+
+    /* 2-Column Rounded Specs Box */
+    .specs-container {
+      background-color: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin-bottom: 22px;
+    }
+    .spec-item {
+      padding: 7px 0;
+    }
+    .spec-label {
+      font-size: 9.5px;
+      font-weight: 800;
+      color: #64748B;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 2px;
+    }
+    .spec-value {
+      font-size: 13px;
+      font-weight: 700;
+      color: #0F172A;
+      line-height: 1.3;
+    }
+
+    /* Section Heading */
+    .section-title {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #0F172A;
+      margin: 0 0 10px 0;
+    }
+
+    /* Payment & Invoice Summary */
+    .payment-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 22px;
+      background-color: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .payment-table td {
+      padding: 10px 14px;
+      font-size: 12.5px;
+      border-bottom: 1px solid #F1F5F9;
+      color: #334155;
+    }
+    .payment-table td.amount-col {
+      text-align: right;
+      font-weight: 700;
+      color: #0F172A;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .payment-table tr.total-row td {
+      border-bottom: none;
+      padding: 14px 14px;
+      font-weight: 800;
+      font-size: 13.5px;
+      background-color: #FAFAFA;
+    }
+    .payment-table tr.total-row td.total-label {
+      color: #0F172A;
+      letter-spacing: 0.04em;
+    }
+    .payment-table tr.total-row td.total-amount {
+      color: #FF5722;
+      font-size: 18px;
+      font-weight: 900;
+      text-align: right;
+    }
+
+    /* Dual Action Cards (QR & PDF) */
+    .action-card {
+      background-color: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      border-radius: 12px;
+      padding: 16px 14px;
+      text-align: center;
+      height: 100%;
+    }
+    .action-card-header {
+      font-size: 11px;
+      font-weight: 800;
+      color: #0F172A;
+      margin-bottom: 12px;
+      line-height: 1.35;
+    }
+    .qr-container {
+      display: inline-block;
+      padding: 6px;
+      background-color: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    .action-card-subtext {
+      font-size: 10px;
+      color: #64748B;
+      line-height: 1.4;
+      margin: 0;
+    }
+
+    .pdf-badge-icon {
+      display: inline-block;
+      width: 44px;
+      height: 44px;
+      line-height: 44px;
+      background-color: #EF4444;
+      color: #FFFFFF;
+      font-size: 11px;
+      font-weight: 900;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    .pdf-file-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #0F172A;
+      word-break: break-all;
+      margin-bottom: 2px;
+    }
+    .pdf-file-size {
+      font-size: 10px;
+      color: #64748B;
+      margin-bottom: 10px;
+    }
+    .btn-download-pdf {
+      display: inline-block;
+      padding: 6px 16px;
+      background-color: #F1F5F9;
+      border: 1px solid #CBD5E1;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #0F172A !important;
+      text-decoration: none;
+    }
+
+    /* Primary CTA Button */
+    .primary-cta-btn {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 14px 20px;
+      background: linear-gradient(135deg, #FF6B00 0%, #FF5722 100%);
+      background-color: #FF5722;
+      color: #FFFFFF !important;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 800;
+      border-radius: 8px;
+      text-align: center;
+      letter-spacing: 0.02em;
+      margin: 20px 0 24px 0;
+      box-shadow: 0 4px 14px rgba(255, 87, 34, 0.3);
+    }
+
+    /* Need Assistance Box */
+    .assistance-box {
+      border-top: 1px solid #E2E8F0;
+      padding-top: 18px;
+      margin-bottom: 20px;
+    }
+    .assistance-card {
+      background-color: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+    .assistance-content {
+      font-size: 11px;
+      color: #64748B;
+      line-height: 1.35;
+    }
+    .assistance-content strong {
+      display: block;
+      color: #0F172A;
+      font-size: 11px;
+      margin-bottom: 1px;
+    }
+
+    /* Legal Footer */
+    .legal-footer {
+      text-align: center;
+      font-size: 10.5px;
+      color: #94A3B8;
+      line-height: 1.5;
+    }
+
+    /* ==========================================================================
+       DARK MODE STYLES (Automatic on dark theme clients)
+       ========================================================================== */
+    @media (prefers-color-scheme: dark) {
+      body {
+        background-color: #050811 !important;
+        color: #F8FAFC !important;
+      }
+      .email-outer-wrapper {
+        background-color: #050811 !important;
+      }
+      .email-card {
+        background-color: #0B0F19 !important;
+        border-color: #1E293B !important;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6) !important;
+      }
+      .main-title {
+        color: #FFFFFF !important;
+      }
+      .badge-ref {
+        background-color: #111827 !important;
+        border-color: #374151 !important;
+        color: #9CA3AF !important;
+      }
+      .badge-ref strong {
+        color: #F3F4F6 !important;
+      }
+      .greeting-text {
+        color: #D1D5DB !important;
+      }
+      .specs-container {
+        background-color: #0F172A !important;
+        border-color: #1E293B !important;
+      }
+      .spec-label {
+        color: #94A3B8 !important;
+      }
+      .spec-value {
+        color: #F8FAFC !important;
+      }
+      .section-title {
+        color: #F3F4F6 !important;
+      }
+      .payment-table {
+        background-color: #0F172A !important;
+        border-color: #1E293B !important;
+      }
+      .payment-table td {
+        border-bottom-color: #1E293B !important;
+        color: #D1D5DB !important;
+      }
+      .payment-table td.amount-col {
+        color: #F9FAFB !important;
+      }
+      .payment-table tr.total-row td {
+        background-color: #0B0F19 !important;
+      }
+      .payment-table tr.total-row td.total-label {
+        color: #F9FAFB !important;
+      }
+      .payment-table tr.total-row td.total-amount {
+        color: #FF5722 !important;
+      }
+      .action-card {
+        background-color: #0F172A !important;
+        border-color: #1E293B !important;
+      }
+      .action-card-header {
+        color: #F9FAFB !important;
+      }
+      .action-card-subtext {
+        color: #9CA3AF !important;
+      }
+      .pdf-file-title {
+        color: #F9FAFB !important;
+      }
+      .pdf-file-size {
+        color: #9CA3AF !important;
+      }
+      .btn-download-pdf {
+        background-color: #1E293B !important;
+        border-color: #334155 !important;
+        color: #F9FAFB !important;
+      }
+      .assistance-box {
+        border-top-color: #1E293B !important;
+      }
+      .assistance-card {
+        background-color: #0F172A !important;
+        border-color: #1E293B !important;
+      }
+      .assistance-content {
+        color: #9CA3AF !important;
+      }
+      .assistance-content strong {
+        color: #F9FAFB !important;
+      }
+      .legal-footer {
+        color: #64748B !important;
+      }
+    }
+
+    /* ==========================================================================
+       MOBILE RESPONSIVENESS (< 540px)
+       ========================================================================== */
+    @media only screen and (max-width: 540px) {
+      body {
+        padding: 8px 4px !important;
+      }
+      .inner-padding {
+        padding: 20px 14px !important;
+      }
+      .main-title {
+        font-size: 19px !important;
+      }
+      .responsive-col {
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        margin-bottom: 12px !important;
+      }
+      .responsive-col:last-child {
+        margin-bottom: 0 !important;
+      }
+      .specs-divider {
+        display: none !important;
+      }
+      .payment-table td {
+        padding: 9px 10px !important;
+        font-size: 12px !important;
+      }
+      .payment-table tr.total-row td.total-amount {
+        font-size: 16px !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="email-outer-wrapper">
+    <div class="email-card">
+      <div class="inner-padding">
+        
+        <!-- 1. Official Graphic Brand Logo -->
+        <div style="text-align: center; margin-bottom: 12px;">
+          <img src="{{LogoSrc}}" alt="Drive&amp;Go Rental System" width="220" style="display: inline-block; max-width: 220px; width: 100%; height: auto;" />
+        </div>
+
+        <!-- 2. Main Title -->
+        <div class="main-title">
+          Rental Agreement &amp;<br />Booking Confirmation
+        </div>
+
+        <!-- 3. Reference Badges -->
+        <div class="badge-pill-container">
+          <span class="badge-ref">AGREEMENT NO. <strong>{{AgreementCode}}</strong></span>
+          <span class="badge-confirmed">CONFIRMED</span>
+        </div>
+
+        <!-- 4. Personalized Greeting -->
+        <div class="greeting-text">
+          Hello <strong>{{CustomerName}}</strong>,<br />
+          thank you for renting with <strong>Drive&amp;Go</strong>.<br />
+          Your vehicle is scheduled and ready for dispatch.
+          {{PersonalMessageBlock}}
+        </div>
+
+        <!-- 5. Vehicle & Schedule 2-Column Rounded Specs Box -->
+        <div class="specs-container">
+          <table border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              <!-- Left Column: Vehicle -->
+              <td width="48%" valign="top" class="responsive-col">
+                <!-- Vehicle Model -->
+                <div class="spec-item">
+                  <div class="spec-label">VEHICLE</div>
+                  <div class="spec-value">{{VehicleName}}</div>
+                </div>
+                <!-- Plate Number -->
+                <div class="spec-item" style="padding-top: 10px;">
+                  <div class="spec-label">PLATE NUMBER</div>
+                  <div class="spec-value" style="font-family: 'Courier New', Courier, monospace; letter-spacing: 0.04em;">{{PlateNo}}</div>
+                </div>
+                <!-- Color -->
+                <div class="spec-item" style="padding-top: 10px;">
+                  <div class="spec-label">COLOR</div>
+                  <div class="spec-value">{{VehicleColor}}</div>
+                </div>
+              </td>
+
+              <!-- Divider Column (Desktop only) -->
+              <td width="4%" align="center" valign="middle" class="specs-divider">
+                <div style="width: 1px; height: 120px; background-color: #E2E8F0;"></div>
+              </td>
+
+              <!-- Right Column: Schedule -->
+              <td width="48%" valign="top" class="responsive-col">
+                <!-- Pick-Up -->
+                <div class="spec-item">
+                  <div class="spec-label">PICK-UP</div>
+                  <div class="spec-value">{{PickupDate}}</div>
+                </div>
+                <!-- Return -->
+                <div class="spec-item" style="padding-top: 10px;">
+                  <div class="spec-label">RETURN</div>
+                  <div class="spec-value">{{DropoffDate}}</div>
+                </div>
+                <!-- Duration -->
+                <div class="spec-item" style="padding-top: 10px;">
+                  <div class="spec-label">DURATION</div>
+                  <div class="spec-value">{{DurationDays}} Days</div>
+                </div>
+              </td>
+            </tr>
+          </table>
+        </div>
+
+        <!-- 6. Payment & Invoice Summary -->
+        <div class="section-title">PAYMENT &amp; INVOICE SUMMARY</div>
+        <table class="payment-table">
+          <tr>
+            <td>Daily Rental Fee ({{DurationDays}} days)</td>
+            <td class="amount-col">&#8369;{{DailyTotal}}</td>
+          </tr>
+          <tr>
+            <td>Comprehensive Insurance</td>
+            <td class="amount-col">&#8369;{{InsuranceFee}}</td>
+          </tr>
+          <tr>
+            <td>VAT (12%)</td>
+            <td class="amount-col">&#8369;{{VatAmount}}</td>
+          </tr>
+          <tr class="total-row">
+            <td class="total-label">TOTAL PAID</td>
+            <td class="total-amount">&#8369;{{TotalAmount}}</td>
+          </tr>
+        </table>
+
+        <!-- 7. Action Cards: Dual Side-by-Side Boxes -->
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 20px;">
+          <tr>
+            <!-- Left Action Card: QR Verification -->
+            <td width="48%" valign="top" class="responsive-col">
+              <div class="action-card">
+                <div class="action-card-header">
+                  Official E-Signature &amp;<br />Contract Verified
+                </div>
+                <div class="qr-container">
+                  <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&amp;data={{VerificationUrlEncoded}}" alt="QR Code" width="100" height="100" style="display: block; width: 100px; height: 100px;" />
+                </div>
+                <p class="action-card-subtext">Scan to verify the authenticity of this rental agreement.</p>
+              </div>
+            </td>
+
+            <td width="4%" class="specs-divider">&nbsp;</td>
+
+            <!-- Right Action Card: PDF Download -->
+            <td width="48%" valign="top" class="responsive-col">
+              <div class="action-card">
+                <div class="action-card-header">
+                  Attached Rental Agreement (PDF)
+                </div>
+                <div>
+                  <div class="pdf-badge-icon">PDF</div>
+                </div>
+                <div class="pdf-file-title">Rental_Agreement_{{AgreementCode}}.pdf</div>
+                <div class="pdf-file-size">(Official Contract)</div>
+                <a href="{{PdfDownloadUrl}}" class="btn-download-pdf">&#8595; Download</a>
+              </div>
+            </td>
+          </tr>
+        </table>
+
+        <!-- 8. Primary App Deep-link Button -->
+        <a href="{{AppDeepLink}}" class="primary-cta-btn">View Booking in Drive&amp;Go App</a>
+
+        <!-- 9. Need Assistance Section (3-Column / Stacked Cards) -->
+        <div class="assistance-box">
+          <div class="section-title" style="margin-bottom: 12px;">NEED ASSISTANCE?</div>
+          
+          <table border="0" cellpadding="0" cellspacing="0" width="100%">
+            <tr>
+              <!-- Hotline -->
+              <td width="31%" valign="top" class="responsive-col" style="padding-right: 6px;">
+                <div class="assistance-card">
+                  <div class="assistance-content">
+                    <strong>Customer Support Hotline</strong>
+                    {{CompanyPhone}}
+                  </div>
+                </div>
+              </td>
+
+              <!-- Email -->
+              <td width="31%" valign="top" class="responsive-col" style="padding-left: 3px; padding-right: 3px;">
+                <div class="assistance-card">
+                  <div class="assistance-content">
+                    <strong>Email Support</strong>
+                    {{CompanyEmail}}
+                  </div>
+                </div>
+              </td>
+
+              <!-- Hub / Address -->
+              <td width="38%" valign="top" class="responsive-col" style="padding-left: 6px;">
+                <div class="assistance-card">
+                  <div class="assistance-content">
+                    <strong>Drive&amp;Go Hub</strong>
+                    {{CompanyAddress}}
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </table>
+        </div>
+
+        <!-- 10. Legal Footer -->
+        <div class="legal-footer">
+          &copy; 2026 Drive&amp;Go Vehicle Rental System. All rights reserved.<br />
+          This is an automated email. Please do not reply.
+        </div>
+
+      </div>
+    </div>
+  </div>
+</body>
+</html>

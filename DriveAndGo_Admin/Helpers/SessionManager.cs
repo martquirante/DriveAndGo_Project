@@ -1,4 +1,8 @@
 using System;
+using System.Drawing;
+using System.IO;
+using System.Net.Http;
+using System.Threading.Tasks;
 
 namespace DriveAndGo_Admin.Helpers
 {
@@ -25,6 +29,84 @@ namespace DriveAndGo_Admin.Helpers
         public static bool IsLoggedIn => !string.IsNullOrWhiteSpace(JwtToken);
 
         public static System.Drawing.Image CustomAvatar { get; set; }
+
+        public static async Task SetAvatarFromRawAsync(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                CustomAvatar = null;
+                return;
+            }
+
+            try
+            {
+                string cleaned = raw.Trim();
+                if (cleaned.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                    cleaned.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    using var client = new HttpClient();
+                    var bytes = await client.GetByteArrayAsync(cleaned);
+                    using var ms = new MemoryStream(bytes);
+                    var img = Image.FromStream(ms);
+                    CustomAvatar = (Image)img.Clone();
+                    return;
+                }
+
+                int commaIdx = cleaned.IndexOf(',');
+                if (commaIdx >= 0)
+                {
+                    cleaned = cleaned.Substring(commaIdx + 1).Trim();
+                }
+
+                byte[] imgBytes = Convert.FromBase64String(cleaned);
+                using var memStream = new MemoryStream(imgBytes);
+                var decodedImg = Image.FromStream(memStream);
+                CustomAvatar = (Image)decodedImg.Clone();
+            }
+            catch
+            {
+                // Fallback: don't crash
+            }
+        }
+
+        public static void SetAvatarFromRaw(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                CustomAvatar = null;
+                return;
+            }
+
+            try
+            {
+                string cleaned = raw.Trim();
+                if (cleaned.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                    cleaned.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    using var client = new HttpClient();
+                    var bytes = client.GetByteArrayAsync(cleaned).GetAwaiter().GetResult();
+                    using var ms = new MemoryStream(bytes);
+                    var img = Image.FromStream(ms);
+                    CustomAvatar = (Image)img.Clone();
+                    return;
+                }
+
+                int commaIdx = cleaned.IndexOf(',');
+                if (commaIdx >= 0)
+                {
+                    cleaned = cleaned.Substring(commaIdx + 1).Trim();
+                }
+
+                byte[] imgBytes = Convert.FromBase64String(cleaned);
+                using var memStream = new MemoryStream(imgBytes);
+                var decodedImg = Image.FromStream(memStream);
+                CustomAvatar = (Image)decodedImg.Clone();
+            }
+            catch
+            {
+                // Fallback
+            }
+        }
 
         /// <summary>Clears all session data on logout.</summary>
         public static void Clear()

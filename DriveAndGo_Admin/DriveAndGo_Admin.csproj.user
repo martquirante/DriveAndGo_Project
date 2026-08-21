@@ -70,6 +70,9 @@
     <Compile Update="Panels\TransactionsPanel.cs">
       <SubType>UserControl</SubType>
     </Compile>
+    <Compile Update="Panels\WeatherPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
     <Compile Update="PostLoginLoaderForm.cs">
       <SubType>Form</SubType>
     </Compile>

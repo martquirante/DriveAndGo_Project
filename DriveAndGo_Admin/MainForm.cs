@@ -402,6 +402,15 @@ namespace DriveAndGo_Admin
                     }));
                 });
 
+                _hubConnection.On("ReceiveAccountsUpdate", () =>
+                {
+                    if (this.IsDisposed || !this.IsHandleCreated) return;
+                    this.Invoke((System.Windows.Forms.MethodInvoker)(() =>
+                    {
+                        FetchUserProfileFromApiAsync();
+                    }));
+                });
+
                 _hubConnection.On<JsonElement>("ReceiveNotification", (notif) =>
                 {
                     if (this.IsDisposed || !this.IsHandleCreated) return;
@@ -548,9 +557,9 @@ namespace DriveAndGo_Admin
 
             if (lblClock != null) lblClock.ForeColor = ThemeManager.CurrentSubText;
 
-            btnNotifications.BackColor = ThemeManager.CurrentCard;
+            btnNotifications.BackColor = Color.Transparent;
             btnNotifications.ForeColor = ThemeManager.CurrentText;
-            btnNotifications.FlatAppearance.BorderColor = ThemeManager.CurrentBorder;
+            btnNotifications.Invalidate();
 
             lblLogo.ForeColor    = ThemeManager.CurrentPrimary;
             lblLogoSub.ForeColor = ThemeManager.CurrentSubText;
@@ -1338,19 +1347,18 @@ namespace DriveAndGo_Admin
             // ── Notifications button ──────────────────────────────────────────────
             btnNotifications = new Button
             {
-                Text      = "🔔",
+                Text      = "",
                 Size      = new Size(40, 40),
                 FlatStyle = FlatStyle.Flat,
-                Font      = new Font("Segoe UI", 12F),
-                Cursor    = Cursors.Hand
+                Cursor    = Cursors.Hand,
+                BackColor = Color.Transparent
             };
             btnNotifications.FlatAppearance.BorderSize           = 0;
-            btnNotifications.FlatAppearance.MouseOverBackColor   = Color.FromArgb(18, 128, 128, 128);
-            btnNotifications.BackColor = Color.Transparent;
-            SetRoundRegion(btnNotifications, 20);
+            btnNotifications.FlatAppearance.MouseOverBackColor   = Color.Transparent;
+            btnNotifications.FlatAppearance.MouseDownBackColor  = Color.Transparent;
             AttachRipple(btnNotifications, ThemeManager.CurrentPrimary);
 
-            // ── Badge paint (glowing red circle with count) ───────────────────────
+            // ── Badge & Icon paint ────────────────────────────────────────────────
             btnNotifications.Paint += OnNotifButtonPaint;
 
             // ── Flyout open/close on click ────────────────────────────────────────
@@ -1426,6 +1434,11 @@ namespace DriveAndGo_Admin
                 if (_activePanel is DashboardPanel dp)
                 {
                     dp.PushThemeToWebView(ThemeManager.IsDarkMode ? "dark" : "light");
+                }
+                if (_globalNotifWebView != null && _globalNotifWebView.CoreWebView2 != null)
+                {
+                    string themeMode = ThemeManager.IsDarkMode ? "dark" : "light";
+                    _globalNotifWebView.CoreWebView2.ExecuteScriptAsync($"if(window.setFlyoutTheme) window.setFlyoutTheme('{themeMode}');");
                 }
             };
 
@@ -2505,35 +2518,136 @@ namespace DriveAndGo_Admin
         // ══════════════════════════════════════════════════════════════════════════
         private void OnNotifButtonPaint(object sender, PaintEventArgs e)
         {
-            if (_unreadNotifCount <= 0) return;
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
 
-            int badgeSize = 16;
-            var rect = new Rectangle(btnNotifications.Width - badgeSize - 2, 2, badgeSize, badgeSize);
-            
-            // Neon red glow
-            using (var glowPath = new GraphicsPath())
+            int w = btnNotifications.Width;
+            int h = btnNotifications.Height;
+
+            // 1. Crisp anti-aliased circular container background & subtle border
+            bool isDark = ThemeManager.IsDarkMode;
+            var circleRect = new Rectangle(2, 2, w - 5, h - 5);
+
+            using (var bgBrush = new SolidBrush(isDark ? Color.FromArgb(22, 255, 255, 255) : Color.FromArgb(12, 0, 0, 0)))
             {
-                glowPath.AddEllipse(rect.X - 3, rect.Y - 3, rect.Width + 6, rect.Height + 6);
-                using var gb = new PathGradientBrush(glowPath);
-                gb.CenterColor = Color.FromArgb(160, 239, 68, 68);
-                gb.SurroundColors = new[] { Color.Transparent };
-                g.FillPath(gb, glowPath);
+                g.FillEllipse(bgBrush, circleRect);
+            }
+            using (var borderPen = new Pen(isDark ? Color.FromArgb(40, 255, 255, 255) : Color.FromArgb(25, 0, 0, 0), 1f))
+            {
+                g.DrawEllipse(borderPen, circleRect);
             }
 
-            // Solid badge circle
-            using var brush = new SolidBrush(Color.FromArgb(239, 68, 68));
-            g.FillEllipse(brush, rect);
+            // 2. Vector Bell Icon (Crisp, centered, perfectly proportional)
+            DrawVectorBell(g, w / 2f, h / 2f + 0.5f, 17f, ThemeManager.CurrentText);
 
-            using var font = new Font("Segoe UI", 7.5F, FontStyle.Bold);
-            using var format = new StringFormat
+            // 3. Floating Notification Badge Pill / Circle (Zero clipping, crystal clear centering)
+            if (_unreadNotifCount > 0)
             {
-                Alignment = StringAlignment.Center,
-                LineAlignment = StringAlignment.Center
+                string txt = _unreadNotifCount > 99 ? "99+" : _unreadNotifCount.ToString();
+                using var font = new Font("Segoe UI", 7.5f, FontStyle.Bold);
+                var textSize = g.MeasureString(txt, font);
+
+                int badgeH = 17;
+                int badgeW = _unreadNotifCount <= 9 ? 17 : Math.Max(17, (int)textSize.Width + 5);
+                int badgeX = w - badgeW - 1;
+                int badgeY = 1;
+                var badgeRect = new Rectangle(badgeX, badgeY, badgeW, badgeH);
+
+                // Subtle red glow
+                using (var glowBrush = new SolidBrush(Color.FromArgb(45, 239, 68, 68)))
+                {
+                    if (badgeW == badgeH)
+                    {
+                        g.FillEllipse(glowBrush, badgeX - 1, badgeY - 1, badgeW + 2, badgeH + 2);
+                    }
+                    else
+                    {
+                        using var glowPath = GetRoundedRect(new Rectangle(badgeX - 1, badgeY - 1, badgeW + 2, badgeH + 2), (badgeH + 2) / 2);
+                        g.FillPath(glowBrush, glowPath);
+                    }
+                }
+
+                // Clean cutout border ring (using headerPanel.BackColor to create crisp layered depth)
+                using (var ringPen = new Pen(headerPanel.BackColor, 2f))
+                {
+                    if (badgeW == badgeH)
+                    {
+                        g.DrawEllipse(ringPen, badgeRect);
+                    }
+                    else
+                    {
+                        using var ringPath = GetRoundedRect(badgeRect, badgeH / 2);
+                        g.DrawPath(ringPen, ringPath);
+                    }
+                }
+
+                // Vibrant solid red badge fill
+                using (var bgBrush = new SolidBrush(Color.FromArgb(239, 68, 68)))
+                {
+                    if (badgeW == badgeH)
+                    {
+                        g.FillEllipse(bgBrush, badgeRect);
+                    }
+                    else
+                    {
+                        using var badgePath = GetRoundedRect(badgeRect, badgeH / 2);
+                        g.FillPath(bgBrush, badgePath);
+                    }
+                }
+
+                // Crisp centered text
+                using var sf = new StringFormat
+                {
+                    Alignment = StringAlignment.Center,
+                    LineAlignment = StringAlignment.Center
+                };
+                var textRect = new RectangleF(badgeX, badgeY - 0.5f, badgeW, badgeH);
+                g.DrawString(txt, font, Brushes.White, textRect, sf);
+            }
+        }
+
+        private void DrawVectorBell(Graphics g, float cx, float cy, float size, Color color)
+        {
+            using var pen = new Pen(color, 1.8f)
+            {
+                StartCap = LineCap.Round,
+                EndCap = LineCap.Round,
+                LineJoin = LineJoin.Round
             };
-            string txt = _unreadNotifCount > 9 ? "9+" : _unreadNotifCount.ToString();
-            g.DrawString(txt, font, Brushes.White, rect, format);
+
+            float s = size / 20f;
+            using var path = new GraphicsPath();
+
+            // Top dome arc
+            path.AddArc(cx - 4.5f * s, cy - 7f * s, 9f * s, 9f * s, 180, 180);
+            // Right flare curve
+            path.AddBezier(
+                new PointF(cx + 4.5f * s, cy - 2.5f * s),
+                new PointF(cx + 4.5f * s, cy + 2f * s),
+                new PointF(cx + 7f * s, cy + 3.5f * s),
+                new PointF(cx + 7f * s, cy + 5f * s)
+            );
+            // Bottom line across flare
+            path.AddLine(cx + 7f * s, cy + 5f * s, cx - 7f * s, cy + 5f * s);
+            // Left flare curve
+            path.AddBezier(
+                new PointF(cx - 7f * s, cy + 5f * s),
+                new PointF(cx - 7f * s, cy + 3.5f * s),
+                new PointF(cx - 4.5f * s, cy + 2f * s),
+                new PointF(cx - 4.5f * s, cy - 2.5f * s)
+            );
+            path.CloseFigure();
+            g.DrawPath(pen, path);
+
+            // Bottom clapper arc
+            using var clapperPen = new Pen(color, 1.8f)
+            {
+                StartCap = LineCap.Round,
+                EndCap = LineCap.Round
+            };
+            g.DrawArc(clapperPen, cx - 2f * s, cy + 5f * s, 4f * s, 3.5f * s, 0, 180);
         }
 
         public void PushNotification(string title, string body)
@@ -2582,18 +2696,18 @@ namespace DriveAndGo_Admin
             {
                 _globalNotifHostPanel = new Panel
                 {
-                    Size = new Size(340, 350),
+                    Size = new Size(360, 360),
                     BackColor = Color.Transparent,
                     Visible = false
                 };
 
                 Point screenPt = btnNotifications.PointToScreen(new Point(0, 0));
                 Point parentPt = this.PointToClient(screenPt);
-                _globalNotifHostPanel.Location = new Point(parentPt.X + btnNotifications.Width - 340, parentPt.Y + btnNotifications.Height + 6);
+                _globalNotifHostPanel.Location = new Point(parentPt.X + btnNotifications.Width - 360, parentPt.Y + btnNotifications.Height + 6);
 
                 _globalNotifWebView = new Microsoft.Web.WebView2.WinForms.WebView2 { 
                     Dock = DockStyle.Fill,
-                    DefaultBackgroundColor = Color.Transparent 
+                    DefaultBackgroundColor = System.Drawing.Color.FromArgb(0, 0, 0, 0)
                 };
                 _globalNotifHostPanel.Controls.Add(_globalNotifWebView);
                 this.Controls.Add(_globalNotifHostPanel);
@@ -2630,6 +2744,20 @@ namespace DriveAndGo_Admin
                                 _unreadNotifCount = 0;
                                 btnNotifications?.Invalidate();
                             }
+                            else if (msg.StartsWith("resize_flyout:"))
+                            {
+                                if (int.TryParse(msg.Substring("resize_flyout:".Length), out int h))
+                                {
+                                    int clampedH = Math.Min(400, Math.Max(100, h + 10));
+                                    this.BeginInvoke((Action)(() =>
+                                    {
+                                        if (_globalNotifHostPanel != null && !_globalNotifHostPanel.IsDisposed)
+                                        {
+                                            _globalNotifHostPanel.Height = clampedH;
+                                        }
+                                    }));
+                                }
+                            }
                         }
                         catch { }
                     };
@@ -2648,7 +2776,8 @@ namespace DriveAndGo_Admin
                 try
                 {
                     var json = JsonSerializer.Serialize(_notifications);
-                    await _globalNotifWebView.CoreWebView2.ExecuteScriptAsync($"if(window.setNotifications) window.setNotifications({json});");
+                    string themeMode = ThemeManager.IsDarkMode ? "dark" : "light";
+                    await _globalNotifWebView.CoreWebView2.ExecuteScriptAsync($"if(window.setNotifications) window.setNotifications({json}); if(window.setFlyoutTheme) window.setFlyoutTheme('{themeMode}');");
                 }
                 catch { }
             }
@@ -2698,35 +2827,60 @@ namespace DriveAndGo_Admin
         {
             try
             {
-                int uid = SessionManager.UserId > 0 ? SessionManager.UserId : 1;
-                var res = await ApiService.GetAsync($"users/{uid}");
+                int uid = SessionManager.UserId;
+                string queryUrl = uid > 0 ? $"users/{uid}" : "admin/accounts?role=admin";
+
+                var res = await ApiService.GetAsync(queryUrl);
                 if (res.Success && !string.IsNullOrWhiteSpace(res.Body))
                 {
                     using var doc = JsonDocument.Parse(res.Body);
-                    var root = doc.RootElement;
+                    JsonElement userElem;
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                    {
+                        if (doc.RootElement.GetArrayLength() > 0)
+                            userElem = doc.RootElement[0];
+                        else
+                            return;
+                    }
+                    else
+                    {
+                        userElem = doc.RootElement;
+                    }
 
-                    if (root.TryGetProperty("fullName", out var fn) && !string.IsNullOrWhiteSpace(fn.GetString()))
+                    if (userElem.TryGetProperty("userId", out var uidProp) && uidProp.GetInt32() > 0)
+                    {
+                        SessionManager.UserId = uidProp.GetInt32();
+                    }
+                    if (userElem.TryGetProperty("fullName", out var fn) && !string.IsNullOrWhiteSpace(fn.GetString()))
                     {
                         SessionManager.FullName = fn.GetString();
                     }
-                    if (root.TryGetProperty("email", out var em) && !string.IsNullOrWhiteSpace(em.GetString()))
+                    if (userElem.TryGetProperty("email", out var em) && !string.IsNullOrWhiteSpace(em.GetString()))
                     {
                         SessionManager.Email = em.GetString();
                     }
-                    if (root.TryGetProperty("role", out var rl) && !string.IsNullOrWhiteSpace(rl.GetString()))
+                    if (userElem.TryGetProperty("role", out var rl) && !string.IsNullOrWhiteSpace(rl.GetString()))
                     {
                         SessionManager.Role = rl.GetString();
                     }
-                    if (root.TryGetProperty("avatarBase64", out var av) && !string.IsNullOrWhiteSpace(av.GetString()))
+
+                    string photoStr = null;
+                    if (userElem.TryGetProperty("avatarBase64", out var av) && !string.IsNullOrWhiteSpace(av.GetString()))
                     {
-                        try
-                        {
-                            byte[] bytes = Convert.FromBase64String(av.GetString());
-                            using var ms = new MemoryStream(bytes);
-                            Image img = Image.FromStream(ms);
-                            SessionManager.CustomAvatar = (Image)img.Clone();
-                        }
-                        catch { }
+                        photoStr = av.GetString();
+                    }
+                    else if (userElem.TryGetProperty("idPhotoUrl", out var ip) && !string.IsNullOrWhiteSpace(ip.GetString()))
+                    {
+                        photoStr = ip.GetString();
+                    }
+                    else if (userElem.TryGetProperty("photoUrl", out var pu) && !string.IsNullOrWhiteSpace(pu.GetString()))
+                    {
+                        photoStr = pu.GetString();
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(photoStr))
+                    {
+                        await SessionManager.SetAvatarFromRawAsync(photoStr);
                     }
                 }
             }
@@ -3063,8 +3217,8 @@ namespace DriveAndGo_Admin
 
             private static string CleanEmoji(string input)
             {
-                if (string.IsNullOrEmpty(input)) return "";
-                return System.Text.RegularExpressions.Regex.Replace(input, @"[\uD800-\uDBFF][\uDC00-\uDFFF]|\u200D|[\u2600-\u27BF]|[\u1F300-\u1F9FF]", "").Trim();
+                if (string.IsNullOrWhiteSpace(input)) return "";
+                return input.Trim();
             }
 
             private void StartHover(bool hover)

@@ -161,26 +161,75 @@ STRICT DATA PRIVACY & SECURITY GUARDRAILS:
             }
         }
 
+        private string GetConfigKey(string keyName)
+        {
+            string? envVal = Environment.GetEnvironmentVariable(keyName);
+            if (!string.IsNullOrWhiteSpace(envVal) && !envVal.Contains("YOUR_")) return envVal.Trim();
+            string? cfgVal = _config[keyName];
+            if (!string.IsNullOrWhiteSpace(cfgVal) && !cfgVal.Contains("YOUR_")) return cfgVal.Trim();
+            string? sectionVal = _config[$"AiKeys:{keyName}"];
+            if (!string.IsNullOrWhiteSpace(sectionVal) && !sectionVal.Contains("YOUR_")) return sectionVal.Trim();
+            return string.Empty;
+        }
+
         private async Task<string> QueryCustomerAssistantLlmAsync(string fullPrompt)
         {
-            string groqKey = Environment.GetEnvironmentVariable("GROQ_API_KEY") ?? _config["GROQ_API_KEY"] ?? "";
+            // 1. Try Groq (Ultra-fast GPT-OSS 120B & 20B)
+            string groqKey = GetConfigKey("GROQ_API_KEY");
             if (!string.IsNullOrWhiteSpace(groqKey))
+            {
+                string[] groqModels = new[] { "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b" };
+                foreach (var model in groqModels)
+                {
+                    try
+                    {
+                        var reqObj = new
+                        {
+                            model = model,
+                            messages = new[]
+                            {
+                                new { role = "system", content = "You are @Drive&Go AI, a friendly, intelligent in-chat conversational assistant for Drive&Go car rentals. Answer questions helpfully, warmly, and concisely in English or Taglish based on user language." },
+                                new { role = "user", content = fullPrompt }
+                            },
+                            temperature = 0.6,
+                            max_tokens = 400
+                        };
+                        using var httpReq = new HttpRequestMessage(HttpMethod.Post, "https://api.groq.com/openai/v1/chat/completions");
+                        httpReq.Headers.Add("Authorization", $"Bearer {groqKey}");
+                        httpReq.Content = new StringContent(JsonSerializer.Serialize(reqObj), Encoding.UTF8, "application/json");
+
+                        using var res = await _httpClient.SendAsync(httpReq);
+                        if (res.IsSuccessStatusCode)
+                        {
+                            string json = await res.Content.ReadAsStringAsync();
+                            using var doc = JsonDocument.Parse(json);
+                            string ans = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
+                            if (!string.IsNullOrWhiteSpace(ans)) return ans.Trim();
+                        }
+                    }
+                    catch { }
+                }
+            }
+
+            // 2. Try Mistral AI
+            string mistralKey = GetConfigKey("MISTRAL_API_KEY");
+            if (!string.IsNullOrWhiteSpace(mistralKey))
             {
                 try
                 {
                     var reqObj = new
                     {
-                        model = "llama-3.3-70b-versatile",
+                        model = "mistral-small-latest",
                         messages = new[]
                         {
-                            new { role = "system", content = "You are @Drive&Go AI, a friendly in-chat conversational assistant for customers and drivers in chat threads. Strictly maintain privacy: do NOT expose internal financial metrics, admin revenue data, or private database stats. Decline any admin financial requests politely." },
+                            new { role = "system", content = "You are @Drive&Go AI, a friendly, intelligent in-chat conversational assistant for Drive&Go car rentals. Answer questions helpfully, warmly, and concisely." },
                             new { role = "user", content = fullPrompt }
                         },
                         temperature = 0.6,
-                        max_tokens = 300
+                        max_tokens = 400
                     };
-                    using var httpReq = new HttpRequestMessage(HttpMethod.Post, "https://api.groq.com/openai/v1/chat/completions");
-                    httpReq.Headers.Add("Authorization", $"Bearer {groqKey}");
+                    using var httpReq = new HttpRequestMessage(HttpMethod.Post, "https://api.mistral.ai/v1/chat/completions");
+                    httpReq.Headers.Add("Authorization", $"Bearer {mistralKey}");
                     httpReq.Content = new StringContent(JsonSerializer.Serialize(reqObj), Encoding.UTF8, "application/json");
 
                     using var res = await _httpClient.SendAsync(httpReq);
@@ -188,13 +237,121 @@ STRICT DATA PRIVACY & SECURITY GUARDRAILS:
                     {
                         string json = await res.Content.ReadAsStringAsync();
                         using var doc = JsonDocument.Parse(json);
-                        return doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
+                        string ans = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
+                        if (!string.IsNullOrWhiteSpace(ans)) return ans.Trim();
                     }
                 }
                 catch { }
             }
 
-            return "I'm @Drive&Go AI! I'm here to help with any rental questions inside this chat.";
+            // 2. Try Google Gemini
+            string geminiKey = GetConfigKey("GEMINI_API_KEY");
+            if (!string.IsNullOrWhiteSpace(geminiKey))
+            {
+                try
+                {
+                    var reqObj = new
+                    {
+                        contents = new[]
+                        {
+                            new
+                            {
+                                parts = new[]
+                                {
+                                    new { text = fullPrompt }
+                                }
+                            }
+                        }
+                    };
+                    string geminiUrl = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={geminiKey}";
+                    using var httpReq = new HttpRequestMessage(HttpMethod.Post, geminiUrl);
+                    httpReq.Content = new StringContent(JsonSerializer.Serialize(reqObj), Encoding.UTF8, "application/json");
+
+                    using var res = await _httpClient.SendAsync(httpReq);
+                    if (res.IsSuccessStatusCode)
+                    {
+                        string json = await res.Content.ReadAsStringAsync();
+                        using var doc = JsonDocument.Parse(json);
+                        var candidates = doc.RootElement.GetProperty("candidates");
+                        if (candidates.GetArrayLength() > 0)
+                        {
+                            var parts = candidates[0].GetProperty("content").GetProperty("parts");
+                            if (parts.GetArrayLength() > 0)
+                            {
+                                string ans = parts[0].GetProperty("text").GetString() ?? "";
+                                if (!string.IsNullOrWhiteSpace(ans)) return ans.Trim();
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            // 3. Try OpenRouter
+            string openRouterKey = GetConfigKey("OPENROUTER_API_KEY");
+            if (!string.IsNullOrWhiteSpace(openRouterKey))
+            {
+                try
+                {
+                    var reqObj = new
+                    {
+                        model = "meta-llama/llama-3.3-70b-instruct:free",
+                        messages = new[]
+                        {
+                            new { role = "user", content = fullPrompt }
+                        },
+                        temperature = 0.6,
+                        max_tokens = 400
+                    };
+                    using var httpReq = new HttpRequestMessage(HttpMethod.Post, "https://openrouter.ai/api/v1/chat/completions");
+                    httpReq.Headers.Add("Authorization", $"Bearer {openRouterKey}");
+                    httpReq.Content = new StringContent(JsonSerializer.Serialize(reqObj), Encoding.UTF8, "application/json");
+
+                    using var res = await _httpClient.SendAsync(httpReq);
+                    if (res.IsSuccessStatusCode)
+                    {
+                        string json = await res.Content.ReadAsStringAsync();
+                        using var doc = JsonDocument.Parse(json);
+                        string ans = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
+                        if (!string.IsNullOrWhiteSpace(ans)) return ans.Trim();
+                    }
+                }
+                catch { }
+            }
+
+            // 4. Try SambaNova
+            string sambaKey = GetConfigKey("SAMBANOVA_API_KEY");
+            if (!string.IsNullOrWhiteSpace(sambaKey))
+            {
+                try
+                {
+                    var reqObj = new
+                    {
+                        model = "Meta-Llama-3.3-70B-Instruct",
+                        messages = new[]
+                        {
+                            new { role = "user", content = fullPrompt }
+                        },
+                        temperature = 0.6,
+                        max_tokens = 400
+                    };
+                    using var httpReq = new HttpRequestMessage(HttpMethod.Post, "https://api.sambanova.ai/v1/chat/completions");
+                    httpReq.Headers.Add("Authorization", $"Bearer {sambaKey}");
+                    httpReq.Content = new StringContent(JsonSerializer.Serialize(reqObj), Encoding.UTF8, "application/json");
+
+                    using var res = await _httpClient.SendAsync(httpReq);
+                    if (res.IsSuccessStatusCode)
+                    {
+                        string json = await res.Content.ReadAsStringAsync();
+                        using var doc = JsonDocument.Parse(json);
+                        string ans = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
+                        if (!string.IsNullOrWhiteSpace(ans)) return ans.Trim();
+                    }
+                }
+                catch { }
+            }
+
+            return "Hello! I'm @Drive&Go AI. I'm here to assist with any questions, rental inquiries, and vehicle details inside this chat!";
         }
     }
 }

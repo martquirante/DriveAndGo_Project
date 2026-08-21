@@ -22,7 +22,6 @@ public class AdminDashboardController : ControllerBase
     }
 
     [HttpGet("summary")]
-    [HttpGet("stats")]
     [AllowAnonymous]
     public async Task<IActionResult> GetSummary()
     {

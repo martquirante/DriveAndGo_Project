@@ -434,13 +434,13 @@ public class AiOrchestrationService : IAiOrchestrationService
 
         var tiers = new List<(string provider, string key, Func<CancellationToken, Task<(string result, string provider)?>> action)>
         {
-            ("Groq",        _groqKey,        ct => TryGroqAsync(sessionId, messages, ct)),
-            ("HuggingFace",  _huggingFaceKey, ct => TryHuggingFaceAsync(sessionId, messages, ct)),
-            ("Cohere",       _cohereKey,      ct => TryCohereAsync(sessionId, messages, ct)),
-            ("Gemini",       _geminiKey,      ct => TryGeminiAsync(sessionId, messages, ct)),
             ("Mistral",      _mistralKey,     ct => TryMistralAsync(sessionId, messages, ct)),
+            ("Gemini",       _geminiKey,      ct => TryGeminiAsync(sessionId, messages, ct)),
+            ("Groq",        _groqKey,        ct => TryGroqAsync(sessionId, messages, ct)),
             ("SambaNova",    _sambaNovaKey,   ct => TrySambaNovaAsync(sessionId, messages, ct)),
-            ("OpenRouter",   _openRouterKey,  ct => TryOpenRouterAsync(sessionId, messages, ct))
+            ("OpenRouter",   _openRouterKey,  ct => TryOpenRouterAsync(sessionId, messages, ct)),
+            ("Cohere",       _cohereKey,      ct => TryCohereAsync(sessionId, messages, ct)),
+            ("HuggingFace",  _huggingFaceKey, ct => TryHuggingFaceAsync(sessionId, messages, ct))
         };
 
         foreach (var p in tiers)
@@ -524,7 +524,7 @@ public class AiOrchestrationService : IAiOrchestrationService
     {
         if (string.IsNullOrWhiteSpace(_groqKey)) return null;
 
-        string[] fallbackChain = { "llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-70b-8192", "llama3-8b-8192", "gemma2-9b-it" };
+        string[] fallbackChain = { "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b" };
         using var client = _httpFactory.CreateClient();
         client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveAndGo/1.0");
         client.DefaultRequestHeaders.Authorization =
@@ -768,7 +768,7 @@ public class AiOrchestrationService : IAiOrchestrationService
     {
         if (string.IsNullOrWhiteSpace(_geminiKey)) return null;
 
-        string[] models = { "gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-flash-latest" };
+        string[] models = { "gemini-3.6-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.5-flash" };
 
         foreach (var modelName in models)
         {
@@ -1229,7 +1229,7 @@ public class AiOrchestrationService : IAiOrchestrationService
             client.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _groqKey);
             url = GroqUrl;
-            model = "llama-3.3-70b-versatile";
+            model = "openai/gpt-oss-120b";
         }
         else
         {

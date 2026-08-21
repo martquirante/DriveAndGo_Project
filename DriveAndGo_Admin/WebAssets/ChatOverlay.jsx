@@ -772,10 +772,19 @@ function ChatOverlay({ initialQuery = '' }) {
     return <span className="font-extrabold text-sm text-white tracking-wider">{initial}</span>;
   };
 
-  const adminUserId = 1;
-  const apiBase = (window.API_BASE_URL || 'http://localhost:5233').replace(/\/api\/?$/i, '').replace(/\/$/, '');
-  const activeConv = conversations.find(c => c.id === activeConvId) || conversations[0] || INITIAL_CONVERSATIONS[0];
+  const apiBase = (window.API_BASE_URL || (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'appassets' ? `${window.location.protocol}//${window.location.hostname}:5233` : 'http://localhost:5233')).replace(/\/api\/?$/i, '').replace(/\/$/, '');
   const activeMessages = messagesByConv[activeConvId] || [];
+  const activeConv = conversations.find(c => String(c.id) === String(activeConvId)) || conversations[0] || {
+    id: activeConvId,
+    name: activeConvId === 'ai_copilot' ? 'Drive&Go Copilot' : 'Conversation',
+    isGroup: false,
+    avatar: '🤖',
+    avatarBg: 'from-orange-500 to-amber-600',
+    isAi: activeConvId === 'ai_copilot',
+    isOnline: true,
+    status: 'online',
+    role: 'AI Assistant'
+  };
 
   // Is AI channel? Controls which input controls are shown
   const isAiChannel = activeConvId === 'ai_copilot';
@@ -1601,30 +1610,18 @@ function ChatOverlay({ initialQuery = '' }) {
     setReplyingTo(null); // Clear reply state after send
 
     if (isAiTarget) {
-      if (isAiBusy) {
-        // AI is currently busy: enqueue request WITHOUT posting user bubble yet (holds in Queued Messages container)
-        enqueueAiRequest({
-          id: Date.now(),
-          text: msgText,
-          convId: activeConvId,
-          isGroup: activeConv.isGroup,
-          isCopilot: activeConvId === 'ai_copilot',
-          shouldPostUserMsg: true,
-          replyingTo
-        });
-      } else {
-        // AI is free: post user message bubble in parallel and start AI processing immediately
-        postUserMessageToDbAndUi(msgText, activeConvId, activeConv.isGroup, replyingTo, attachedMedia, finalMediaMetaStr, newMsgId, nowStr);
-        enqueueAiRequest({
-          id: Date.now(),
-          text: msgText,
-          convId: activeConvId,
-          isGroup: activeConv.isGroup,
-          isCopilot: activeConvId === 'ai_copilot',
-          shouldPostUserMsg: false,
-          replyingTo
-        });
-      }
+      // Post user message bubble immediately to DB & UI so it never lags or disappears
+      postUserMessageToDbAndUi(msgText, activeConvId, activeConv.isGroup, replyingTo, attachedMedia, finalMediaMetaStr, newMsgId, nowStr);
+      setAiLoadingConvoId(activeConvId);
+      enqueueAiRequest({
+        id: Date.now(),
+        text: msgText,
+        convId: activeConvId,
+        isGroup: activeConv.isGroup,
+        isCopilot: activeConvId === 'ai_copilot',
+        shouldPostUserMsg: false,
+        replyingTo
+      });
     } else {
       // Regular non-AI message: post immediately
       await postUserMessageToDbAndUi(msgText, activeConvId, activeConv.isGroup, replyingTo, attachedMedia, finalMediaMetaStr, newMsgId, nowStr);
@@ -1864,7 +1861,7 @@ function ChatOverlay({ initialQuery = '' }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId: aiSessionId || 1,
-          adminUserId,
+          adminUserId: 1,
           userMessage: userMessage.replace('@Drive&Go AI', '').replace('@Meta AI', '').trim()
         })
       });
@@ -2853,9 +2850,25 @@ const handleGroupAvatarChange = async (e) => {
             )}
 
             {/* AI Thinking Bubble Indicator */}
-            {isAiLoading && AiThinkingBubbleComp && (
+            {isAiLoading && (
               <div style={{ marginTop: '14px' }}>
-                <AiThinkingBubbleComp />
+                {AiThinkingBubbleComp ? (
+                  <AiThinkingBubbleComp />
+                ) : (
+                  <div className="flex items-center gap-3 p-3 bg-orange-500/10 border border-orange-500/20 rounded-2xl animate-pulse">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-orange-500 to-amber-500 flex items-center justify-center text-white text-xs font-bold shadow-md shadow-orange-500/20">
+                      <IconSparkles sz={14} />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[11px] font-bold text-orange-400">Drive&Go AI is thinking...</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

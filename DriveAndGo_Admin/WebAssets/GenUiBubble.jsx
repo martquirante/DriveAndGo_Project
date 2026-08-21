@@ -1291,7 +1291,7 @@ function VoiceNotePlayer({ audioUrl, metadata }) {
 
   const getAudio = () => {
     if (!audioRef.current) {
-      const serverRoot = (window.API_BASE_URL || 'http://localhost:5233').replace(/\/api\/?$/i, '').replace(/\/$/, '');
+      const serverRoot = (window.API_BASE_URL || (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'appassets' ? `${window.location.protocol}//${window.location.hostname}:5233` : 'http://localhost:5233')).replace(/\/api\/?$/i, '').replace(/\/$/, '');
       let fullUrl = audioUrl || '';
       if (!fullUrl.startsWith('http') && !fullUrl.startsWith('data:') && !fullUrl.startsWith('blob:')) {
         fullUrl = serverRoot + (fullUrl.startsWith('/') ? '' : '/') + fullUrl;
@@ -1555,7 +1555,7 @@ function RichLinkCard({ url, previewData }) {
   const [meta, setMeta] = React.useState(previewData || null);
   const [loading, setLoading] = React.useState(!previewData);
 
-  const apiBase = (window.API_BASE_URL || 'http://localhost:5233').replace(/\/$/, '');
+  const apiBase = (window.API_BASE_URL || (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'appassets' ? `${window.location.protocol}//${window.location.hostname}:5233` : 'http://localhost:5233')).replace(/\/$/, '');
 
   React.useEffect(() => {
     if (previewData) {
@@ -1840,7 +1840,7 @@ function GenUiBubble({ message, groupPosition = 'single', showSenderHeader = tru
     )) ||
     (mUrl && typeof mUrl === 'string' && (mUrl.endsWith('.webm') || mUrl.endsWith('.mp3') || mUrl.endsWith('.m4a') || mUrl.endsWith('.wav') || mUrl.endsWith('.ogg')));
 
-  const apiBase = (window.API_BASE_URL || 'http://localhost:5233').replace(/\/api\/?$/i, '').replace(/\/$/, '');
+  const apiBase = (window.API_BASE_URL || (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'appassets' ? `${window.location.protocol}//${window.location.hostname}:5233` : 'http://localhost:5233')).replace(/\/api\/?$/i, '').replace(/\/$/, '');
 
   const bubbleRef  = useRef(null);
   const mountedRef = useRef(false);

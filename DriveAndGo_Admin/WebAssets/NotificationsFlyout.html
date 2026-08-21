@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="dark" class="bg-transparent" style="background: transparent !important;">
 
 <head>
     <meta charset="UTF-8">
@@ -26,10 +26,11 @@
             user-select: none;
         }
 
-        body {
+        html, body, #root {
             margin: 0;
             padding: 0;
-            background: transparent;
+            background: transparent !important;
+            background-color: transparent !important;
             overflow: hidden;
         }
 
@@ -38,11 +39,11 @@
             width: 4px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.03);
+            background: rgba(128, 128, 128, 0.05);
             border-radius: 8px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.2);
+            background: rgba(128, 128, 128, 0.25);
             border-radius: 8px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
@@ -65,9 +66,9 @@
     </style>
 </head>
 
-<body class="bg-transparent text-white">
+<body class="bg-transparent" style="background: transparent !important;">
 
-    <div id="root"></div>
+    <div id="root" class="bg-transparent" style="background: transparent !important;"></div>
 
     <script type="text/babel">
         const { useState, useEffect } = React;
@@ -112,6 +113,10 @@
         };
 
         const NotificationsApp = () => {
+            const cardRef = React.useRef(null);
+            const [theme, setTheme] = useState(() => {
+                return document.documentElement.getAttribute('data-theme') || 'dark';
+            });
             const [notifications, setNotifications] = useState([
                 {
                     id: '1',
@@ -132,6 +137,19 @@
             ]);
 
             useEffect(() => {
+                window.setFlyoutTheme = function(mode) {
+                    if (mode === 'light' || mode === 'dark') {
+                        document.documentElement.setAttribute('data-theme', mode);
+                        setTheme(mode);
+                    }
+                };
+
+                const obs = new MutationObserver(() => {
+                    const currentMode = document.documentElement.getAttribute('data-theme') || 'dark';
+                    setTheme(currentMode);
+                });
+                obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
                 // Listen to window calls from C# WinForms host
                 window.setNotifications = function(jsonList) {
                     try {
@@ -150,10 +168,32 @@
                         setNotifications(prev => [item, ...prev]);
                     } catch(e) { }
                 };
+
+                return () => obs.disconnect();
             }, []);
 
+            useEffect(() => {
+                const notifyHeight = () => {
+                    if (cardRef.current && window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+                        const h = cardRef.current.offsetHeight;
+                        window.chrome.webview.postMessage("resize_flyout:" + h);
+                    }
+                };
+
+                notifyHeight();
+
+                let ro;
+                if (cardRef.current && typeof ResizeObserver !== 'undefined') {
+                    ro = new ResizeObserver(() => notifyHeight());
+                    ro.observe(cardRef.current);
+                }
+
+                return () => {
+                    if (ro) ro.disconnect();
+                };
+            }, [notifications, theme]);
+
             const handleItemClick = (notif) => {
-                // Send notification click to C# WinForms parent for direct navigation
                 if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
                     window.chrome.webview.postMessage("notification_clicked:" + JSON.stringify(notif));
                 }
@@ -167,15 +207,22 @@
             };
 
             const unreadCount = notifications.filter(n => n.unread).length;
+            const isDark = theme === 'dark';
 
             return (
-                <div className="w-full h-auto p-1 flex justify-end">
-                    <div className="w-full max-h-[380px] bg-[#0c0e1a]/95 backdrop-blur-2xl border border-white/20 rounded-3xl p-4 shadow-[0_20px_50px_rgba(0,0,0,0.9)] flex flex-col justify-between animate-pop-in">
+                <div className="w-full h-auto p-1 flex justify-end bg-transparent" style={{ background: 'transparent' }}>
+                    <div ref={cardRef} className={`w-full h-auto backdrop-blur-2xl border rounded-3xl p-4 flex flex-col gap-3 animate-pop-in overflow-hidden transition-all duration-200 ${
+                        isDark 
+                          ? 'bg-[#0c0e1a]/95 border-white/20 text-white shadow-[0_20px_50px_rgba(0,0,0,0.9)]' 
+                          : 'bg-white/95 border-slate-200/90 text-slate-900 shadow-[0_20px_50px_rgba(0,0,0,0.15)]'
+                    }`}>
                         
                         {/* HEADER */}
-                        <div className="flex items-center justify-between pb-3 border-b border-white/10 shrink-0">
-                            <div className="flex items-center gap-2 font-black text-sm text-white tracking-wide">
-                                <div className="p-1.5 rounded-xl bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                        <div className={`flex items-center justify-between pb-3 border-b shrink-0 ${isDark ? 'border-white/10 text-white' : 'border-slate-200/90 text-slate-900'}`}>
+                            <div className="flex items-center gap-2 font-black text-sm tracking-wide">
+                                <div className={`p-1.5 rounded-xl border ${
+                                    isDark ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' : 'bg-orange-500/15 text-orange-600 border-orange-500/25'
+                                }`}>
                                     <IconBell sz={16} />
                                 </div>
                                 <span>Notifications</span>
@@ -190,54 +237,58 @@
                         {/* LIST CONTAINER */}
                         <div className="max-h-[280px] overflow-y-auto pr-1 my-2.5 flex flex-col gap-2 custom-scrollbar">
                             {notifications.length === 0 ? (
-                                <div className="py-8 flex flex-col items-center justify-center text-center p-4 text-gray-400">
-                                    <div className="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-2 text-gray-500">
+                                <div className={`py-8 flex flex-col items-center justify-center text-center p-4 ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>
+                                    <div className={`w-10 h-10 rounded-2xl border flex items-center justify-center mb-2 ${
+                                        isDark ? 'bg-white/5 border-white/10 text-gray-500' : 'bg-slate-100 border-slate-200 text-slate-400'
+                                    }`}>
                                         <IconCheckCheck sz={20} />
                                     </div>
                                     <span className="text-xs font-semibold">No active notifications</span>
-                                    <span className="text-[10px] text-gray-500 mt-0.5">All fleet advisories are cleared</span>
+                                    <span className="text-[10px] opacity-75 mt-0.5">All fleet advisories are cleared</span>
                                 </div>
                             ) : (
                                 notifications.map((n, idx) => {
-                                    let icon = <IconBell sz={16} className="text-blue-400" />;
-                                    let badgeBg = "bg-blue-500/20 text-blue-400 border-blue-500/30";
+                                    let icon = <IconBell sz={16} className={isDark ? "text-blue-400" : "text-blue-600"} />;
+                                    let badgeBg = isDark ? "bg-blue-500/20 text-blue-400 border-blue-500/30" : "bg-blue-500/15 text-blue-600 border-blue-500/25";
 
-                                    const rawTitle = n.title || n.Title || n.titleText || 'Fleet Advisory';
-                                    const rawBody = n.body || n.Body || n.bodyText || 'Action required for fleet unit.';
+                                    const rawTitle = String(n.title || n.Title || n.titleText || 'Fleet Advisory');
+                                    const rawBody = String(n.body || n.Body || n.bodyText || 'Action required for fleet unit.');
 
-                                    const cleanTitle = String(rawTitle).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|\u200D|[\u2600-\u27BF]|[\u1F300-\u1F9FF]/g, '').trim();
-                                    const cleanBody = String(rawBody).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|\u200D|[\u2600-\u27BF]|[\u1F300-\u1F9FF]/g, '').trim();
-                                    const displayTitle = cleanTitle || rawTitle || 'Fleet Advisory';
-                                    const displayBody = cleanBody || rawBody || 'Notification Details';
+                                    const displayTitle = rawTitle.trim() || 'Fleet Advisory';
+                                    const displayBody = rawBody.trim() || 'Notification Details';
                                     const tLow = displayTitle.toLowerCase();
                                     const displayTime = formatTime(n.time || n.Time);
 
                                     if (tLow.includes('weather') || tLow.includes('pagasa') || tLow.includes('monsoon')) {
-                                        icon = <IconCloudRain sz={16} className="text-amber-400" />;
-                                        badgeBg = "bg-amber-500/20 text-amber-400 border-amber-500/30";
+                                        icon = <IconCloudRain sz={16} className={isDark ? "text-amber-400" : "text-amber-600"} />;
+                                        badgeBg = isDark ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : "bg-amber-500/15 text-amber-600 border-amber-500/25";
                                     } else if (tLow.includes('flood') || tLow.includes('hazard')) {
-                                        icon = <IconShieldAlert sz={16} className="text-cyan-400" />;
-                                        badgeBg = "bg-cyan-500/20 text-cyan-400 border-cyan-500/30";
+                                        icon = <IconShieldAlert sz={16} className={isDark ? "text-cyan-400" : "text-cyan-600"} />;
+                                        badgeBg = isDark ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/30" : "bg-cyan-500/15 text-cyan-600 border-cyan-500/25";
                                     } else if (tLow.includes('decommission') || tLow.includes('audit')) {
-                                        icon = <IconTrash2 sz={16} className="text-red-400" />;
-                                        badgeBg = "bg-red-500/20 text-red-400 border-red-500/30";
+                                        icon = <IconTrash2 sz={16} className={isDark ? "text-red-400" : "text-red-600"} />;
+                                        badgeBg = isDark ? "bg-red-500/20 text-red-400 border-red-500/30" : "bg-red-500/15 text-red-600 border-red-500/25";
                                     }
+
+                                    const itemBg = isDark
+                                        ? (n.unread ? 'bg-white/[0.08] border-white/20 shadow-md hover:bg-white/[0.15] hover:border-orange-500/60' : 'bg-white/[0.02] border-white/5 opacity-75 hover:bg-white/[0.12] hover:border-orange-500/60')
+                                        : (n.unread ? 'bg-slate-50 border-slate-200/90 shadow-sm hover:bg-slate-100 hover:border-orange-500/60' : 'bg-slate-100/40 border-slate-100 opacity-80 hover:bg-slate-100 hover:border-orange-500/60');
 
                                     return (
                                         <div
                                             key={n.id || idx}
                                             onClick={() => handleItemClick(n)}
-                                            className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 hover:scale-[1.015] active:scale-[0.99] ${n.unread ? 'bg-white/[0.08] border-white/20 shadow-md' : 'bg-white/[0.02] border-white/5 opacity-75'} hover:bg-white/[0.15] hover:border-orange-500/60`}
+                                            className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 hover:scale-[1.015] active:scale-[0.99] ${itemBg}`}
                                         >
                                             <div className={`p-2 rounded-xl border shrink-0 mt-0.5 ${badgeBg}`}>
                                                 {icon}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <div className="flex items-center justify-between gap-2 mb-0.5">
-                                                    <h4 className="font-extrabold text-xs text-white truncate">{displayTitle}</h4>
-                                                    <span className="text-[10px] text-gray-400 font-semibold whitespace-nowrap">{displayTime}</span>
+                                                <div className="flex items-center justify-between gap-2 mb-1">
+                                                    <h4 className={`font-black text-xs leading-snug truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{displayTitle}</h4>
+                                                    <span className={`text-[10px] font-semibold shrink-0 whitespace-nowrap ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{displayTime}</span>
                                                 </div>
-                                                <p className="text-[11px] text-gray-300 leading-snug line-clamp-2">{displayBody}</p>
+                                                <p className={`text-[11px] leading-relaxed break-words font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{displayBody}</p>
                                             </div>
                                         </div>
                                     );
@@ -247,10 +298,14 @@
 
                         {/* FOOTER */}
                         {notifications.length > 0 && (
-                            <div className="pt-2 border-t border-white/10 flex justify-center shrink-0">
+                            <div className={`pt-2 border-t flex justify-center shrink-0 ${isDark ? 'border-white/10' : 'border-slate-200/90'}`}>
                                 <button
                                     onClick={handleClearAll}
-                                    className="text-xs font-black text-orange-400 hover:text-orange-300 transition-colors uppercase tracking-wider py-1 px-5 rounded-xl hover:bg-orange-500/10"
+                                    className={`text-xs font-black transition-colors uppercase tracking-wider py-1 px-5 rounded-xl ${
+                                        isDark 
+                                          ? 'text-orange-400 hover:text-orange-300 hover:bg-orange-500/10' 
+                                          : 'text-orange-600 hover:text-orange-700 hover:bg-orange-500/10'
+                                    }`}
                                 >
                                     Clear all
                                 </button>

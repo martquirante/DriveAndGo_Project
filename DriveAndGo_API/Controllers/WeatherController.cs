@@ -250,6 +250,46 @@ namespace DriveAndGo_API.Controllers
                 return StatusCode(500, new { message = ex.Message });
             }
         }
+
+        [HttpGet("tile/{layer}/{z}/{x}/{y}.png")]
+        [HttpGet("tile/{layer}/{z}/{x}/{y}")]
+        public async Task<IActionResult> GetWeatherTile(string layer, int z, int x, int y)
+        {
+            var openWeatherKey = _configuration["OPENWEATHER_API_KEY"] ?? Environment.GetEnvironmentVariable("OPENWEATHER_API_KEY") ?? "";
+            if (string.IsNullOrWhiteSpace(openWeatherKey) || openWeatherKey == "YOUR_OPENWEATHER_API_KEY")
+            {
+                return NotFound(new { message = "OpenWeather API key is not configured" });
+            }
+
+            // Map layer alias to OpenWeatherMap layer name
+            string owmLayer = layer.ToLowerInvariant() switch
+            {
+                "clouds" => "clouds_new",
+                "wind" => "wind_new",
+                "precipitation" => "precipitation_new",
+                "temp" => "temp_new",
+                "pressure" => "pressure_new",
+                _ => layer.EndsWith("_new") ? layer : $"{layer}_new"
+            };
+
+            var url = $"https://tile.openweathermap.org/map/{owmLayer}/{z}/{x}/{y}.png?appid={openWeatherKey}";
+            try
+            {
+                var response = await _httpClient.GetAsync(url);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return StatusCode((int)response.StatusCode);
+                }
+
+                var imageBytes = await response.Content.ReadAsByteArrayAsync();
+                Response.Headers["Cache-Control"] = "public, max-age=600";
+                return File(imageBytes, "image/png");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Tile fetch error: {ex.Message}" });
+            }
+        }
     }
 
     public class SubmersionAlertRequest

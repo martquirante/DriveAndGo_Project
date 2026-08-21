@@ -61,7 +61,7 @@ namespace DriveAndGo_Admin
 
             _lblTitle = new Label
             {
-                Text = "🧠  AI BUSINESS OPERATIONS ADVISOR",
+                Text = "AI BUSINESS OPERATIONS ADVISOR",
                 Font = new Font("Segoe UI", 11.5F, FontStyle.Bold),
                 ForeColor = ThemeManager.CurrentText,
                 AutoSize = true,
@@ -149,7 +149,7 @@ namespace DriveAndGo_Admin
                                 decimal monthlyRevenue = root.TryGetProperty("monthlyRevenue", out var mr) ? mr.GetDecimal() : 0;
                                 decimal totalRevenue = root.TryGetProperty("totalRevenue", out var tr) ? tr.GetDecimal() : 0;
 
-                                _lblTitle.Text = $"🧠  AI BUSINESS OPERATIONS ADVISOR ({source.ToUpper()})";
+                                _lblTitle.Text = $"AI BUSINESS OPERATIONS ADVISOR ({source.ToUpper()})";
                                 byte[] bytes = System.Text.Encoding.UTF8.GetBytes(content);
                                 string base64 = Convert.ToBase64String(bytes);
                                 await _webView.CoreWebView2.ExecuteScriptAsync($"window.updateInsightsFromBase64('{base64}', false, {occupancy}, '{monthlyRevenue:N2}', '{totalRevenue:N2}', '{source}');");
