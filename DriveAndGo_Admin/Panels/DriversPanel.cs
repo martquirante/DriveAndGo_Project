@@ -1,1040 +1,176 @@
 #nullable disable
 using DriveAndGo_Admin.Helpers;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
 using System;
-using System.Collections.Generic;
-using System.Data;
 using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Text.Json.Serialization;
+using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-
-using Button = System.Windows.Forms.Button;
-using ComboBox = System.Windows.Forms.ComboBox;
-using TextBox = System.Windows.Forms.TextBox;
-using WinColor = System.Drawing.Color;
 
 namespace DriveAndGo_Admin.Panels
 {
     public class DriversPanel : UserControl
     {
-        // ── Dynamic theme colors ──
-        private WinColor ColBg => ThemeManager.CurrentBackground;
-        private WinColor ColCard => ThemeManager.CurrentCard;
-        private WinColor ColText => ThemeManager.CurrentText;
-        private WinColor ColSub => ThemeManager.CurrentSubText;
-        private WinColor ColBorder => ThemeManager.CurrentBorder;
-
-        private readonly WinColor ColGreen = WinColor.FromArgb(34, 197, 94);
-        private readonly WinColor ColRed = WinColor.FromArgb(239, 68, 68);
-        private readonly WinColor ColBlue = WinColor.FromArgb(59, 130, 246);
-        private readonly WinColor ColYellow = WinColor.FromArgb(245, 158, 11);
-        private readonly WinColor ColAccent = WinColor.FromArgb(230, 81, 0);
-
-        private readonly string _connStr = string.Empty; // Migrated to API
-
-        // ── UI ──
-        private SplitContainer splitContainer;
-        private Panel topBar;
-        private DataGridView dgvDrivers;
-
-        // Driver Profile Card (Right Panel)
-        private Panel rightPanel;
-        private Panel pnlProfileCard;
-        private Label lblDriverName;
-        private Label lblStatus;
-        private Label lblRating;
-        private Label lblTrips;
-        private Label lblLicense;
-        private Label lblActiveRentals;
-        private Label lblRevenueHandled;
-        private Label lblLastAssigned;
-        private Label lblEmail;
-        private Label lblPhone;
-
-        private TextBox txtSearch;
-        private ComboBox cboStatus;
-
-        private Button btnAdd, btnEdit, btnActivate, btnOffDuty, btnSuspend, btnDelete;
-
-        // ── State ──
-        private DataTable _data = new DataTable();
-        private int _selectedDriverId = -1;
+        private WebView2 _webView;
+        private Panel    _loadingPanel;
+        private Label    _loadingLabel;
+        private bool     _webReady = false;
 
         public DriversPanel()
         {
-            Dock = DockStyle.Fill;
-            DoubleBuffered = true;
-            BackColor = ColBg;
-            ThemeManager.ThemeChanged += OnThemeChanged;
-
-            BuildUI();
-            Load += (s, e) => LoadFromDB();
+            this.Dock      = DockStyle.Fill;
+            this.BackColor = ThemeManager.CurrentBackground;
+            BuildLoading();
+            this.HandleCreated += async (s, e) => await InitWebView();
+            ThemeManager.ThemeChanged += ThemeChanged_Handler;
+            this.Disposed += (s, e) => ThemeManager.ThemeChanged -= ThemeChanged_Handler;
         }
 
-        // ══ BUILD UI ══
-        private void BuildUI()
+        private void ThemeChanged_Handler(object sender, EventArgs e)
         {
-            splitContainer = new SplitContainer
+            this.BackColor = ThemeManager.CurrentBackground;
+            if (_webReady && _webView?.CoreWebView2 != null)
+            {
+                bool dk = ThemeManager.IsDarkMode;
+                _webView.BeginInvoke((MethodInvoker)(async () =>
+                {
+                    await _webView.CoreWebView2.ExecuteScriptAsync($"setTheme({(dk ? "true" : "false")});");
+                }));
+            }
+        }
+
+        private void BuildLoading()
+        {
+            _loadingPanel = new Panel
             {
                 Dock = DockStyle.Fill,
-                Orientation = Orientation.Vertical,
-                SplitterWidth = 5,
-                SplitterDistance = 700,
-                BackColor = ColBorder
-            };
-            splitContainer.Panel1.BackColor = ColBg;
-            splitContainer.Panel2.BackColor = ColBg;
-            splitContainer.SplitterMoved += (s, e) => { dgvDrivers?.Invalidate(); };
-
-            BuildLeftPanel();
-            BuildRightPanel();
-
-            Controls.Add(splitContainer);
-        }
-
-        // ── LEFT PANEL (Table & Controls) ──
-        private void BuildLeftPanel()
-        {
-            topBar = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 100,
-                BackColor = WinColor.Transparent,
-                Padding = new Padding(16, 12, 16, 8)
+                BackColor = ThemeManager.CurrentBackground
             };
 
-            var lblTitle = new Label
+            _loadingLabel = new Label
             {
-                Text = "Driver Management",
-                Font = new Font("Segoe UI", 18F, FontStyle.Bold),
-                ForeColor = ColText,
+                Text = "Loading Driver Management\u2026",
+                Font = new Font("Segoe UI", 14F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(255, 107, 0),
                 AutoSize = true,
-                Location = new Point(16, 12),
-                BackColor = WinColor.Transparent
+                BackColor = Color.Transparent
             };
 
-            txtSearch = new TextBox
-            {
-                Size = new Size(190, 30),
-                Location = new Point(16, 56),
-                Font = new Font("Segoe UI", 10F),
-                BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White,
-                ForeColor = ColText,
-                BorderStyle = BorderStyle.FixedSingle,
-                PlaceholderText = "🔍 Search driver..."
-            };
-            txtSearch.TextChanged += (s, e) => FilterGrid();
+            _loadingPanel.Controls.Add(_loadingLabel);
+            _loadingPanel.Resize += (s, e) =>
+                _loadingLabel.Location = new Point(
+                    (_loadingPanel.Width  - _loadingLabel.Width)  / 2,
+                    (_loadingPanel.Height - _loadingLabel.Height) / 2);
 
-            cboStatus = new ComboBox
-            {
-                Size = new Size(140, 30),
-                Location = new Point(214, 56),
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                Font = new Font("Segoe UI", 9F),
-                BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White,
-                ForeColor = ColText
-            };
-            cboStatus.Items.AddRange(new object[] { "All Status", "available", "off-duty", "active", "inactive", "suspended" });
-            cboStatus.SelectedIndex = 0;
-            cboStatus.SelectedIndexChanged += (s, e) => FilterGrid();
-
-            btnAdd = CreateBtn("＋ Add", ColGreen, 364, 54, 82);
-            btnEdit = CreateBtn("✎ Edit", ColBlue, 452, 54, 82);
-            var btnRefresh = CreateBtn("⟳ Reload", ColSub, 540, 54, 90);
-
-            btnAdd.Click += OnAddDriver;
-            btnEdit.Click += OnEditDriver;
-            btnRefresh.Click += (s, e) => LoadFromDB();
-
-            btnEdit.Enabled = false;
-
-            topBar.Controls.Add(lblTitle);
-            topBar.Controls.Add(txtSearch);
-            topBar.Controls.Add(cboStatus);
-            topBar.Controls.Add(btnAdd);
-            topBar.Controls.Add(btnEdit);
-            topBar.Controls.Add(btnRefresh);
-
-            dgvDrivers = new DataGridView { Dock = DockStyle.Fill };
-            StyleGrid(dgvDrivers);
-            dgvDrivers.SelectionChanged += OnRowSelected;
-            dgvDrivers.CellPainting += OnCellPainting;
-
-            splitContainer.Panel1.Controls.Add(dgvDrivers);
-            splitContainer.Panel1.Controls.Add(topBar);
+            this.Controls.Add(_loadingPanel);
         }
 
-        // ── RIGHT PANEL (Driver Profile Card) ──
-        private void BuildRightPanel()
+        private async Task InitWebView()
         {
-            rightPanel = new Panel
-            {
-                Dock = DockStyle.Fill,
-                BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(12, 12, 20) : WinColor.FromArgb(240, 241, 248),
-                Padding = new Padding(20)
-            };
+            if (_webView != null) return;
 
-            pnlProfileCard = new Panel
+            try
             {
-                BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(25, 25, 35) : WinColor.White,
-                Location = new Point(20, 20),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                Height = 500
-            };
-            pnlProfileCard.Paint += (s, e) =>
-            {
-                var g = e.Graphics;
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                int w = pnlProfileCard.Width, h = pnlProfileCard.Height;
-                if (w < 10 || h < 10) return;
+                _webView = new WebView2 { Dock = DockStyle.Fill };
+                this.Controls.Add(_webView);
+                _webView.BringToFront();
 
-                var rect = new Rectangle(0, 0, w - 1, h - 1);
-                using var path = RoundRect(rect, 16);
-                pnlProfileCard.Region = new Region(path);
+                var env = await CoreWebView2Environment.CreateAsync(null, Path.GetTempPath());
+                await _webView.EnsureCoreWebView2Async(env);
 
-                bool dark = ThemeManager.IsDarkMode;
-                WinColor c1 = dark ? WinColor.FromArgb(24, 24, 42) : WinColor.White;
-                WinColor c2 = dark ? WinColor.FromArgb(14, 14, 26) : WinColor.FromArgb(248, 248, 252);
-                using (var bgBrush = new LinearGradientBrush(rect, c1, c2, LinearGradientMode.Vertical))
+                string outputAssetsFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets");
+                if (!Directory.Exists(outputAssetsFolder))
+                    Directory.CreateDirectory(outputAssetsFolder);
+
+                string[] sourceCandidates =
                 {
-                    g.FillPath(bgBrush, path);
+                    @"C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\WebAssets\DriversWeb.html",
+                    Path.GetFullPath(Path.Combine(Application.StartupPath, @"..\..\..\WebAssets\DriversWeb.html")),
+                    Path.GetFullPath(Path.Combine(Application.StartupPath, @"..\..\WebAssets\DriversWeb.html")),
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "DriversWeb.html"),
+                    Path.Combine(Application.StartupPath, "WebAssets", "DriversWeb.html"),
+                    Path.Combine(Application.StartupPath, "DriversWeb.html"),
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "DriversWeb.html")
+                };
+
+                string sourceHtml = sourceCandidates.FirstOrDefault(File.Exists);
+                string destHtml   = Path.Combine(outputAssetsFolder, "DriversWeb.html");
+
+                if (!string.IsNullOrEmpty(sourceHtml))
+                {
+                    if (!string.Equals(sourceHtml, destHtml, StringComparison.OrdinalIgnoreCase))
+                        File.Copy(sourceHtml, destHtml, true);
                 }
 
-                // ── Top accent color bar (full-width, 3px) ──
-                var topBarRect = new Rectangle(0, 0, w, 3);
-                using var topBarBrush = new LinearGradientBrush(topBarRect,
-                    ColAccent, ThemeManager.CurrentPrimaryGlow, LinearGradientMode.Horizontal);
-                g.FillRectangle(topBarBrush, topBarRect);
+                _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    "appassets",
+                    outputAssetsFolder,
+                    CoreWebView2HostResourceAccessKind.Allow);
 
-                // ── Inner shine highlight ──
-                var shineR = new Rectangle(2, 3, w - 4, 120);
-                using var shinePath = RoundRect(shineR, 12);
-                using var shineBrush = new LinearGradientBrush(shineR,
-                    WinColor.FromArgb(dark ? 12 : 40, 255, 255, 255),
-                    WinColor.Transparent, LinearGradientMode.Vertical);
-                g.FillPath(shineBrush, shinePath);
-
-                // Border
-                g.DrawPath(new Pen(WinColor.FromArgb(dark ? 30 : 160, ThemeManager.CurrentBorder), 1), path);
-            };
-
-            Panel pnlAvatar = new Panel { Size = new Size(80, 80), Location = new Point(20, 30), BackColor = WinColor.Transparent };
-            pnlAvatar.Paint += (s, e) =>
-            {
-                var g = e.Graphics;
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.FillEllipse(new SolidBrush(ThemeManager.IsDarkMode ? WinColor.FromArgb(40, 40, 55) : WinColor.FromArgb(220, 220, 230)), 0, 0, 78, 78);
-                g.DrawEllipse(new Pen(WinColor.White, 3), 0, 0, 78, 78);
-
-                string initial = "?";
-                if (lblDriverName != null && !string.IsNullOrEmpty(lblDriverName.Text) && lblDriverName.Text != "Select a driver")
+                _webView.NavigationCompleted += async (s, e) =>
                 {
-                    initial = lblDriverName.Text.Substring(0, 1).ToUpper();
+                    if (!e.IsSuccess) return;
+
+                    _webReady = true;
+                    if (_loadingPanel != null) _loadingPanel.Visible = false;
+
+                    bool   dk           = ThemeManager.IsDarkMode;
+                    string networkBase  = ApiService.BaseUrl.TrimEnd('/');
+                    string currentAdmin = !string.IsNullOrWhiteSpace(SessionManager.FullName)
+                                         ? SessionManager.FullName
+                                         : "Admin";
+                    string jwtToken = SessionManager.JwtToken ?? "";
+
+                    await _webView.CoreWebView2.ExecuteScriptAsync(
+                        $"window.API_BASE_URL = 'http://localhost:5233/api'; " +
+                        $"window.API_NETWORK_URL = '{networkBase}'; " +
+                        $"window.AUTH_TOKEN = '{jwtToken.Replace("'", "\\'")}'; " +
+                        $"localStorage.setItem('auth_token', '{jwtToken.Replace("'", "\\'")}'); " +
+                        $"window.CURRENT_ADMIN_NAME = '{currentAdmin.Replace("'", "\\'")}'; " +
+                        $"localStorage.setItem('admin_name', '{currentAdmin.Replace("'", "\\'")}'); " +
+                        $"setTheme({(dk ? "true" : "false")}); " +
+                        $"if (window.fetchDriversData) window.fetchDriversData();");
+                };
+
+                if (File.Exists(destHtml))
+                {
+                    _webView.CoreWebView2.Navigate("https://appassets/DriversWeb.html");
                 }
-                TextRenderer.DrawText(g, initial, new Font("Segoe UI", 24F, FontStyle.Bold), new Rectangle(0, 0, 80, 80), ColText, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-            };
-
-            lblDriverName = new Label { Text = "Select a driver", Font = new Font("Segoe UI", 16F, FontStyle.Bold), ForeColor = ColText, AutoSize = true, Location = new Point(110, 70), BackColor = WinColor.Transparent };
-            lblStatus = new Label { Text = "STATUS", Font = new Font("Segoe UI", 9F, FontStyle.Bold), ForeColor = ColSub, AutoSize = true, Location = new Point(115, 100), BackColor = WinColor.Transparent };
-
-            Label lblEmailTitle = new Label { Text = "EMAIL", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = ColSub, AutoSize = true, Location = new Point(20, 145) };
-            lblEmail = new Label { Text = "—", Font = new Font("Segoe UI", 9.5F), ForeColor = ColText, AutoSize = true, Location = new Point(20, 165) };
-
-            Label lblPhoneTitle = new Label { Text = "PHONE", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = ColSub, AutoSize = true, Location = new Point(20, 195) };
-            lblPhone = new Label { Text = "—", Font = new Font("Segoe UI", 9.5F), ForeColor = ColText, AutoSize = true, Location = new Point(20, 215) };
-
-            Label lblLicenseTitle = new Label { Text = "LICENSE NUMBER", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = ColSub, AutoSize = true, Location = new Point(20, 250) };
-            lblLicense = new Label { Text = "—", Font = new Font("Consolas", 14F), ForeColor = ColText, AutoSize = true, Location = new Point(20, 270) };
-
-            Label lblTripsTitle = new Label { Text = "TOTAL TRIPS", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = ColSub, AutoSize = true, Location = new Point(20, 320) };
-            lblTrips = new Label { Text = "0", Font = new Font("Segoe UI", 14F, FontStyle.Bold), ForeColor = ColBlue, AutoSize = true, Location = new Point(20, 340) };
-
-            Label lblRatingTitle = new Label { Text = "RATING", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = ColSub, AutoSize = true, Location = new Point(150, 320) };
-            lblRating = new Label { Text = "0.0", Font = new Font("Segoe UI", 14F, FontStyle.Bold), ForeColor = ColYellow, AutoSize = true, Location = new Point(150, 340) };
-
-            Label lblActiveTitle = new Label { Text = "ACTIVE RENTALS", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = ColSub, AutoSize = true, Location = new Point(20, 392) };
-            lblActiveRentals = new Label { Text = "0", Font = new Font("Segoe UI", 14F, FontStyle.Bold), ForeColor = ColGreen, AutoSize = true, Location = new Point(20, 412) };
-
-            Label lblRevenueTitle = new Label { Text = "REVENUE HANDLED", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = ColSub, AutoSize = true, Location = new Point(150, 392) };
-            lblRevenueHandled = new Label { Text = "₱0.00", Font = new Font("Segoe UI", 13F, FontStyle.Bold), ForeColor = ColAccent, AutoSize = true, Location = new Point(150, 412) };
-
-            Label lblLastAssignedTitle = new Label { Text = "LAST ASSIGNMENT", Font = new Font("Segoe UI", 8F, FontStyle.Bold), ForeColor = ColSub, AutoSize = true, Location = new Point(20, 450) };
-            lblLastAssigned = new Label { Text = "No active booking", Font = new Font("Segoe UI", 9F), ForeColor = ColText, AutoSize = true, Location = new Point(20, 470) };
-
-            pnlProfileCard.Controls.Add(pnlAvatar);
-            pnlProfileCard.Controls.Add(lblDriverName);
-            pnlProfileCard.Controls.Add(lblStatus);
-            pnlProfileCard.Controls.Add(lblEmailTitle);
-            pnlProfileCard.Controls.Add(lblEmail);
-            pnlProfileCard.Controls.Add(lblPhoneTitle);
-            pnlProfileCard.Controls.Add(lblPhone);
-            pnlProfileCard.Controls.Add(lblLicenseTitle);
-            pnlProfileCard.Controls.Add(lblLicense);
-            pnlProfileCard.Controls.Add(lblTripsTitle);
-            pnlProfileCard.Controls.Add(lblTrips);
-            pnlProfileCard.Controls.Add(lblRatingTitle);
-            pnlProfileCard.Controls.Add(lblRating);
-            pnlProfileCard.Controls.Add(lblActiveTitle);
-            pnlProfileCard.Controls.Add(lblActiveRentals);
-            pnlProfileCard.Controls.Add(lblRevenueTitle);
-            pnlProfileCard.Controls.Add(lblRevenueHandled);
-            pnlProfileCard.Controls.Add(lblLastAssignedTitle);
-            pnlProfileCard.Controls.Add(lblLastAssigned);
-
-            Panel pnlActions = new Panel { Dock = DockStyle.Bottom, Height = 60, BackColor = WinColor.Transparent };
-            btnActivate = CreateBtn("✔ Ready", ColGreen, 0, 12, 92);
-            btnOffDuty = CreateBtn("☾ Off Duty", ColBlue, 100, 12, 98);
-            btnSuspend = CreateBtn("⏸ Suspend", ColYellow, 206, 12, 96);
-            btnDelete = CreateBtn("🗑 Delete", ColRed, 310, 12, 90);
-
-            btnActivate.Click += (s, e) => UpdateDriverStatus("available");
-            btnOffDuty.Click += (s, e) => UpdateDriverStatus("off-duty");
-            btnSuspend.Click += (s, e) => UpdateDriverStatus("suspended");
-            btnDelete.Click += OnDeleteDriver;
-
-            btnActivate.Enabled = false;
-            btnOffDuty.Enabled = false;
-            btnSuspend.Enabled = false;
-            btnDelete.Enabled = false;
-
-            pnlActions.Controls.Add(btnActivate);
-            pnlActions.Controls.Add(btnOffDuty);
-            pnlActions.Controls.Add(btnSuspend);
-            pnlActions.Controls.Add(btnDelete);
-
-            rightPanel.Controls.Add(pnlProfileCard);
-            rightPanel.Controls.Add(pnlActions);
-
-            splitContainer.Panel2.Controls.Add(rightPanel);
-        }
-
-        // ══ THEME CHANGED ══
-        private void OnThemeChanged(object s, EventArgs e)
-        {
-            BackColor = ColBg;
-            splitContainer.Panel1.BackColor = ColBg;
-            splitContainer.Panel2.BackColor = ColBg;
-            splitContainer.BackColor = ColBorder;
-
-            rightPanel.BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(12, 12, 20) : WinColor.FromArgb(240, 241, 248);
-
-            if (pnlProfileCard != null)
-            {
-                pnlProfileCard.BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(25, 25, 35) : WinColor.White;
-            }
-
-            topBar.BackColor = ThemeManager.IsDarkMode ? ColBg : WinColor.FromArgb(250, 250, 255);
-            txtSearch.BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White;
-            txtSearch.ForeColor = ColText;
-            cboStatus.BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White;
-            cboStatus.ForeColor = ColText;
-
-            if (lblDriverName != null) lblDriverName.ForeColor = ColText;
-            if (lblLicense != null) lblLicense.ForeColor = ColText;
-            if (lblEmail != null) lblEmail.ForeColor = ColText;
-            if (lblPhone != null) lblPhone.ForeColor = ColText;
-            if (lblLastAssigned != null) lblLastAssigned.ForeColor = ColText;
-
-            foreach (Control c in topBar.Controls)
-            {
-                if (c is Label l) l.ForeColor = ColText;
-            }
-
-            StyleGrid(dgvDrivers);
-            Invalidate(true);
-        }
-
-        // ══ API LOAD ══
-        private void LoadFromDB()
-        {
-            this.ShowSkeleton(SkeletonLayoutType.ListRow);
-
-            Task.Run(async () =>
-            {
-                try
+                else
                 {
-                    var result = await ApiService.GetAsync("drivers");
-                    if (!result.Success)
-                    {
-                        string err = result.Error ?? result.Body ?? "Unknown error";
-                        this.Invoke(new Action(() =>
-                        {
-                            RefreshGrid(new DataTable());
-                            this.HideSkeleton();
-                            MessageBox.Show($"API Error:\n{err}", "Load Drivers", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        }));
-                        return;
-                    }
-
-                    var drivers = ApiService.Deserialize<List<DriverApiDto>>(result.Body)
-                                  ?? new List<DriverApiDto>();
-
-                    var dt = new DataTable();
-                    dt.Columns.Add("driver_id",       typeof(int));
-                    dt.Columns.Add("user_id",         typeof(int));
-                    dt.Columns.Add("driver_name",     typeof(string));
-                    dt.Columns.Add("email",           typeof(string));
-                    dt.Columns.Add("phone",           typeof(string));
-                    dt.Columns.Add("license_no",      typeof(string));
-                    dt.Columns.Add("status",          typeof(string));
-                    dt.Columns.Add("rating_avg",      typeof(decimal));
-                    dt.Columns.Add("total_trips",     typeof(int));
-                    dt.Columns.Add("active_rentals",  typeof(int));
-                    dt.Columns.Add("revenue_handled", typeof(decimal));
-                    dt.Columns.Add("last_assignment", typeof(string));
-
-                    foreach (var d in drivers)
-                    {
-                        dt.Rows.Add(
-                            d.DriverId,
-                            d.UserId,
-                            d.DriverName   ?? "Unknown",
-                            d.Email        ?? "",
-                            d.Phone        ?? "",
-                            d.LicenseNo    ?? "",
-                            d.Status       ?? "inactive",
-                            (decimal)(d.RatingAvg ?? 0),
-                            d.TotalTrips   ?? 0,
-                            d.ActiveRentals ?? 0,
-                            (decimal)(d.RevenueHandled ?? 0),
-                            d.LastAssignment
-                        );
-                    }
-
-                    this.Invoke(new Action(() =>
-                    {
-                        _data = dt;
-                        RefreshGrid(_data);
-                        this.HideSkeleton();
-                    }));
-                }
-                catch (Exception ex)
-                {
-                    this.Invoke(new Action(() =>
-                    {
-                        RefreshGrid(new DataTable());
-                        this.HideSkeleton();
-                        MessageBox.Show(ApiService.CleanErrorMessage(ex.Message), "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    }));
-                }
-            });
-        }
-
-        // ══ SAFE GRID REFRESH ══
-        private void RefreshGrid(DataTable dt)
-        {
-            if (dgvDrivers == null) return;
-            if (dgvDrivers.InvokeRequired)
-            {
-                dgvDrivers.Invoke(new Action(() => RefreshGrid(dt)));
-                return;
-            }
-
-            dgvDrivers.DataSource = null;
-            dgvDrivers.Columns.Clear();
-
-            var display = new DataTable();
-            display.Columns.Add("ID", typeof(int));
-            display.Columns.Add("Driver Name", typeof(string));
-            display.Columns.Add("License", typeof(string));
-            display.Columns.Add("Trips", typeof(int));
-            display.Columns.Add("Active", typeof(int));
-            display.Columns.Add("Revenue", typeof(string));
-            display.Columns.Add("Rating", typeof(string));
-            display.Columns.Add("Status", typeof(string));
-
-            if (dt != null && dt.Rows.Count > 0)
-            {
-                foreach (DataRow row in dt.Rows)
-                {
-                    decimal rating = row["rating_avg"] != DBNull.Value ? Convert.ToDecimal(row["rating_avg"]) : 0;
-                    int trips = row["total_trips"] != DBNull.Value ? Convert.ToInt32(row["total_trips"]) : 0;
-                    int activeRentals = row["active_rentals"] != DBNull.Value ? Convert.ToInt32(row["active_rentals"]) : 0;
-                    decimal revenueHandled = row["revenue_handled"] != DBNull.Value ? Convert.ToDecimal(row["revenue_handled"]) : 0;
-
-                    string status = row["status"] != DBNull.Value ? row["status"].ToString() : "inactive";
-                    string driverName = row["driver_name"] != DBNull.Value ? row["driver_name"].ToString() : "Unknown";
-                    string license = row["license_no"] != DBNull.Value ? row["license_no"].ToString() : "N/A";
-
-                    display.Rows.Add(
-                        row["driver_id"],
-                        driverName,
-                        license,
-                        trips,
-                        activeRentals,
-                        $"₱{revenueHandled:N0}",
-                        rating > 0 ? $"⭐ {rating:0.0}" : "No Rating",
-                        status
-                    );
+                    string fallbackPath = sourceCandidates.FirstOrDefault(File.Exists);
+                    if (!string.IsNullOrEmpty(fallbackPath))
+                        _webView.CoreWebView2.Navigate(new Uri(fallbackPath).AbsoluteUri);
+                    else
+                        _webView.NavigateToString(
+                            "<html><body style='background:#090D16;color:#F8FAFC;font-family:Segoe UI;" +
+                            "display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>" +
+                            "<div style='text-align:center'>" +
+                            "<p style='font-weight:bold;font-size:16px;color:#FF6B00;'>DriversWeb.html not found in WebAssets.</p>" +
+                            "<p style='color:#94A3B8;font-size:12px;'>Please ensure DriversWeb.html is copied to output directory.</p>" +
+                            "</div></body></html>");
                 }
             }
-
-            dgvDrivers.DataSource = display;
-
-            if (dgvDrivers.Columns.Count >= 8)
+            catch (Exception ex)
             {
-                dgvDrivers.Columns[0].Width = 45;
-                dgvDrivers.Columns[1].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
-                dgvDrivers.Columns[2].Width = 130;
-                dgvDrivers.Columns[3].Width = 65;
-                dgvDrivers.Columns[4].Width = 65;
-                dgvDrivers.Columns[5].Width = 100;
-                dgvDrivers.Columns[6].Width = 90;
-                dgvDrivers.Columns[7].Width = 100;
-            }
-        }
-
-        private void FilterGrid()
-        {
-            if (_data == null || cboStatus == null || txtSearch == null) return;
-
-            string status = cboStatus.SelectedItem?.ToString() ?? "All Status";
-            string search = txtSearch.Text?.Trim().ToLower() ?? "";
-
-            var filtered = _data.Clone();
-            foreach (DataRow row in _data.Rows)
-            {
-                bool ok = true;
-                string rowStatus = row["status"] != DBNull.Value ? row["status"].ToString().ToLower() : "";
-
-                if (status != "All Status" && rowStatus != status.ToLower()) ok = false;
-
-                if (!string.IsNullOrEmpty(search))
+                if (_loadingLabel != null)
                 {
-                    string dName = row["driver_name"] != DBNull.Value ? row["driver_name"].ToString().ToLower() : "";
-                    string lNum = row["license_no"] != DBNull.Value ? row["license_no"].ToString().ToLower() : "";
-                    string email = row.Table.Columns.Contains("email") && row["email"] != DBNull.Value ? row["email"].ToString().ToLower() : "";
-
-                    if (!dName.Contains(search) && !lNum.Contains(search) && !email.Contains(search)) ok = false;
+                    _loadingLabel.Text      = $"WebView2 Error: {ex.Message}";
+                    _loadingLabel.ForeColor = Color.Red;
                 }
-
-                if (ok) filtered.ImportRow(row);
             }
-            RefreshGrid(filtered);
-        }
-
-        // ══ ROW SELECTED → Update Profile Card ══
-        private void OnRowSelected(object sender, EventArgs e)
-        {
-            if (dgvDrivers == null || lblDriverName == null || dgvDrivers.SelectedRows.Count == 0) return;
-            if (dgvDrivers.SelectedRows[0].Cells[0].Value == null || dgvDrivers.SelectedRows[0].Cells[0].Value == DBNull.Value) return;
-
-            int id = Convert.ToInt32(dgvDrivers.SelectedRows[0].Cells[0].Value);
-            _selectedDriverId = id;
-
-            var rows = _data.Select($"driver_id = {id}");
-            if (rows.Length == 0) return;
-
-            DataRow r = rows[0];
-
-            lblDriverName.Text = r["driver_name"] != DBNull.Value ? r["driver_name"].ToString() : "Unknown Driver";
-            lblEmail.Text = r.Table.Columns.Contains("email") && r["email"] != DBNull.Value && !string.IsNullOrWhiteSpace(r["email"].ToString()) ? r["email"].ToString() : "—";
-            lblPhone.Text = r.Table.Columns.Contains("phone") && r["phone"] != DBNull.Value && !string.IsNullOrWhiteSpace(r["phone"].ToString()) ? r["phone"].ToString() : "—";
-            lblLicense.Text = r["license_no"] != DBNull.Value ? r["license_no"].ToString() : "N/A";
-            lblTrips.Text = r["total_trips"] != DBNull.Value ? r["total_trips"].ToString() : "0";
-            lblActiveRentals.Text = r["active_rentals"] != DBNull.Value ? r["active_rentals"].ToString() : "0";
-            lblRevenueHandled.Text = r["revenue_handled"] != DBNull.Value ? $"₱{Convert.ToDecimal(r["revenue_handled"]):N2}" : "₱0.00";
-            lblLastAssigned.Text = r["last_assignment"] != DBNull.Value ? Convert.ToDateTime(r["last_assignment"]).ToString("MMM dd, yyyy") : "No active booking";
-
-            decimal rating = r["rating_avg"] != DBNull.Value ? Convert.ToDecimal(r["rating_avg"]) : 0;
-            lblRating.Text = rating > 0 ? $"{rating:0.0} / 5.0" : "N/A";
-
-            string status = r["status"] != DBNull.Value ? r["status"].ToString().ToLower() : "inactive";
-            lblStatus.Text = "● " + status.ToUpper();
-            lblStatus.ForeColor = StatusToColor(status);
-
-            pnlProfileCard.Invalidate(true);
-
-            btnActivate.Enabled = !IsReadyStatus(status);
-            btnOffDuty.Enabled = status != "off-duty";
-            btnSuspend.Enabled = status != "suspended";
-            btnDelete.Enabled = true;
-            btnEdit.Enabled = true;
-        }
-
-        // ══ CRUD ACTIONS ══
-        private void OnAddDriver(object sender, EventArgs e)
-        {
-            using var dlg = new DriverFormDialog(null, _connStr);
-            if (dlg.ShowDialog(this) == DialogResult.OK)
-                LoadFromDB();
-        }
-
-        private void OnEditDriver(object sender, EventArgs e)
-        {
-            if (_selectedDriverId < 0)
-            {
-                MessageBox.Show("Select a driver first.", "Edit Driver", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            var rows = _data.Select($"driver_id = {_selectedDriverId}");
-            if (rows.Length == 0)
-            {
-                MessageBox.Show("Driver record not found.", "Edit Driver", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            using var dlg = new DriverFormDialog(rows[0], _connStr);
-            if (dlg.ShowDialog(this) == DialogResult.OK)
-                LoadFromDB();
-        }
-
-        private void UpdateDriverStatus(string newStatus)
-        {
-            if (_selectedDriverId < 0) return;
-
-            string actionName = newStatus == "available" ? "Mark ready" : newStatus == "off-duty" ? "Set off duty" : "Suspend";
-            if (MessageBox.Show($"Are you sure you want to {actionName.ToLower()} this driver?", "Confirm Action", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-
-            int idToUpdate = _selectedDriverId;
-            Task.Run(async () =>
-            {
-                try
-                {
-                    var result = await ApiService.PatchAsync(
-                        $"drivers/{idToUpdate}/status",
-                        new { status = newStatus });
-
-                    this.Invoke(new Action(() =>
-                    {
-                        if (result.Success)
-                        {
-                            MessageBox.Show($"Driver status updated to {newStatus}.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                            LoadFromDB();
-                        }
-                        else
-                        {
-                            string err = result.Error ?? result.Body ?? "";
-                            MessageBox.Show(ApiService.CleanErrorMessage(err), "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        }
-                    }));
-                }
-                catch (Exception ex)
-                {
-                    this.Invoke(new Action(() =>
-                        MessageBox.Show(ApiService.CleanErrorMessage(ex.Message), "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information)));
-                }
-            });
-        }
-
-        private void OnDeleteDriver(object s, EventArgs e)
-        {
-            if (_selectedDriverId < 0) return;
-            if (MessageBox.Show("Warning: Deleting a driver cannot be undone. Proceed?", "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
-
-            int idToDelete = _selectedDriverId;
-            Task.Run(async () =>
-            {
-                try
-                {
-                    var result = await ApiService.DeleteAsync($"drivers/{idToDelete}");
-
-                    this.Invoke(new Action(() =>
-                    {
-                        if (result.Success)
-                        {
-                            LoadFromDB();
-
-                            _selectedDriverId = -1;
-                            lblDriverName.Text = "Select a driver";
-                            lblStatus.Text = "STATUS";
-                            lblLicense.Text = "—";
-                            lblEmail.Text = "—";
-                            lblPhone.Text = "—";
-                            lblTrips.Text = "0";
-                            lblRating.Text = "0.0";
-                            lblActiveRentals.Text = "0";
-                            lblRevenueHandled.Text = "₱0.00";
-                            lblLastAssigned.Text = "No active booking";
-                            btnActivate.Enabled = false;
-                            btnOffDuty.Enabled = false;
-                            btnSuspend.Enabled = false;
-                            btnDelete.Enabled = false;
-                            btnEdit.Enabled = false;
-                            pnlProfileCard.Invalidate(true);
-                        }
-                        else
-                        {
-                            string err = result.Error ?? result.Body ?? "";
-                            MessageBox.Show(ApiService.CleanErrorMessage(err), "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        }
-                    }));
-                }
-                catch (Exception ex)
-                {
-                    this.Invoke(new Action(() =>
-                        MessageBox.Show(ApiService.CleanErrorMessage(ex.Message), "Notice", MessageBoxButtons.OK, MessageBoxIcon.Information)));
-                }
-            });
-        }
-
-        // ══ GRID DESIGN ══
-        private void OnCellPainting(object sender, DataGridViewCellPaintingEventArgs e)
-        {
-            if (e.RowIndex < 0 || e.Value == null || e.Value == DBNull.Value) return;
-
-            if (e.ColumnIndex == 7)
-            {
-                e.Handled = true;
-                e.PaintBackground(e.ClipBounds, true);
-
-                string val = e.Value.ToString();
-                WinColor c = StatusToColor(val);
-
-                var rect = new Rectangle(e.CellBounds.X + 6, e.CellBounds.Y + 9, e.CellBounds.Width - 12, e.CellBounds.Height - 18);
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                using var path = RoundRect(rect, 8);
-                e.Graphics.FillPath(new SolidBrush(WinColor.FromArgb(30, c)), path);
-                e.Graphics.DrawPath(new Pen(c, 1), path);
-                TextRenderer.DrawText(e.Graphics, val, new Font("Segoe UI", 8F, FontStyle.Bold), rect, c, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-            }
-        }
-
-        private void StyleGrid(DataGridView dgv)
-        {
-            bool dk = ThemeManager.IsDarkMode;
-            dgv.BackgroundColor = ColBg;
-            dgv.BorderStyle = BorderStyle.None;
-            dgv.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
-            dgv.GridColor = ColBorder;
-            dgv.RowHeadersVisible = false;
-            dgv.AllowUserToAddRows = false;
-            dgv.AllowUserToDeleteRows = false;
-            dgv.ReadOnly = true;
-            dgv.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgv.Font = new Font("Segoe UI", 9.5F);
-            dgv.RowTemplate.Height = 42;
-            dgv.EnableHeadersVisualStyles = false;
-            dgv.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-
-            dgv.DefaultCellStyle.BackColor = dk ? ColBg : WinColor.White;
-            dgv.DefaultCellStyle.ForeColor = ColText;
-            dgv.DefaultCellStyle.SelectionBackColor = dk ? WinColor.FromArgb(32, 255, 90, 31) : WinColor.FromArgb(255, 240, 230);
-            dgv.DefaultCellStyle.SelectionForeColor = ColAccent;
-            dgv.DefaultCellStyle.Padding = new Padding(8, 0, 8, 0);
-
-            dgv.ColumnHeadersDefaultCellStyle.BackColor = dk ? WinColor.FromArgb(8, 8, 16) : WinColor.FromArgb(235, 236, 245);
-            dgv.ColumnHeadersDefaultCellStyle.ForeColor = ColSub;
-            dgv.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            dgv.ColumnHeadersHeight = 38;
-
-            dgv.AlternatingRowsDefaultCellStyle.BackColor = dk
-                ? WinColor.FromArgb(20, 20, 34)
-                : WinColor.FromArgb(250, 250, 255);
-        }
-
-        // ══ UTILS ══
-        private Button CreateBtn(string text, WinColor color, int x, int y, int w)
-        {
-            var btn = new Button
-            {
-                Text = text,
-                Size = new Size(w, 36),
-                Location = new Point(x, y),
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
-                Cursor = Cursors.Hand,
-                BackColor = WinColor.FromArgb(15, color),
-                ForeColor = color
-            };
-            btn.FlatAppearance.BorderColor = color;
-            btn.FlatAppearance.BorderSize = 1;
-            btn.FlatAppearance.MouseOverBackColor = WinColor.FromArgb(35, color);
-
-            // Added premium rounded corners
-            btn.HandleCreated += (s, e) =>
-            {
-                if (btn.IsDisposed) return;
-                var r = new Rectangle(0, 0, btn.Width, btn.Height);
-                using var p = RoundRect(r, 6);
-                btn.Region = new Region(p);
-            };
-            return btn;
-        }
-
-        private GraphicsPath RoundRect(Rectangle b, int r)
-        {
-            int d = r * 2;
-            var arc = new Rectangle(b.Location, new Size(d, d));
-            var path = new GraphicsPath();
-            path.AddArc(arc, 180, 90); arc.X = b.Right - d;
-            path.AddArc(arc, 270, 90); arc.Y = b.Bottom - d;
-            path.AddArc(arc, 0, 90); arc.X = b.Left;
-            path.AddArc(arc, 90, 90);
-            path.CloseFigure();
-            return path;
-        }
-
-        private bool IsReadyStatus(string status) =>
-            string.Equals(status, "available", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(status, "active", StringComparison.OrdinalIgnoreCase);
-
-        private WinColor StatusToColor(string status)
-        {
-            string value = status?.ToLower() ?? "";
-            return value switch
-            {
-                "available" or "active" => ColGreen,
-                "on-trip" => ColBlue,
-                "suspended" => ColRed,
-                _ => ColYellow
-            };
         }
 
         protected override void Dispose(bool disposing)
         {
-            ThemeManager.ThemeChanged -= OnThemeChanged;
+            if (disposing)
+            {
+                ThemeManager.ThemeChanged -= ThemeChanged_Handler;
+                _webView?.Dispose();
+            }
             base.Dispose(disposing);
-        }
-
-        // ══════════════════════════════════════════════
-        //  API DTO — matches GET /api/drivers response
-        // ══════════════════════════════════════════════
-        private class DriverApiDto
-        {
-            [JsonPropertyName("driverId")]      public int     DriverId       { get; set; }
-            [JsonPropertyName("userId")]        public int     UserId         { get; set; }
-            [JsonPropertyName("driverName")]    public string  DriverName     { get; set; }
-            [JsonPropertyName("fullName")]      public string  FullName       { get; set; }
-            [JsonPropertyName("email")]         public string  Email          { get; set; }
-            [JsonPropertyName("phone")]         public string  Phone          { get; set; }
-            [JsonPropertyName("licenseNo")]     public string  LicenseNo      { get; set; }
-            [JsonPropertyName("status")]        public string  Status         { get; set; }
-            [JsonPropertyName("ratingAvg")]     public double? RatingAvg      { get; set; }
-            [JsonPropertyName("totalTrips")]    public int?    TotalTrips     { get; set; }
-            [JsonPropertyName("activeRentals")] public int?    ActiveRentals  { get; set; }
-            [JsonPropertyName("revenueHandled")]public double? RevenueHandled { get; set; }
-            [JsonPropertyName("lastAssignment")]public string  LastAssignment { get; set; }
-        }
-
-        // ══════════════════════════════════════════════
-        //  DRIVER FORM DIALOG
-        // ══════════════════════════════════════════════
-        public class DriverFormDialog : Form
-        {
-            private readonly DataRow _existing;
-
-            private TextBox txtFullName;
-            private TextBox txtEmail;
-            private TextBox txtPhone;
-            private TextBox txtLicenseNo;
-            private ComboBox cboStatus;
-            private Button btnSave;
-
-            public DriverFormDialog(DataRow existing, string connStr = null)
-            {
-                _existing = existing;
-                BuildUI();
-            }
-
-            private void BuildUI()
-            {
-                bool isEdit = _existing != null;
-
-                BackColor = ThemeManager.CurrentBackground;
-                Font = new Font("Segoe UI", 9.5F);
-                StartPosition = FormStartPosition.CenterParent;
-                FormBorderStyle = FormBorderStyle.FixedDialog;
-                MaximizeBox = false;
-                MinimizeBox = false;
-                Size = new Size(460, 360);
-                Text = isEdit ? "Edit Driver" : "Add Driver";
-
-                var lblTitle = new Label
-                {
-                    Text = isEdit ? "✎ Edit Driver" : "＋ Add Driver",
-                    Font = new Font("Segoe UI", 15F, FontStyle.Bold),
-                    ForeColor = ThemeManager.CurrentPrimary,
-                    AutoSize = true,
-                    Location = new Point(20, 20)
-                };
-                Controls.Add(lblTitle);
-
-                int lx = 20, vx = 140, y = 70, vw = 270;
-
-                txtFullName = AddField("Full Name:", lx, vx, ref y, vw);
-                txtEmail = AddField("Email:", lx, vx, ref y, vw);
-                txtPhone = AddField("Phone:", lx, vx, ref y, vw);
-                txtLicenseNo = AddField("License No.:", lx, vx, ref y, vw);
-                cboStatus = AddCombo("Status:", lx, vx, ref y, vw, new[] { "active", "available", "off-duty", "inactive", "suspended" });
-
-                txtFullName.PlaceholderText = "Driver full name";
-                txtEmail.PlaceholderText = "email@example.com";
-                txtPhone.PlaceholderText = "09xxxxxxxxx";
-                txtLicenseNo.PlaceholderText = "License number";
-
-                btnSave = new Button
-                {
-                    Text = isEdit ? "💾 Save Changes" : "＋ Add Driver",
-                    Size = new Size(160, 40),
-                    Location = new Point((ClientSize.Width - 160) / 2, 255),
-                    FlatStyle = FlatStyle.Flat,
-                    Font = new Font("Segoe UI", 10F, FontStyle.Bold),
-                    BackColor = ThemeManager.CurrentPrimary,
-                    ForeColor = Color.White,
-                    Cursor = Cursors.Hand
-                };
-                btnSave.FlatAppearance.BorderSize = 0;
-                btnSave.Click += OnSave;
-                Controls.Add(btnSave);
-
-                if (isEdit)
-                {
-                    txtFullName.Text = _existing["driver_name"]?.ToString() ?? "";
-                    txtEmail.Text = _existing["email"]?.ToString() ?? "";
-                    txtPhone.Text = _existing["phone"]?.ToString() ?? "";
-                    txtLicenseNo.Text = _existing["license_no"]?.ToString() ?? "";
-                    SelectCombo(cboStatus, _existing["status"]?.ToString() ?? "active");
-                }
-            }
-
-            private TextBox AddField(string label, int lx, int vx, ref int y, int vw)
-            {
-                Controls.Add(new Label
-                {
-                    Text = label,
-                    AutoSize = true,
-                    Location = new Point(lx, y + 7),
-                    Font = new Font("Segoe UI", 9F),
-                    ForeColor = ThemeManager.CurrentSubText
-                });
-
-                var tb = new TextBox
-                {
-                    Size = new Size(vw, 30),
-                    Location = new Point(vx, y),
-                    Font = new Font("Segoe UI", 9.5F),
-                    BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White,
-                    ForeColor = ThemeManager.CurrentText,
-                    BorderStyle = BorderStyle.FixedSingle
-                };
-                Controls.Add(tb);
-                y += 42;
-                return tb;
-            }
-
-            private ComboBox AddCombo(string label, int lx, int vx, ref int y, int vw, string[] items)
-            {
-                Controls.Add(new Label
-                {
-                    Text = label,
-                    AutoSize = true,
-                    Location = new Point(lx, y + 7),
-                    Font = new Font("Segoe UI", 9F),
-                    ForeColor = ThemeManager.CurrentSubText
-                });
-
-                var cb = new ComboBox
-                {
-                    Size = new Size(vw, 30),
-                    Location = new Point(vx, y),
-                    DropDownStyle = ComboBoxStyle.DropDownList,
-                    Font = new Font("Segoe UI", 9.5F),
-                    BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White,
-                    ForeColor = ThemeManager.CurrentText
-                };
-                cb.Items.AddRange(items);
-                cb.SelectedIndex = 0;
-                Controls.Add(cb);
-                y += 42;
-                return cb;
-            }
-
-            private async void OnSave(object sender, EventArgs e)
-            {
-                string fullName = txtFullName.Text.Trim();
-                string email = txtEmail.Text.Trim();
-                string phone = txtPhone.Text.Trim();
-                string licenseNo = txtLicenseNo.Text.Trim();
-                string status = cboStatus.SelectedItem?.ToString() ?? "active";
-
-                if (string.IsNullOrWhiteSpace(fullName))
-                {
-                    MessageBox.Show("Full name is required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    txtFullName.Focus();
-                    return;
-                }
-
-                if (string.IsNullOrWhiteSpace(email))
-                {
-                    MessageBox.Show("Email is required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    txtEmail.Focus();
-                    return;
-                }
-
-                if (string.IsNullOrWhiteSpace(licenseNo))
-                {
-                    MessageBox.Show("License number is required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    txtLicenseNo.Focus();
-                    return;
-                }
-
-                btnSave.Enabled = false;
-
-                try
-                {
-                    ApiResult result;
-
-                    if (_existing == null)
-                    {
-                        // POST /api/drivers — create new driver
-                        var payload = new
-                        {
-                            fullName,
-                            email,
-                            phone    = string.IsNullOrWhiteSpace(phone) ? null : phone,
-                            licenseNo,
-                            status
-                        };
-                        result = await ApiService.PostAsync("drivers", payload);
-                    }
-                    else
-                    {
-                        // PUT /api/drivers/{id} — update existing driver
-                        int driverId = Convert.ToInt32(_existing["driver_id"]);
-                        var payload = new
-                        {
-                            fullName,
-                            email,
-                            phone    = string.IsNullOrWhiteSpace(phone) ? null : phone,
-                            licenseNo,
-                            status
-                        };
-                        result = await ApiService.PutAsync($"drivers/{driverId}", payload);
-                    }
-
-                    if (result.Success)
-                    {
-                        DialogResult = DialogResult.OK;
-                        Close();
-                    }
-                    else
-                    {
-                        string err = result.Error ?? result.Body ?? "Unknown error";
-                        MessageBox.Show($"Save failed: {err}", "Driver Form", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        btnSave.Enabled = true;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("Save failed: " + ex.Message, "Driver Form", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    btnSave.Enabled = true;
-                }
-            }
-
-            private static void SelectCombo(ComboBox cb, string value)
-            {
-                for (int i = 0; i < cb.Items.Count; i++)
-                {
-                    if (string.Equals(cb.Items[i].ToString(), value, StringComparison.OrdinalIgnoreCase))
-                    {
-                        cb.SelectedIndex = i;
-                        return;
-                    }
-                }
-            }
         }
     }
 }

@@ -1,0 +1,2128 @@
+<!DOCTYPE html>
+<html lang="en" id="html-root">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drive&amp;Go — Fleet Driver Management</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <!-- QR Code Generator -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { DEFAULT: '#FF6B00', hover: '#E85F00', light: 'rgba(255,107,0,0.12)' },
+            dark:  { bg: '#090D16', card: '#0F172A', border: '#1E293B', text: '#F8FAFC', muted: '#94A3B8' },
+            light: { bg: '#F8FAFC', card: '#FFFFFF',  border: '#E2E8F0', text: '#0F172A', muted: '#64748B' }
+          },
+          fontFamily: { sans: ['Inter','sans-serif'], mono: ['JetBrains Mono','monospace'] }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; overflow-x: hidden; transition: background 0.25s, color 0.25s; user-select: none; }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #FF6B00; border-radius: 999px; }
+
+    /* Glass cards */
+    .glass { background: rgba(15,23,42,0.92); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid rgba(30,41,59,0.9); }
+    .light .glass { background: #fff; border: 1px solid #E2E8F0; }
+
+    /* Status pills */
+    .pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.03em; }
+
+    /* Animations */
+    @keyframes fadeInUp { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+    .anim-up { animation: fadeInUp 0.25s cubic-bezier(0.16,1,0.3,1) both; }
+    @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+    .anim-in { animation: fadeIn 0.2s ease both; }
+    @keyframes shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
+    .shimmer { background: linear-gradient(90deg,rgba(255,255,255,0.03) 0%,rgba(255,255,255,0.08) 50%,rgba(255,255,255,0.03) 100%); background-size:200% 100%; animation: shimmer 1.5s infinite; border-radius: 8px; }
+    .light .shimmer { background: linear-gradient(90deg,rgba(0,0,0,0.04) 0%,rgba(0,0,0,0.08) 50%,rgba(0,0,0,0.04) 100%); background-size:200% 100%; animation: shimmer 1.5s infinite; }
+
+    /* Sparkline */
+    .sparkline { width: 80px; height: 28px; }
+
+    /* 3D Flip Card */
+    .flip-scene { perspective: 1000px; cursor: pointer; }
+    .flip-card { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 0.55s cubic-bezier(0.16,1,0.3,1); }
+    .flip-card.flipped { transform: rotateY(180deg); }
+    .flip-face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 12px; overflow: hidden; }
+    .flip-back { transform: rotateY(180deg); }
+
+    /* Modal */
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(4px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .modal-box { border-radius: 18px; overflow: hidden; max-height: 92vh; overflow-y: auto; position: relative; animation: modalIn 0.28s cubic-bezier(0.16,1,0.3,1) both; }
+    @keyframes modalIn { from { opacity:0; transform:scale(0.95); } to { opacity:1; transform:scale(1); } }
+
+    /* Print Payslip */
+    @media print {
+      body * { visibility: hidden !important; }
+      #payslip-print-area, #payslip-print-area * { visibility: visible !important; }
+      #payslip-print-area { position: absolute !important; left: 0; top: 0; width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 24px !important; border: none !important; box-shadow: none !important; background: white !important; color: #0F172A !important; }
+      @page { size: A4 portrait; margin: 10mm; }
+    }
+
+    /* LTO License card */
+    .lto-card { background: linear-gradient(135deg,#e8f4fd 0%,#d6eaf8 50%,#c9e5f5 100%); font-family: 'Inter', sans-serif; }
+    .lto-header { background: linear-gradient(180deg, #1e3a6e 0%, #2a52be 100%); }
+    .lto-phl-flag { background: linear-gradient(to right, #0038A8 50%, #CE1126 50%); height: 6px; }
+
+    /* Company ID Badge */
+    .badge-card { background: linear-gradient(145deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); }
+    .badge-stripe { background: linear-gradient(90deg, #FF6B00 0%, #ff8c42 100%); }
+    .badge-qr-area { background: white; padding: 6px; border-radius: 4px; }
+
+    /* Table row hover */
+    .driver-row { transition: background 0.15s; }
+    .driver-row:hover { background: rgba(255,107,0,0.06) !important; }
+    .dark .driver-row:hover { background: rgba(255,107,0,0.08) !important; }
+
+    /* Action icon buttons */
+    .action-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 7px; border: none; cursor: pointer; transition: all 0.15s; background: transparent; }
+    .action-btn:hover { transform: scale(1.08); }
+
+    /* SVG spark path */
+    .spark-path { fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* Rating stars */
+    .star-fill { color: #f59e0b; }
+    .star-empty { color: #374151; }
+
+    /* Tooltip */
+    [data-tip] { position: relative; }
+    [data-tip]:hover::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: #1e293b; color: #f1f5f9; font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 6px; white-space: nowrap; pointer-events: none; z-index: 100; }
+
+    /* Expiry pill */
+    .expiry-valid    { background: rgba(34,197,94,0.12); color: #22c55e; border: 1px solid rgba(34,197,94,0.25); }
+    .expiry-soon     { background: rgba(245,158,11,0.12); color: #f59e0b; border: 1px solid rgba(245,158,11,0.25); }
+    .expiry-expired  { background: rgba(239,68,68,0.12);  color: #ef4444; border: 1px solid rgba(239,68,68,0.25); }
+    .expiry-none     { background: rgba(100,116,139,0.1); color: #94a3b8; border: 1px solid rgba(100,116,139,0.2); }
+
+    /* Doc status */
+    .doc-valid   { background: rgba(34,197,94,0.1);  color: #22c55e; }
+    .doc-pending { background: rgba(245,158,11,0.1); color: #f59e0b; }
+    .doc-expired { background: rgba(239,68,68,0.1);  color: #ef4444; }
+
+    /* KPI spark */
+    .kpi-card { border-radius: 14px; padding: 18px; position: relative; overflow: hidden; transition: box-shadow 0.2s, transform 0.2s; }
+    .kpi-card:hover { transform: translateY(-2px); }
+
+    /* Inspector panel */
+    #inspector-panel { transition: width 0.25s cubic-bezier(0.16,1,0.3,1); }
+
+    /* Progress bar */
+    .progress-bar-track { background: rgba(255,107,0,0.12); border-radius: 999px; height: 6px; overflow: hidden; }
+    .progress-bar-fill  { background: #FF6B00; border-radius: 999px; height: 6px; transition: width 0.6s cubic-bezier(0.16,1,0.3,1); }
+
+    /* Checkbox custom */
+    input[type=checkbox] { accent-color: #FF6B00; }
+
+    /* Pulsing live dot */
+    @keyframes pulseDot { 0%,100% { transform: scale(1); opacity:1; } 50% { transform: scale(1.5); opacity:0.5; } }
+    .pulse-dot { animation: pulseDot 1.5s infinite; }
+
+    /* ══════════════════════════════════════════════
+       LIGHT THEME — comprehensive overrides
+    ══════════════════════════════════════════════ */
+    :root {
+      --c-bg:       #090D16;
+      --c-card:     #0F172A;
+      --c-border:   #1E293B;
+      --c-text:     #F8FAFC;
+      --c-muted:    #94A3B8;
+      --c-faint:    #64748B;
+      --c-input-bg: #0F172A;
+      --c-hover:    rgba(255,107,0,0.08);
+      --c-thead:    rgba(15,23,42,0.95);
+    }
+
+    body.light-mode {
+      background: #F1F5F9 !important;
+      color: #0F172A !important;
+      --c-bg:       #F1F5F9;
+      --c-card:     #FFFFFF;
+      --c-border:   #E2E8F0;
+      --c-text:     #0F172A;
+      --c-muted:    #64748B;
+      --c-faint:    #94A3B8;
+      --c-input-bg: #FFFFFF;
+      --c-hover:    rgba(255,107,0,0.05);
+      --c-thead:    #F8FAFC;
+    }
+
+    /* Base background in light mode */
+    body.light-mode #app { background: #F1F5F9 !important; }
+
+    /* Glass cards in light */
+    body.light-mode .glass {
+      background: #FFFFFF !important;
+      border-color: #E2E8F0 !important;
+      color: #0F172A !important;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+    }
+
+    /* Headings and text in light */
+    body.light-mode h1,
+    body.light-mode h2,
+    body.light-mode h3,
+    body.light-mode .font-black,
+    body.light-mode .font-bold { color: #0F172A !important; }
+    body.light-mode .text-\[\#F8FAFC\] { color: #0F172A !important; }
+    body.light-mode .text-\[\#94A3B8\] { color: #64748B !important; }
+    body.light-mode .text-\[\#64748B\] { color: #94A3B8 !important; }
+    body.light-mode .text-\[\#475569\] { color: #64748B !important; }
+    body.light-mode .text-white        { color: #0F172A !important; }
+
+    /* Exclude elements that MUST stay white text (buttons, badges) */
+    body.light-mode button.bg-\[\#FF6B00\],
+    body.light-mode button.bg-brand,
+    body.light-mode .bg-\[\#FF6B00\],
+    body.light-mode .bg-brand,
+    body.light-mode [class*="bg-[#FF6B00]"] { color: #FFFFFF !important; }
+    body.light-mode button.bg-\[\#FF6B00\] *,
+    body.light-mode [class*="bg-[#FF6B00]"] * { color: #FFFFFF !important; }
+
+    /* Background overrides */
+    body.light-mode .bg-\[\#090D16\],
+    body.light-mode .bg-\[\#0F172A\] { background-color: #FFFFFF !important; }
+    body.light-mode .bg-\[\#1E293B\] { background-color: #F1F5F9 !important; }
+    body.light-mode .border-\[\#1E293B\] { border-color: #E2E8F0 !important; }
+    body.light-mode .border-\[\#2D3B4F\] { border-color: #CBD5E1 !important; }
+
+    /* Inputs, selects, textareas in all containers */
+    body.light-mode input,
+    body.light-mode select,
+    body.light-mode textarea {
+      background-color: #FFFFFF !important;
+      border-color: #CBD5E1 !important;
+      color: #0F172A !important;
+    }
+    body.light-mode input::placeholder,
+    body.light-mode textarea::placeholder { color: #94A3B8 !important; }
+    body.light-mode select option { background: #FFFFFF !important; color: #0F172A !important; }
+
+    /* Search and toolbar filters */
+    body.light-mode #search-input {
+      background-color: #F8FAFC !important;
+      border-color: #CBD5E1 !important;
+      color: #0F172A !important;
+    }
+    body.light-mode #status-filter,
+    body.light-mode #skill-filter,
+    body.light-mode #per-page-select {
+      background-color: #F8FAFC !important;
+      border-color: #CBD5E1 !important;
+      color: #374151 !important;
+    }
+
+    /* Table header and rows */
+    body.light-mode table thead tr {
+      background: #F8FAFC !important;
+      border-bottom-color: #E2E8F0 !important;
+    }
+    body.light-mode table thead th { color: #64748B !important; }
+    body.light-mode .driver-row {
+      color: #0F172A !important;
+      border-bottom-color: #F1F5F9 !important;
+    }
+    body.light-mode .driver-row:hover { background: rgba(255,107,0,0.05) !important; }
+    body.light-mode .driver-row.bg-orange-500\/10 { background: rgba(255,107,0,0.1) !important; }
+
+    /* Pagination */
+    body.light-mode #prev-page,
+    body.light-mode #next-page {
+      border-color: #CBD5E1 !important;
+      color: #374151 !important;
+      background: #FFFFFF !important;
+    }
+    body.light-mode #page-buttons button {
+      border-color: #CBD5E1 !important;
+      color: #374151 !important;
+      background: #FFFFFF !important;
+    }
+
+    /* Dropdowns */
+    body.light-mode #date-dropdown {
+      background: #FFFFFF !important;
+      border-color: #E2E8F0 !important;
+      color: #0F172A !important;
+      box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1) !important;
+    }
+    body.light-mode #date-dropdown button { color: #374151 !important; }
+    body.light-mode #date-dropdown button:hover { background: rgba(255,107,0,0.06) !important; color: #FF6B00 !important; }
+
+    /* Inspector panel */
+    body.light-mode #inspector-panel {
+      background: #FFFFFF !important;
+      border-color: #E2E8F0 !important;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+    }
+    body.light-mode #inspector-content { color: #0F172A !important; }
+    body.light-mode #inspector-panel .border-\[\#1E293B\] { border-color: #E2E8F0 !important; }
+    body.light-mode #inspector-panel .bg-\[\#1E293B\] { background: #F8FAFC !important; }
+    body.light-mode #inspector-panel .bg-\[\#0F172A\] { background: #F8FAFC !important; }
+
+    /* Modals */
+    body.light-mode .modal-box {
+      background: #FFFFFF !important;
+      border-color: #E2E8F0 !important;
+      color: #0F172A !important;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.2) !important;
+    }
+    body.light-mode .modal-box .bg-\[\#1E293B\] { background: #F1F5F9 !important; }
+    body.light-mode .modal-box .bg-\[\#0F172A\] { background: #F8FAFC !important; }
+    body.light-mode .modal-box .border-\[\#1E293B\] { border-color: #E2E8F0 !important; }
+    body.light-mode .modal-box .border-\[\#2D3B4F\] { border-color: #CBD5E1 !important; }
+    body.light-mode .modal-box h2,
+    body.light-mode .modal-box label { color: #0F172A !important; }
+    body.light-mode .modal-box button[onclick*="closeModal"] {
+      background-color: #F1F5F9 !important;
+      color: #64748B !important;
+    }
+    body.light-mode .modal-box button[onclick*="closeModal"]:hover {
+      background-color: #FEE2E2 !important;
+      color: #EF4444 !important;
+    }
+
+    /* KPI cards in light */
+    body.light-mode .kpi-card {
+      background: #FFFFFF !important;
+      border-color: #E2E8F0 !important;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04) !important;
+    }
+
+    /* Action buttons in light */
+    body.light-mode .action-btn { color: #475569 !important; }
+    body.light-mode .action-btn:hover { background: #F1F5F9 !important; }
+
+    /* Toast in light */
+    body.light-mode #toast .glass {
+      background: #FFFFFF !important;
+      border-color: #E2E8F0 !important;
+      color: #0F172A !important;
+      box-shadow: 0 10px 25px -5px rgba(0,0,0,0.15) !important;
+    }
+
+    /* Status modal */
+    body.light-mode #modal-status .modal-box { background: #FFFFFF !important; }
+    body.light-mode .status-opt { border-color: currentColor !important; }
+    body.light-mode .status-opt.bg-\[\#1E293B\] {
+      background: #F1F5F9 !important;
+      color: #64748B !important;
+      border-color: #CBD5E1 !important;
+    }
+
+    /* Shimmer in light */
+    body.light-mode .shimmer {
+      background: linear-gradient(90deg,rgba(0,0,0,0.04) 0%,rgba(0,0,0,0.08) 50%,rgba(0,0,0,0.04) 100%) !important;
+      background-size: 200% 100% !important;
+      animation: shimmer 1.5s infinite !important;
+    }
+  </style>
+</head>
+
+<body id="body-root" class="bg-[#090D16] text-[#F8FAFC] min-h-screen">
+
+<!-- ── Root Container ── -->
+<div id="app" class="min-h-screen flex flex-col">
+
+  <!-- ══ TOP HEADER ══ -->
+  <div class="px-5 pt-5 pb-3 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-black tracking-tight flex items-center gap-2">
+        Fleet Driver Management
+      </h1>
+      <p class="text-xs mt-0.5 text-[#94A3B8]">Real-time overview of all drivers and operations</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <!-- Live indicator -->
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#1E293B] text-xs font-bold">
+        <span class="w-2 h-2 rounded-full bg-green-500 pulse-dot inline-block"></span>
+        <span class="text-[#94A3B8]">Live</span>
+        <span class="text-[#64748B]">Real-time updates active</span>
+      </div>
+      <!-- Date filter -->
+      <div class="relative" id="date-filter-wrap">
+        <button onclick="toggleDateDropdown()" class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#1E293B] bg-transparent text-xs font-bold text-[#94A3B8] hover:border-orange-500/50 transition-all">
+          <i data-lucide="calendar" class="w-3.5 h-3.5 text-[#FF6B00]"></i>
+          <span id="date-btn-label">All Dates</span>
+          <i data-lucide="chevron-down" class="w-3 h-3"></i>
+        </button>
+        <div id="date-dropdown" class="hidden absolute right-0 mt-2 w-52 rounded-xl bg-[#0F172A] border border-[#1E293B] shadow-2xl p-2 z-50 text-xs space-y-0.5">
+          <button onclick="setDateFilter('all','All Dates')"    class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 hover:text-orange-500 font-bold text-[#94A3B8] transition-colors">All Dates</button>
+          <button onclick="setDateFilter('today','Today')"      class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 hover:text-orange-500 font-bold text-[#94A3B8] transition-colors">Today</button>
+          <button onclick="setDateFilter('week','This Week')"   class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 hover:text-orange-500 font-bold text-[#94A3B8] transition-colors">This Week</button>
+          <button onclick="setDateFilter('month','This Month')" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 hover:text-orange-500 font-bold text-[#94A3B8] transition-colors">This Month</button>
+        </div>
+      </div>
+      <!-- Export -->
+      <button onclick="exportDriversCSV()" class="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-[#FF6B00] hover:bg-[#E85F00] text-white text-xs font-bold transition-all">
+        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+        Export Report
+      </button>
+    </div>
+  </div>
+
+  <!-- ══ KPI STAT CARDS ══ -->
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 px-5 pb-3" id="kpi-grid">
+    <!-- Filled dynamically -->
+    <div class="kpi-card glass shimmer h-24"></div>
+    <div class="kpi-card glass shimmer h-24"></div>
+    <div class="kpi-card glass shimmer h-24"></div>
+    <div class="kpi-card glass shimmer h-24"></div>
+    <div class="kpi-card glass shimmer h-24"></div>
+  </div>
+
+  <!-- ══ MAIN BODY (Table + Inspector) ══ -->
+  <div class="flex flex-1 gap-3 px-5 pb-5 min-h-0">
+
+    <!-- ── Driver Table Panel ── -->
+    <div class="flex-1 glass rounded-2xl flex flex-col overflow-hidden min-w-0">
+      <!-- Table header toolbar -->
+      <div class="flex flex-wrap items-center gap-2 p-4 border-b border-[#1E293B]">
+        <div>
+          <p class="font-bold text-sm">Drivers</p>
+          <p class="text-[10px] text-[#64748B]">Live driver status and assignments</p>
+        </div>
+        <div class="ml-auto flex flex-wrap items-center gap-2">
+          <!-- Search -->
+          <div class="relative">
+            <i data-lucide="search" class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#64748B] pointer-events-none"></i>
+            <input id="search-input" type="text" placeholder="Search drivers, ID, or vehicles..." oninput="applyFilters()"
+              class="pl-8 pr-3 py-1.5 rounded-lg text-xs bg-[#0F172A] border border-[#1E293B] text-[#F8FAFC] placeholder-[#475569] focus:outline-none focus:border-orange-500/60 w-52 transition-all" />
+          </div>
+          <!-- Status filter -->
+          <select id="status-filter" onchange="applyFilters()" class="text-xs bg-[#0F172A] border border-[#1E293B] text-[#94A3B8] rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-orange-500/60">
+            <option value="">All Status</option>
+            <option value="available">Available</option>
+            <option value="on-trip">On-Trip</option>
+            <option value="off-duty">Off-Duty</option>
+            <option value="suspended">Suspended</option>
+            <option value="inactive">Inactive</option>
+          </select>
+          <!-- Skills filter -->
+          <select id="skill-filter" onchange="applyFilters()" class="text-xs bg-[#0F172A] border border-[#1E293B] text-[#94A3B8] rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-orange-500/60">
+            <option value="">All Skills</option>
+            <option value="Safe Driver">Safe Driver</option>
+            <option value="Route Expert">Route Expert</option>
+            <option value="Eco Driver">Eco Driver</option>
+            <option value="Customer Care">Customer Care</option>
+            <option value="Night Shift">Night Shift</option>
+          </select>
+          <!-- Add driver button -->
+          <button onclick="openAddDriverModal()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FF6B00] hover:bg-[#E85F00] text-white text-xs font-bold transition-all">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+            Add Driver
+          </button>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="flex-1 overflow-auto">
+        <table class="w-full text-xs min-w-[900px]">
+          <thead>
+            <tr class="text-[#475569] font-bold text-[10px] uppercase tracking-wider border-b border-[#1E293B] sticky top-0 bg-[#0F172A]/95 backdrop-blur-sm z-10">
+              <th class="text-left px-4 py-2.5">Driver</th>
+              <th class="text-left px-3 py-2.5">Contact</th>
+              <th class="text-left px-3 py-2.5">Skills</th>
+              <th class="text-left px-3 py-2.5">Vehicle Assignment</th>
+              <th class="text-left px-3 py-2.5">
+                <button onclick="sortBy('licenseExpiry')" class="flex items-center gap-1 hover:text-orange-400 transition-colors">
+                  License Expiry <i data-lucide="chevrons-up-down" class="w-3 h-3"></i>
+                </button>
+              </th>
+              <th class="text-left px-3 py-2.5">Status</th>
+              <th class="text-right px-3 py-2.5">
+                <button onclick="sortBy('totalTrips')" class="flex items-center gap-1 hover:text-orange-400 transition-colors ml-auto">
+                  Trips <i data-lucide="chevrons-up-down" class="w-3 h-3"></i>
+                </button>
+              </th>
+              <th class="text-right px-3 py-2.5">
+                <button onclick="sortBy('ratingAvg')" class="flex items-center gap-1 hover:text-orange-400 transition-colors ml-auto">
+                  Rating <i data-lucide="chevrons-up-down" class="w-3 h-3"></i>
+                </button>
+              </th>
+              <th class="text-left px-3 py-2.5">Last Update</th>
+              <th class="text-right px-4 py-2.5">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="driver-tbody">
+            <!-- Skeleton rows -->
+            <tr><td colspan="10" class="px-4 py-12 text-center text-[#475569] text-sm">
+              <div class="flex flex-col items-center gap-2">
+                <i data-lucide="loader-2" class="w-6 h-6 text-[#FF6B00] animate-spin"></i>
+                <span>Loading drivers...</span>
+              </div>
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div class="flex items-center justify-between px-4 py-3 border-t border-[#1E293B] text-xs text-[#64748B]">
+        <span id="pagination-info">Showing 0 drivers</span>
+        <div class="flex items-center gap-1">
+          <button id="prev-page" onclick="changePage(-1)" class="px-2.5 py-1 rounded-lg border border-[#1E293B] hover:border-orange-500/40 transition-colors disabled:opacity-40">
+            <i data-lucide="chevron-left" class="w-3.5 h-3.5"></i>
+          </button>
+          <div id="page-buttons" class="flex gap-1"></div>
+          <button id="next-page" onclick="changePage(1)" class="px-2.5 py-1 rounded-lg border border-[#1E293B] hover:border-orange-500/40 transition-colors disabled:opacity-40">
+            <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+          </button>
+          <select id="per-page-select" onchange="changePerPage()" class="ml-2 text-xs bg-[#0F172A] border border-[#1E293B] text-[#94A3B8] rounded-lg px-2 py-1 focus:outline-none">
+            <option value="8">8 / page</option>
+            <option value="15">15 / page</option>
+            <option value="25">25 / page</option>
+            <option value="50">50 / page</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Driver Inspector Panel ── -->
+    <div id="inspector-panel" class="w-72 glass rounded-2xl flex flex-col overflow-hidden flex-shrink-0">
+      <div class="p-4 border-b border-[#1E293B]">
+        <p class="font-bold text-sm">Driver Inspector</p>
+        <p class="text-[10px] text-[#64748B]">ID verification and performance overview</p>
+      </div>
+      <div id="inspector-content" class="flex-1 overflow-y-auto p-4">
+        <!-- Empty state -->
+        <div class="flex flex-col items-center justify-center h-full text-center gap-3 py-12">
+          <div class="w-14 h-14 rounded-2xl bg-[#1E293B] flex items-center justify-center">
+            <i data-lucide="user-search" class="w-7 h-7 text-[#475569]"></i>
+          </div>
+          <div>
+            <p class="text-sm font-bold text-[#64748B]">No driver selected</p>
+            <p class="text-[10px] text-[#475569] mt-1">Click a driver row to inspect their full profile</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     MODALS
+══════════════════════════════════════════════ -->
+
+<!-- ── Driver Identification Modal (3D Flip Cards) ── -->
+<div id="modal-identification" class="modal-backdrop hidden" onclick="closeModalOnBackdrop(event,'modal-identification')">
+  <div class="modal-box glass w-full max-w-4xl p-6 rounded-2xl">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-5">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center">
+          <i data-lucide="id-card" class="w-5 h-5 text-[#FF6B00]"></i>
+        </div>
+        <div>
+          <h2 class="text-base font-black">Driver Identification</h2>
+          <p class="text-[11px] text-[#64748B]">Official Credentials and Employee Identification</p>
+        </div>
+      </div>
+      <button onclick="closeModal('modal-identification')" class="w-8 h-8 rounded-xl bg-[#1E293B] hover:bg-red-500/20 flex items-center justify-center transition-colors">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <!-- LTO License 3D Flip -->
+      <div>
+        <p class="text-xs font-bold text-[#FF6B00] mb-2 uppercase tracking-wider">Professional Driver's License</p>
+        <p class="text-[10px] text-[#64748B] mb-3">Click the card to flip between Front and Back views</p>
+        <div class="flip-scene" style="height: 200px;" onclick="flipCard('lto-flip')">
+          <div id="lto-flip" class="flip-card">
+            <!-- FRONT -->
+            <div class="flip-face lto-card">
+              <!-- LTO Header -->
+              <div class="lto-header px-3 py-1.5 flex items-center justify-between">
+                <div class="flex items-center gap-1.5">
+                  <div class="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
+                    <span class="text-white text-[7px] font-black">PHL</span>
+                  </div>
+                  <div>
+                    <p class="text-white text-[7px] font-bold leading-tight">REPUBLIC OF THE PHILIPPINES</p>
+                    <p class="text-white/80 text-[6px] leading-tight">DEPARTMENT OF TRANSPORTATION</p>
+                    <p class="text-white/80 text-[6px] leading-tight">LAND TRANSPORTATION OFFICE</p>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <p class="text-white text-[8px] font-black leading-tight">NON-PROFESSIONAL</p>
+                  <p class="text-white text-[8px] font-black leading-tight">DRIVER'S LICENSE</p>
+                </div>
+              </div>
+              <!-- PHL Flag stripe -->
+              <div class="lto-phl-flag"></div>
+              <!-- Body -->
+              <div class="flex gap-2 p-2 flex-1">
+                <!-- Photo area -->
+                <div class="flex-shrink-0">
+                  <div id="lto-photo" class="w-14 h-18 bg-[#cce0f0] rounded overflow-hidden flex items-center justify-center border border-[#a0c4e0]">
+                    <i data-lucide="user" class="w-6 h-6 text-[#4a90d9]"></i>
+                  </div>
+                  <div id="lto-sig" class="mt-1 border-t border-[#7a9fc0] pt-0.5">
+                    <p class="text-[7px] text-[#4a5568] italic font-medium text-center">Signature</p>
+                  </div>
+                </div>
+                <!-- Details -->
+                <div class="flex-1 text-[7px] text-[#1a202c] space-y-0.5">
+                  <div class="grid grid-cols-2 gap-x-2">
+                    <div><span class="text-[#4a5568] uppercase">Birth Date</span><br/><span class="font-bold" id="lto-bday">—</span></div>
+                    <div><span class="text-[#4a5568] uppercase">Sex</span><br/><span class="font-bold" id="lto-sex">—</span></div>
+                  </div>
+                  <div class="grid grid-cols-2 gap-x-2 pt-0.5">
+                    <div><span class="text-[#4a5568] uppercase">Height (m)</span><br/><span class="font-bold" id="lto-height">—</span></div>
+                    <div><span class="text-[#4a5568] uppercase">Nationality</span><br/><span class="font-bold" id="lto-nat">FIL</span></div>
+                  </div>
+                  <div class="pt-0.5"><span class="text-[#4a5568] uppercase">Address</span><br/><span class="font-bold" id="lto-addr" style="font-size:6px;">—</span></div>
+                  <div class="grid grid-cols-2 gap-x-2 pt-0.5">
+                    <div><span class="text-[#4a5568] uppercase">License No.</span><br/><span class="font-bold text-red-600" id="lto-licno">—</span></div>
+                    <div><span class="text-[#4a5568] uppercase">Expiration</span><br/><span class="font-bold text-red-600" id="lto-expiry">—</span></div>
+                  </div>
+                  <div class="grid grid-cols-3 gap-x-1 pt-0.5">
+                    <div><span class="text-[#4a5568] uppercase">Blood Type</span><br/><span class="font-bold" id="lto-blood">—</span></div>
+                    <div><span class="text-[#4a5568] uppercase">Restrictions</span><br/><span class="font-bold" id="lto-rest">—</span></div>
+                    <div><span class="text-[#4a5568] uppercase">Conditions</span><br/><span class="font-bold" id="lto-cond">—</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- BACK -->
+            <div class="flip-face flip-back" style="background: linear-gradient(135deg,#c5daf5 0%,#d6eaf8 100%);">
+              <div class="lto-header px-3 py-1.5">
+                <p class="text-white text-[7px] font-bold">LICENSE INFORMATION</p>
+              </div>
+              <div class="lto-phl-flag"></div>
+              <div class="p-2 text-[7px] text-[#1a202c]">
+                <div class="grid grid-cols-4 gap-1 border border-[#a0c4e0] rounded text-center text-[6px] mb-2">
+                  <div class="border-r border-[#a0c4e0] p-1 font-bold bg-[#dbeafe]">Category</div>
+                  <div class="border-r border-[#a0c4e0] p-1 font-bold bg-[#dbeafe]">Vehicle</div>
+                  <div class="border-r border-[#a0c4e0] p-1 font-bold bg-[#dbeafe]">Date Issued</div>
+                  <div class="p-1 font-bold bg-[#dbeafe]">Valid Until</div>
+                  <div class="border-r border-[#a0c4e0] border-t p-1">A</div><div class="border-r border-[#a0c4e0] border-t p-1">Motorcycle</div><div class="border-r border-[#a0c4e0] border-t p-1" id="lto-back-issued">—</div><div class="border-t p-1" id="lto-back-expiry">—</div>
+                  <div class="border-r border-[#a0c4e0] border-t p-1">B</div><div class="border-r border-[#a0c4e0] border-t p-1">Light Vehicle</div><div class="border-r border-[#a0c4e0] border-t p-1">—</div><div class="border-t p-1">—</div>
+                  <div class="border-r border-[#a0c4e0] border-t p-1">C</div><div class="border-r border-[#a0c4e0] border-t p-1">Light Truck</div><div class="border-r border-[#a0c4e0] border-t p-1">—</div><div class="border-t p-1">—</div>
+                </div>
+                <div class="mb-2">
+                  <p class="font-bold text-[#2d3748] mb-0.5">DL No.: <span id="lto-back-dlno">—</span></p>
+                  <p class="text-[#4a5568]">BLOOD TYPE: <span class="font-bold" id="lto-back-blood">—</span></p>
+                </div>
+                <!-- Barcode -->
+                <div class="flex items-center justify-between mt-2">
+                  <div>
+                    <p class="text-[6px] font-bold text-[#2d3748] uppercase">Emergency Contact</p>
+                    <p class="text-[6px]" id="lto-back-ec">—</p>
+                    <p class="text-[6px] text-[#4a5568]" id="lto-back-ec-phone">—</p>
+                  </div>
+                  <div class="bg-white p-1 rounded border border-[#a0c4e0]">
+                    <div class="flex flex-col gap-px" style="width:60px; height:20px; background: repeating-linear-gradient(90deg,#1a202c 0,#1a202c 1px,transparent 1px,transparent 3px); border-radius:1px;"></div>
+                    <p class="text-[5px] text-center text-[#4a5568] mt-0.5">SERIAL NO.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="text-[10px] text-[#475569] text-center mt-2">Click to flip &bull; Tap to view back side</p>
+      </div>
+
+      <!-- Company ID Badge 3D Flip -->
+      <div>
+        <p class="text-xs font-bold text-[#FF6B00] mb-2 uppercase tracking-wider">Employee Identification Badge</p>
+        <p class="text-[10px] text-[#64748B] mb-3">Click the badge to flip and view back details</p>
+        <div class="flip-scene mx-auto" style="height: 200px; max-width: 200px;" onclick="flipCard('badge-flip')">
+          <div id="badge-flip" class="flip-card">
+            <!-- FRONT -->
+            <div class="flip-face badge-card rounded-xl overflow-hidden">
+              <!-- Lanyard slot -->
+              <div class="flex justify-center pt-2">
+                <div class="w-6 h-3 bg-[#1a1a2e] border-2 border-[#FF6B00] rounded-sm"></div>
+              </div>
+              <!-- Orange stripe -->
+              <div class="badge-stripe py-1.5 px-3 mt-2">
+                <img src="logo.png" alt="Drive&amp;Go" class="h-5 object-contain" />
+              </div>
+              <!-- Content -->
+              <div class="flex flex-col items-center px-4 py-2 gap-1.5">
+                <div id="badge-avatar" class="w-14 h-14 rounded-full border-2 border-[#FF6B00] bg-[#1E293B] flex items-center justify-center overflow-hidden">
+                  <i data-lucide="user" class="w-7 h-7 text-[#475569]"></i>
+                </div>
+                <div class="text-center">
+                  <p class="text-white text-xs font-black" id="badge-name">Driver Name</p>
+                  <p class="text-orange-400 text-[9px] font-bold" id="badge-role">Fleet Driver</p>
+                  <p class="text-[#64748B] text-[9px] mt-0.5" id="badge-empid">DRV-0000</p>
+                </div>
+                <!-- QR Code -->
+                <div class="badge-qr-area w-12 h-12 flex items-center justify-center rounded">
+                  <div id="badge-qr-container" style="width:44px;height:44px;"></div>
+                </div>
+                <p class="text-[8px] text-[#475569] text-center">SCAN FOR VERIFICATION</p>
+              </div>
+            </div>
+            <!-- BACK -->
+            <div class="flip-face flip-back badge-card rounded-xl overflow-hidden">
+              <div class="badge-stripe py-1.5 px-3">
+                <p class="text-white text-[9px] font-black">DRIVE &amp; GO FLEET SOLUTIONS</p>
+              </div>
+              <div class="p-3 space-y-2 text-[9px]">
+                <div class="border-b border-[#1E293B] pb-2">
+                  <p class="text-[#FF6B00] font-bold uppercase text-[8px] mb-1">Emergency Contact</p>
+                  <p class="text-white font-bold" id="badge-ec-name">—</p>
+                  <p class="text-[#64748B]" id="badge-ec-rel">—</p>
+                  <p class="text-[#94A3B8]" id="badge-ec-phone">—</p>
+                </div>
+                <div class="border-b border-[#1E293B] pb-2">
+                  <p class="text-[#FF6B00] font-bold uppercase text-[8px] mb-1">Medical Info</p>
+                  <p class="text-white">Blood Type: <span class="font-bold" id="badge-blood">—</span></p>
+                  <p class="text-[#64748B] text-[8px]" id="badge-medical-notes">No medical notes on file.</p>
+                </div>
+                <div>
+                  <p class="text-[#475569] text-[8px]">If found, please return to:</p>
+                  <p class="text-white font-bold text-[8px]">Drive&amp;Go Fleet Solutions Inc.</p>
+                  <p class="text-[#64748B] text-[8px]">Tel: (02) 8 123 4567</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mt-3 flex justify-center">
+          <button onclick="printBadge()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#1E293B] hover:border-orange-500/40 text-[#94A3B8] text-xs font-bold transition-all">
+            <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+            Print ID Card
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Verification status bar -->
+    <div class="mt-4 flex items-center gap-2 px-3 py-2 rounded-xl bg-green-500/10 border border-green-500/20 text-xs text-green-400 font-bold">
+      <i data-lucide="shield-check" class="w-4 h-4"></i>
+      All credentials are verified and encrypted &bull; Last verified: <span id="id-verified-at" class="font-normal ml-1">—</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Payslip Modal ── -->
+<div id="modal-payslip" class="modal-backdrop hidden" onclick="closeModalOnBackdrop(event,'modal-payslip')">
+  <div class="modal-box glass w-full max-w-4xl p-6 rounded-2xl">
+    <div class="flex items-center justify-between mb-5">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center">
+          <i data-lucide="file-text" class="w-5 h-5 text-[#FF6B00]"></i>
+        </div>
+        <div>
+          <h2 class="text-base font-black">Sweldo &amp; Payslip</h2>
+          <p class="text-[11px] text-[#64748B]">Driver Compensation Statement &amp; Trip Earnings</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="printPayslip()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#1E293B] hover:border-orange-500/40 text-[#94A3B8] text-xs font-bold transition-all">
+          <i data-lucide="printer" class="w-3.5 h-3.5"></i> Print A4
+        </button>
+        <button onclick="closeModal('modal-payslip')" class="w-8 h-8 rounded-xl bg-[#1E293B] hover:bg-red-500/20 flex items-center justify-center transition-colors">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Payslip print area -->
+    <div id="payslip-print-area" class="bg-white text-[#0F172A] rounded-xl p-6 text-sm" style="font-family:'Inter',sans-serif;">
+      <!-- Header -->
+      <div class="flex justify-between items-start mb-4 border-b border-[#E2E8F0] pb-4">
+        <div class="flex items-center gap-3">
+          <img src="logo.png" alt="Drive&amp;Go" class="h-12 object-contain" />
+          <div>
+            <p class="font-black text-[#FF6B00] text-sm">Drive&amp;Go Fleet Solutions Inc.</p>
+            <p class="text-[10px] text-[#64748B]">12F West Tower, Bonifacio Global City</p>
+            <p class="text-[10px] text-[#64748B]">Taguig City, Metro Manila, Philippines 1634</p>
+            <p class="text-[10px] text-[#64748B]">TIN: 123-456-789-000 &bull; BIR Accr. No.: 123-456789-000-00</p>
+            <p class="text-[10px] text-[#94A3B8] mt-0.5">www.driveandgo.ph &bull; support@driveandgo.ph</p>
+          </div>
+        </div>
+        <div class="text-right text-xs">
+          <div class="text-[10px] text-[#64748B] space-y-0.5">
+            <p>STATEMENT NO. <span class="font-bold text-[#0F172A]" id="slip-stmt-no">DGS-—</span></p>
+            <p>PAY PERIOD <span class="font-bold text-[#0F172A]" id="slip-period">—</span></p>
+            <p>PAY DATE <span class="font-bold text-[#0F172A]" id="slip-paydate">—</span></p>
+          </div>
+        </div>
+      </div>
+
+      <h2 class="font-black text-base text-[#0F172A] mb-0.5">DRIVER COMPENSATION STATEMENT &amp; PAYSLIP</h2>
+      <p class="text-[11px] text-[#64748B] mb-4">Statement of Earnings and Deductions</p>
+
+      <div class="grid grid-cols-3 gap-4 mb-4">
+        <!-- Driver info -->
+        <div class="col-span-2 border border-[#E2E8F0] rounded-xl p-3">
+          <div class="flex gap-3 items-start">
+            <div id="slip-avatar" class="w-14 h-14 rounded-xl bg-[#F1F5F9] flex items-center justify-center overflow-hidden flex-shrink-0">
+              <i data-lucide="user" class="w-7 h-7 text-[#94A3B8]"></i>
+            </div>
+            <div class="flex-1">
+              <div class="flex items-center gap-2">
+                <span class="font-black text-[#0F172A]" id="slip-name">Driver Name</span>
+                <span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 border border-orange-200">DRIVER</span>
+              </div>
+              <div class="grid grid-cols-2 gap-x-4 gap-y-0.5 mt-2 text-[10px]">
+                <div class="text-[#64748B]">Driver ID <span class="font-bold text-[#0F172A]" id="slip-empid">—</span></div>
+                <div class="text-[#64748B]">License No. <span class="font-bold text-[#0F172A]" id="slip-licno">—</span></div>
+                <div class="text-[#64748B]">Contact No. <span class="font-bold text-[#0F172A]" id="slip-phone">—</span></div>
+                <div class="text-[#64748B]">License Expiry <span class="font-bold text-[#0F172A]" id="slip-licexp">—</span></div>
+                <div class="text-[#64748B]">Email <span class="font-bold text-[#0F172A]" id="slip-email">—</span></div>
+                <div class="text-[#64748B]">Status <span class="font-bold text-green-600" id="slip-status">Active</span></div>
+              </div>
+            </div>
+          </div>
+          <!-- Bank details & vehicle -->
+          <div class="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-[#E2E8F0]">
+            <div>
+              <p class="text-[9px] font-bold text-[#64748B] uppercase mb-1 flex items-center gap-1"><i data-lucide="landmark" class="w-3 h-3"></i> Bank Details</p>
+              <p class="text-[10px] text-[#64748B]">Bank: <span class="font-bold text-[#0F172A]" id="slip-payout-channel">—</span></p>
+              <p class="text-[10px] text-[#64748B]">Account Name: <span class="font-bold text-[#0F172A]" id="slip-acct-name">—</span></p>
+              <p class="text-[10px] text-[#64748B]">Account No.: <span class="font-bold text-[#0F172A]" id="slip-acct-no">—</span></p>
+            </div>
+            <div>
+              <p class="text-[9px] font-bold text-[#64748B] uppercase mb-1 flex items-center gap-1"><i data-lucide="car" class="w-3 h-3"></i> Vehicle Assigned</p>
+              <p class="font-bold text-[#0F172A] text-[10px]" id="slip-vehicle">—</p>
+              <p class="text-[10px] text-[#64748B]" id="slip-plate">—</p>
+            </div>
+          </div>
+        </div>
+        <!-- Net payout box -->
+        <div class="border border-[#FF6B00] rounded-xl p-4 flex flex-col items-center justify-center bg-orange-50 text-center">
+          <p class="text-[10px] font-bold text-[#64748B] uppercase mb-1">Net Payout</p>
+          <p class="text-2xl font-black text-[#FF6B00]" id="slip-net-payout">PHP 0.00</p>
+          <p class="text-[9px] text-[#64748B] mt-1" id="slip-net-words">Zero Pesos Only</p>
+          <div class="mt-3 border-t border-orange-200 pt-3 w-full">
+            <div class="w-20 mx-auto border-b border-[#0F172A] mb-1"></div>
+            <p class="text-[9px] text-[#64748B]">AUTHORIZED SIGNATURE</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trip summary -->
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div class="border border-[#E2E8F0] rounded-xl p-3">
+          <p class="text-[10px] font-bold text-[#64748B] uppercase mb-2 flex items-center gap-1"><i data-lucide="bar-chart-2" class="w-3 h-3"></i> Trip Summary</p>
+          <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+            <div class="text-[#64748B]">Total Trips Completed</div><div class="font-bold text-right" id="slip-total-trips">0</div>
+            <div class="text-[#64748B]">Total Distance (km)</div><div class="font-bold text-right" id="slip-total-dist">0</div>
+            <div class="text-[#64748B]">Total Hours Online</div><div class="font-bold text-right" id="slip-total-hours">0h</div>
+            <div class="text-[#64748B]">Customer Rating</div>
+            <div class="text-right" id="slip-rating-stars">—</div>
+            <div class="text-[#64748B]">Completion Rate</div><div class="font-bold text-right text-green-600" id="slip-completion">0%</div>
+          </div>
+        </div>
+        <div class="border border-[#E2E8F0] rounded-xl p-3">
+          <p class="text-[10px] font-bold text-[#64748B] uppercase mb-2 flex items-center gap-1"><i data-lucide="pie-chart" class="w-3 h-3"></i> Earnings Breakdown</p>
+          <div id="slip-breakdown-list" class="space-y-1 text-[10px]">
+            <!-- filled by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Earnings table -->
+      <div class="mb-3">
+        <div class="flex items-center gap-1.5 mb-2">
+          <div class="w-3 h-3 rounded-full bg-green-500"></div>
+          <p class="text-[11px] font-black uppercase text-[#0F172A]">Earnings</p>
+        </div>
+        <table class="w-full text-[10px] border-collapse">
+          <thead><tr class="bg-[#F8FAFC] border border-[#E2E8F0]">
+            <th class="text-left px-3 py-1.5 font-bold text-[#64748B]">Description</th>
+            <th class="text-left px-3 py-1.5 font-bold text-[#64748B]">Details</th>
+            <th class="text-right px-3 py-1.5 font-bold text-[#64748B]">Amount (PHP)</th>
+          </tr></thead>
+          <tbody id="slip-earnings-body">
+            <tr class="border-b border-[#E2E8F0]"><td colspan="3" class="px-3 py-2 text-[#94A3B8] text-center">No earnings data</td></tr>
+          </tbody>
+          <tfoot>
+            <tr class="bg-[#F8FAFC] font-bold">
+              <td class="px-3 py-2 text-[#0F172A]" colspan="2">TOTAL EARNINGS</td>
+              <td class="px-3 py-2 text-right text-green-600" id="slip-total-earnings">PHP 0.00</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- Deductions table -->
+      <div class="mb-3">
+        <div class="flex items-center gap-1.5 mb-2">
+          <div class="w-3 h-3 rounded-full bg-red-500"></div>
+          <p class="text-[11px] font-black uppercase text-[#0F172A]">Deductions</p>
+        </div>
+        <table class="w-full text-[10px] border-collapse">
+          <thead><tr class="bg-[#F8FAFC] border border-[#E2E8F0]">
+            <th class="text-left px-3 py-1.5 font-bold text-[#64748B]">Description</th>
+            <th class="text-left px-3 py-1.5 font-bold text-[#64748B]">Details</th>
+            <th class="text-right px-3 py-1.5 font-bold text-[#64748B]">Amount (PHP)</th>
+          </tr></thead>
+          <tbody id="slip-deductions-body">
+            <tr class="border-b border-[#E2E8F0]"><td colspan="3" class="px-3 py-2 text-[#94A3B8] text-center">No deductions</td></tr>
+          </tbody>
+          <tfoot>
+            <tr class="bg-red-50 font-bold">
+              <td class="px-3 py-2 text-[#0F172A]" colspan="2">TOTAL DEDUCTIONS</td>
+              <td class="px-3 py-2 text-right text-red-600" id="slip-total-deductions">(PHP 0.00)</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- Net payout row -->
+      <div class="flex justify-between items-center py-3 px-4 rounded-xl bg-[#FFF7ED] border border-[#FDBA74] text-sm font-black mb-4">
+        <span class="text-[#0F172A]">NET PAYOUT (EARNINGS &ndash; DEDUCTIONS)</span>
+        <span class="text-[#FF6B00] text-base" id="slip-net-final">PHP 0.00</span>
+      </div>
+
+      <!-- Per-trip ledger -->
+      <div class="mb-4">
+        <p class="text-[10px] font-black uppercase text-[#0F172A] mb-2 flex items-center gap-1">
+          <i data-lucide="list" class="w-3 h-3"></i> Per-Trip Payout Ledger
+        </p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-[9px] border-collapse">
+            <thead><tr class="bg-[#F8FAFC] border border-[#E2E8F0]">
+              <th class="px-2 py-1.5 text-left font-bold text-[#64748B]">Trip ID</th>
+              <th class="px-2 py-1.5 text-left font-bold text-[#64748B]">Date</th>
+              <th class="px-2 py-1.5 text-left font-bold text-[#64748B]">Vehicle</th>
+              <th class="px-2 py-1.5 text-left font-bold text-[#64748B]">Destination</th>
+              <th class="px-2 py-1.5 text-right font-bold text-[#64748B]">Total Fare</th>
+              <th class="px-2 py-1.5 text-right font-bold text-[#64748B]">Driver 70%</th>
+              <th class="px-2 py-1.5 text-right font-bold text-[#64748B]">Platform 30%</th>
+              <th class="px-2 py-1.5 text-left font-bold text-[#64748B]">Payment</th>
+            </tr></thead>
+            <tbody id="slip-trips-body">
+              <tr><td colspan="8" class="px-2 py-3 text-[#94A3B8] text-center">No trip records available</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="grid grid-cols-3 gap-4 pt-3 border-t border-[#E2E8F0]">
+        <div class="flex items-start gap-2">
+          <img src="logo.png" alt="Drive&amp;Go" class="h-8 object-contain" />
+          <div class="text-[8px] text-[#64748B]">
+            <p class="font-bold">NOTES:</p>
+            <ul class="list-disc pl-3 space-y-0.5 mt-0.5">
+              <li>This is a system-generated statement.</li>
+              <li>All amounts are in Philippine Peso (PHP).</li>
+              <li>Report discrepancies within 3 business days.</li>
+              <li>For inquiries: finance@driveandgo.ph</li>
+            </ul>
+          </div>
+        </div>
+        <div class="text-center">
+          <p class="text-[9px] font-bold text-[#64748B] uppercase mb-1 flex items-center justify-center gap-1"><i data-lucide="credit-card" class="w-3 h-3"></i> Payment Information</p>
+          <div class="text-[9px] space-y-0.5">
+            <p class="text-[#64748B]">Payout Method: <span class="font-bold text-[#0F172A]" id="slip-pay-method">—</span></p>
+            <p class="text-[#64748B]">Reference No.: <span class="font-bold text-[#0F172A]" id="slip-ref-no">—</span></p>
+            <p class="text-[#64748B]">Processed On: <span class="font-bold text-[#0F172A]" id="slip-processed-on">—</span></p>
+          </div>
+        </div>
+        <div class="flex flex-col items-center gap-1">
+          <p class="text-[9px] font-bold text-[#64748B] uppercase flex items-center gap-1"><i data-lucide="qr-code" class="w-3 h-3"></i> Verify Statement</p>
+          <div id="payslip-qr" class="w-14 h-14"></div>
+          <p class="text-[8px] text-[#64748B]">Verification Code</p>
+          <p class="font-mono text-[8px] font-bold" id="slip-verify-code">DGS—</p>
+        </div>
+      </div>
+      <div class="mt-3 bg-[#0F172A] text-white text-center text-[9px] py-2 px-4 rounded-lg font-bold">
+        THANK YOU FOR DRIVING WITH DRIVE&amp;GO! &bull; Your commitment keeps us moving forward.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Emergency Sheet Modal ── -->
+<div id="modal-emergency" class="modal-backdrop hidden" onclick="closeModalOnBackdrop(event,'modal-emergency')">
+  <div class="modal-box glass w-full max-w-lg p-6 rounded-2xl">
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center">
+          <i data-lucide="heart-pulse" class="w-5 h-5 text-red-400"></i>
+        </div>
+        <div>
+          <h2 class="text-base font-black">Emergency &amp; Medical Sheet</h2>
+          <p class="text-[11px] text-[#64748B]">Quick-access emergency information for <span id="emg-driver-name">this driver</span></p>
+        </div>
+      </div>
+      <button onclick="closeModal('modal-emergency')" class="w-8 h-8 rounded-xl bg-[#1E293B] hover:bg-red-500/20 flex items-center justify-center"><i data-lucide="x" class="w-4 h-4"></i></button>
+    </div>
+    <!-- Blood type -->
+    <div class="flex items-center gap-4 mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+      <div class="w-14 h-14 rounded-xl bg-red-500/20 flex items-center justify-center">
+        <i data-lucide="droplets" class="w-7 h-7 text-red-400"></i>
+      </div>
+      <div>
+        <p class="text-xs text-[#94A3B8]">Blood Type</p>
+        <p class="text-3xl font-black text-red-400" id="emg-blood">—</p>
+      </div>
+    </div>
+    <!-- Medical notes -->
+    <div class="mb-4 p-3 rounded-xl bg-[#1E293B] border border-[#2D3B4F]">
+      <p class="text-xs font-bold text-[#94A3B8] mb-1 flex items-center gap-1"><i data-lucide="stethoscope" class="w-3.5 h-3.5"></i> Medical Notes / Allergies</p>
+      <p class="text-sm" id="emg-medical-notes">No medical notes on file.</p>
+    </div>
+    <!-- Emergency contacts -->
+    <div>
+      <p class="text-xs font-bold text-[#94A3B8] mb-2 uppercase tracking-wider flex items-center gap-1"><i data-lucide="phone-call" class="w-3.5 h-3.5"></i> Emergency Contacts</p>
+      <div id="emg-contacts-list" class="space-y-2">
+        <div class="text-sm text-[#475569] text-center py-4">No emergency contacts recorded yet.
+          <button onclick="openAddContactModal()" class="text-[#FF6B00] hover:underline ml-1">Add Contact</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Document Vault Modal ── -->
+<div id="modal-docs" class="modal-backdrop hidden" onclick="closeModalOnBackdrop(event,'modal-docs')">
+  <div class="modal-box glass w-full max-w-2xl p-6 rounded-2xl">
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center"><i data-lucide="folder-open" class="w-5 h-5 text-blue-400"></i></div>
+        <div><h2 class="text-base font-black">Document Compliance Vault</h2><p class="text-[11px] text-[#64748B]">Official clearances and certifications for <span id="docs-driver-name">this driver</span></p></div>
+      </div>
+      <button onclick="closeModal('modal-docs')" class="w-8 h-8 rounded-xl bg-[#1E293B] hover:bg-red-500/20 flex items-center justify-center"><i data-lucide="x" class="w-4 h-4"></i></button>
+    </div>
+    <div id="docs-list" class="space-y-2">
+      <div class="text-sm text-[#475569] text-center py-8">No documents uploaded yet.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Cash Remittance Modal ── -->
+<div id="modal-cash" class="modal-backdrop hidden" onclick="closeModalOnBackdrop(event,'modal-cash')">
+  <div class="modal-box glass w-full max-w-md p-6 rounded-2xl">
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center"><i data-lucide="banknote" class="w-5 h-5 text-green-400"></i></div>
+        <div><h2 class="text-base font-black">Cash Remittance</h2><p class="text-[11px] text-[#64748B]">Record cash handover from <span id="cash-driver-name">driver</span></p></div>
+      </div>
+      <button onclick="closeModal('modal-cash')" class="w-8 h-8 rounded-xl bg-[#1E293B] hover:bg-red-500/20 flex items-center justify-center"><i data-lucide="x" class="w-4 h-4"></i></button>
+    </div>
+    <div class="p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20 text-sm mb-4 flex items-center gap-2">
+      <i data-lucide="wallet" class="w-4 h-4 text-yellow-400"></i>
+      <span class="text-[#94A3B8]">Unremitted Cash on Hand:</span>
+      <span class="font-black text-yellow-400" id="cash-on-hand">PHP 0.00</span>
+    </div>
+    <div class="space-y-3">
+      <div>
+        <label class="text-xs font-bold text-[#94A3B8] block mb-1">Amount to Remit (PHP)</label>
+        <input id="remit-amount" type="number" placeholder="0.00" class="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500/60" />
+      </div>
+      <div>
+        <label class="text-xs font-bold text-[#94A3B8] block mb-1">Reference Number (optional)</label>
+        <input id="remit-ref" type="text" placeholder="e.g. TRX-20260522-001" class="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500/60" />
+      </div>
+      <div>
+        <label class="text-xs font-bold text-[#94A3B8] block mb-1">Notes</label>
+        <textarea id="remit-notes" rows="2" placeholder="Add notes..." class="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500/60 resize-none"></textarea>
+      </div>
+      <button onclick="submitRemittance()" class="w-full py-2.5 rounded-xl bg-[#FF6B00] hover:bg-[#E85F00] text-white font-bold text-sm transition-all flex items-center justify-center gap-2">
+        <i data-lucide="check-circle" class="w-4 h-4"></i> Confirm Remittance
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add/Edit Driver Modal ── -->
+<div id="modal-driver-form" class="modal-backdrop hidden" onclick="closeModalOnBackdrop(event,'modal-driver-form')">
+  <div class="modal-box glass w-full max-w-2xl p-6 rounded-2xl">
+    <div class="flex items-center justify-between mb-5">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center"><i data-lucide="user-plus" class="w-5 h-5 text-[#FF6B00]"></i></div>
+        <div><h2 class="text-base font-black" id="driver-form-title">Add New Driver</h2><p class="text-[11px] text-[#64748B]">Fill in the driver's information and credentials</p></div>
+      </div>
+      <button onclick="closeModal('modal-driver-form')" class="w-8 h-8 rounded-xl bg-[#1E293B] hover:bg-red-500/20 flex items-center justify-center"><i data-lucide="x" class="w-4 h-4"></i></button>
+    </div>
+    <div class="grid grid-cols-2 gap-4 text-xs">
+      <div class="col-span-2 grid grid-cols-3 gap-3">
+        <div><label class="block font-bold text-[#94A3B8] mb-1">Full Name *</label><input id="df-name" type="text" class="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500/60" /></div>
+        <div><label class="block font-bold text-[#94A3B8] mb-1">Email *</label><input id="df-email" type="email" class="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500/60" /></div>
+        <div><label class="block font-bold text-[#94A3B8] mb-1">Phone</label><input id="df-phone" type="text" class="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500/60" /></div>
+      </div>
+      <div><label class="block font-bold text-[#94A3B8] mb-1">License No. *</label><input id="df-licno" type="text" class="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500/60" /></div>
+      <div><label class="block font-bold text-[#94A3B8] mb-1">License Expiry</label><input id="df-licexp" type="date" class="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500/60" /></div>
+      <div><label class="block font-bold text-[#94A3B8] mb-1">License Class</label><input id="df-licclass" type="text" placeholder="e.g. Non-Professional" class="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500/60" /></div>
+      <div><label class="block font-bold text-[#94A3B8] mb-1">Restrictions</label><input id="df-rest" type="text" placeholder="e.g. 1, 2" class="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500/60" /></div>
+      <div><label class="block font-bold text-[#94A3B8] mb-1">Blood Type</label>
+        <select id="df-blood" class="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500/60">
+          <option value="">Select...</option>
+          <option>O+</option><option>O-</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option>
+        </select>
+      </div>
+      <div><label class="block font-bold text-[#94A3B8] mb-1">Sex</label>
+        <select id="df-sex" class="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500/60">
+          <option value="">Select...</option><option value="M">Male</option><option value="F">Female</option>
+        </select>
+      </div>
+      <div><label class="block font-bold text-[#94A3B8] mb-1">Date of Birth</label><input id="df-bday" type="date" class="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500/60" /></div>
+      <div><label class="block font-bold text-[#94A3B8] mb-1">Height (m)</label><input id="df-height" type="text" placeholder="e.g. 1.70" class="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500/60" /></div>
+      <div><label class="block font-bold text-[#94A3B8] mb-1">Weight (kg)</label><input id="df-weight" type="text" placeholder="e.g. 70" class="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500/60" /></div>
+      <div class="col-span-2"><label class="block font-bold text-[#94A3B8] mb-1">Address</label><input id="df-addr" type="text" class="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500/60" /></div>
+      <div><label class="block font-bold text-[#94A3B8] mb-1">Shift Schedule</label>
+        <select id="df-shift" class="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500/60">
+          <option>Morning Shift</option><option>Night Shift</option><option>Rest Day</option><option>Available</option>
+        </select>
+      </div>
+      <div><label class="block font-bold text-[#94A3B8] mb-1">Status</label>
+        <select id="df-status" class="w-full bg-[#0F172A] border border-[#1E293B] rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500/60">
+          <option value="available">Available</option><option value="off-duty">Off-Duty</option><option value="inactive">Inactive</option>
+        </select>
+      </div>
+      <div class="col-span-2">
+        <label class="block font-bold text-[#94A3B8] mb-2">Vehicle Skills</label>
+        <div class="flex flex-wrap gap-2" id="df-skill-checks">
+          <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" value="Safe Driver" class="skill-check" /> Safe Driver</label>
+          <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" value="Route Expert" class="skill-check" /> Route Expert</label>
+          <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" value="Eco Driver" class="skill-check" /> Eco Driver</label>
+          <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" value="Customer Care" class="skill-check" /> Customer Care</label>
+          <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" value="Night Shift" class="skill-check" /> Night Shift</label>
+          <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" value="Van Certified" class="skill-check" /> Van Certified</label>
+          <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" value="Manual Trans" class="skill-check" /> Manual Trans</label>
+        </div>
+      </div>
+    </div>
+    <div class="mt-5 flex justify-end gap-2">
+      <button onclick="closeModal('modal-driver-form')" class="px-4 py-2 rounded-lg border border-[#1E293B] text-[#94A3B8] text-xs font-bold hover:border-orange-500/40 transition-all">Cancel</button>
+      <button onclick="submitDriverForm()" id="df-submit-btn" class="px-5 py-2 rounded-lg bg-[#FF6B00] hover:bg-[#E85F00] text-white text-xs font-bold transition-all flex items-center gap-1.5">
+        <i data-lucide="save" class="w-3.5 h-3.5"></i> Save Driver
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Status Change Modal ── -->
+<div id="modal-status" class="modal-backdrop hidden" onclick="closeModalOnBackdrop(event,'modal-status')">
+  <div class="modal-box glass w-full max-w-xs p-6 rounded-2xl">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-sm font-black">Change Driver Status</h2>
+      <button onclick="closeModal('modal-status')" class="w-7 h-7 rounded-xl bg-[#1E293B] flex items-center justify-center"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+    </div>
+    <p class="text-xs text-[#64748B] mb-3">Select new status for <span class="font-bold text-white" id="status-driver-name">—</span></p>
+    <div class="grid grid-cols-2 gap-2 text-xs">
+      <button onclick="changeDriverStatus('available')"  class="status-opt py-2 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 font-bold hover:bg-green-500/20 transition-all">Available</button>
+      <button onclick="changeDriverStatus('on-trip')"    class="status-opt py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 font-bold hover:bg-blue-500/20 transition-all">On-Trip</button>
+      <button onclick="changeDriverStatus('off-duty')"   class="status-opt py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 font-bold hover:bg-yellow-500/20 transition-all">Off-Duty</button>
+      <button onclick="changeDriverStatus('suspended')"  class="status-opt py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 font-bold hover:bg-red-500/20 transition-all">Suspended</button>
+      <button onclick="changeDriverStatus('inactive')" class="status-opt col-span-2 py-2 rounded-lg bg-[#1E293B] border border-[#2D3B4F] text-[#94A3B8] font-bold hover:border-orange-500/40 transition-all">Inactive</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ── -->
+<div id="toast" class="fixed bottom-5 right-5 z-[9999] hidden anim-in">
+  <div class="glass rounded-xl px-4 py-3 flex items-center gap-2 text-sm font-bold shadow-2xl min-w-[200px]">
+    <i id="toast-icon" data-lucide="check-circle" class="w-4 h-4 text-green-400 flex-shrink-0"></i>
+    <span id="toast-msg">Done</span>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════════ -->
+<script>
+// ── Globals ──
+let API_BASE = window.API_BASE_URL || 'http://localhost:5233/api';
+let AUTH_TOKEN = window.AUTH_TOKEN || '';
+let allDrivers = [];
+let filteredDrivers = [];
+let selectedDriverId = null;
+let currentPage = 1;
+let perPage = 8;
+let sortField = null;
+let sortAsc = true;
+let currentDateFilter = 'all';
+let editingDriverId = null;
+let remittingDriverId = null;
+
+// ── Theme ──
+function setTheme(isDark) {
+  const html = document.getElementById('html-root');
+  if (isDark) {
+    html.classList.add('dark');
+    document.body.classList.remove('light-mode');
+    document.body.style.background = '';
+    document.body.style.color = '';
+  } else {
+    html.classList.remove('dark');
+    document.body.classList.add('light-mode');
+  }
+  // CSS custom properties + .light-mode class handles all theming
+}
+
+function isDarkMode() {
+  return !document.body.classList.contains('light-mode');
+}
+
+// ── Fetch Helpers ──
+function apiHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  if (AUTH_TOKEN) h['Authorization'] = `Bearer ${AUTH_TOKEN}`;
+  return h;
+}
+async function apiFetch(path, opts = {}, baseOverride = null) {
+  opts.headers = { ...apiHeaders(), ...(opts.headers || {}) };
+  const base = baseOverride || API_BASE;
+  const res = await fetch(`${base}${path}`, opts);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}${text ? ': ' + text.slice(0, 200) : ''}`);
+  }
+  return res.json();
+}
+
+// ── Main data load ──
+async function fetchDriversData() {
+  try {
+    // Try primary localhost URL first
+    let data;
+    try {
+      data = await apiFetch('/drivers');
+    } catch(primaryErr) {
+      // Fallback to network URL if localhost fails and network URL differs
+      const netBase = window.API_NETWORK_URL;
+      if (netBase && netBase !== API_BASE) {
+        console.warn('[DriversWeb] localhost failed, trying network URL:', netBase, primaryErr.message);
+        data = await apiFetch('/drivers', {}, netBase + '/api');
+        // Update base for subsequent calls
+        API_BASE = netBase + '/api';
+      } else {
+        throw primaryErr;
+      }
+    }
+    allDrivers = Array.isArray(data) ? data : [];
+    buildKPIs();
+    applyFilters();
+  } catch(e) {
+    console.error('[DriversWeb] fetch error:', e);
+    showEmptyTable(`API connection failed — ${e.message}. Make sure the DriveAndGo API is running.`);
+  }
+}
+
+// ── KPI Cards ──
+function buildKPIs() {
+  const total     = allDrivers.length;
+  const available = allDrivers.filter(d => d.status === 'available').length;
+  const onTrip    = allDrivers.filter(d => d.status === 'on-trip').length;
+  const trips     = allDrivers.reduce((s, d) => s + (d.totalTrips || 0), 0);
+  const gross     = allDrivers.reduce((s, d) => s + (d.totalRevenue || 0), 0);
+  const ratings   = allDrivers.filter(d => d.ratingAvg > 0);
+  const avgRating = ratings.length ? ratings.reduce((s, d) => s + d.ratingAvg, 0) / ratings.length : 0;
+
+  const grid = document.getElementById('kpi-grid');
+  grid.innerHTML = '';
+
+  const kpis = [
+    { label: 'TOTAL DRIVERS',   value: total,                 sub: `+${Math.max(0,Math.round(total*0.05))} this week`,   icon: 'users',     color: '#FF6B00', sparkColor: '#FF6B00' },
+    { label: 'AVAILABLE NOW',   value: available,             sub: `${total>0?((available/total)*100).toFixed(1):0}% of total`, icon: 'user-check', color: '#22c55e', sparkColor: '#22c55e' },
+    { label: 'ON-TRIP',         value: onTrip,                sub: `${total>0?((onTrip/total)*100).toFixed(1):0}% of total`, icon: 'car', color: '#3b82f6', sparkColor: '#3b82f6' },
+    { label: 'TOTAL TRIPS',     value: trips.toLocaleString(),sub: `+${Math.round(trips*0.03)} today`,                   icon: 'bar-chart-2',  color: '#a855f7', sparkColor: '#a855f7' },
+    { label: 'GROSS EARNINGS',  value: `PHP ${formatPHP(gross)}`, sub: `+12.4% vs yesterday`,                            icon: 'wallet',      color: '#f59e0b', sparkColor: '#f59e0b' },
+  ];
+
+  kpis.forEach((k, i) => {
+    const el = document.createElement('div');
+    el.className = 'kpi-card glass anim-up';
+    el.style.animationDelay = `${i * 60}ms`;
+    el.innerHTML = `
+      <div class="flex items-center justify-between mb-2">
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:${k.color}18">
+          <i data-lucide="${k.icon}" class="w-4 h-4" style="color:${k.color}"></i>
+        </div>
+        ${buildSparklineSVG(k.sparkColor)}
+      </div>
+      <p class="text-[10px] font-bold uppercase tracking-wider" style="color:${k.color}">${k.label}</p>
+      <p class="text-xl font-black mt-0.5 leading-tight">${k.value}</p>
+      <p class="text-[10px] mt-1" style="color:${k.color}88">${k.sub}</p>
+    `;
+    grid.appendChild(el);
+  });
+  lucide.createIcons();
+}
+
+function buildSparklineSVG(color) {
+  const pts = [8,12,6,14,10,15,9,13,11,7,16,10,14];
+  const max = Math.max(...pts), min = Math.min(...pts);
+  const w = 80, h = 28;
+  const coords = pts.map((v, i) => `${(i/(pts.length-1))*w},${h - ((v-min)/(max-min||1))*(h-4)-2}`).join(' ');
+  return `<svg class="sparkline" viewBox="0 0 ${w} ${h}" fill="none">
+    <polyline points="${coords}" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.8"/>
+  </svg>`;
+}
+
+// ── Filter & Sort ──
+function applyFilters() {
+  const q      = (document.getElementById('search-input')?.value || '').toLowerCase();
+  const status = (document.getElementById('status-filter')?.value || '').toLowerCase();
+  const skill  = (document.getElementById('skill-filter')?.value || '').toLowerCase();
+
+  filteredDrivers = allDrivers.filter(d => {
+    const matchQ = !q || [d.fullName, d.licenseNo, d.phone, d.email, d.currentVehiclePlate, d.employeeCode].some(v => v && v.toLowerCase().includes(q));
+    const matchS = !status || d.status === status;
+    const matchK = !skill || (d.skillFlags || '').toLowerCase().includes(skill);
+    return matchQ && matchS && matchK;
+  });
+
+  if (sortField) {
+    filteredDrivers.sort((a, b) => {
+      let av = a[sortField], bv = b[sortField];
+      if (typeof av === 'string') av = av.toLowerCase();
+      if (typeof bv === 'string') bv = bv.toLowerCase();
+      return sortAsc ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1);
+    });
+  }
+
+  currentPage = 1;
+  renderTable();
+}
+
+function sortBy(field) {
+  if (sortField === field) sortAsc = !sortAsc;
+  else { sortField = field; sortAsc = false; }
+  applyFilters();
+}
+
+// ── Table Render ──
+function renderTable() {
+  const tbody = document.getElementById('driver-tbody');
+  const start = (currentPage - 1) * perPage;
+  const page  = filteredDrivers.slice(start, start + perPage);
+  const isDark = isDarkMode();
+
+  if (page.length === 0) { showEmptyTable('No drivers match your search or filters.'); return; }
+
+  tbody.innerHTML = page.map(d => {
+    const expPill = buildExpiryPill(d.licenseExpiry);
+    const statusPill = buildStatusPill(d.status);
+    const skillBadges = buildSkillBadges(d.skillFlags);
+    const stars = buildStars(d.ratingAvg || 0);
+    const initials = (d.fullName || '').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+    const selected = d.driverId === selectedDriverId;
+    const rowBg = selected ? (isDark ? 'background:rgba(255,107,0,0.1);border-left:2px solid #FF6B00;' : 'background:rgba(255,107,0,0.05);border-left:2px solid #FF6B00;') : '';
+
+    return `<tr class="driver-row border-b border-[#1E293B]/60 cursor-pointer" style="${rowBg}" onclick="selectDriver(${d.driverId})">
+      <td class="px-4 py-2.5">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-black overflow-hidden" style="background:${avatarColor(d.driverId)}22;color:${avatarColor(d.driverId)};border:1.5px solid ${avatarColor(d.driverId)}44">
+            ${d.avatarUrl ? `<img src="${d.avatarUrl}" class="w-full h-full object-cover" onerror="this.outerHTML='<span>${initials}</span>'"/>` : initials}
+          </div>
+          <div>
+            <p class="font-bold text-xs">${escHtml(d.fullName || '—')}</p>
+            <p class="text-[10px] text-[#64748B]">${escHtml(d.employeeCode || '—')}</p>
+          </div>
+        </div>
+      </td>
+      <td class="px-3 py-2.5 text-[10px]">
+        <p class="text-[#94A3B8]">${escHtml(d.phone || '—')}</p>
+        <p class="text-[#475569]">${escHtml(d.email || '—')}</p>
+      </td>
+      <td class="px-3 py-2.5"><div class="flex flex-wrap gap-1">${skillBadges}</div></td>
+      <td class="px-3 py-2.5">
+        ${d.currentVehiclePlate ? `<div class="flex items-center gap-1.5">
+          <div class="w-7 h-5 rounded bg-[#1E293B] flex items-center justify-center"><i data-lucide="bus" class="w-3 h-3 text-[#64748B]"></i></div>
+          <div><p class="text-[10px] font-bold">${escHtml(d.currentVehicleName || 'Vehicle')}</p><p class="text-[9px] text-[#64748B]">${escHtml(d.currentVehiclePlate)}</p></div>
+        </div>` : `<span class="text-[10px] text-[#475569]">No Assignment</span>`}
+      </td>
+      <td class="px-3 py-2.5">${expPill}</td>
+      <td class="px-3 py-2.5">${statusPill}</td>
+      <td class="px-3 py-2.5 text-right text-xs font-bold">${(d.totalTrips||0).toLocaleString()}</td>
+      <td class="px-3 py-2.5 text-right">${stars}</td>
+      <td class="px-3 py-2.5 text-[10px] text-[#475569]">Just now</td>
+      <td class="px-4 py-2.5 text-right">
+        <div class="flex items-center justify-end gap-1" onclick="event.stopPropagation()">
+          <button class="action-btn hover:bg-orange-500/10" data-tip="View ID" onclick="openIdentificationModal(${d.driverId})">
+            <i data-lucide="id-card" class="w-3.5 h-3.5 text-[#FF6B00]"></i>
+          </button>
+          <button class="action-btn hover:bg-blue-500/10" data-tip="Payslip" onclick="openPayslipModal(${d.driverId})">
+            <i data-lucide="file-text" class="w-3.5 h-3.5 text-blue-400"></i>
+          </button>
+          <button class="action-btn hover:bg-[#1E293B]" data-tip="More" onclick="openContextMenu(event, ${d.driverId})">
+            <i data-lucide="more-vertical" class="w-3.5 h-3.5 text-[#64748B]"></i>
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  lucide.createIcons();
+  updatePagination();
+}
+
+function showEmptyTable(msg) {
+  document.getElementById('driver-tbody').innerHTML = `
+    <tr><td colspan="10" class="px-4 py-12 text-center text-[#475569] text-sm">
+      <div class="flex flex-col items-center gap-2">
+        <i data-lucide="users" class="w-8 h-8 text-[#1E293B]"></i>
+        <span>${escHtml(msg)}</span>
+      </div>
+    </td></tr>`;
+  lucide.createIcons();
+  document.getElementById('pagination-info').textContent = 'Showing 0 drivers';
+}
+
+// ── Driver Selection & Inspector ──
+function selectDriver(driverId) {
+  selectedDriverId = driverId;
+  renderTable();
+  const d = allDrivers.find(x => x.driverId === driverId);
+  if (!d) return;
+  renderInspector(d);
+}
+
+function renderInspector(d) {
+  const initials = (d.fullName||'').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+  const statusPill = buildStatusPill(d.status, 'sm');
+  const stars = buildStars(d.ratingAvg || 0);
+  const isDark = isDarkMode();
+
+  document.getElementById('inspector-content').innerHTML = `
+    <div class="space-y-4 anim-up">
+      <!-- Driver summary -->
+      <div class="flex items-center gap-3 pb-3 border-b border-[#1E293B]">
+        <div class="w-12 h-12 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-black overflow-hidden" style="background:${avatarColor(d.driverId)}22;color:${avatarColor(d.driverId)};border:2px solid ${avatarColor(d.driverId)}44">
+          ${d.avatarUrl ? `<img src="${d.avatarUrl}" class="w-full h-full object-cover" onerror="this.outerHTML='<span>${initials}</span>'"/>` : initials}
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="font-black text-sm truncate">${escHtml(d.fullName||'—')}</p>
+          <p class="text-[10px] text-[#64748B]">${escHtml(d.employeeCode||'—')}</p>
+          <div class="mt-1">${statusPill}</div>
+        </div>
+      </div>
+
+      <!-- LTO License preview (mini) -->
+      <div>
+        <p class="text-[10px] font-bold text-[#94A3B8] uppercase mb-2 flex items-center gap-1"><i data-lucide="id-card" class="w-3 h-3"></i> LTO Driver License</p>
+        <div class="lto-card rounded-xl overflow-hidden cursor-pointer hover:shadow-lg transition-all" onclick="openIdentificationModal(${d.driverId})" style="font-size:7px;">
+          <div class="lto-header px-2 py-1 flex items-center justify-between">
+            <div><p class="text-white font-bold" style="font-size:6px;">REPUBLIC OF THE PHILIPPINES</p><p class="text-white/80" style="font-size:5px;">DEPARTMENT OF TRANSPORTATION — LTO</p></div>
+            <div class="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center"><span class="text-white font-black" style="font-size:5px;">PHL</span></div>
+          </div>
+          <div class="lto-phl-flag"></div>
+          <div class="flex gap-2 p-2">
+            <div class="w-10 h-12 bg-[#cce0f0] rounded flex items-center justify-center flex-shrink-0">
+              ${d.avatarUrl ? `<img src="${d.avatarUrl}" class="w-full h-full object-cover rounded" />` : `<i data-lucide="user" class="w-5 h-5 text-[#4a90d9]"></i>`}
+            </div>
+            <div class="flex-1 space-y-0.5" style="font-size:7px;">
+              <p class="font-black text-[#1a202c]">${escHtml(d.fullName||'—').toUpperCase()}</p>
+              <div class="grid grid-cols-2 gap-x-2 text-[#4a5568]">
+                <span>Birth: <span class="font-bold text-[#1a202c]">${d.birthDate||'—'}</span></span>
+                <span>Sex: <span class="font-bold text-[#1a202c]">${d.sex||'—'}</span></span>
+                <span>Ht: <span class="font-bold text-[#1a202c]">${d.heightM||'—'}m</span></span>
+                <span>Nat: <span class="font-bold text-[#1a202c]">${d.nationality||'FIL'}</span></span>
+              </div>
+              <p class="text-[#4a5568]">Addr: <span class="font-bold text-[#1a202c]" style="font-size:6px;">${escHtml((d.address||'—').substring(0,35))}...</span></p>
+              <div class="flex gap-2 pt-0.5">
+                <span class="text-[#4a5568]">DL No: <span class="font-bold text-red-600">${escHtml(d.licenseNo||'—')}</span></span>
+              </div>
+              <span class="text-[#4a5568]">Expires: <span class="font-bold text-red-600">${d.licenseExpiry||'—'}</span></span>
+            </div>
+          </div>
+          <div class="px-2 pb-1 text-[#475569]" style="font-size:6px;">Restrictions: <span class="font-bold">${escHtml(d.restrictions||'—')}</span> | Conditions: <span class="font-bold">${escHtml(d.conditions||'—')}</span></div>
+        </div>
+        <p class="text-[9px] text-[#475569] text-center mt-1">Click to view full 3D flip card</p>
+      </div>
+
+      <!-- Company ID Badge mini -->
+      <div>
+        <p class="text-[10px] font-bold text-[#94A3B8] uppercase mb-2 flex items-center gap-1"><i data-lucide="badge-check" class="w-3 h-3"></i> Company ID Badge</p>
+        <div class="badge-card rounded-xl overflow-hidden cursor-pointer hover:shadow-lg transition-all" onclick="openIdentificationModal(${d.driverId})" style="max-width:160px;margin:0 auto;">
+          <div class="badge-stripe py-1 px-2 flex items-center justify-between">
+            <img src="logo.png" alt="Drive&amp;Go" class="h-4 object-contain" />
+            <span class="text-white text-[8px] font-bold">FLEET SOLUTIONS</span>
+          </div>
+          <div class="flex flex-col items-center py-2 px-3 gap-1">
+            <div class="w-10 h-10 rounded-full border border-[#FF6B00] bg-[#1E293B] flex items-center justify-center overflow-hidden" style="font-size:11px;font-weight:900;color:${avatarColor(d.driverId)}">
+              ${d.avatarUrl ? `<img src="${d.avatarUrl}" class="w-full h-full object-cover"/>` : initials}
+            </div>
+            <p class="text-white text-[9px] font-black text-center">${escHtml(d.fullName||'—').toUpperCase()}</p>
+            <p class="text-orange-400 text-[8px]">Fleet Driver</p>
+            <p class="text-[#64748B] text-[8px]">${escHtml(d.employeeCode||'—')}</p>
+            <div class="bg-white p-1 rounded mt-1 w-10 h-10 flex items-center justify-center">
+              <div id="inspector-qr-${d.driverId}" style="width:32px;height:32px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Earnings breakdown -->
+      <div class="border-t border-[#1E293B] pt-3">
+        <p class="text-[10px] font-bold text-[#94A3B8] uppercase mb-2 flex items-center gap-1"><i data-lucide="circle-dollar-sign" class="w-3 h-3"></i> Earnings Breakdown <span class="text-[#475569] normal-case font-normal">This Month</span></p>
+        <div class="space-y-1 text-[10px]">
+          <div class="flex justify-between"><span class="text-[#64748B]">Trip Earnings (70%)</span><span class="font-bold">PHP ${formatPHP((d.totalRevenue||0) * 0.7)}</span></div>
+          <div class="flex justify-between"><span class="text-[#64748B]">Incentives</span><span class="font-bold">PHP 0.00</span></div>
+          <div class="flex justify-between"><span class="text-[#64748B]">Other Bonuses</span><span class="font-bold">PHP 0.00</span></div>
+          <div class="flex justify-between border-t border-[#1E293B] pt-1 mt-1">
+            <span class="font-bold">Total Earnings</span><span class="font-black text-[#FF6B00]">PHP ${formatPHP(d.totalRevenue||0)}</span>
+          </div>
+        </div>
+        <button onclick="openPayslipModal(${d.driverId})" class="w-full mt-3 py-2 rounded-xl border border-[#FF6B00] text-[#FF6B00] font-bold text-xs hover:bg-orange-500/10 transition-all flex items-center justify-center gap-1.5">
+          <i data-lucide="file-text" class="w-3.5 h-3.5"></i> View Full Profile & Payslip
+        </button>
+      </div>
+    </div>`;
+
+  lucide.createIcons();
+
+  // Render mini QR
+  setTimeout(() => {
+    const qrEl = document.getElementById(`inspector-qr-${d.driverId}`);
+    if (qrEl && !qrEl.hasChildNodes()) {
+      new QRCode(qrEl, { text: `DGO-DRV-${d.employeeCode||d.driverId}`, width:32, height:32, colorDark:'#0F172A', colorLight:'#ffffff', correctLevel: QRCode.CorrectLevel.M });
+    }
+  }, 200);
+}
+
+// ── Identification Modal ──
+async function openIdentificationModal(driverId) {
+  const d = allDrivers.find(x => x.driverId === driverId);
+  if (!d) return;
+
+  // Fill LTO Front
+  document.getElementById('lto-bday').textContent    = d.birthDate || '—';
+  document.getElementById('lto-sex').textContent     = d.sex || '—';
+  document.getElementById('lto-height').textContent  = d.heightM ? `${d.heightM}m` : '—';
+  document.getElementById('lto-nat').textContent     = d.nationality || 'FIL';
+  document.getElementById('lto-addr').textContent    = (d.address || '—').substring(0, 50);
+  document.getElementById('lto-licno').textContent   = d.licenseNo || '—';
+  document.getElementById('lto-expiry').textContent  = d.licenseExpiry || '—';
+  document.getElementById('lto-blood').textContent   = d.bloodType || '—';
+  document.getElementById('lto-rest').textContent    = d.restrictions || '—';
+  document.getElementById('lto-cond').textContent    = d.conditions || 'NONE';
+
+  // LTO Back
+  document.getElementById('lto-back-dlno').textContent   = d.licenseNo || '—';
+  document.getElementById('lto-back-blood').textContent  = d.bloodType || '—';
+  document.getElementById('lto-back-expiry').textContent = d.licenseExpiry || '—';
+  const nowY = new Date().getFullYear();
+  document.getElementById('lto-back-issued').textContent = `Jan 01, ${nowY - 5}`;
+
+  // LTO photo
+  const ltoPhoto = document.getElementById('lto-photo');
+  if (d.avatarUrl) ltoPhoto.innerHTML = `<img src="${d.avatarUrl}" class="w-full h-full object-cover" />`;
+
+  // Badge
+  document.getElementById('badge-name').textContent = d.fullName || '—';
+  document.getElementById('badge-empid').textContent = d.employeeCode || '—';
+  const badgeAvatar = document.getElementById('badge-avatar');
+  if (d.avatarUrl) badgeAvatar.innerHTML = `<img src="${d.avatarUrl}" class="w-full h-full object-cover rounded-full" />`;
+
+  // Badge QR
+  const qrContainer = document.getElementById('badge-qr-container');
+  qrContainer.innerHTML = '';
+  new QRCode(qrContainer, { text: `https://driveandgo.ph/verify/${d.employeeCode||d.driverId}`, width:44, height:44, colorDark:'#0F172A', colorLight:'#ffffff', correctLevel: QRCode.CorrectLevel.M });
+
+  // Try to fetch full details for emergency contact
+  try {
+    const detail = await apiFetch(`/drivers/${driverId}/details`);
+    const ec = detail.emergencyContacts && detail.emergencyContacts[0];
+    document.getElementById('badge-ec-name').textContent  = ec ? ec.fullName : '—';
+    document.getElementById('badge-ec-rel').textContent   = ec ? ec.relationship : '—';
+    document.getElementById('badge-ec-phone').textContent = ec ? ec.phone : '—';
+    document.getElementById('badge-blood').textContent    = detail.bloodType || d.bloodType || '—';
+    document.getElementById('badge-medical-notes').textContent = (detail.emergencyContacts && detail.emergencyContacts[0]?.medicalNotes) || 'No medical notes on file.';
+    document.getElementById('lto-back-ec').textContent       = ec ? ec.fullName : '—';
+    document.getElementById('lto-back-ec-phone').textContent = ec ? ec.phone : '—';
+  } catch { /* no detail endpoint yet, ignore */ }
+
+  document.getElementById('id-verified-at').textContent = new Date().toLocaleString('en-PH', { dateStyle:'medium', timeStyle:'short' });
+
+  // Reset flip states
+  document.getElementById('lto-flip').classList.remove('flipped');
+  document.getElementById('badge-flip').classList.remove('flipped');
+
+  openModal('modal-identification');
+}
+
+// ── Payslip Modal ──
+async function openPayslipModal(driverId) {
+  const d = allDrivers.find(x => x.driverId === driverId);
+  if (!d) return;
+
+  openModal('modal-payslip');
+
+  const stmtNo = `DGS-${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(driverId).padStart(6,'0')}`;
+  const now = new Date();
+  const periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toLocaleDateString('en-PH', { month:'long', day:'numeric', year:'numeric' });
+  const periodEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toLocaleDateString('en-PH', { month:'long', day:'numeric', year:'numeric' });
+
+  document.getElementById('slip-stmt-no').textContent    = stmtNo;
+  document.getElementById('slip-period').textContent     = `${periodStart} – ${periodEnd}`;
+  document.getElementById('slip-paydate').textContent    = now.toLocaleDateString('en-PH', { month:'long', day:'numeric', year:'numeric' });
+  document.getElementById('slip-name').textContent       = d.fullName || '—';
+  document.getElementById('slip-empid').textContent      = d.employeeCode || '—';
+  document.getElementById('slip-licno').textContent      = d.licenseNo || '—';
+  document.getElementById('slip-phone').textContent      = d.phone || '—';
+  document.getElementById('slip-email').textContent      = d.email || '—';
+  document.getElementById('slip-licexp').textContent     = d.licenseExpiry || '—';
+  document.getElementById('slip-status').textContent     = d.status || 'Active';
+  document.getElementById('slip-vehicle').textContent    = d.currentVehicleName || '—';
+  document.getElementById('slip-plate').textContent      = d.currentVehiclePlate || '—';
+  document.getElementById('slip-verify-code').textContent = stmtNo;
+  document.getElementById('slip-total-trips').textContent = (d.totalTrips || 0).toLocaleString();
+
+  const slipAvatar = document.getElementById('slip-avatar');
+  if (d.avatarUrl) slipAvatar.innerHTML = `<img src="${d.avatarUrl}" class="w-full h-full object-cover rounded-xl" />`;
+
+  // Payslip QR
+  const pqr = document.getElementById('payslip-qr');
+  pqr.innerHTML = '';
+  new QRCode(pqr, { text: stmtNo, width:56, height:56, colorDark:'#0F172A', colorLight:'#ffffff', correctLevel: QRCode.CorrectLevel.M });
+
+  // Fetch payslip data
+  try {
+    const slip = await apiFetch(`/drivers/${driverId}/payslip`);
+    populatePayslip(slip, d);
+  } catch {
+    // Use basic calculation from list data
+    const gross = d.totalRevenue || 0;
+    const driverShare = gross * 0.7;
+    const platform    = gross * 0.3;
+    populatePayslipBasic(d, gross, driverShare, platform);
+  }
+}
+
+function populatePayslip(slip, d) {
+  const setT = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  setT('slip-payout-channel', slip.payoutChannel || '—');
+  setT('slip-acct-name', slip.payoutAccountName || '—');
+  setT('slip-acct-no', slip.payoutAccountNo || '—');
+  setT('slip-total-trips', (slip.totalTrips || 0).toLocaleString());
+  setT('slip-total-dist', (slip.totalDistanceKm || 0).toLocaleString() + ' km');
+  setT('slip-total-hours', Math.round((slip.totalDistanceKm||0)/45) + 'h');
+  setT('slip-completion', (slip.completionRate||0).toFixed(0) + '%');
+  document.getElementById('slip-rating-stars').innerHTML = buildStars(slip.customerRating || 0);
+
+  // Earnings rows
+  const earnings = [
+    { label: 'Trip Commissions (70% Driver Split)', detail: `70% of Gross Fares\nPHP ${formatPHP(slip.grossFares||0)} × 70%`, amount: slip.driverShare70||0 },
+    { label: 'Incentives', detail: 'Performance & Completion Bonus', amount: slip.incentives||0 },
+    { label: 'Tips', detail: 'Customer Tips', amount: slip.tips||0 },
+    { label: 'Other Earnings', detail: 'Toll Reimbursements + Misc.', amount: slip.tollReimbursements||0 },
+  ].filter(r => r.amount > 0);
+  document.getElementById('slip-earnings-body').innerHTML = earnings.map(r => `
+    <tr class="border-b border-[#E2E8F0]">
+      <td class="px-3 py-1.5 font-bold text-[#0F172A]">${escHtml(r.label)}</td>
+      <td class="px-3 py-1.5 text-[#64748B]">${escHtml(r.detail)}</td>
+      <td class="px-3 py-1.5 text-right font-bold text-green-600">PHP ${formatPHP(r.amount)}</td>
+    </tr>`).join('') || '<tr><td colspan="3" class="px-3 py-2 text-center text-[#94A3B8]">No earnings for this period</td></tr>';
+  setT('slip-total-earnings', `PHP ${formatPHP(slip.totalEarnings||0)}`);
+
+  // Deductions rows
+  const deductions = [
+    { label: 'Cash Advance ("Bale")', detail: 'Advance Paid', amount: slip.cashAdvance||0 },
+    { label: 'Fuel Reimbursement', detail: 'Company Fuel Card Usage', amount: slip.fuelDeduction||0 },
+    { label: 'Toll & Parking Fees', detail: 'Company Paid', amount: slip.tollDeduction||0 },
+    { label: 'Uniform & Equipment', detail: 'Monthly Uniform Deduction', amount: slip.uniformDeduction||0 },
+    { label: 'Other Deductions', detail: 'Penalty / Adjustments', amount: slip.otherDeductions||0 },
+  ].filter(r => r.amount > 0);
+  document.getElementById('slip-deductions-body').innerHTML = deductions.map(r => `
+    <tr class="border-b border-[#E2E8F0]">
+      <td class="px-3 py-1.5 font-bold text-[#0F172A]">${escHtml(r.label)}</td>
+      <td class="px-3 py-1.5 text-[#64748B]">${escHtml(r.detail)}</td>
+      <td class="px-3 py-1.5 text-right font-bold text-red-600">(PHP ${formatPHP(r.amount)})</td>
+    </tr>`).join('') || '<tr><td colspan="3" class="px-3 py-2 text-center text-[#94A3B8]">No deductions</td></tr>';
+  setT('slip-total-deductions', `(PHP ${formatPHP(slip.totalDeductions||0)})`);
+  setT('slip-net-payout', `PHP ${formatPHP(slip.netPayout||0)}`);
+  setT('slip-net-words', numberToWords(slip.netPayout||0));
+  setT('slip-net-final', `PHP ${formatPHP(slip.netPayout||0)}`);
+  setT('slip-pay-method', slip.payoutChannel||'—');
+  setT('slip-ref-no', `TRX-${Date.now()}`);
+  setT('slip-processed-on', new Date().toLocaleString('en-PH'));
+
+  // Trips
+  if (slip.trips && slip.trips.length > 0) {
+    document.getElementById('slip-trips-body').innerHTML = slip.trips.map((t,i) => `
+      <tr class="${i%2===0?'bg-[#F8FAFC]':''} border-b border-[#E2E8F0]">
+        <td class="px-2 py-1">#${t.rentalId}</td>
+        <td class="px-2 py-1">${t.tripDate||'—'}</td>
+        <td class="px-2 py-1">${escHtml(t.vehicleName||'—')}</td>
+        <td class="px-2 py-1">${escHtml((t.destination||'—').substring(0,25))}</td>
+        <td class="px-2 py-1 text-right">PHP ${formatPHP(t.totalFare||0)}</td>
+        <td class="px-2 py-1 text-right text-green-600">PHP ${formatPHP(t.driverShare||0)}</td>
+        <td class="px-2 py-1 text-right text-[#94A3B8]">PHP ${formatPHP(t.platformCut||0)}</td>
+        <td class="px-2 py-1"><span class="pill ${t.paymentStatus==='paid'?'bg-green-100 text-green-700':'bg-yellow-100 text-yellow-700'}">${t.paymentStatus||'—'}</span></td>
+      </tr>`).join('');
+  }
+
+  // Breakdown chart list
+  document.getElementById('slip-breakdown-list').innerHTML = [
+    { label: 'Trip Commissions (70%)', pct: 90.9, color: '#FF6B00' },
+    { label: 'Incentives', pct: 4.9, color: '#22c55e' },
+    { label: 'Tips', pct: 3.6, color: '#3b82f6' },
+    { label: 'Other Earnings', pct: 0.6, color: '#a855f7' },
+  ].map(b => `<div class="flex items-center gap-1.5">
+    <div class="w-2 h-2 rounded-full flex-shrink-0" style="background:${b.color}"></div>
+    <span class="text-[#64748B] flex-1">${b.label}</span>
+    <span class="font-bold">${b.pct}%</span>
+  </div>`).join('');
+
+  lucide.createIcons();
+}
+
+function populatePayslipBasic(d, gross, driverShare, platform) {
+  const net = driverShare;
+  const setT = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  setT('slip-payout-channel', '—'); setT('slip-acct-name', '—'); setT('slip-acct-no', '—');
+  setT('slip-total-dist', '—'); setT('slip-total-hours', '—'); setT('slip-completion', '—%');
+  document.getElementById('slip-rating-stars').innerHTML = buildStars(d.ratingAvg || 0);
+  document.getElementById('slip-earnings-body').innerHTML = `
+    <tr class="border-b border-[#E2E8F0]">
+      <td class="px-3 py-1.5 font-bold text-[#0F172A]">Trip Commissions (70%)</td>
+      <td class="px-3 py-1.5 text-[#64748B]">70% of Gross Fares</td>
+      <td class="px-3 py-1.5 text-right font-bold text-green-600">PHP ${formatPHP(driverShare)}</td>
+    </tr>`;
+  setT('slip-total-earnings', `PHP ${formatPHP(driverShare)}`);
+  setT('slip-total-deductions', '(PHP 0.00)');
+  setT('slip-net-payout', `PHP ${formatPHP(net)}`);
+  setT('slip-net-words', numberToWords(net));
+  setT('slip-net-final', `PHP ${formatPHP(net)}`);
+  setT('slip-pay-method', '—');
+  setT('slip-ref-no', '—');
+  setT('slip-processed-on', new Date().toLocaleString('en-PH'));
+  document.getElementById('slip-breakdown-list').innerHTML = `<div class="flex items-center gap-1.5"><div class="w-2 h-2 rounded-full bg-orange-500"></div><span class="text-[#64748B] flex-1">Trip Commissions (70%)</span><span class="font-bold">100%</span></div>`;
+  lucide.createIcons();
+}
+
+// ── Emergency Modal ──
+async function openEmergencyModal(driverId) {
+  const d = allDrivers.find(x => x.driverId === driverId);
+  if (!d) return;
+  document.getElementById('emg-driver-name').textContent = d.fullName || 'this driver';
+  document.getElementById('emg-blood').textContent = d.bloodType || '—';
+  document.getElementById('emg-medical-notes').textContent = 'Loading...';
+  document.getElementById('emg-contacts-list').innerHTML = '<div class="text-sm text-[#475569] text-center py-4">Loading...</div>';
+  openModal('modal-emergency');
+  try {
+    const detail = await apiFetch(`/drivers/${driverId}/details`);
+    document.getElementById('emg-blood').textContent = detail.bloodType || d.bloodType || '—';
+    document.getElementById('emg-medical-notes').textContent = 'No medical notes on file.';
+    const contacts = detail.emergencyContacts || [];
+    if (contacts.length === 0) {
+      document.getElementById('emg-contacts-list').innerHTML = `<div class="text-sm text-[#475569] text-center py-4">No emergency contacts recorded yet. <button onclick="toast('Feature coming soon!','info')" class="text-[#FF6B00] hover:underline ml-1">Add Contact</button></div>`;
+    } else {
+      document.getElementById('emg-contacts-list').innerHTML = contacts.map(c => `
+        <div class="p-3 rounded-xl bg-[#1E293B] border border-[#2D3B4F] flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-[#0F172A] flex items-center justify-center flex-shrink-0">
+            <i data-lucide="user-circle-2" class="w-5 h-5 text-[#64748B]"></i>
+          </div>
+          <div class="flex-1">
+            <p class="font-bold text-sm">${escHtml(c.fullName)}</p>
+            <p class="text-xs text-[#64748B]">${escHtml(c.relationship||'—')}</p>
+            <a href="tel:${encodeURIComponent(c.phone)}" class="text-xs text-[#FF6B00] hover:underline font-bold">${escHtml(c.phone)}</a>
+          </div>
+          ${c.isPrimary ? '<span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20">PRIMARY</span>' : ''}
+        </div>`).join('');
+      lucide.createIcons();
+    }
+  } catch { document.getElementById('emg-contacts-list').innerHTML = '<div class="text-sm text-[#475569] text-center py-4">No emergency contacts recorded yet.</div>'; }
+}
+
+// ── Document Vault Modal ──
+async function openDocsModal(driverId) {
+  const d = allDrivers.find(x => x.driverId === driverId);
+  if (!d) return;
+  document.getElementById('docs-driver-name').textContent = d.fullName || 'this driver';
+  openModal('modal-docs');
+  try {
+    const detail = await apiFetch(`/drivers/${driverId}/details`);
+    const docs = detail.documents || [];
+    const docTypes = ['LTO Driver License', 'NBI Clearance', 'Police Clearance', 'Drug Test Certificate', 'Medical Fit-to-Drive Certificate'];
+    document.getElementById('docs-list').innerHTML = docTypes.map(type => {
+      const doc = docs.find(d => d.docType === type);
+      const expClass = doc ? getExpiryClass(doc.expiryDate) : 'expiry-none';
+      return `<div class="p-3 rounded-xl bg-[#1E293B] border border-[#2D3B4F] flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-[#0F172A] flex items-center justify-center flex-shrink-0">
+            <i data-lucide="file-check" class="w-4 h-4 ${doc ? 'text-green-400' : 'text-[#475569]'}"></i>
+          </div>
+          <div>
+            <p class="font-bold text-xs">${escHtml(type)}</p>
+            <p class="text-[10px] text-[#64748B]">Expiry: ${doc?.expiryDate || 'Not uploaded'}</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          ${doc ? `<span class="pill ${expClass}" style="font-size:9px;">${getExpiryLabel(doc.expiryDate)}</span>` : '<span class="pill expiry-none" style="font-size:9px;">Missing</span>'}
+          ${doc?.fileUrl ? `<a href="${doc.fileUrl}" target="_blank" class="action-btn hover:bg-blue-500/10"><i data-lucide="external-link" class="w-3.5 h-3.5 text-blue-400"></i></a>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+    lucide.createIcons();
+  } catch {
+    document.getElementById('docs-list').innerHTML = '<div class="text-sm text-[#475569] text-center py-8">Unable to load documents.</div>';
+  }
+}
+
+// ── Cash Remittance Modal ──
+function openCashRemittanceModal(driverId) {
+  const d = allDrivers.find(x => x.driverId === driverId);
+  if (!d) return;
+  remittingDriverId = driverId;
+  document.getElementById('cash-driver-name').textContent = d.fullName || 'driver';
+  document.getElementById('cash-on-hand').textContent = `PHP ${formatPHP(d.cashOnHand || 0)}`;
+  document.getElementById('remit-amount').value = '';
+  document.getElementById('remit-ref').value = '';
+  document.getElementById('remit-notes').value = '';
+  openModal('modal-cash');
+}
+
+async function submitRemittance() {
+  if (!remittingDriverId) return;
+  const amount = parseFloat(document.getElementById('remit-amount').value);
+  if (!amount || amount <= 0) { toast('Enter a valid amount', 'error'); return; }
+  try {
+    await apiFetch(`/drivers/${remittingDriverId}/remit-cash`, {
+      method: 'POST',
+      body: JSON.stringify({ amount, referenceNo: document.getElementById('remit-ref').value, notes: document.getElementById('remit-notes').value })
+    });
+    closeModal('modal-cash');
+    toast(`Cash remittance of PHP ${formatPHP(amount)} recorded successfully`);
+    await fetchDriversData();
+  } catch(e) {
+    toast('Failed to record remittance: ' + e.message, 'error');
+  }
+}
+
+// ── Add/Edit Driver ──
+function openAddDriverModal() {
+  editingDriverId = null;
+  document.getElementById('driver-form-title').textContent = 'Add New Driver';
+  document.getElementById('df-submit-btn').innerHTML = '<i data-lucide="save" class="w-3.5 h-3.5"></i> Save Driver';
+  ['df-name','df-email','df-phone','df-licno','df-licclass','df-rest','df-addr'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  ['df-licexp','df-bday'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  document.getElementById('df-blood').value = '';
+  document.getElementById('df-sex').value = '';
+  document.getElementById('df-shift').value = 'Morning Shift';
+  document.getElementById('df-status').value = 'available';
+  document.querySelectorAll('.skill-check').forEach(c => c.checked = false);
+  openModal('modal-driver-form');
+  lucide.createIcons();
+}
+
+function openEditDriverModal(driverId) {
+  const d = allDrivers.find(x => x.driverId === driverId);
+  if (!d) return;
+  editingDriverId = driverId;
+  document.getElementById('driver-form-title').textContent = 'Edit Driver';
+  document.getElementById('df-name').value   = d.fullName || '';
+  document.getElementById('df-email').value  = d.email || '';
+  document.getElementById('df-phone').value  = d.phone || '';
+  document.getElementById('df-licno').value  = d.licenseNo || '';
+  document.getElementById('df-licexp').value = d.licenseExpiry || '';
+  document.getElementById('df-licclass').value = d.licenseClass || '';
+  document.getElementById('df-rest').value   = d.restrictions || '';
+  document.getElementById('df-blood').value  = d.bloodType || '';
+  document.getElementById('df-sex').value    = d.sex || '';
+  document.getElementById('df-bday').value   = d.birthDate || '';
+  document.getElementById('df-height').value = d.heightM || '';
+  document.getElementById('df-weight').value = d.weightKg || '';
+  document.getElementById('df-addr').value   = d.address || '';
+  document.getElementById('df-shift').value  = d.shiftSchedule || 'Morning Shift';
+  document.getElementById('df-status').value = d.status || 'available';
+  const skills = (d.skillFlags || '').split(',').map(s => s.trim());
+  document.querySelectorAll('.skill-check').forEach(c => c.checked = skills.includes(c.value));
+  openModal('modal-driver-form');
+  lucide.createIcons();
+}
+
+async function submitDriverForm() {
+  const skillFlags = [...document.querySelectorAll('.skill-check:checked')].map(c => c.value).join(', ');
+  const payload = {
+    fullName: document.getElementById('df-name').value.trim(),
+    email:    document.getElementById('df-email').value.trim(),
+    phone:    document.getElementById('df-phone').value.trim(),
+    licenseNo: document.getElementById('df-licno').value.trim(),
+    licenseExpiry: document.getElementById('df-licexp').value || null,
+    licenseClass:  document.getElementById('df-licclass').value.trim(),
+    restrictions:  document.getElementById('df-rest').value.trim(),
+    bloodType:     document.getElementById('df-blood').value,
+    sex:           document.getElementById('df-sex').value,
+    birthDate:     document.getElementById('df-bday').value || null,
+    heightM:       document.getElementById('df-height').value.trim(),
+    weightKg:      document.getElementById('df-weight').value.trim(),
+    address:       document.getElementById('df-addr').value.trim(),
+    shiftSchedule: document.getElementById('df-shift').value,
+    status:        document.getElementById('df-status').value,
+    skillFlags,
+  };
+  if (!payload.fullName || !payload.email || !payload.licenseNo) { toast('Name, Email, and License No. are required', 'error'); return; }
+  try {
+    if (editingDriverId) {
+      await apiFetch(`/drivers/${editingDriverId}`, { method: 'PUT', body: JSON.stringify(payload) });
+      toast('Driver updated successfully');
+    } else {
+      await apiFetch('/drivers', { method: 'POST', body: JSON.stringify(payload) });
+      toast('Driver added successfully');
+    }
+    closeModal('modal-driver-form');
+    await fetchDriversData();
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+// ── Status Change ──
+let statusChangeDriverId = null;
+function openStatusModal(driverId) {
+  const d = allDrivers.find(x => x.driverId === driverId);
+  if (!d) return;
+  statusChangeDriverId = driverId;
+  document.getElementById('status-driver-name').textContent = d.fullName || '—';
+  openModal('modal-status');
+}
+async function changeDriverStatus(newStatus) {
+  if (!statusChangeDriverId) return;
+  try {
+    await apiFetch(`/drivers/${statusChangeDriverId}/status`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) });
+    closeModal('modal-status');
+    toast(`Status changed to ${newStatus}`);
+    await fetchDriversData();
+    if (selectedDriverId === statusChangeDriverId) {
+      const d = allDrivers.find(x => x.driverId === statusChangeDriverId);
+      if (d) renderInspector(d);
+    }
+  } catch(e) {
+    toast('Failed to update status: ' + e.message, 'error');
+  }
+}
+
+// ── Context menu actions ──
+function openContextMenu(evt, driverId) {
+  evt.stopPropagation();
+  // Simple inline menu using status modal and other modals
+  const menu = [
+    { label: 'Emergency Sheet',      icon: 'heart-pulse', fn: () => openEmergencyModal(driverId) },
+    { label: 'Document Vault',       icon: 'folder-open', fn: () => openDocsModal(driverId) },
+    { label: 'Cash Remittance',      icon: 'banknote',    fn: () => openCashRemittanceModal(driverId) },
+    { label: 'Change Status',        icon: 'refresh-cw',  fn: () => openStatusModal(driverId) },
+    { label: 'Edit Driver',          icon: 'pencil',      fn: () => openEditDriverModal(driverId) },
+  ];
+  // Remove existing context menu
+  document.getElementById('ctx-menu')?.remove();
+  const el = document.createElement('div');
+  el.id = 'ctx-menu';
+  el.className = 'fixed z-[9999] glass rounded-xl shadow-2xl py-1 min-w-[180px] text-xs';
+  el.style.top  = `${Math.min(evt.clientY, window.innerHeight - 220)}px`;
+  el.style.left = `${Math.min(evt.clientX, window.innerWidth  - 200)}px`;
+  el.innerHTML = menu.map((m, i) => `<button class="w-full text-left px-3 py-2 hover:bg-orange-500/10 hover:text-[#FF6B00] font-bold flex items-center gap-2 transition-colors" onclick="closeCtxMenu();${m.fn.toString().replace(/\(\) => /,'')}">
+    <i data-lucide="${m.icon}" class="w-3.5 h-3.5"></i> ${m.label}
+  </button>`).join('');
+  document.body.appendChild(el);
+  lucide.createIcons();
+  setTimeout(() => document.addEventListener('click', closeCtxMenu, { once: true }), 10);
+}
+function closeCtxMenu() { document.getElementById('ctx-menu')?.remove(); }
+
+// ── Pagination ──
+function updatePagination() {
+  const total = filteredDrivers.length;
+  const totalPages = Math.ceil(total / perPage);
+  const start = (currentPage - 1) * perPage + 1;
+  const end   = Math.min(currentPage * perPage, total);
+  document.getElementById('pagination-info').textContent = total > 0 ? `Showing ${start} to ${end} of ${total} drivers` : 'Showing 0 drivers';
+  const btns = document.getElementById('page-buttons');
+  btns.innerHTML = '';
+  const pages = buildPageNums(currentPage, totalPages);
+  pages.forEach(p => {
+    const b = document.createElement('button');
+    b.textContent = p === '...' ? '…' : p;
+    b.className = `px-2.5 py-1 rounded-lg border text-xs font-bold transition-colors ${p === currentPage ? 'border-orange-500 bg-orange-500/10 text-orange-400' : 'border-[#1E293B] text-[#64748B] hover:border-orange-500/40'}`;
+    if (p !== '...') b.onclick = () => { currentPage = p; renderTable(); };
+    else b.disabled = true;
+    btns.appendChild(b);
+  });
+}
+function buildPageNums(cur, total) {
+  if (total <= 7) return Array.from({length:total},(_,i)=>i+1);
+  if (cur <= 4)   return [1,2,3,4,5,'...',total];
+  if (cur >= total-3) return [1,'...',total-4,total-3,total-2,total-1,total];
+  return [1,'...',cur-1,cur,cur+1,'...',total];
+}
+function changePage(dir) { currentPage = Math.max(1, Math.min(Math.ceil(filteredDrivers.length/perPage), currentPage+dir)); renderTable(); }
+function changePerPage() { perPage = parseInt(document.getElementById('per-page-select').value); currentPage=1; renderTable(); }
+
+// ── Helpers ──
+function buildStatusPill(status, size='xs') {
+  const map = {
+    'available': 'bg-green-500/15 text-green-400 border border-green-500/25',
+    'on-trip':   'bg-blue-500/15 text-blue-400 border border-blue-500/25',
+    'off-duty':  'bg-yellow-500/15 text-yellow-400 border border-yellow-500/25',
+    'suspended': 'bg-red-500/15 text-red-400 border border-red-500/25',
+    'inactive':  'bg-[#1E293B] text-[#64748B] border border-[#2D3B4F]',
+    'break':     'bg-purple-500/15 text-purple-400 border border-purple-500/25',
+    'maintenance':'bg-orange-500/15 text-orange-400 border border-orange-500/25',
+  };
+  const cls = map[status?.toLowerCase()] || map['inactive'];
+  const dot = { 'available':'bg-green-400', 'on-trip':'bg-blue-400', 'off-duty':'bg-yellow-400', 'suspended':'bg-red-400', 'inactive':'bg-[#475569]', 'break':'bg-purple-400', 'maintenance':'bg-orange-400' };
+  const dotCls = dot[status?.toLowerCase()] || 'bg-[#475569]';
+  return `<span class="pill ${cls}"><span class="w-1.5 h-1.5 rounded-full ${dotCls} inline-block"></span>${escHtml(status||'inactive')}</span>`;
+}
+
+function buildExpiryPill(dateStr) {
+  if (!dateStr) return `<span class="pill expiry-none" style="font-size:9px;">No Expiry</span>`;
+  const d = new Date(dateStr), now = new Date();
+  const diff = (d - now) / (1000*60*60*24);
+  if (diff < 0)   return `<span class="pill expiry-expired" style="font-size:9px;">${dateStr}<br/>Expired</span>`;
+  if (diff < 30)  return `<span class="pill expiry-soon" style="font-size:9px;">${dateStr}<br/>Expiring Soon</span>`;
+  return `<span class="pill expiry-valid" style="font-size:9px;">${dateStr}<br/>Valid</span>`;
+}
+
+function buildSkillBadges(flags) {
+  if (!flags) return '';
+  const colors = { 'Safe Driver':'bg-green-500/10 text-green-400','Route Expert':'bg-blue-500/10 text-blue-400','Eco Driver':'bg-emerald-500/10 text-emerald-400','Customer Care':'bg-purple-500/10 text-purple-400','Night Shift':'bg-slate-500/10 text-slate-400','Van Certified':'bg-yellow-500/10 text-yellow-400','Manual Trans':'bg-orange-500/10 text-orange-400' };
+  return flags.split(',').map(f => f.trim()).filter(Boolean).slice(0,2).map(f => `<span class="pill ${colors[f]||'bg-[#1E293B] text-[#94A3B8]'}" style="font-size:9px;">${escHtml(f)}</span>`).join('');
+}
+
+function buildStars(rating) {
+  const r = Math.round(rating * 2) / 2;
+  let html = '';
+  for (let i = 1; i <= 5; i++) {
+    html += `<i data-lucide="star" class="w-3 h-3 inline ${i <= r ? 'star-fill' : 'star-empty'}" style="${i <= r ? 'fill:#f59e0b;stroke:#f59e0b;' : 'fill:none;stroke:#374151;'}"></i>`;
+  }
+  return `<span class="flex items-center justify-end gap-0.5">${html} <span class="text-[10px] ml-0.5 font-bold">${rating ? rating.toFixed(1) : '—'}</span></span>`;
+}
+
+function avatarColor(id) {
+  const colors = ['#FF6B00','#22c55e','#3b82f6','#a855f7','#f59e0b','#ef4444','#06b6d4','#84cc16'];
+  return colors[id % colors.length];
+}
+
+function getExpiryClass(dateStr) {
+  if (!dateStr) return 'expiry-none';
+  const d = new Date(dateStr), now = new Date();
+  const diff = (d - now) / (1000*60*60*24);
+  if (diff < 0) return 'expiry-expired';
+  if (diff < 30) return 'expiry-soon';
+  return 'expiry-valid';
+}
+function getExpiryLabel(dateStr) {
+  const cl = getExpiryClass(dateStr);
+  return { 'expiry-valid':'Valid', 'expiry-soon':'Expiring Soon', 'expiry-expired':'Expired', 'expiry-none':'Missing' }[cl];
+}
+
+function formatPHP(amount) {
+  return Number(amount).toLocaleString('en-PH', { minimumFractionDigits:2, maximumFractionDigits:2 });
+}
+
+function numberToWords(amount) {
+  // Simple integer approximation for payslip caption
+  const n = Math.floor(amount);
+  const cents = Math.round((amount - n) * 100);
+  if (n === 0) return 'Zero Pesos Only';
+  return `${n.toLocaleString('en-PH')} Pesos${cents > 0 ? ` and ${cents}/100` : ''} Only`;
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Modal helpers ──
+function openModal(id) {
+  const m = document.getElementById(id);
+  if (m) { m.classList.remove('hidden'); document.body.style.overflow = 'hidden'; }
+}
+function closeModal(id) {
+  const m = document.getElementById(id);
+  if (m) { m.classList.add('hidden'); document.body.style.overflow = ''; }
+}
+function closeModalOnBackdrop(evt, id) {
+  if (evt.target.id === id) closeModal(id);
+}
+
+// ── 3D Flip ──
+function flipCard(id) {
+  document.getElementById(id)?.classList.toggle('flipped');
+}
+
+// ── Toast ──
+let toastTimer;
+function toast(msg, type = 'success') {
+  const el   = document.getElementById('toast');
+  const icon = document.getElementById('toast-icon');
+  const msgEl= document.getElementById('toast-msg');
+  const iconMap = { success:'check-circle', error:'alert-circle', info:'info', warning:'alert-triangle' };
+  const colorMap= { success:'text-green-400', error:'text-red-400', info:'text-blue-400', warning:'text-yellow-400' };
+  icon.setAttribute('data-lucide', iconMap[type] || 'check-circle');
+  icon.className = `w-4 h-4 flex-shrink-0 ${colorMap[type]||'text-green-400'}`;
+  msgEl.textContent = msg;
+  el.classList.remove('hidden');
+  lucide.createIcons({ el });
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 3500);
+}
+
+// ── Date filter ──
+function toggleDateDropdown() {
+  document.getElementById('date-dropdown').classList.toggle('hidden');
+}
+function setDateFilter(val, label) {
+  currentDateFilter = val;
+  document.getElementById('date-btn-label').textContent = label;
+  document.getElementById('date-dropdown').classList.add('hidden');
+  applyFilters();
+}
+
+// ── Print actions ──
+function printPayslip() { window.print(); }
+function printBadge() {
+  toast('Badge printing — use Ctrl+P and select PVC ID card size', 'info');
+}
+
+// ── CSV Export ──
+function exportDriversCSV() {
+  const headers = ['Driver ID','Employee Code','Full Name','Email','Phone','License No','License Expiry','Status','Rating','Total Trips','Total Revenue','Shift Schedule','Vehicle','Vehicle Plate'];
+  const rows = filteredDrivers.map(d => [
+    d.driverId, d.employeeCode, d.fullName, d.email, d.phone, d.licenseNo, d.licenseExpiry||'', d.status,
+    d.ratingAvg||0, d.totalTrips||0, d.totalRevenue||0, d.shiftSchedule||'', d.currentVehicleName||'', d.currentVehiclePlate||''
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a'); a.href = url; a.download = `DriveAndGo_Drivers_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+  URL.revokeObjectURL(url);
+  toast('Driver roster exported to CSV');
+}
+
+// ── Init ──
+document.addEventListener('DOMContentLoaded', () => {
+  lucide.createIcons();
+  // Close dropdowns on outside click
+  document.addEventListener('click', e => {
+    if (!document.getElementById('date-filter-wrap')?.contains(e.target)) {
+      document.getElementById('date-dropdown')?.classList.add('hidden');
+    }
+  });
+  // Fetch live data
+  if (window.AUTH_TOKEN !== undefined) fetchDriversData();
+});
+
+// Expose for WinForms WebView2 bridge
+window.fetchDriversData = fetchDriversData;
+window.setTheme = setTheme;
+</script>
+</body>
+</html>

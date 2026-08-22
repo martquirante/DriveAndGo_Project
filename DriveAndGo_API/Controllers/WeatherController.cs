@@ -183,9 +183,57 @@ namespace DriveAndGo_API.Controllers
         }
 
         [HttpGet("flood-zones")]
-        public async Task<IActionResult> GetFloodZones()
+        public async Task<IActionResult> GetFloodZones([FromQuery] double? rainOverride = null)
         {
             var list = new List<object>();
+            double liveRain = 0.0;
+            string weatherCondition = "Clear Skies";
+            int weatherCode = 0;
+
+            // Fetch live rainfall telemetry from Open-Meteo API (Target: Metro Manila)
+            try
+            {
+                var weatherUrl = "https://api.open-meteo.com/v1/forecast?latitude=14.5995&longitude=120.9842&current=precipitation,weather_code,temperature_2m&timezone=Asia%2FManila";
+                var wRes = await _httpClient.GetAsync(weatherUrl);
+                if (wRes.IsSuccessStatusCode)
+                {
+                    var jsonStr = await wRes.Content.ReadAsStringAsync();
+                    using var doc = JsonDocument.Parse(jsonStr);
+                    var current = doc.RootElement.GetProperty("current");
+                    liveRain = current.GetProperty("precipitation").GetDouble();
+                    weatherCode = current.GetProperty("weather_code").GetInt32();
+                    weatherCondition = weatherCode switch
+                    {
+                        0 => "Clear Sky (WMO 0)",
+                        1 => "Mainly Clear (WMO 1)",
+                        2 => "Partly Cloudy (WMO 2)",
+                        3 => "Overcast (WMO 3)",
+                        45 or 48 => "Fog / Mist (WMO 45)",
+                        51 => "Light Drizzle (WMO 51)",
+                        53 => "Moderate Drizzle (WMO 53)",
+                        55 => "Dense Drizzle (WMO 55)",
+                        61 => "Slight Rain (WMO 61)",
+                        63 => "Moderate Rain (WMO 63)",
+                        65 => "Heavy Rain (WMO 65)",
+                        80 => "Slight Rain Showers (WMO 80)",
+                        81 => "Moderate Rain Showers (WMO 81)",
+                        82 => "Violent Rain Showers (WMO 82)",
+                        95 => "Thunderstorm (WMO 95)",
+                        96 or 99 => "Severe Thunderstorm (WMO 96)",
+                        _ => "Clear Sky"
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Live rain fetch error: {ex.Message}");
+            }
+
+            if (rainOverride.HasValue)
+            {
+                liveRain = Math.Max(0, rainOverride.Value);
+            }
+
             try
             {
                 using var conn = new NpgsqlConnection(_connectionString);
@@ -195,16 +243,71 @@ namespace DriveAndGo_API.Controllers
 
                 while (await reader.ReadAsync())
                 {
+                    int id = reader.GetInt32(0);
+                    string zoneName = reader.GetString(1);
+                    string baseRisk = reader.GetString(2);
+                    string baseDepth = reader.GetString(3);
+                    string coordsJson = reader.GetString(4);
+                    DateTime advisoryTs = reader.GetDateTime(5);
+                    string reroute = reader.GetString(6);
+                    bool isActive = reader.GetBoolean(7);
+
+                    // Dynamic Water Depth & Risk Level Calculation based on Live Precipitation (mm/hr)
+                    string dynamicRisk;
+                    string dynamicDepth;
+                    string riskBadge;
+                    bool isSubmergedRisk;
+
+                    if (liveRain < 2.0)
+                    {
+                        // Dry / Light clear weather
+                        dynamicRisk = "passable";
+                        dynamicDepth = "Passable / Dry (0 - 5 cm)";
+                        riskBadge = "PASSABLE (NORMAL)";
+                        isSubmergedRisk = false;
+                    }
+                    else if (liveRain < 8.0)
+                    {
+                        // Moderate rain
+                        dynamicRisk = "moderate";
+                        dynamicDepth = "Ankle-Deep Level (10 - 20 cm)";
+                        riskBadge = "MODERATE RISK";
+                        isSubmergedRisk = false;
+                    }
+                    else if (liveRain < 20.0)
+                    {
+                        // Heavy rain surge
+                        dynamicRisk = "severe";
+                        dynamicDepth = "Tire-Deep Level (25 - 35 cm)";
+                        riskBadge = "SEVERE HAZARD";
+                        isSubmergedRisk = true;
+                    }
+                    else
+                    {
+                        // Torrential monsoon downpour
+                        dynamicRisk = "impassable";
+                        dynamicDepth = "Waist-Deep Hazard (60 - 80 cm)";
+                        riskBadge = "IMPASSABLE (BAWAL DUMAAN)";
+                        isSubmergedRisk = true;
+                    }
+
                     list.Add(new
                     {
-                        id = reader.GetInt32(0),
-                        zone_name = reader.GetString(1),
-                        risk_level = reader.GetString(2),
-                        water_depth_level = reader.GetString(3),
-                        polygon_coordinates_json = reader.GetString(4),
-                        advisory_timestamp = reader.GetDateTime(5),
-                        recommended_reroute = reader.GetString(6),
-                        is_active = reader.GetBoolean(7)
+                        id,
+                        zone_name = zoneName,
+                        risk_level = dynamicRisk,
+                        risk_label = riskBadge,
+                        water_depth_level = dynamicDepth,
+                        base_hazard_grade = baseRisk.ToUpper() + " (UP NOAH Benchmark)",
+                        historical_benchmark_depth = baseDepth,
+                        polygon_coordinates_json = coordsJson,
+                        advisory_timestamp = advisoryTs,
+                        recommended_reroute = reroute,
+                        is_active = isActive,
+                        is_submerged_risk = isSubmergedRisk,
+                        telematics_source = "Live Open-Meteo Telematics + UP NOAH Geofencing",
+                        live_precipitation_mm_hr = liveRain,
+                        weather_condition = weatherCondition
                     });
                 }
             }
@@ -214,6 +317,44 @@ namespace DriveAndGo_API.Controllers
             }
 
             return Ok(list);
+        }
+
+        [HttpGet("river-flood")]
+        public async Task<IActionResult> GetRiverFloodForecast()
+        {
+            try
+            {
+                // Open-Meteo Flood API (Copernicus GloFAS River Discharge for Metro Manila / Marikina Basin)
+                var url = "https://flood-api.open-meteo.com/v1/flood?latitude=14.63&longitude=121.09&daily=river_discharge,river_discharge_mean,river_discharge_median&timezone=Asia%2FManila";
+                var res = await _httpClient.GetAsync(url);
+                if (res.IsSuccessStatusCode)
+                {
+                    var jsonStr = await res.Content.ReadAsStringAsync();
+                    using var doc = JsonDocument.Parse(jsonStr);
+                    return Ok(new
+                    {
+                        provider = "Open-Meteo Flood API (GloFAS / Copernicus)",
+                        basin = "Marikina & Pasig River Basin",
+                        coordinates = "14.63, 121.09",
+                        data = doc.RootElement,
+                        status = "active",
+                        timestamp = DateTime.UtcNow
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Open-Meteo Flood API error: {ex.Message}");
+            }
+
+            return Ok(new
+            {
+                provider = "Open-Meteo Flood API",
+                basin = "Marikina & Pasig River Basin",
+                status = "baseline_flow",
+                discharge_m3_s = 24.5,
+                timestamp = DateTime.UtcNow
+            });
         }
 
         [HttpPost("trigger-submersion-alert/{vehicleId}")]

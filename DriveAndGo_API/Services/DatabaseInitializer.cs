@@ -357,6 +357,114 @@ namespace DriveAndGo_API.Services
                     cmd.ExecuteNonQuery();
                 }
 
+                // 20. Driver Management Enterprise Schema — Extended driver fields
+                using (var cmd = new NpgsqlCommand(@"
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS license_expiry        DATE;
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS license_class         VARCHAR(50);
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS restrictions          VARCHAR(100);
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS conditions            VARCHAR(100);
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS blood_type            VARCHAR(10);
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS birth_date            DATE;
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS address               TEXT;
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS nationality           VARCHAR(50) NOT NULL DEFAULT 'Filipino';
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS sex                   VARCHAR(10);
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS weight_kg             VARCHAR(20);
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS height_m              VARCHAR(20);
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS eye_color             VARCHAR(30);
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS nbi_expiry            DATE;
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS police_expiry         DATE;
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS drug_test_expiry      DATE;
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS medical_expiry        DATE;
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS shift_schedule        VARCHAR(50) NOT NULL DEFAULT 'Morning Shift';
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS skill_flags           TEXT;
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS cash_on_hand          NUMERIC(10,2) NOT NULL DEFAULT 0;
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS verification_status   VARCHAR(30) NOT NULL DEFAULT 'unverified';
+                    ALTER TABLE drivers ADD COLUMN IF NOT EXISTS rejection_reason      TEXT;
+                ", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 20a. Users avatar/selfie columns
+                using (var cmd = new NpgsqlCommand(@"
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS id_photo_url       TEXT;
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS selfie_photo_url   TEXT;
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS secondary_id_url   TEXT;
+                ", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 21. driver_payout_accounts — normalized payout channels (1-to-Many)
+                using (var cmd = new NpgsqlCommand(@"
+                    CREATE TABLE IF NOT EXISTS driver_payout_accounts (
+                        payout_id    SERIAL PRIMARY KEY,
+                        driver_id    INT NOT NULL REFERENCES drivers(driver_id) ON DELETE CASCADE,
+                        channel      VARCHAR(50) NOT NULL DEFAULT 'Cash',
+                        account_name VARCHAR(150),
+                        account_no   VARCHAR(100),
+                        is_primary   BOOLEAN NOT NULL DEFAULT FALSE,
+                        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_payout_driver_id ON driver_payout_accounts(driver_id);
+                ", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 22. driver_emergency_contacts — normalized emergency contacts (1-to-Many)
+                using (var cmd = new NpgsqlCommand(@"
+                    CREATE TABLE IF NOT EXISTS driver_emergency_contacts (
+                        contact_id    SERIAL PRIMARY KEY,
+                        driver_id     INT NOT NULL REFERENCES drivers(driver_id) ON DELETE CASCADE,
+                        full_name     VARCHAR(150) NOT NULL,
+                        relationship  VARCHAR(80),
+                        phone         VARCHAR(50) NOT NULL,
+                        blood_type    VARCHAR(10),
+                        medical_notes TEXT,
+                        is_primary    BOOLEAN NOT NULL DEFAULT FALSE,
+                        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_emergency_driver_id ON driver_emergency_contacts(driver_id);
+                ", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 23. driver_documents — compliance document vault (1-to-Many)
+                using (var cmd = new NpgsqlCommand(@"
+                    CREATE TABLE IF NOT EXISTS driver_documents (
+                        doc_id      SERIAL PRIMARY KEY,
+                        driver_id   INT NOT NULL REFERENCES drivers(driver_id) ON DELETE CASCADE,
+                        doc_type    VARCHAR(80) NOT NULL,
+                        file_url    TEXT,
+                        expiry_date DATE,
+                        status      VARCHAR(30) NOT NULL DEFAULT 'pending',
+                        uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_driver_docs_driver_id ON driver_documents(driver_id);
+                ", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 24. driver_incidents — violation & commendation history (1-to-Many)
+                using (var cmd = new NpgsqlCommand(@"
+                    CREATE TABLE IF NOT EXISTS driver_incidents (
+                        incident_id    SERIAL PRIMARY KEY,
+                        driver_id      INT NOT NULL REFERENCES drivers(driver_id) ON DELETE CASCADE,
+                        type           VARCHAR(30) NOT NULL DEFAULT 'Violation',
+                        description    TEXT NOT NULL,
+                        incident_date  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        penalty_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+                        status         VARCHAR(30) NOT NULL DEFAULT 'open'
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_incidents_driver_id ON driver_incidents(driver_id);
+                ", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
                 Console.WriteLine("Database tables initialized successfully.");
             }
             catch (Exception ex)
