@@ -92,7 +92,8 @@ namespace DriveAndGo_API.Helpers
             }
             catch { }
 
-            return $"http://192.168.1.6:{port}";
+            var machineName = Environment.MachineName?.ToLowerInvariant() ?? "martquirante";
+            return $"http://{machineName}:{port}";
         }
     }
 }

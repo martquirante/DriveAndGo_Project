@@ -23,6 +23,8 @@ namespace DriveAndGo_API.Contracts
         public decimal CashOnHand         { get; set; }
         public string? SkillFlags         { get; set; }
         public string? VerificationStatus { get; set; }
+        public string? SignatureUrl       { get; set; }
+        public string? SignatureBase64    { get; set; }
     }
 
     // ── Full driver detail DTO for profile modals ──
@@ -179,6 +181,8 @@ namespace DriveAndGo_API.Contracts
         public string  Status   { get; set; } = "available";
         public string? LicenseClass   { get; set; }
         public string? LicenseExpiry  { get; set; }
+        public string? Restrictions   { get; set; }
+        public string? Conditions     { get; set; }
         public string? SkillFlags     { get; set; }
         public string? ShiftSchedule  { get; set; }
         public string? BloodType      { get; set; }
@@ -205,5 +209,34 @@ namespace DriveAndGo_API.Contracts
         public decimal Amount           { get; set; }
         public string? Notes            { get; set; }
         public string? ReferenceNo      { get; set; }
+    }
+
+    public class CreateEmergencyContactRequest
+    {
+        public string  FullName     { get; set; } = string.Empty;
+        public string? Relationship { get; set; }
+        public string  Phone        { get; set; } = string.Empty;
+        public string? BloodType    { get; set; }
+        public string? MedicalNotes { get; set; }
+        public bool    IsPrimary    { get; set; }
+    }
+
+    public class CreateDocumentRequest
+    {
+        public string  DocType    { get; set; } = string.Empty;
+        public string? FileUrl    { get; set; }
+        public string? ExpiryDate { get; set; }
+        public string  Status     { get; set; } = "valid";
+    }
+
+    public class UpdateMedicalNotesRequest
+    {
+        public string? BloodType    { get; set; }
+        public string? MedicalNotes { get; set; }
+    }
+
+    public class UpdateBloodTypeRequest
+    {
+        public string BloodType { get; set; } = string.Empty;
     }
 }

@@ -2798,6 +2798,18 @@
                 }
             }, [vehicleToEdit]);
 
+            const descRef = useRef(null);
+            useEffect(() => {
+                if (descRef.current) {
+                    descRef.current.style.height = 'auto';
+                    const minH = 76;
+                    const maxH = 220;
+                    const newH = Math.max(minH, Math.min(descRef.current.scrollHeight, maxH));
+                    descRef.current.style.height = `${newH}px`;
+                    descRef.current.style.overflowY = descRef.current.scrollHeight > maxH ? 'auto' : 'hidden';
+                }
+            }, [form.description]);
+
             const [creationMode, setCreationMode] = useState('custom'); // 'custom' | 'preset'
             const [selectedBrandPreset, setSelectedBrandPreset] = useState('');
             const [selectedModelPreset, setSelectedModelPreset] = useState('');
@@ -3669,7 +3681,22 @@
                                 {/* Description */}
                                 <div>
                                     <label className="text-xs font-semibold text-[var(--text-secondary)] mb-1 block">Description</label>
-                                    <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows="3" className="w-full p-3 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border-color)] text-sm font-medium text-[var(--text-primary)] focus:border-orange-500 outline-none transition-all resize-none placeholder-[var(--text-muted)]" placeholder="Vehicle notes, specs, condition..."></textarea>
+                                    <textarea
+                                        ref={descRef}
+                                        value={form.description}
+                                        onChange={e => {
+                                            setForm({ ...form, description: e.target.value });
+                                            e.target.style.height = 'auto';
+                                            const minH = 76;
+                                            const maxH = 220;
+                                            const newH = Math.max(minH, Math.min(e.target.scrollHeight, maxH));
+                                            e.target.style.height = `${newH}px`;
+                                            e.target.style.overflowY = e.target.scrollHeight > maxH ? 'auto' : 'hidden';
+                                        }}
+                                        rows="3"
+                                        className="w-full p-3 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border-color)] text-sm font-medium text-[var(--text-primary)] focus:border-orange-500 outline-none transition-all resize-none placeholder-[var(--text-muted)] min-h-[76px] max-h-[220px]"
+                                        placeholder="Vehicle notes, specs, condition..."
+                                    ></textarea>
                                 </div>
 
                             </div>
@@ -4332,23 +4359,26 @@
 
 
         // ─── HANDOVER QR CODE MODAL ────────────────────────────────────────────────
+        const getFleetVerifyBase = () => {
+            if (window.API_NETWORK_URL && !window.API_NETWORK_URL.includes('localhost') && !window.API_NETWORK_URL.includes('127.0.0.1')) {
+                return window.API_NETWORK_URL.replace(/\/$/, '');
+            }
+            const host = window.location.hostname;
+            if (host && host !== 'localhost' && host !== '127.0.0.1' && host !== 'appassets') {
+                return `${window.location.protocol}//${host}:5233/api`;
+            }
+            return 'http://martquirante:5233/api';
+        };
+
         const QrCodeModal = ({ vehicle, onClose }) => {
             const qrRef = useRef(null);
 
             useEffect(() => {
                 if (qrRef.current && vehicle && window.QRCode) {
                     qrRef.current.innerHTML = '';
-                    const qrData = JSON.stringify({
-                        app: "DriveAndGo Rentals",
-                        plate: vehicle.plateNumber,
-                        vehicleId: vehicle.id,
-                        brand: vehicle.brand,
-                        model: vehicle.model,
-                        odometer: vehicle.odometerKm,
-                        timestamp: new Date().toISOString()
-                    });
+                    const verifyUrl = `${getFleetVerifyBase()}/vehicles/verify/${encodeURIComponent(vehicle.plateNumber || vehicle.id)}`;
                     new window.QRCode(qrRef.current, {
-                        text: qrData,
+                        text: verifyUrl,
                         width: 180,
                         height: 180,
                         colorDark: "#000000",
@@ -4389,6 +4419,18 @@
             const [customNotes, setCustomNotes] = useState('');
             const [decommissioning, setDecommissioning] = useState(false);
             const [errorMsg, setErrorMsg] = useState('');
+
+            const decomNotesRef = useRef(null);
+            useEffect(() => {
+                if (decomNotesRef.current) {
+                    decomNotesRef.current.style.height = 'auto';
+                    const minH = 48;
+                    const maxH = 180;
+                    const newH = Math.max(minH, Math.min(decomNotesRef.current.scrollHeight, maxH));
+                    decomNotesRef.current.style.height = `${newH}px`;
+                    decomNotesRef.current.style.overflowY = decomNotesRef.current.scrollHeight > maxH ? 'auto' : 'hidden';
+                }
+            }, [customNotes, selectedReason]);
 
             const reasonsList = [
                 {
@@ -4516,11 +4558,20 @@
                                 <div className="flex flex-col gap-1.5 pt-1 animate-fade-in">
                                     <label className="text-[11px] font-bold text-[var(--text-secondary)]">Custom Decommission Notes:</label>
                                     <textarea
+                                        ref={decomNotesRef}
                                         rows={2}
                                         value={customNotes}
-                                        onChange={e => setCustomNotes(e.target.value)}
+                                        onChange={e => {
+                                            setCustomNotes(e.target.value);
+                                            e.target.style.height = 'auto';
+                                            const minH = 48;
+                                            const maxH = 180;
+                                            const newH = Math.max(minH, Math.min(e.target.scrollHeight, maxH));
+                                            e.target.style.height = `${newH}px`;
+                                            e.target.style.overflowY = e.target.scrollHeight > maxH ? 'auto' : 'hidden';
+                                        }}
                                         placeholder="Enter administrative explanation or legal liquidation notes..."
-                                        className="w-full p-2.5 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] placeholder-gray-500 focus:outline-none focus:border-orange-500"
+                                        className="w-full p-2.5 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] placeholder-gray-500 focus:outline-none focus:border-orange-500 resize-none min-h-[48px] max-h-[180px]"
                                     />
                                 </div>
                             )}

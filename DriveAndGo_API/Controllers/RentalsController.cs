@@ -980,12 +980,15 @@ public class RentalsController : ControllerBase
                 COALESCE(customer.full_name, 'Customer #' || r.customer_id) AS customer_name,
                 customer.phone AS customer_phone,
                 customer.email AS customer_email,
-                COALESCE(customer.avatar_base64, customer.id_photo_url) AS customer_avatar,
+                COALESCE(NULLIF(customer.avatar_base64, ''), NULLIF(customer.id_photo_url, '')) AS customer_avatar,
+                COALESCE(NULLIF(customer.signature_base64, ''), NULLIF(customer.signature_url, '')) AS customer_signature,
                 COALESCE(CONCAT(v.brand, ' ', v.model), 'Vehicle #' || r.vehicle_id) AS vehicle_name,
                 v.plate_no AS vehicle_plate_no,
                 v.rate_per_day AS vehicle_rate,
                 driver_user.full_name AS driver_name,
-                driver_user.phone AS driver_phone
+                driver_user.phone AS driver_phone,
+                COALESCE(NULLIF(driver_user.avatar_base64, ''), NULLIF(driver_user.id_photo_url, ''), NULLIF(d.license_photo_url, '')) AS driver_avatar,
+                COALESCE(NULLIF(driver_user.signature_base64, ''), NULLIF(driver_user.signature_url, '')) AS driver_signature
               FROM rentals r
               LEFT JOIN users customer ON r.customer_id = customer.user_id
               LEFT JOIN vehicles v ON r.vehicle_id = v.vehicle_id
@@ -1002,6 +1005,20 @@ public class RentalsController : ControllerBase
             : orderBy;
 
         return sql;
+    }
+
+    private static string? FormatImageUrl(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        raw = raw.Trim();
+        if (raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+            raw.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase) ||
+            raw.StartsWith("blob:", StringComparison.OrdinalIgnoreCase))
+        {
+            return raw;
+        }
+        return "data:image/png;base64," + raw;
     }
 
     private static Rental MapRental(NpgsqlDataReader reader)
@@ -1023,12 +1040,15 @@ public class RentalsController : ControllerBase
             CustomerName   = reader["customer_name"] == DBNull.Value ? null : reader["customer_name"].ToString(),
             CustomerPhone  = reader["customer_phone"] == DBNull.Value ? null : reader["customer_phone"].ToString(),
             CustomerEmail  = reader["customer_email"] == DBNull.Value ? null : reader["customer_email"].ToString(),
-            CustomerAvatar = reader["customer_avatar"] == DBNull.Value ? null : reader["customer_avatar"].ToString(),
+            CustomerAvatar = FormatImageUrl(reader["customer_avatar"] == DBNull.Value ? null : reader["customer_avatar"].ToString()),
+            CustomerSignatureBase64 = FormatImageUrl(reader["customer_signature"] == DBNull.Value ? null : reader["customer_signature"].ToString()),
             VehicleName    = reader["vehicle_name"] == DBNull.Value ? null : reader["vehicle_name"].ToString(),
             VehiclePlateNo = reader["vehicle_plate_no"] == DBNull.Value ? null : reader["vehicle_plate_no"].ToString(),
             VehicleRate    = reader["vehicle_rate"] == DBNull.Value ? (decimal?)null : Convert.ToDecimal(reader["vehicle_rate"], CultureInfo.InvariantCulture),
             DriverName     = reader["driver_name"] == DBNull.Value ? null : reader["driver_name"].ToString(),
-            DriverPhone    = reader["driver_phone"] == DBNull.Value ? null : reader["driver_phone"].ToString()
+            DriverPhone    = reader["driver_phone"] == DBNull.Value ? null : reader["driver_phone"].ToString(),
+            DriverAvatar   = FormatImageUrl(reader["driver_avatar"] == DBNull.Value ? null : reader["driver_avatar"].ToString()),
+            DriverSignatureBase64 = FormatImageUrl(reader["driver_signature"] == DBNull.Value ? null : reader["driver_signature"].ToString())
         };
     }
 

@@ -58,7 +58,9 @@ namespace DriveAndGo_Admin.Helpers
                         apiSettings.TryGetProperty("BaseUrl", out var baseUrlProp))
                     {
                         var bUrl = baseUrlProp.GetString();
-                        if (!string.IsNullOrWhiteSpace(bUrl))
+                        if (!string.IsNullOrWhiteSpace(bUrl) && 
+                            !bUrl.Contains("localhost", StringComparison.OrdinalIgnoreCase) && 
+                            !bUrl.Contains("127.0.0.1"))
                         {
                             return bUrl.TrimEnd('/') + (bUrl.EndsWith("/api", StringComparison.OrdinalIgnoreCase) ? "" : "/api");
                         }
@@ -67,8 +69,28 @@ namespace DriveAndGo_Admin.Helpers
             }
             catch { }
 
-            // Default to local development API server
-            return "http://localhost:5233/api";
+            // Dynamic Active LAN IP Discovery via Routing Probe (auto-detects .6, .11, Wi-Fi, Ethernet)
+            try
+            {
+                using var socket = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.InterNetwork, System.Net.Sockets.SocketType.Dgram, 0);
+                socket.Connect("8.8.8.8", 65530);
+                if (socket.LocalEndPoint is System.Net.IPEndPoint endPoint &&
+                    !System.Net.IPAddress.IsLoopback(endPoint.Address))
+                {
+                    return $"http://{endPoint.Address}:5233/api";
+                }
+            }
+            catch { }
+
+            // Computer Hostname adaptive fallback (permanent on LAN)
+            try
+            {
+                var hostName = Environment.MachineName?.ToLowerInvariant() ?? "martquirante";
+                return $"http://{hostName}:5233/api";
+            }
+            catch { }
+
+            return "http://martquirante:5233/api";
         }
 
         public static readonly string BaseUrl = ResolveNetworkBaseUrl();

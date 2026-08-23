@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 /**
  * DamageClaimForm Component
@@ -12,6 +12,18 @@ export default function DamageClaimForm({ rentalId = 1, onClose }) {
   const [fileName, setFileName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [claimResult, setClaimResult] = useState(null);
+
+  const descRef = useRef(null);
+  useEffect(() => {
+    if (descRef.current) {
+      descRef.current.style.height = 'auto';
+      const minH = 64;
+      const maxH = 220;
+      const newH = Math.max(minH, Math.min(descRef.current.scrollHeight, maxH));
+      descRef.current.style.height = `${newH}px`;
+      descRef.current.style.overflowY = descRef.current.scrollHeight > maxH ? 'auto' : 'hidden';
+    }
+  }, [description]);
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -100,10 +112,20 @@ export default function DamageClaimForm({ rentalId = 1, onClose }) {
           <div>
             <label className="text-[10px] text-slate-500 font-semibold uppercase block mb-1">Accident Description</label>
             <textarea 
+              ref={descRef}
+              rows={2}
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => {
+                setDescription(e.target.value);
+                e.target.style.height = 'auto';
+                const minH = 64;
+                const maxH = 220;
+                const newH = Math.max(minH, Math.min(e.target.scrollHeight, maxH));
+                e.target.style.height = `${newH}px`;
+                e.target.style.overflowY = e.target.scrollHeight > maxH ? 'auto' : 'hidden';
+              }}
               placeholder="Provide a detailed description of the damages, location of the incident, and circumstances."
-              className="w-full h-24 bg-slate-900 border border-white/5 focus:border-orange-500/40 rounded-lg p-2.5 text-xs text-white placeholder-slate-600 transition-colors resize-none"
+              className="w-full min-h-[64px] max-h-[220px] bg-slate-900 border border-white/5 focus:border-orange-500/40 rounded-lg p-2.5 text-xs text-white placeholder-slate-600 transition-colors resize-none overflow-hidden"
               required
             />
           </div>

@@ -22,10 +22,13 @@ namespace DriveAndGo_API.Models
         public string? CustomerPhone { get; set; }
         public string? CustomerEmail { get; set; }
         public string? CustomerAvatar { get; set; }
+        public string? CustomerSignatureBase64 { get; set; }
         public string? VehicleName { get; set; }
         public string? VehiclePlateNo { get; set; }
         public decimal? VehicleRate { get; set; }
         public string? DriverName { get; set; }
         public string? DriverPhone { get; set; }
+        public string? DriverAvatar { get; set; }
+        public string? DriverSignatureBase64 { get; set; }
     }
 }

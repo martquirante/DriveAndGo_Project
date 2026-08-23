@@ -1199,6 +1199,18 @@ const AddVehicleModal = ({ onClose, onSave, vehicleToEdit }) => {
         }
     }, [vehicleToEdit]);
 
+    const descRef = useRef(null);
+    useEffect(() => {
+        if (descRef.current) {
+            descRef.current.style.height = 'auto';
+            const minH = 76;
+            const maxH = 220;
+            const newH = Math.max(minH, Math.min(descRef.current.scrollHeight, maxH));
+            descRef.current.style.height = `${newH}px`;
+            descRef.current.style.overflowY = descRef.current.scrollHeight > maxH ? 'auto' : 'hidden';
+        }
+    }, [form.description]);
+
     const [isSaving, setIsSaving] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
     const [suggestData, setSuggestData] = useState(null);
@@ -1747,7 +1759,22 @@ const AddVehicleModal = ({ onClose, onSave, vehicleToEdit }) => {
                         {/* Description */}
                         <div>
                             <label className="text-xs font-semibold text-gray-400 mb-1 block">Description</label>
-                            <textarea value={form.description} onChange={e=>setForm({...form, description: e.target.value})} rows="3" className="w-full p-3 rounded-xl bg-white/5 border border-white/10 text-sm font-medium text-white focus:border-orange-500 outline-none transition-all resize-none placeholder-gray-600" placeholder="Vehicle notes, specs, condition..."></textarea>
+                            <textarea
+                                ref={descRef}
+                                value={form.description}
+                                onChange={e => {
+                                    setForm({ ...form, description: e.target.value });
+                                    e.target.style.height = 'auto';
+                                    const minH = 76;
+                                    const maxH = 220;
+                                    const newH = Math.max(minH, Math.min(e.target.scrollHeight, maxH));
+                                    e.target.style.height = `${newH}px`;
+                                    e.target.style.overflowY = e.target.scrollHeight > maxH ? 'auto' : 'hidden';
+                                }}
+                                rows="3"
+                                className="w-full p-3 rounded-xl bg-white/5 border border-white/10 text-sm font-medium text-white focus:border-orange-500 outline-none transition-all resize-none placeholder-gray-600 min-h-[76px] max-h-[220px]"
+                                placeholder="Vehicle notes, specs, condition..."
+                            ></textarea>
                         </div>
 
                     </div>

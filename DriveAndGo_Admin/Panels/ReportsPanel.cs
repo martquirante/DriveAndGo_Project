@@ -667,11 +667,11 @@ namespace DriveAndGo_Admin.Panels
             html.AppendLine(".summary td{padding:12px;border:1px solid #e6e8f0;background:#fff;}");
             html.AppendLine(".summary-label{font-size:11px;color:#667085;font-weight:600;text-transform:uppercase;}");
             html.AppendLine(".summary-value{font-size:18px;color:#1f2330;font-weight:700;}");
-            html.AppendLine(".report th{background:#1f2330;color:#fff;padding:10px;border:1px solid #d9dbe7;font-size:11px;text-transform:uppercase;}");
-            html.AppendLine(".report td{padding:9px;border:1px solid #d9dbe7;font-size:11px;background:#fff;}");
+            html.AppendLine(".report th{background:#0F172A;color:#fff;padding:10px 8px;border:1px solid #1E293B;font-size:11px;text-transform:uppercase;}");
+            html.AppendLine(".report td{padding:8px 10px;border:1px solid #E2E8F0;font-size:11px;background:#fff;}");
             html.AppendLine(".report tr:nth-child(even) td{background:#fafbff;}");
-            html.AppendLine(".num{text-align:right;}");
-            html.AppendLine(".center{text-align:center;}");
+            html.AppendLine(".num{text-align:right;mso-number-format:\"\\#\\,\\#\\#0\\.00\";font-weight:600;}");
+            html.AppendLine(".center{text-align:center;mso-number-format:\"\\#\\,\\#\\#0\";}");
             html.AppendLine(".footer{margin-top:18px;font-size:10px;color:#667085;text-align:center;}");
             html.AppendLine("</style>");
             html.AppendLine("</head><body>");
@@ -717,6 +717,15 @@ namespace DriveAndGo_Admin.Panels
             html.AppendLine("</table>");
 
             html.AppendLine("<table class=\"report\">");
+            html.AppendLine("<colgroup>");
+            html.AppendLine("  <col style=\"width: 140pt;\" />");
+            html.AppendLine("  <col style=\"width: 90pt;\" />");
+            html.AppendLine("  <col style=\"width: 90pt;\" />");
+            html.AppendLine("  <col style=\"width: 110pt;\" />");
+            html.AppendLine("  <col style=\"width: 120pt;\" />");
+            html.AppendLine("  <col style=\"width: 120pt;\" />");
+            html.AppendLine("</colgroup>");
+            html.AppendLine("<thead>");
             html.AppendLine("<tr>");
             html.AppendLine("<th>Period</th>");
             html.AppendLine("<th>Total Rentals</th>");
@@ -725,6 +734,8 @@ namespace DriveAndGo_Admin.Panels
             html.AppendLine("<th>Revenue (PHP)</th>");
             html.AppendLine("<th>Pending (PHP)</th>");
             html.AppendLine("</tr>");
+            html.AppendLine("</thead>");
+            html.AppendLine("<tbody>");
 
             foreach (DataRow row in _reportData.Rows)
             {
@@ -741,7 +752,7 @@ namespace DriveAndGo_Admin.Panels
                 ExportBrandingHelper.AppendExcelCell(html, pending.ToString("N2"), "num");
                 html.AppendLine("</tr>");
             }
-
+            html.AppendLine("</tbody>");
             html.AppendLine("</table>");
             html.AppendLine("<div class=\"footer\">Drive &amp; Go System Report Export</div>");
             html.AppendLine("</body></html>");

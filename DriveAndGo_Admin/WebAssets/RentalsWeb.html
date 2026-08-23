@@ -16,6 +16,10 @@
   <!-- QRCode.js for Dynamic A4 Contract Verification QR Rendering -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
+  <!-- ExcelJS for Styled Native .XLSX Exports (Zero Excel Warnings + Full Colors/Borders) -->
+  <script src="exceljs.min.js"></script>
+  <script>if (typeof ExcelJS === 'undefined') { document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"><\/script>'); }</script>
+
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -259,11 +263,11 @@
             <span id="today-indicator-text" class="text-orange-500 font-bold">Aug 20, 2026</span>
           </div>
 
-          <div class="space-y-1">
+          <div class="space-y-0.5 max-h-64 overflow-y-auto pr-1">
             <button
               onclick="setDateFilter('all', 'All Dates')"
               type="button"
-              class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 hover:text-orange-500 dark:hover:bg-slate-800 font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between transition-colors"
+              class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 hover:text-orange-500 dark:hover:bg-slate-800 font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between transition-colors cursor-pointer"
             >
               <span>All Dates (Show All)</span>
               <span id="check-all" class="text-orange-500"><i data-lucide="check" class="w-3.5 h-3.5"></i></span>
@@ -271,7 +275,7 @@
             <button
               onclick="setDateFilter('today', 'Today')"
               type="button"
-              class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 hover:text-orange-500 dark:hover:bg-slate-800 font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between transition-colors"
+              class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 hover:text-orange-500 dark:hover:bg-slate-800 font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between transition-colors cursor-pointer"
             >
               <span>Today</span>
               <span id="check-today" class="text-orange-500 hidden"><i data-lucide="check" class="w-3.5 h-3.5"></i></span>
@@ -279,7 +283,7 @@
             <button
               onclick="setDateFilter('week', 'This Week')"
               type="button"
-              class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 hover:text-orange-500 dark:hover:bg-slate-800 font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between transition-colors"
+              class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 hover:text-orange-500 dark:hover:bg-slate-800 font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between transition-colors cursor-pointer"
             >
               <span>This Week</span>
               <span id="check-week" class="text-orange-500 hidden"><i data-lucide="check" class="w-3.5 h-3.5"></i></span>
@@ -287,10 +291,42 @@
             <button
               onclick="setDateFilter('month', 'This Month')"
               type="button"
-              class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 hover:text-orange-500 dark:hover:bg-slate-800 font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between transition-colors"
+              class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 hover:text-orange-500 dark:hover:bg-slate-800 font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between transition-colors cursor-pointer"
             >
               <span>This Month</span>
               <span id="check-month" class="text-orange-500 hidden"><i data-lucide="check" class="w-3.5 h-3.5"></i></span>
+            </button>
+            <button
+              onclick="setDateFilter('last_month', 'Last Month')"
+              type="button"
+              class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 hover:text-orange-500 dark:hover:bg-slate-800 font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between transition-colors cursor-pointer"
+            >
+              <span>Last Month</span>
+              <span id="check-last_month" class="text-orange-500 hidden"><i data-lucide="check" class="w-3.5 h-3.5"></i></span>
+            </button>
+            <button
+              onclick="setDateFilter('last_6_months', 'Last 6 Months')"
+              type="button"
+              class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 hover:text-orange-500 dark:hover:bg-slate-800 font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between transition-colors cursor-pointer"
+            >
+              <span>Last 6 Months</span>
+              <span id="check-last_6_months" class="text-orange-500 hidden"><i data-lucide="check" class="w-3.5 h-3.5"></i></span>
+            </button>
+            <button
+              onclick="setDateFilter('this_year', 'This Year (YTD)')"
+              type="button"
+              class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 hover:text-orange-500 dark:hover:bg-slate-800 font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between transition-colors cursor-pointer"
+            >
+              <span>This Year (YTD)</span>
+              <span id="check-this_year" class="text-orange-500 hidden"><i data-lucide="check" class="w-3.5 h-3.5"></i></span>
+            </button>
+            <button
+              onclick="setDateFilter('last_year', 'Last Year')"
+              type="button"
+              class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 hover:text-orange-500 dark:hover:bg-slate-800 font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between transition-colors cursor-pointer"
+            >
+              <span>Last Year</span>
+              <span id="check-last_year" class="text-orange-500 hidden"><i data-lucide="check" class="w-3.5 h-3.5"></i></span>
             </button>
           </div>
 
@@ -307,8 +343,14 @@
         </div>
       </div>
 
+      <!-- Export Excel CTA -->
+      <button onclick="exportRentalsExcel()" class="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 text-xs font-bold transition-all shadow-sm cursor-pointer">
+        <i data-lucide="download" class="w-4 h-4 text-emerald-500"></i>
+        <span>Export Excel</span>
+      </button>
+
       <!-- New Rental CTA -->
-      <button onclick="openNewRentalModal()" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#FF6B00] hover:bg-[#E85F00] text-white text-xs font-extrabold shadow-lg shadow-orange-500/25 transition-all transform hover:-translate-y-0.5 active:translate-y-0">
+      <button onclick="openNewRentalModal()" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#FF6B00] hover:bg-[#E85F00] text-white text-xs font-extrabold shadow-lg shadow-orange-500/25 transition-all transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer">
         <i data-lucide="plus" class="w-4 h-4"></i>
         <span>New Rental</span>
       </button>
@@ -678,6 +720,42 @@
 
       <!-- Tab 2: Technical Rental Details -->
       <div id="tab-content-details" class="flex-1 overflow-y-auto p-6 bg-slate-50 dark:bg-[#090D16] hidden text-xs space-y-4">
+        <!-- Customer Profile Card -->
+        <div class="glass-card rounded-xl p-4 space-y-3">
+          <div class="font-bold text-slate-900 dark:text-white uppercase text-[10px] tracking-wider text-brand flex items-center justify-between">
+            <span>Customer Profile</span>
+            <span class="text-[9px] text-slate-400 font-semibold">CLIENT</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <div id="dtl-cust-avatar-box" class="w-12 h-12 rounded-full overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-brand text-sm shadow-sm">
+              <!-- Rendered dynamically -->
+            </div>
+            <div class="min-w-0 flex-1">
+              <div id="dtl-cust-name" class="font-black text-slate-900 dark:text-white text-sm truncate">—</div>
+              <div id="dtl-cust-phone" class="text-[11px] text-slate-400 font-mono mt-0.5">—</div>
+              <div id="dtl-cust-email" class="text-[10px] text-slate-400 truncate mt-0.5">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Assigned Driver Card -->
+        <div class="glass-card rounded-xl p-4 space-y-3">
+          <div class="font-bold text-slate-900 dark:text-white uppercase text-[10px] tracking-wider text-brand flex items-center justify-between">
+            <span>Assigned Driver</span>
+            <span id="dtl-driver-status-tag" class="text-[9px] font-semibold text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded">CHAUFFEUR</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <div id="dtl-driver-avatar-box" class="w-12 h-12 rounded-full overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-emerald-500 text-sm shadow-sm">
+              <!-- Rendered dynamically -->
+            </div>
+            <div class="min-w-0 flex-1">
+              <div id="dtl-driver-name" class="font-black text-slate-900 dark:text-white text-sm truncate">—</div>
+              <div id="dtl-driver-phone" class="text-[11px] text-slate-400 font-mono mt-0.5">—</div>
+              <div id="dtl-driver-type" class="text-[10px] text-slate-400 font-medium mt-0.5">Professional Chauffeur</div>
+            </div>
+          </div>
+        </div>
+
         <div class="glass-card rounded-xl p-4 space-y-2">
           <div class="font-bold text-slate-900 dark:text-white uppercase text-[10px] tracking-wider text-brand">Booking Details</div>
           <div class="flex justify-between py-1 border-b border-slate-200 dark:border-slate-800">
@@ -984,7 +1062,7 @@
             </div>
             <div>
               <label class="block font-bold mb-1 text-slate-700 dark:text-slate-300">Damage Description</label>
-              <textarea id="return-damage-desc" rows="2" placeholder="Detail any new scratches, dents, or missing parts..." class="w-full px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white font-medium focus:outline-none focus:border-brand"></textarea>
+              <textarea id="return-damage-desc" rows="2" placeholder="Detail any new scratches, dents, or missing parts..." class="w-full px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white font-medium focus:outline-none focus:border-brand resize-none min-h-[48px] max-h-48 overflow-hidden transition-[height]"></textarea>
             </div>
             <div>
               <label class="block font-bold mb-1 text-slate-700 dark:text-slate-300">Damage Photos (Inspection Evidence)</label>
@@ -1009,7 +1087,7 @@
           </div>
           <div>
             <label class="block font-bold mb-1 text-slate-800 dark:text-slate-200">Return Remarks / Notes</label>
-            <input id="return-notes" type="text" placeholder="Clean interior, smooth return..." class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand" />
+            <textarea id="return-notes" rows="1" placeholder="Clean interior, smooth return..." class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand resize-none min-h-[38px] max-h-36 overflow-hidden transition-[height]"></textarea>
           </div>
         </div>
       </div>
@@ -1080,7 +1158,7 @@
       <!-- Personal Message -->
       <div>
         <label class="block font-bold mb-1 text-slate-700 dark:text-slate-300">Personal Message (Optional)</label>
-        <textarea id="em-message" rows="2" placeholder="Add a note to the customer..." class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand resize-none"></textarea>
+        <textarea id="em-message" rows="2" placeholder="Add a note to the customer..." class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand resize-none min-h-[52px] max-h-56 overflow-hidden transition-[height]"></textarea>
       </div>
 
       <!-- Attachments Checkboxes -->
@@ -1148,15 +1226,21 @@
           </div>
 
           <div class="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200 dark:border-slate-800 text-[11px]">
-            <div>
-              <span class="text-slate-400 block text-[10px] uppercase font-bold">Customer</span>
-              <strong id="cfm-cust-name" class="text-slate-900 dark:text-white block truncate">—</strong>
-              <span id="cfm-cust-phone" class="text-slate-400 text-[10px] font-mono block">—</span>
+            <div class="flex items-center gap-2">
+              <div id="cfm-cust-avatar-box" class="w-8 h-8 rounded-full overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700 bg-brand/10 text-brand font-bold flex items-center justify-center text-xs"></div>
+              <div class="min-w-0 flex-1">
+                <span class="text-slate-400 block text-[9px] uppercase font-bold">Customer</span>
+                <strong id="cfm-cust-name" class="text-slate-900 dark:text-white block truncate">—</strong>
+                <span id="cfm-cust-phone" class="text-slate-400 text-[10px] font-mono block">—</span>
+              </div>
             </div>
-            <div>
-              <span class="text-slate-400 block text-[10px] uppercase font-bold">Vehicle Unit</span>
-              <strong id="cfm-veh-name" class="text-slate-900 dark:text-white block truncate">—</strong>
-              <span id="cfm-veh-plate" class="text-brand font-mono font-bold text-[10px] block">—</span>
+            <div class="flex items-center gap-2">
+              <div id="cfm-driver-avatar-box" class="w-8 h-8 rounded-full overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700 bg-emerald-500/10 text-emerald-500 font-bold flex items-center justify-center text-xs"></div>
+              <div class="min-w-0 flex-1">
+                <span id="cfm-driver-header" class="text-slate-400 block text-[9px] uppercase font-bold">Assigned Driver</span>
+                <strong id="cfm-driver-name" class="text-slate-900 dark:text-white block truncate">—</strong>
+                <span id="cfm-veh-plate" class="text-brand font-mono font-bold text-[10px] block">—</span>
+              </div>
             </div>
           </div>
 
@@ -1180,7 +1264,7 @@
 
           <div>
             <label class="block font-bold mb-1 text-slate-700 dark:text-slate-300">Approval Message / Conforme Note</label>
-            <textarea id="cfm-message" rows="2" class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand resize-none" placeholder="Add custom terms or instructions for pick-up..."></textarea>
+            <textarea id="cfm-message" rows="2" class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand resize-none min-h-[52px] max-h-56 overflow-hidden transition-[height]" placeholder="Add custom terms or instructions for pick-up..."></textarea>
           </div>
 
           <div class="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between">
@@ -1296,7 +1380,7 @@
 
       <div>
         <label class="block font-bold mb-1 text-slate-700 dark:text-slate-300">Additional Remarks (Optional)</label>
-        <textarea id="dec-notes" rows="2" placeholder="Optional notes for customer or audit log..." class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-red-500 resize-none"></textarea>
+        <textarea id="dec-notes" rows="2" placeholder="Optional notes for customer or audit log..." class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-red-500 resize-none min-h-[52px] max-h-56 overflow-hidden transition-[height]"></textarea>
       </div>
 
       <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
@@ -1405,8 +1489,34 @@
       return (window.API_BASE_URL || (window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'appassets' ? `${window.location.protocol}//${window.location.hostname}:5233/api` : 'http://localhost:5233/api')).replace(/\/$/, '');
     }
     function getNetworkVerifyBase() {
-      return (window.API_NETWORK_URL || (window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'appassets' ? `${window.location.protocol}//${window.location.hostname}:5233/api` : 'http://192.168.1.6:5233/api')).replace(/\/$/, '');
+      if (window.API_NETWORK_URL && !window.API_NETWORK_URL.includes('localhost') && !window.API_NETWORK_URL.includes('127.0.0.1')) {
+        return window.API_NETWORK_URL.replace(/\/$/, '');
+      }
+      const host = window.location.hostname;
+      if (host && host !== 'localhost' && host !== '127.0.0.1' && host !== 'appassets') {
+        return `${window.location.protocol}//${host}:5233/api`;
+      }
+      // Adaptive hostname fallback (always resolves dynamically across local network/DHCP)
+      return 'http://martquirante:5233/api';
     }
+
+    // ── Universal Auto-Expanding Textarea Engine ──
+    function autoExpandTextarea(el) {
+      if (!el || el.tagName !== 'TEXTAREA') return;
+      el.style.height = 'auto';
+      const style = window.getComputedStyle(el);
+      const minH = parseInt(el.dataset.minHeight || style.minHeight, 10) || 38;
+      const maxH = parseInt(el.dataset.maxHeight || style.maxHeight, 10) || 220;
+      const newH = Math.max(minH, Math.min(el.scrollHeight, maxH));
+      el.style.height = newH + 'px';
+      el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
+    }
+
+    document.addEventListener('input', function(e) {
+      if (e.target && e.target.tagName === 'TEXTAREA') {
+        autoExpandTextarea(e.target);
+      }
+    });
 
     // ── Custom UI Dialog & Toast System (No Plain Browser Alerts) ──
     let dialogCallback = null;
@@ -1533,7 +1643,13 @@
       return Number(num).toLocaleString('en-US');
     }
 
+    function escHtml(s) {
+      if (s === null || s === undefined) return '';
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
     let allRentals = [];
+    let currentFilteredRentals = [];
     let activeRental = null;
     let selectedFuel = '1/2';
     let currentPage = 1;
@@ -1615,7 +1731,7 @@
       document.getElementById('current-date-text').innerText = label;
 
       // Update check icons
-      ['all', 'today', 'week', 'month'].forEach(m => {
+      ['all', 'today', 'week', 'month', 'last_month', 'last_6_months', 'this_year', 'last_year'].forEach(m => {
         const el = document.getElementById('check-' + m);
         if (el) {
           if (m === mode) el.classList.remove('hidden');
@@ -1640,7 +1756,7 @@
       const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       document.getElementById('current-date-text').innerText = label;
 
-      ['all', 'today', 'week', 'month'].forEach(m => {
+      ['all', 'today', 'week', 'month', 'last_month', 'last_6_months', 'this_year', 'last_year'].forEach(m => {
         const el = document.getElementById('check-' + m);
         if (el) el.classList.add('hidden');
       });
@@ -1729,16 +1845,39 @@
       const statusFilter = document.getElementById('filter-status').value.toLowerCase();
 
       const today = new Date();
-      today.setHours(0,0,0,0);
+      today.setHours(0, 0, 0, 0);
 
+      // Today
+      const startOfToday = new Date(today);
+      const endOfToday = new Date(today);
+      endOfToday.setHours(23, 59, 59, 999);
+
+      // This Week
       const startOfWeek = new Date(today);
       startOfWeek.setDate(today.getDate() - today.getDay());
       const endOfWeek = new Date(startOfWeek);
       endOfWeek.setDate(startOfWeek.getDate() + 6);
-      endOfWeek.setHours(23,59,59,999);
+      endOfWeek.setHours(23, 59, 59, 999);
 
-      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      // This Month
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1, 0, 0, 0, 0);
       const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+
+      // Last Month
+      const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1, 0, 0, 0, 0);
+      const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59, 999);
+
+      // Last 6 Months
+      const startOfLast6Months = new Date(today.getFullYear(), today.getMonth() - 5, 1, 0, 0, 0, 0);
+      const endOfLast6Months = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+
+      // This Year (YTD)
+      const startOfThisYear = new Date(today.getFullYear(), 0, 1, 0, 0, 0, 0);
+      const endOfThisYear = new Date(today.getFullYear(), 11, 31, 23, 59, 59, 999);
+
+      // Last Year
+      const startOfLastYear = new Date(today.getFullYear() - 1, 0, 1, 0, 0, 0, 0);
+      const endOfLastYear = new Date(today.getFullYear() - 1, 11, 31, 23, 59, 59, 999);
 
       const filtered = allRentals.filter(r => {
         const status = (r.status || '').toLowerCase();
@@ -1754,28 +1893,37 @@
 
         // Date Filter matching
         let matchDate = true;
-        if (dateFilterMode !== 'all' && r.startDate) {
-          const rStart = new Date(r.startDate);
-          const rEnd = r.endDate ? new Date(r.endDate) : new Date(r.startDate);
-          rStart.setHours(0,0,0,0);
-          rEnd.setHours(23,59,59,999);
+        if (dateFilterMode !== 'all' && (r.startDate || r.createdAt)) {
+          const rStart = new Date(r.startDate || r.createdAt);
+          const rEnd = r.endDate ? new Date(r.endDate) : new Date(r.startDate || r.createdAt);
+          rStart.setHours(0, 0, 0, 0);
+          rEnd.setHours(23, 59, 59, 999);
 
           if (dateFilterMode === 'today') {
-            matchDate = (today >= rStart && today <= rEnd);
+            matchDate = (rStart <= endOfToday && rEnd >= startOfToday);
           } else if (dateFilterMode === 'week') {
             matchDate = (rStart <= endOfWeek && rEnd >= startOfWeek);
           } else if (dateFilterMode === 'month') {
             matchDate = (rStart <= endOfMonth && rEnd >= startOfMonth);
+          } else if (dateFilterMode === 'last_month') {
+            matchDate = (rStart <= endOfLastMonth && rEnd >= startOfLastMonth);
+          } else if (dateFilterMode === 'last_6_months') {
+            matchDate = (rStart <= endOfLast6Months && rEnd >= startOfLast6Months);
+          } else if (dateFilterMode === 'this_year') {
+            matchDate = (rStart <= endOfThisYear && rEnd >= startOfThisYear);
+          } else if (dateFilterMode === 'last_year') {
+            matchDate = (rStart <= endOfLastYear && rEnd >= startOfLastYear);
           } else if (dateFilterMode === 'custom' && customDateVal) {
-            const cDate = new Date(customDateVal + 'T00:00:00');
-            cDate.setHours(0,0,0,0);
-            matchDate = (cDate >= rStart && cDate <= rEnd);
+            const cStart = new Date(customDateVal + 'T00:00:00');
+            const cEnd = new Date(customDateVal + 'T23:59:59.999');
+            matchDate = (rStart <= cEnd && rEnd >= cStart);
           }
         }
 
         return matchStatus && matchSearch && matchDate;
       });
 
+      currentFilteredRentals = filtered;
       document.getElementById('filtered-count-badge').innerText = filtered.length;
       renderTable(filtered);
     }
@@ -1845,9 +1993,39 @@
         const amountFmt = r.totalAmount ? '₱' + Number(r.totalAmount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
         const code = r.rentalCode || `RN-${String(r.rentalId).padStart(6, '0')}`;
         const custInitial = (r.customerName || 'U').charAt(0).toUpperCase();
-        const avatarHtml = (r.customerAvatar && r.customerAvatar.trim().length > 5)
-          ? `<img src="${r.customerAvatar}" alt="${r.customerName || 'Customer'}" class="w-8 h-8 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700 shadow-sm" onerror="this.outerHTML='<div class=\\\'w-8 h-8 rounded-full bg-brand/15 text-brand font-bold flex items-center justify-center text-xs shrink-0\\\'>${custInitial}</div>'" />`
+        
+        let custAvatarSrc = r.customerAvatar;
+        if (custAvatarSrc && typeof custAvatarSrc === 'string' && custAvatarSrc.trim().length > 5) {
+          custAvatarSrc = custAvatarSrc.trim();
+          if (!custAvatarSrc.startsWith('http') && !custAvatarSrc.startsWith('data:') && !custAvatarSrc.startsWith('/')) {
+            custAvatarSrc = 'data:image/png;base64,' + custAvatarSrc;
+          }
+        } else {
+          custAvatarSrc = null;
+        }
+
+        const avatarHtml = custAvatarSrc
+          ? `<img src="${custAvatarSrc}" alt="${r.customerName || 'Customer'}" class="w-8 h-8 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700 shadow-sm" onerror="this.outerHTML='<div class=\\\'w-8 h-8 rounded-full bg-brand/15 text-brand font-bold flex items-center justify-center text-xs shrink-0\\\'>${custInitial}</div>'" />`
           : `<div class="w-8 h-8 rounded-full bg-brand/15 text-brand font-bold flex items-center justify-center text-xs shrink-0">${custInitial}</div>`;
+
+        // Driver badge in vehicle column
+        let driverBadgeHtml = '';
+        if (r.driverName && r.driverName.trim() !== '' && r.driverName.trim() !== '—') {
+          const drvInitial = r.driverName.charAt(0).toUpperCase();
+          let drvAvatarSrc = r.driverAvatar;
+          if (drvAvatarSrc && typeof drvAvatarSrc === 'string' && drvAvatarSrc.trim().length > 5) {
+            drvAvatarSrc = drvAvatarSrc.trim();
+            if (!drvAvatarSrc.startsWith('http') && !drvAvatarSrc.startsWith('data:') && !drvAvatarSrc.startsWith('/')) {
+              drvAvatarSrc = 'data:image/png;base64,' + drvAvatarSrc;
+            }
+          } else {
+            drvAvatarSrc = null;
+          }
+          const drvImg = drvAvatarSrc
+            ? `<img src="${drvAvatarSrc}" class="w-4 h-4 rounded-full object-cover shrink-0 border border-emerald-500/40" alt="${r.driverName}" />`
+            : `<div class="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center text-[8px] shrink-0">${drvInitial}</div>`;
+          driverBadgeHtml = `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[9px] font-semibold" title="Assigned Driver: ${r.driverName}">${drvImg}<span class="truncate max-w-[75px]">${r.driverName}</span></span>`;
+        }
 
         // Payment status badge
         const paySt = (r.paymentStatus || 'unpaid').toLowerCase();
@@ -1874,7 +2052,10 @@
             </td>
             <td class="py-3.5 px-4">
               <div class="font-bold text-slate-900 dark:text-white">${r.vehicleName || '—'}</div>
-              <div class="text-[10px] text-brand font-mono font-bold tracking-wider">${r.vehiclePlateNo || '—'}</div>
+              <div class="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                <span class="text-[10px] text-brand font-mono font-bold tracking-wider">${r.vehiclePlateNo || '—'}</span>
+                ${driverBadgeHtml}
+              </div>
             </td>
             <td class="py-3.5 px-4 text-slate-600 dark:text-slate-300">${startFmt}</td>
             <td class="py-3.5 px-4 text-slate-600 dark:text-slate-300">${endFmt}</td>
@@ -2050,7 +2231,72 @@
       document.getElementById('doc-vat-amount').innerText = '₱' + vat.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       document.getElementById('doc-total-amount').innerText = '₱' + total.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-      // Technical Details tab
+      // Technical Details tab - Customer & Driver Profile
+      const custBox = document.getElementById('dtl-cust-avatar-box');
+      const custInitial = (rental.customerName || 'U').charAt(0).toUpperCase();
+      let custAvatarSrc = rental.customerAvatar;
+      if (custAvatarSrc && typeof custAvatarSrc === 'string' && custAvatarSrc.trim().length > 5) {
+        custAvatarSrc = custAvatarSrc.trim();
+        if (!custAvatarSrc.startsWith('http') && !custAvatarSrc.startsWith('data:') && !custAvatarSrc.startsWith('/')) {
+          custAvatarSrc = 'data:image/png;base64,' + custAvatarSrc;
+        }
+      } else {
+        custAvatarSrc = null;
+      }
+      if (custBox) {
+        custBox.innerHTML = custAvatarSrc 
+          ? `<img src="${custAvatarSrc}" class="w-full h-full object-cover" alt="Customer Photo" onerror="this.outerHTML='<span>${custInitial}</span>'" />`
+          : `<span>${custInitial}</span>`;
+      }
+      const dtlCustName = document.getElementById('dtl-cust-name');
+      if (dtlCustName) dtlCustName.innerText = rental.customerName || '—';
+      const dtlCustPhone = document.getElementById('dtl-cust-phone');
+      if (dtlCustPhone) dtlCustPhone.innerText = rental.customerPhone || '—';
+      const dtlCustEmail = document.getElementById('dtl-cust-email');
+      if (dtlCustEmail) dtlCustEmail.innerText = rental.customerEmail || '—';
+
+      // Driver Profile in Details Tab
+      const drvBox = document.getElementById('dtl-driver-avatar-box');
+      const drvTag = document.getElementById('dtl-driver-status-tag');
+      const dtlDrvName = document.getElementById('dtl-driver-name');
+      const dtlDrvPhone = document.getElementById('dtl-driver-phone');
+      const dtlDrvType = document.getElementById('dtl-driver-type');
+
+      if (rental.driverName && rental.driverName.trim() !== '' && rental.driverName.trim() !== '—') {
+        const drvInitial = rental.driverName.charAt(0).toUpperCase();
+        let drvAvatarSrc = rental.driverAvatar;
+        if (drvAvatarSrc && typeof drvAvatarSrc === 'string' && drvAvatarSrc.trim().length > 5) {
+          drvAvatarSrc = drvAvatarSrc.trim();
+          if (!drvAvatarSrc.startsWith('http') && !drvAvatarSrc.startsWith('data:') && !drvAvatarSrc.startsWith('/')) {
+            drvAvatarSrc = 'data:image/png;base64,' + drvAvatarSrc;
+          }
+        } else {
+          drvAvatarSrc = null;
+        }
+        if (drvBox) {
+          drvBox.innerHTML = drvAvatarSrc
+            ? `<img src="${drvAvatarSrc}" class="w-full h-full object-cover" alt="Driver Photo" onerror="this.outerHTML='<span>${drvInitial}</span>'" />`
+            : `<span>${drvInitial}</span>`;
+        }
+        if (dtlDrvName) dtlDrvName.innerText = rental.driverName;
+        if (dtlDrvPhone) dtlDrvPhone.innerText = rental.driverPhone || '—';
+        if (dtlDrvType) dtlDrvType.innerText = 'Assigned Company Chauffeur';
+        if (drvTag) {
+          drvTag.innerText = 'CHAUFFEUR';
+          drvTag.className = 'text-[9px] font-semibold text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded';
+        }
+      } else {
+        if (drvBox) drvBox.innerHTML = '<i data-lucide="user-x" class="w-5 h-5 text-slate-400"></i>';
+        if (dtlDrvName) dtlDrvName.innerText = 'Self-Drive (No Driver)';
+        if (dtlDrvPhone) dtlDrvPhone.innerText = 'Customer will drive unit';
+        if (dtlDrvType) dtlDrvType.innerText = 'Self-Drive Rental Package';
+        if (drvTag) {
+          drvTag.innerText = 'SELF-DRIVE';
+          drvTag.className = 'text-[9px] font-semibold text-slate-400 bg-slate-500/10 px-1.5 py-0.5 rounded';
+        }
+      }
+
+      // Booking Details
       document.getElementById('dtl-id').innerText = rental.rentalId;
       document.getElementById('dtl-created').innerText = rental.createdAt ? new Date(rental.createdAt).toLocaleString() : '—';
       document.getElementById('dtl-status').innerText = (rental.status || 'pending').toUpperCase();
@@ -2459,6 +2705,12 @@
 
       document.getElementById('return-modal').classList.remove('hidden');
       document.getElementById('return-modal').classList.add('flex');
+      setTimeout(() => {
+        const rNotes = document.getElementById('return-notes');
+        if (rNotes) autoExpandTextarea(rNotes);
+        const dDesc = document.getElementById('return-damage-desc');
+        if (dDesc) autoExpandTextarea(dDesc);
+      }, 20);
       lucide.createIcons();
     }
 
@@ -2591,6 +2843,10 @@
 
       document.getElementById('email-modal').classList.remove('hidden');
       document.getElementById('email-modal').classList.add('flex');
+      setTimeout(() => {
+        const em = document.getElementById('em-message');
+        if (em) autoExpandTextarea(em);
+      }, 20);
     }
     function openEmailModalFromDrawer() {
       if (activeRental) openEmailModal(activeRental);
@@ -2675,12 +2931,56 @@
       const endFmt = e ? e.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
       const diffDays = (s && e) ? Math.max(1, Math.ceil((e - s) / (1000 * 60 * 60 * 24))) : 1;
 
-      // Populate Step 1 Form
+      // Populate Step 1 Form & Avatars
       document.getElementById('cfm-code').innerText = code;
       document.getElementById('cfm-total').innerText = totalFmt;
       document.getElementById('cfm-cust-name').innerText = rental.customerName || '—';
       document.getElementById('cfm-cust-phone').innerText = rental.customerPhone || 'No contact';
-      document.getElementById('cfm-veh-name').innerText = rental.vehicleName || '—';
+
+      const cfmCustBox = document.getElementById('cfm-cust-avatar-box');
+      const cfmCustInitial = (rental.customerName || 'U').charAt(0).toUpperCase();
+      let cfmCustSrc = rental.customerAvatar;
+      if (cfmCustSrc && typeof cfmCustSrc === 'string' && cfmCustSrc.trim().length > 5) {
+        cfmCustSrc = cfmCustSrc.trim();
+        if (!cfmCustSrc.startsWith('http') && !cfmCustSrc.startsWith('data:') && !cfmCustSrc.startsWith('/')) {
+          cfmCustSrc = 'data:image/png;base64,' + cfmCustSrc;
+        }
+      } else {
+        cfmCustSrc = null;
+      }
+      if (cfmCustBox) {
+        cfmCustBox.innerHTML = cfmCustSrc 
+          ? `<img src="${cfmCustSrc}" class="w-full h-full object-cover" alt="Customer" onerror="this.outerHTML='<span>${cfmCustInitial}</span>'" />`
+          : `<span>${cfmCustInitial}</span>`;
+      }
+
+      const cfmDrvBox = document.getElementById('cfm-driver-avatar-box');
+      const cfmDrvName = document.getElementById('cfm-driver-name');
+      const cfmDrvHdr = document.getElementById('cfm-driver-header');
+      if (rental.driverName && rental.driverName.trim() !== '' && rental.driverName.trim() !== '—') {
+        const cfmDrvInitial = rental.driverName.charAt(0).toUpperCase();
+        let cfmDrvSrc = rental.driverAvatar;
+        if (cfmDrvSrc && typeof cfmDrvSrc === 'string' && cfmDrvSrc.trim().length > 5) {
+          cfmDrvSrc = cfmDrvSrc.trim();
+          if (!cfmDrvSrc.startsWith('http') && !cfmDrvSrc.startsWith('data:') && !cfmDrvSrc.startsWith('/')) {
+            cfmDrvSrc = 'data:image/png;base64,' + cfmDrvSrc;
+          }
+        } else {
+          cfmDrvSrc = null;
+        }
+        if (cfmDrvBox) {
+          cfmDrvBox.innerHTML = cfmDrvSrc 
+            ? `<img src="${cfmDrvSrc}" class="w-full h-full object-cover" alt="Driver" onerror="this.outerHTML='<span>${cfmDrvInitial}</span>'" />`
+            : `<span>${cfmDrvInitial}</span>`;
+        }
+        if (cfmDrvName) cfmDrvName.innerText = rental.driverName;
+        if (cfmDrvHdr) cfmDrvHdr.innerText = 'Assigned Driver';
+      } else {
+        if (cfmDrvBox) cfmDrvBox.innerHTML = '<i data-lucide="car" class="w-4 h-4 text-slate-400"></i>';
+        if (cfmDrvName) cfmDrvName.innerText = rental.vehicleName || 'Self-Drive';
+        if (cfmDrvHdr) cfmDrvHdr.innerText = 'Vehicle Unit';
+      }
+
       document.getElementById('cfm-veh-plate').innerText = rental.vehiclePlateNo || '—';
       document.getElementById('cfm-dates').innerText = `${startFmt} – ${endFmt}`;
       document.getElementById('cfm-duration').innerText = `${diffDays} Day${diffDays > 1 ? 's' : ''}`;
@@ -2696,6 +2996,10 @@
 
       document.getElementById('conforme-modal').classList.remove('hidden');
       document.getElementById('conforme-modal').classList.add('flex');
+      setTimeout(() => {
+        const cfm = document.getElementById('cfm-message');
+        if (cfm) autoExpandTextarea(cfm);
+      }, 20);
       lucide.createIcons();
     }
 
@@ -2828,6 +3132,10 @@
 
       document.getElementById('decline-modal').classList.remove('hidden');
       document.getElementById('decline-modal').classList.add('flex');
+      setTimeout(() => {
+        const dn = document.getElementById('dec-notes');
+        if (dn) autoExpandTextarea(dn);
+      }, 20);
     }
 
     function openDeclineModalById(id) {
@@ -2992,6 +3300,498 @@
       } finally {
         btn.disabled = false;
         btn.innerText = 'Submit Booking';
+      }
+    }
+
+    // ── Universal Styled Native .XLSX Export Engine for Rentals (Zero Warnings + Full Colors) ──
+    async function exportRentalsExcel() {
+      try {
+        const dataToExport = (currentFilteredRentals && currentFilteredRentals.length > 0) ? currentFilteredRentals : (allRentals || []);
+        if (!dataToExport || dataToExport.length === 0) {
+          showToast('No booking records available to export.', 'warning');
+          return;
+        }
+
+        const exportDate = new Date().toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        const totalRev = dataToExport.reduce((acc, r) => acc + (Number(r.totalAmount) || 0), 0);
+        
+        // Accurate Paid & Balance calculation based on paymentStatus
+        const totalPaid = dataToExport.reduce((acc, r) => {
+          const tot = Number(r.totalAmount) || 0;
+          const pSt = (r.paymentStatus || 'unpaid').toLowerCase();
+          if (pSt === 'paid' || pSt === 'completed' || pSt === 'verified') return acc + tot;
+          if (pSt === 'partial' || pSt === 'partially_paid') return acc + (Number(r.paidAmount) || tot * 0.5);
+          return acc + (Number(r.paidAmount) || 0);
+        }, 0);
+        const totalBal = Math.max(0, totalRev - totalPaid);
+
+        // Active / Dispatched Bookings count
+        const activeCount = dataToExport.filter(r => {
+          const st = (r.status || '').toLowerCase();
+          return st === 'ongoing' || st === 'confirmed' || st === 'active' || st === 'in-use' || st === 'approved' || st === 'overdue';
+        }).length;
+
+        if (typeof ExcelJS !== 'undefined') {
+          const workbook = new ExcelJS.Workbook();
+          workbook.creator = 'Drive & Go Rental System';
+          workbook.created = new Date();
+          
+          const worksheet = workbook.addWorksheet('Rentals Master Ledger', {
+            views: [{ showGridLines: true }]
+          });
+
+          worksheet.columns = [
+            { key: 'id', width: 10 },
+            { key: 'code', width: 16 },
+            { key: 'customer', width: 26 },
+            { key: 'email', width: 32 },
+            { key: 'phone', width: 18 },
+            { key: 'vehicle', width: 24 },
+            { key: 'plate', width: 15 },
+            { key: 'driver', width: 22 },
+            { key: 'start', width: 15 },
+            { key: 'end', width: 15 },
+            { key: 'total', width: 18 },
+            { key: 'paid', width: 18 },
+            { key: 'balance', width: 18 },
+            { key: 'status', width: 16 },
+            { key: 'payStatus', width: 16 }
+          ];
+
+          // Row 1: Header Banner Title
+          const r1 = worksheet.addRow(['DRIVE & GO RENTAL SYSTEM — BOOKINGS & RENTAL AGREEMENTS MASTER LEDGER']);
+          worksheet.mergeCells('A1:O1');
+          r1.height = 32;
+          const cA1 = worksheet.getCell('A1');
+          cA1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+          cA1.font = { name: 'Segoe UI', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
+          cA1.alignment = { vertical: 'middle', horizontal: 'center' };
+
+          // Row 2: Subtitle
+          const r2 = worksheet.addRow(['Official Bookings & Rental Agreements Ledger Export • 24/7 Operations Hotline: +63 935 966 7178 • support@driveandgo.com']);
+          worksheet.mergeCells('A2:O2');
+          r2.height = 20;
+          const cA2 = worksheet.getCell('A2');
+          cA2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+          cA2.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FFFF6B00' } };
+          cA2.alignment = { vertical: 'middle', horizontal: 'center' };
+
+          // Row 3: Metadata
+          const r3 = worksheet.addRow([`Report Exported: ${exportDate} • Headquarters: CSJDM | Norzagaray, Bulacan • Admin Authorized: Raymart Quirante`]);
+          worksheet.mergeCells('A3:O3');
+          r3.height = 18;
+          const cA3 = worksheet.getCell('A3');
+          cA3.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+          cA3.font = { name: 'Segoe UI', size: 9, color: { argb: 'FF94A3B8' } };
+          cA3.alignment = { vertical: 'middle', horizontal: 'center' };
+
+          // Row 4: Spacer
+          const r4 = worksheet.addRow([]);
+          r4.height = 10;
+
+          // Rows 5 & 6: KPI Cards
+          const r5 = worksheet.addRow(['TOTAL BOOKINGS', '', '', 'ACTIVE / ONGOING', '', '', 'TOTAL COLLECTED REVENUE (PHP)', '', '', '', 'TOTAL BOOKING VALUE (PHP)', '', '', '', '']);
+          worksheet.mergeCells('A5:C5');
+          worksheet.mergeCells('D5:F5');
+          worksheet.mergeCells('G5:J5');
+          worksheet.mergeCells('K5:O5');
+          r5.height = 18;
+
+          ['A5', 'D5', 'G5', 'K5'].forEach(ref => {
+            const c = worksheet.getCell(ref);
+            c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+            c.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: 'FF64748B' } };
+            c.alignment = { vertical: 'middle', horizontal: 'center' };
+            c.border = { top: { style: 'thin', color: { argb: 'FFCBD5E1' } }, left: { style: 'thin', color: { argb: 'FFCBD5E1' } }, right: { style: 'thin', color: { argb: 'FFCBD5E1' } } };
+          });
+
+          const r6 = worksheet.addRow([`${dataToExport.length} Records`, '', '', `${activeCount} Active`, '', '', totalPaid, '', '', '', totalRev, '', '', '', '']);
+          worksheet.mergeCells('A6:C6');
+          worksheet.mergeCells('D6:F6');
+          worksheet.mergeCells('G6:J6');
+          worksheet.mergeCells('K6:O6');
+          r6.height = 24;
+
+          const cKpi1 = worksheet.getCell('A6');
+          cKpi1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+          cKpi1.font = { name: 'Segoe UI', size: 12, bold: true, color: { argb: 'FF0F172A' } };
+          cKpi1.alignment = { vertical: 'middle', horizontal: 'center' };
+          cKpi1.border = { bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } }, left: { style: 'thin', color: { argb: 'FFCBD5E1' } }, right: { style: 'thin', color: { argb: 'FFCBD5E1' } } };
+
+          const cKpi2 = worksheet.getCell('D6');
+          cKpi2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+          cKpi2.font = { name: 'Segoe UI', size: 12, bold: true, color: { argb: 'FF16A34A' } };
+          cKpi2.alignment = { vertical: 'middle', horizontal: 'center' };
+          cKpi2.border = { bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } }, left: { style: 'thin', color: { argb: 'FFCBD5E1' } }, right: { style: 'thin', color: { argb: 'FFCBD5E1' } } };
+
+          const cKpi3 = worksheet.getCell('G6');
+          cKpi3.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+          cKpi3.font = { name: 'Segoe UI', size: 12, bold: true, color: { argb: 'FF16A34A' } };
+          cKpi3.numFmt = '"PHP "#,##0.00';
+          cKpi3.alignment = { vertical: 'middle', horizontal: 'center' };
+          cKpi3.border = { bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } }, left: { style: 'thin', color: { argb: 'FFCBD5E1' } }, right: { style: 'thin', color: { argb: 'FFCBD5E1' } } };
+
+          const cKpi4 = worksheet.getCell('K6');
+          cKpi4.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+          cKpi4.font = { name: 'Segoe UI', size: 12, bold: true, color: { argb: 'FFFF6B00' } };
+          cKpi4.numFmt = '"PHP "#,##0.00';
+          cKpi4.alignment = { vertical: 'middle', horizontal: 'center' };
+          cKpi4.border = { bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } }, left: { style: 'thin', color: { argb: 'FFCBD5E1' } }, right: { style: 'thin', color: { argb: 'FFCBD5E1' } } };
+
+          // Row 7: Spacer
+          const r7 = worksheet.addRow([]);
+          r7.height = 12;
+
+          // Row 8: Dark Navy Table Headers
+          const hdrRow = worksheet.addRow([
+            'ID', 'Rental Code', 'Customer Name', 'Customer Email', 'Phone',
+            'Vehicle Model', 'Plate No.', 'Assigned Driver', 'Start Date', 'End Date',
+            'Total (PHP)', 'Paid (PHP)', 'Balance (PHP)', 'Booking Status', 'Payment Status'
+          ]);
+          hdrRow.height = 24;
+          hdrRow.eachCell(cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+            cell.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FF1E293B' } },
+              bottom: { style: 'thin', color: { argb: 'FF1E293B' } },
+              left: { style: 'thin', color: { argb: 'FF1E293B' } },
+              right: { style: 'thin', color: { argb: 'FF1E293B' } }
+            };
+          });
+
+          // Data Rows
+          dataToExport.forEach((r, idx) => {
+            const isEven = idx % 2 === 0;
+            const code = r.rentalCode || `RN-${String(r.rentalId).padStart(6, '0')}`;
+            const phone = String(r.customerPhone || '09359667178');
+            const sDate = r.startDate ? new Date(r.startDate).toISOString().slice(0, 10) : '—';
+            const eDate = r.endDate ? new Date(r.endDate).toISOString().slice(0, 10) : '—';
+            const tot = Number(r.totalAmount) || 0;
+            
+            const paySt = (r.paymentStatus || 'unpaid').toLowerCase();
+            let paid = 0;
+            if (paySt === 'paid' || paySt === 'completed' || paySt === 'verified') {
+              paid = tot;
+            } else if (paySt === 'partial' || paySt === 'partially_paid') {
+              paid = Number(r.paidAmount) || (tot * 0.5);
+            } else if (paySt === 'refunded') {
+              paid = 0;
+            } else {
+              paid = Number(r.paidAmount) || 0;
+            }
+            const bal = Math.max(0, tot - paid);
+
+            const dRow = worksheet.addRow([
+              r.rentalId,
+              code,
+              r.customerName || '—',
+              r.customerEmail || '—',
+              phone,
+              r.vehicleName || '—',
+              r.vehiclePlateNo || '—',
+              r.driverName || 'Self-Drive',
+              sDate,
+              eDate,
+              tot,
+              paid,
+              bal,
+              (r.status || 'pending').toUpperCase(),
+              (r.paymentStatus || 'unpaid').toUpperCase()
+            ]);
+            dRow.height = 20;
+
+            const bgArgb = isEven ? 'FFF8FAFC' : 'FFFFFFFF';
+            dRow.eachCell((cell, colNum) => {
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgArgb } };
+              cell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF0F172A' } };
+              cell.border = {
+                top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+              };
+
+              if (colNum === 1 || colNum === 2 || colNum === 5 || colNum === 7 || colNum === 9 || colNum === 10) {
+                cell.alignment = { vertical: 'middle', horizontal: 'center' };
+              } else if (colNum >= 11 && colNum <= 13) {
+                cell.alignment = { vertical: 'middle', horizontal: 'right' };
+                cell.numFmt = '#,##0.00';
+                if (colNum === 12) cell.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FF16A34A' } };
+                if (colNum === 13) cell.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: bal > 0 ? 'FFDC2626' : 'FF64748B' } };
+              } else if (colNum === 14) {
+                cell.alignment = { vertical: 'middle', horizontal: 'center' };
+                const st = (r.status || '').toLowerCase();
+                if (st === 'confirmed') cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
+                else if (st === 'ongoing') cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
+                else if (st === 'completed') cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+                else if (st === 'overdue') cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+                else cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
+                cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: 'FF0F172A' } };
+              } else if (colNum === 15) {
+                cell.alignment = { vertical: 'middle', horizontal: 'center' };
+                cell.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: paySt === 'paid' ? 'FF16A34A' : 'FFD97706' } };
+              } else {
+                cell.alignment = { vertical: 'middle', horizontal: 'left' };
+              }
+            });
+          });
+
+          // Summary Aggregate Row
+          const totRow = worksheet.addRow([
+            'TOTAL LEDGER AGGREGATE:', '', '', '', '', '', '', '', '', '',
+            totalRev,
+            totalPaid,
+            totalBal,
+            '', ''
+          ]);
+          worksheet.mergeCells(`A${totRow.number}:J${totRow.number}`);
+          totRow.height = 24;
+
+          totRow.eachCell((cell, colNum) => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+            cell.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FF0F172A' } };
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FF0F172A' } },
+              bottom: { style: 'double', color: { argb: 'FF0F172A' } }
+            };
+            if (colNum === 1) cell.alignment = { vertical: 'middle', horizontal: 'right' };
+            if (colNum >= 11 && colNum <= 13) {
+              cell.alignment = { vertical: 'middle', horizontal: 'right' };
+              cell.numFmt = '#,##0.00';
+              if (colNum === 11) cell.font = { name: 'Segoe UI', size: 11, bold: true, color: { argb: 'FFFF6B00' } };
+              if (colNum === 12) cell.font = { name: 'Segoe UI', size: 11, bold: true, color: { argb: 'FF16A34A' } };
+              if (colNum === 13) cell.font = { name: 'Segoe UI', size: 11, bold: true, color: { argb: 'FFDC2626' } };
+            }
+          });
+
+          const buffer = await workbook.xlsx.writeBuffer();
+          const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `DriveAndGo_Rentals_Ledger_${new Date().toISOString().slice(0, 10)}.xlsx`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          showToast('Rentals ledger exported with full styles (.xlsx) with ZERO Excel warnings!', 'success', 'Export Complete');
+          return;
+        }
+
+        let xls = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+  <meta charset="utf-8" />
+  <!--[if gte mso 9]>
+  <xml>
+    <x:ExcelWorkbook>
+      <x:ExcelWorksheets>
+        <x:ExcelWorksheet>
+          <x:Name>Rentals Master Ledger</x:Name>
+          <x:WorksheetOptions>
+            <x:DisplayGridlines/>
+            <x:Print>
+              <x:Orientation>Landscape</x:Orientation>
+            </x:Print>
+          </x:WorksheetOptions>
+        </x:ExcelWorksheet>
+      </x:ExcelWorksheets>
+    </x:ExcelWorkbook>
+  </xml>
+  <![endif]-->
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 15px; color: #0F172A; }
+    table { border-collapse: collapse; width: 100%; }
+    .company-header { background: #0F172A; color: #FFFFFF; padding: 16px 20px; font-size: 18px; font-weight: bold; }
+    .company-sub { font-size: 11px; color: #FF6B00; font-weight: bold; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 3px; }
+    .meta-line { font-size: 11px; color: #94A3B8; margin-top: 2px; }
+    .kpi-table { margin: 15px 0 20px 0; }
+    .kpi-card { background: #F8FAFC; border: 1px solid #CBD5E1; padding: 10px 16px; text-align: center; }
+    .kpi-label { font-size: 10px; color: #64748B; font-weight: bold; text-transform: uppercase; }
+    .kpi-val { font-size: 16px; font-weight: bold; color: #0F172A; margin-top: 4px; }
+    .kpi-val-highlight { font-size: 16px; font-weight: bold; color: #FF6B00; margin-top: 4px; }
+    
+    th.hdr { background: #0F172A; color: #FFFFFF; font-size: 11px; font-weight: bold; text-transform: uppercase; padding: 10px 8px; border: 1px solid #1E293B; text-align: left; }
+    th.hdr-center { background: #0F172A; color: #FFFFFF; font-size: 11px; font-weight: bold; text-transform: uppercase; padding: 10px 8px; border: 1px solid #1E293B; text-align: center; }
+    th.hdr-right { background: #0F172A; color: #FFFFFF; font-size: 11px; font-weight: bold; text-transform: uppercase; padding: 10px 8px; border: 1px solid #1E293B; text-align: right; }
+    
+    td.cell-text { mso-number-format:"\\@"; padding: 8px 10px; border: 1px solid #E2E8F0; font-size: 11px; vertical-align: middle; }
+    td.cell-code { mso-number-format:"\\@"; padding: 8px 10px; border: 1px solid #E2E8F0; font-size: 11px; font-family: Consolas, monospace; font-weight: bold; text-align: center; vertical-align: middle; }
+    td.cell-phone { mso-number-format:"\\@"; padding: 8px 10px; border: 1px solid #E2E8F0; font-size: 11px; font-family: Consolas, monospace; text-align: center; vertical-align: middle; }
+    td.cell-date { mso-number-format:"yyyy-mm-dd"; padding: 8px 10px; border: 1px solid #E2E8F0; font-size: 11px; text-align: center; vertical-align: middle; }
+    td.cell-center { padding: 8px 10px; border: 1px solid #E2E8F0; font-size: 11px; text-align: center; vertical-align: middle; }
+    td.cell-curr { mso-number-format:"\\#\\,\\#\\#0\\.00"; padding: 8px 10px; border: 1px solid #E2E8F0; font-size: 11px; text-align: right; font-weight: bold; vertical-align: middle; color: #0F172A; }
+    
+    tr.even { background-color: #F8FAFC; }
+    tr.odd { background-color: #FFFFFF; }
+    
+    .status-confirmed { background-color: #DCFCE7; color: #166534; font-weight: bold; padding: 3px 8px; border-radius: 4px; font-size: 10px; }
+    .status-ongoing { background-color: #DBEAFE; color: #1E40AF; font-weight: bold; padding: 3px 8px; border-radius: 4px; font-size: 10px; }
+    .status-completed { background-color: #F1F5F9; color: #475569; font-weight: bold; padding: 3px 8px; border-radius: 4px; font-size: 10px; }
+    .status-pending { background-color: #FEF3C7; color: #92400E; font-weight: bold; padding: 3px 8px; border-radius: 4px; font-size: 10px; }
+    
+    tr.total-row td { background: #E2E8F0; font-weight: bold; border-top: 2px solid #0F172A; border-bottom: 3px double #0F172A; padding: 10px; font-size: 12px; }
+    .footer-note { font-size: 10px; color: #64748B; margin-top: 20px; text-align: center; border-top: 1px solid #E2E8F0; padding-top: 8px; }
+  </style>
+</head>
+<body>
+
+  <!-- Brand Banner with Official System Logo -->
+  <table style="margin-bottom: 12px; background: #0F172A;">
+    <tr>
+      <td style="width: 80pt; background: #0F172A; text-align: center; vertical-align: middle; padding: 12px; border: none;">
+        <img src="https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png" width="65" height="65" alt="Drive &amp; Go Logo" style="display: block; width: 65px; height: auto; margin: auto;" />
+      </td>
+      <td class="company-header" colspan="14" style="border: none; padding-left: 0;">
+        <div style="font-size: 20px; color: #FFFFFF; font-weight: 800; letter-spacing: 0.5px;">DRIVE &amp; GO RENTAL SYSTEM</div>
+        <div class="company-sub">Official Bookings &amp; Rental Agreements Ledger Export</div>
+        <div class="meta-line">Headquarters: CSJDM | Norzagaray, Bulacan, Philippines &bull; 24/7 Operations Hotline: +63 935 966 7178</div>
+        <div class="meta-line">Report Exported: ${exportDate} &bull; Admin Authorized: Raymart Quirante</div>
+      </td>
+    </tr>
+  </table>
+
+  <!-- KPI Summary Matrix -->
+  <table class="kpi-table" style="margin-bottom: 16px;">
+    <tr>
+      <td class="kpi-card" style="width: 25%;">
+        <div class="kpi-label">Total Bookings</div>
+        <div class="kpi-val">${dataToExport.length} Records</div>
+      </td>
+      <td class="kpi-card" style="width: 25%;">
+        <div class="kpi-label">Active / Ongoing / Dispatched</div>
+        <div class="kpi-val" style="color: #16A34A;">${activeCount} Active</div>
+      </td>
+      <td class="kpi-card" style="width: 25%;">
+        <div class="kpi-label">Total Collected Revenue</div>
+        <div class="kpi-val" style="color: #16A34A;">PHP ${totalPaid.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+      </td>
+      <td class="kpi-card" style="width: 25%;">
+        <div class="kpi-label">Total Booking Value</div>
+        <div class="kpi-val-highlight">PHP ${totalRev.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+      </td>
+    </tr>
+  </table>
+
+  <!-- Data Table with Auto-Expanded Columns -->
+  <table>
+    <colgroup>
+      <col style="width: 50pt;" />
+      <col style="width: 95pt;" />
+      <col style="width: 140pt;" />
+      <col style="width: 160pt;" />
+      <col style="width: 110pt;" />
+      <col style="width: 130pt;" />
+      <col style="width: 90pt;" />
+      <col style="width: 120pt;" />
+      <col style="width: 80pt;" />
+      <col style="width: 80pt;" />
+      <col style="width: 95pt;" />
+      <col style="width: 95pt;" />
+      <col style="width: 95pt;" />
+      <col style="width: 85pt;" />
+      <col style="width: 85pt;" />
+    </colgroup>
+    <thead>
+      <tr>
+        <th class="hdr-center">ID</th>
+        <th class="hdr-center">Rental Code</th>
+        <th class="hdr">Customer Name</th>
+        <th class="hdr">Customer Email</th>
+        <th class="hdr-center">Phone</th>
+        <th class="hdr">Vehicle Model</th>
+        <th class="hdr-center">Plate No.</th>
+        <th class="hdr">Assigned Driver</th>
+        <th class="hdr-center">Start Date</th>
+        <th class="hdr-center">End Date</th>
+        <th class="hdr-right">Total (PHP)</th>
+        <th class="hdr-right">Paid (PHP)</th>
+        <th class="hdr-right">Balance (PHP)</th>
+        <th class="hdr-center">Booking Status</th>
+        <th class="hdr-center">Payment Status</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
+        dataToExport.forEach((r, idx) => {
+          const isEven = idx % 2 === 0;
+          const code = r.rentalCode || `RN-${String(r.rentalId).padStart(6, '0')}`;
+          const phone = r.customerPhone || '0935-966-7178';
+          const st = (r.status || 'pending').toLowerCase();
+          const stClass = st === 'confirmed' ? 'status-confirmed' : (st === 'ongoing' ? 'status-ongoing' : (st === 'completed' ? 'status-completed' : 'status-pending'));
+          const sDate = r.startDate ? new Date(r.startDate).toISOString().slice(0, 10) : '—';
+          const eDate = r.endDate ? new Date(r.endDate).toISOString().slice(0, 10) : '—';
+          const tot = Number(r.totalAmount) || 0;
+          
+          // Compute exact paid amount based on paymentStatus
+          const paySt = (r.paymentStatus || 'unpaid').toLowerCase();
+          let paid = 0;
+          if (paySt === 'paid' || paySt === 'completed' || paySt === 'verified') {
+            paid = tot;
+          } else if (paySt === 'partial' || paySt === 'partially_paid') {
+            paid = Number(r.paidAmount) || (tot * 0.5);
+          } else if (paySt === 'refunded') {
+            paid = 0;
+          } else {
+            paid = Number(r.paidAmount) || 0;
+          }
+          const bal = Math.max(0, tot - paid);
+
+          xls += `
+        <tr class="${isEven ? 'even' : 'odd'}">
+          <td class="cell-center" style="font-weight: bold;">${r.rentalId}</td>
+          <td class="cell-code">${code}</td>
+          <td class="cell-text" style="font-weight: 600;">${escHtml(r.customerName || '—')}</td>
+          <td class="cell-text">${escHtml(r.customerEmail || '—')}</td>
+          <td class="cell-phone">${phone}</td>
+          <td class="cell-text">${escHtml(r.vehicleName || '—')}</td>
+          <td class="cell-code">${escHtml(r.vehiclePlateNo || '—')}</td>
+          <td class="cell-text">${escHtml(r.driverName || 'Self-Drive')}</td>
+          <td class="cell-date">${sDate}</td>
+          <td class="cell-date">${eDate}</td>
+          <td class="cell-curr">${tot.toFixed(2)}</td>
+          <td class="cell-curr" style="color: #16A34A;">${paid.toFixed(2)}</td>
+          <td class="cell-curr" style="color: ${bal > 0 ? '#DC2626' : '#64748B'};">${bal.toFixed(2)}</td>
+          <td class="cell-center"><span class="${stClass}">${(r.status || 'pending').toUpperCase()}</span></td>
+          <td class="cell-center" style="font-weight: bold; color: ${paySt === 'paid' ? '#16A34A' : '#D97706'};">${(r.paymentStatus || 'unpaid').toUpperCase()}</td>
+        </tr>`;
+        });
+
+        // Summary Row
+        xls += `
+    </tbody>
+    <tfoot>
+      <tr class="total-row">
+        <td colspan="10" style="text-align: right; text-transform: uppercase;">TOTAL LEDGER AGGREGATE:</td>
+        <td class="cell-curr" style="font-size: 12px; font-weight: bold; color: #FF6B00;">${totalRev.toFixed(2)}</td>
+        <td class="cell-curr" style="font-size: 12px; font-weight: bold; color: #16A34A;">${totalPaid.toFixed(2)}</td>
+        <td class="cell-curr" style="font-size: 12px; font-weight: bold; color: #DC2626;">${totalBal.toFixed(2)}</td>
+        <td colspan="2"></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="footer-note">
+    Drive &amp; Go Complete Vehicle Rental System &bull; Confidential Internal Report &bull; Generated from DriveAndGo Admin Portal
+  </div>
+
+</body>
+</html>`;
+
+        const blob = new Blob([xls], { type: 'application/vnd.ms-excel;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `DriveAndGo_Rentals_Ledger_${new Date().toISOString().slice(0, 10)}.xls`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Rentals ledger exported with full branding & styles successfully!', 'success', 'Export Complete');
+      } catch (err) {
+        console.error('Export Excel Error:', err);
+        showToast('Failed to export rentals to Excel: ' + err.message, 'error');
       }
     }
   </script>

@@ -36,7 +36,7 @@ namespace DriveAndGo_API.Services
             }
 
             var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
-            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".jfif" };
+            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".jfif", ".pdf" };
             if (!System.Linq.Enumerable.Contains(allowedExtensions, extension))
             {
                 throw new ArgumentException("Invalid file type.");

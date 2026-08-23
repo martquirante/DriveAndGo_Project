@@ -117,7 +117,7 @@ namespace DriveAndGo_Admin.Panels
                     if (_loadingPanel != null) _loadingPanel.Visible = false;
 
                     bool   dk           = ThemeManager.IsDarkMode;
-                    string networkBase  = ApiService.BaseUrl.TrimEnd('/');
+                    string networkBase  = ApiService.ResolveNetworkBaseUrl().TrimEnd('/');
                     string currentAdmin = !string.IsNullOrWhiteSpace(SessionManager.FullName)
                                          ? SessionManager.FullName
                                          : "Admin";
@@ -136,7 +136,7 @@ namespace DriveAndGo_Admin.Panels
 
                 if (File.Exists(destHtml))
                 {
-                    _webView.CoreWebView2.Navigate("https://appassets/DriversWeb.html");
+                    _webView.CoreWebView2.Navigate($"https://appassets/DriversWeb.html?v={DateTime.UtcNow.Ticks}");
                 }
                 else
                 {

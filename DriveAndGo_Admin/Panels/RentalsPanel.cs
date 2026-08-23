@@ -116,7 +116,7 @@ namespace DriveAndGo_Admin.Panels
                     _webReady = true;
                     if (_loadingPanel != null) _loadingPanel.Visible = false;
                     bool dk = ThemeManager.IsDarkMode;
-                    string networkBase = ApiService.BaseUrl.TrimEnd('/');
+                    string networkBase = ApiService.ResolveNetworkBaseUrl().TrimEnd('/');
                     string currentAdmin = !string.IsNullOrWhiteSpace(SessionManager.FullName) ? SessionManager.FullName : "Raymart Quirante";
                     await _webView.CoreWebView2.ExecuteScriptAsync($"window.API_BASE_URL = 'http://localhost:5233/api'; window.API_NETWORK_URL = '{networkBase}'; window.CURRENT_ADMIN_NAME = '{currentAdmin.Replace("'", "\\'")}'; localStorage.setItem('admin_name', '{currentAdmin.Replace("'", "\\'")}'); setTheme({(dk ? "true" : "false")}); if (window.fetchRentalsData) window.fetchRentalsData();");
                 };

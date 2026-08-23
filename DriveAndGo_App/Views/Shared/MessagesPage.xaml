@@ -39,9 +39,11 @@
                 Stroke="#E2E8F0"
                 StrokeShape="RoundRectangle 24">
             <VerticalStackLayout Spacing="10">
-                <Entry Placeholder="Type a message"
-                       Text="{Binding DraftMessage}"
-                       BackgroundColor="#F1F5F9" />
+                <Editor Placeholder="Type a message"
+                        Text="{Binding DraftMessage}"
+                        AutoSize="TextChanges"
+                        MaximumHeightRequest="120"
+                        BackgroundColor="#F1F5F9" />
                 <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
                     <Button Grid.Column="0"
                             Text="Attach"

@@ -38,6 +38,11 @@ namespace DriveAndGo_API.Hubs
             await Clients.All.SendAsync("ReceiveAccountsUpdate");
         }
 
+        public async Task BroadcastDriversUpdate()
+        {
+            await Clients.All.SendAsync("ReceiveDriversUpdate");
+        }
+
         /// <summary>
         /// Broadcasts a message delivery/seen status change to all connected clients.
         /// Clients filter by senderId to update only their own outgoing bubbles.

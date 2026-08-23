@@ -1105,4 +1105,215 @@ public class VehiclesController : ControllerBase
             LastWeatherTemp      = reader["last_weather_temp"] == DBNull.Value ? 28.5m : Convert.ToDecimal(reader["last_weather_temp"])
         };
     }
+
+    // ── GET /api/vehicles/verify/{plateOrId} ─────────────────────────────────
+    [HttpGet("verify/{plateOrId}")]
+    [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+    public IActionResult VerifyVehiclePublic(string plateOrId)
+    {
+        try
+        {
+            DriveAndGo_API.Models.VehicleDto? v = null;
+            if (int.TryParse(plateOrId, out var id) && id > 0)
+            {
+                v = ReadVehicles().FirstOrDefault(x => x.VehicleId == id);
+            }
+            if (v == null)
+            {
+                var cleanPlate = plateOrId.Replace("-", "").Replace(" ", "").ToLowerInvariant();
+                v = ReadVehicles().FirstOrDefault(x => 
+                    (x.PlateNo ?? "").Replace("-", "").Replace(" ", "").ToLowerInvariant() == cleanPlate);
+            }
+            return Content(GetVehicleVerificationHtml(v, plateOrId), "text/html");
+        }
+        catch
+        {
+            return Content(GetVehicleVerificationHtml(null, plateOrId), "text/html");
+        }
+    }
+
+    private static string GetVehicleVerificationHtml(DriveAndGo_API.Models.VehicleDto? v, string code)
+    {
+        string logoUrl = "https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png";
+        var nowStr = DateTime.UtcNow.AddHours(8).ToString("MMMM dd, yyyy • hh:mm tt", System.Globalization.CultureInfo.InvariantCulture);
+
+        if (v == null)
+        {
+            return $@"<!DOCTYPE html>
+            <html lang='en' class='dark'>
+            <head>
+              <meta charset='UTF-8'>
+              <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+              <title>Drive&amp;Go • Vehicle Handover Verification</title>
+              <link rel='icon' type='image/png' href='{logoUrl}'>
+              <script src='https://cdn.tailwindcss.com'></script>
+              <script>
+                tailwind.config = {{
+                  darkMode: 'class',
+                  theme: {{ extend: {{ colors: {{ brand: '#FF6B00', 'brand-dark': '#E85F00' }} }} }}
+                }};
+              </script>
+              <script>
+                if (localStorage.getItem('dg_theme') === 'light' || (!('dg_theme' in localStorage) && window.matchMedia('(prefers-color-scheme: light)').matches)) {{
+                  document.documentElement.classList.remove('dark');
+                }} else {{
+                  document.documentElement.classList.add('dark');
+                }}
+              </script>
+            </head>
+            <body class='bg-slate-100 dark:bg-[#0B1120] text-slate-800 dark:text-slate-100 min-h-screen flex items-center justify-center p-4 font-sans transition-colors duration-200'>
+              <div class='max-w-md w-full bg-white dark:bg-[#131D33] border border-red-500/40 rounded-3xl p-6 shadow-xl dark:shadow-2xl text-center relative overflow-hidden'>
+                <div class='absolute top-4 right-4'>
+                  <button onclick='toggleTheme()' class='w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-sm' title='Toggle Theme'>
+                    <svg id='theme-moon' class='w-4 h-4 hidden dark:block text-amber-400' fill='currentColor' viewBox='0 0 20 20'><path d='M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z'></path></svg>
+                    <svg id='theme-sun' class='w-4 h-4 block dark:hidden text-orange-500' fill='currentColor' viewBox='0 0 20 20'><path fill-rule='evenodd' d='M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z' clip-rule='evenodd'></path></svg>
+                  </button>
+                </div>
+                <div class='w-full flex justify-center mb-4 pt-2'>
+                  <img src='{logoUrl}' alt='Drive&amp;Go' class='h-12 object-contain drop-shadow' />
+                </div>
+                <div class='w-14 h-14 rounded-full bg-red-500/20 text-red-500 dark:text-red-400 flex items-center justify-center mx-auto mb-3 text-3xl font-bold border border-red-500/30'>&times;</div>
+                <h2 class='text-xl font-black text-slate-900 dark:text-white tracking-tight mb-1'>Vehicle Not Found</h2>
+                <p class='text-xs text-slate-500 dark:text-slate-400 mb-5 leading-relaxed'>No registered vehicle matched plate or asset code: <span class='font-mono font-bold text-red-500 dark:text-red-400'>{System.Web.HttpUtility.HtmlEncode(code)}</span></p>
+                <div class='p-4 bg-slate-50 dark:bg-slate-900/80 rounded-2xl text-xs text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 space-y-1.5'>
+                  <p class='text-slate-900 dark:text-white font-bold'>DriveAndGo Fleet Telematics</p>
+                  <p>Hotline: <strong class='text-orange-500 dark:text-orange-400'>+63 935 966 7178</strong></p>
+                  <p class='text-[10px] text-slate-400 dark:text-slate-500'>CSJDM | Norzagaray, Bulacan, Philippines</p>
+                </div>
+              </div>
+              <script>
+                function toggleTheme() {{
+                  const isDark = document.documentElement.classList.toggle('dark');
+                  localStorage.setItem('dg_theme', isDark ? 'dark' : 'light');
+                }}
+              </script>
+            </body>
+            </html>";
+        }
+
+        var photoHtml = !string.IsNullOrWhiteSpace(v.PhotoUrl)
+            ? $"<img src='{v.PhotoUrl}' class='w-full h-full object-cover' alt='Vehicle Photo' />"
+            : $"<span class='text-2xl font-black text-orange-500 dark:text-orange-400'>{System.Web.HttpUtility.HtmlEncode(v.Brand)}</span>";
+
+        return $@"<!DOCTYPE html>
+        <html lang='en' class='dark'>
+        <head>
+          <meta charset='UTF-8'>
+          <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+          <title>Drive&amp;Go • Handover Pass — {System.Web.HttpUtility.HtmlEncode(v.Brand)} {System.Web.HttpUtility.HtmlEncode(v.Model)}</title>
+          <link rel='icon' type='image/png' href='{logoUrl}'>
+          <script src='https://cdn.tailwindcss.com'></script>
+          <link rel='preconnect' href='https://fonts.googleapis.com' />
+          <link rel='preconnect' href='https://fonts.gstatic.com' crossorigin />
+          <link href='https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@600;700&display=swap' rel='stylesheet' />
+          <script>
+            tailwind.config = {{
+              darkMode: 'class',
+              theme: {{ extend: {{ colors: {{ brand: '#FF6B00', 'brand-dark': '#E85F00' }} }} }}
+            }};
+          </script>
+          <script>
+            if (localStorage.getItem('dg_theme') === 'light' || (!('dg_theme' in localStorage) && window.matchMedia('(prefers-color-scheme: light)').matches)) {{
+              document.documentElement.classList.remove('dark');
+            }} else {{
+              document.documentElement.classList.add('dark');
+            }}
+          </script>
+          <style>
+            body {{ font-family: 'Inter', sans-serif; }}
+            .mono {{ font-family: 'JetBrains Mono', monospace; }}
+          </style>
+        </head>
+        <body class='bg-slate-100 dark:bg-[#0B1120] text-slate-800 dark:text-slate-100 min-h-screen flex items-center justify-center p-3 sm:p-5 selection:bg-orange-500 selection:text-white transition-colors duration-200'>
+          <div class='max-w-md w-full bg-white dark:bg-[#131D33] border border-slate-200 dark:border-slate-700/60 rounded-3xl shadow-xl dark:shadow-2xl overflow-hidden relative transition-colors duration-200'>
+            
+            <div class='h-1.5 w-full bg-gradient-to-r from-orange-600 via-amber-500 to-orange-600'></div>
+
+            <!-- Header with Logo & Light/Dark Switcher -->
+            <div class='p-5 sm:p-6 text-center border-b border-slate-200 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-900/40 relative'>
+              <div class='absolute top-4 right-4'>
+                <button onclick='toggleTheme()' class='w-9 h-9 rounded-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-all hover:scale-105 active:scale-95 shadow-sm' title='Toggle Light / Dark Mode'>
+                  <svg id='theme-moon' class='w-4 h-4 hidden dark:block text-amber-400' fill='currentColor' viewBox='0 0 20 20'><path d='M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z'></path></svg>
+                  <svg id='theme-sun' class='w-4 h-4 block dark:hidden text-orange-500' fill='currentColor' viewBox='0 0 20 20'><path fill-rule='evenodd' d='M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z' clip-rule='evenodd'></path></svg>
+                </button>
+              </div>
+
+              <div class='flex justify-center'>
+                <img src='{logoUrl}' alt='Drive&amp;Go' class='h-12 object-contain drop-shadow' />
+              </div>
+              <p class='text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.3em] mt-1.5'>OFFICIAL VEHICLE TURNOVER PASS</p>
+            </div>
+
+            <!-- Content -->
+            <div class='p-5 sm:p-6 space-y-4 sm:space-y-5'>
+              
+              <!-- Vehicle Identity & Status -->
+              <div class='flex items-center justify-between py-2 px-4 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-black tracking-wider uppercase shadow-xs'>
+                <span class='w-2 h-2 rounded-full bg-emerald-500 animate-pulse'></span>
+                VERIFIED FLEET VEHICLE &bull; {v.Status.ToUpper()}
+              </div>
+
+              <!-- Vehicle Photo & Name Card -->
+              <div class='flex items-center gap-4 bg-slate-50 dark:bg-slate-900/80 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-inner'>
+                <div class='w-24 h-20 rounded-xl border border-slate-200 dark:border-white/20 overflow-hidden bg-slate-200 dark:bg-slate-800 flex items-center justify-center flex-shrink-0 shadow-md relative'>
+                  {photoHtml}
+                </div>
+                <div class='min-w-0 flex-1'>
+                  <h1 class='text-base font-black text-slate-900 dark:text-white uppercase truncate'>{System.Web.HttpUtility.HtmlEncode(v.Brand)} {System.Web.HttpUtility.HtmlEncode(v.Model)}</h1>
+                  <p class='mono text-sm font-black text-orange-600 dark:text-orange-400 mt-0.5'>{System.Web.HttpUtility.HtmlEncode(v.PlateNo)}</p>
+                  <p class='text-[10px] text-slate-400 uppercase tracking-widest mt-1'>{System.Web.HttpUtility.HtmlEncode(v.Type)} &bull; {v.SeatCapacity} Seats</p>
+                </div>
+              </div>
+
+              <!-- Telematics & Handover Specs Matrix -->
+              <div class='grid grid-cols-2 gap-2 text-xs'>
+                <div class='bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200 dark:border-slate-800'>
+                  <span class='text-[9.5px] font-bold text-slate-400 uppercase block'>ODOMETER READING</span>
+                  <span class='mono font-bold text-slate-800 dark:text-slate-200 text-xs'>{v.OdometerKm:N0} KM</span>
+                </div>
+                <div class='bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200 dark:border-slate-800'>
+                  <span class='text-[9.5px] font-bold text-slate-400 uppercase block'>FUEL LEVEL</span>
+                  <span class='mono font-black text-emerald-600 dark:text-emerald-400 text-xs'>{v.FuelLevelPct}%</span>
+                </div>
+                <div class='bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200 dark:border-slate-800'>
+                  <span class='text-[9.5px] font-bold text-slate-400 uppercase block'>TRANSMISSION</span>
+                  <span class='font-bold text-slate-800 dark:text-slate-200 text-xs uppercase'>{System.Web.HttpUtility.HtmlEncode(v.Transmission)}</span>
+                </div>
+                <div class='bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200 dark:border-slate-800'>
+                  <span class='text-[9.5px] font-bold text-slate-400 uppercase block'>HEALTH SCORE</span>
+                  <span class='font-bold text-slate-800 dark:text-slate-200 text-xs'>{v.HealthScore}%</span>
+                </div>
+              </div>
+
+              <!-- RFID Toll Balances -->
+              <div class='bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs'>
+                <div>
+                  <span class='text-[9.5px] font-bold text-slate-400 uppercase block'>AUTOSWEEP RFID</span>
+                  <span class='mono font-bold text-slate-800 dark:text-slate-200 text-xs'>₱{v.RfidBalanceAutosweep:N2}</span>
+                </div>
+                <div class='text-right'>
+                  <span class='text-[9.5px] font-bold text-slate-400 uppercase block'>EASYTRIP RFID</span>
+                  <span class='mono font-bold text-slate-800 dark:text-slate-200 text-xs'>₱{v.RfidBalanceEasytrip:N2}</span>
+                </div>
+              </div>
+
+              <!-- Footer Notice -->
+              <div class='p-3 bg-slate-50 dark:bg-slate-900/90 rounded-2xl text-[10px] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800 space-y-1 text-center'>
+                <p class='text-slate-700 dark:text-slate-300 font-bold'>DriveAndGo Inc. • CSJDM | Norzagaray, Bulacan</p>
+                <p>24/7 Fleet Hotline: <strong class='text-orange-600 dark:text-orange-400'>+63 935 966 7178</strong></p>
+                <p class='text-[9px] text-slate-400 dark:text-slate-500 pt-1 border-t border-slate-200 dark:border-slate-800/80'>Verified live via Drive&amp;Go Fleet Telematics on {nowStr}</p>
+              </div>
+
+            </div>
+          </div>
+
+          <script>
+            function toggleTheme() {{
+              const isDark = document.documentElement.classList.toggle('dark');
+              localStorage.setItem('dg_theme', isDark ? 'dark' : 'light');
+            }}
+          </script>
+        </body>
+        </html>";
+    }
 }

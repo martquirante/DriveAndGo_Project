@@ -272,7 +272,7 @@ namespace DriveAndGo_API.Services
                 termsCell.Add(new Paragraph("1. The renter must return the vehicle on the agreed date and time. Late returns incur standard hourly penalties.\n" +
                                             "2. Additional fuel or excess mileage charges apply if returning below the logged handover fuel level.\n" +
                                             "3. Smoking is strictly prohibited inside the vehicle. The renter is solely responsible for traffic and toll violations.\n" +
-                                            "4. In case of emergency or mechanical breakdown, contact the Drive&Go 24/7 hotline immediately.")
+                                            "4. In case of emergency or mechanical breakdown, contact the Drive&Go 24/7 hotline (+63 935 966 7178) immediately.")
                     .SetFont(fontNormal)
                     .SetFontSize(8f)
                     .SetFontColor(SlateMuted));
@@ -401,7 +401,7 @@ namespace DriveAndGo_API.Services
                 document.Add(signTable);
 
                 // ── 7. Document Footer Stamp ──
-                var footerText = new Paragraph("Drive&Go Vehicle Rental System • Official Digitally Verified Agreement • CSJDM | Norzagaray, Bulacan")
+                var footerText = new Paragraph("Drive&Go Vehicle Rental System • Official Digitally Verified Agreement • CSJDM | Norzagaray, Bulacan, Philippines • Hotline: +63 935 966 7178")
                     .SetFont(fontNormal)
                     .SetFontSize(8f)
                     .SetFontColor(SlateMuted)
