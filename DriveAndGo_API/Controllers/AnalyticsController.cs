@@ -9,10 +9,12 @@ namespace DriveAndGo_API.Controllers
     public class AnalyticsController : ControllerBase
     {
         private readonly NpgsqlDataSource _ds;
+        private readonly IConfiguration _configuration;
 
-        public AnalyticsController(NpgsqlDataSource ds)
+        public AnalyticsController(NpgsqlDataSource ds, IConfiguration configuration)
         {
             _ds = ds;
+            _configuration = configuration;
         }
 
         // GET /api/analytics/ai-summary
@@ -78,7 +80,9 @@ namespace DriveAndGo_API.Controllers
                                 $"3. Operations Priority Actions (specifically tackling the {openIssues} unresolved system flags).\n\n" +
                                 $"Output the results in markdown formatting using headings and bullet lists.";
 
-                string groqKey = Environment.GetEnvironmentVariable("GROQ_API_KEY") ?? "gsk_P19H8as21u7A98bH921BBas72asBBA127asHhas"; // mock/system fallback key if missing
+                string groqKey = Environment.GetEnvironmentVariable("GROQ_API_KEY") 
+                                 ?? _configuration["GROQ_API_KEY"] 
+                                 ?? string.Empty;
 
                 // Request to Groq Llama 3
                 try

@@ -59,6 +59,9 @@ namespace DriveAndGo_API.Models
         public string FloodRiskStatus { get; set; } = "safe";
         public bool EngineWaterIngressAlert { get; set; } = false;
         public decimal LastWeatherTemp { get; set; } = 28.5m;
+        public string? Destination { get; set; }
+        public string? CustomerName { get; set; }
+        public string? DriverName { get; set; }
     }
 
     public class VehicleFleetDto
@@ -76,6 +79,9 @@ namespace DriveAndGo_API.Models
         public string Color { get; set; } = "Pearl White";
         public string FloodRiskStatus { get; set; } = "safe";
         public bool EngineWaterIngressAlert { get; set; } = false;
+        public string? Destination { get; set; }
+        public string? CustomerName { get; set; }
+        public string? DriverName { get; set; }
     }
 
     // ── Telematics Request DTOs ───────────────────────────────────────────

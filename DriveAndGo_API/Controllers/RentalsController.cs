@@ -217,75 +217,7 @@ public class RentalsController : ControllerBase
         }
     }
 
-    [HttpPatch("{id:int}/payment")]
-    public async Task<IActionResult> UpdatePayment(int id, [FromBody] UpdatePaymentRequest request)
-    {
-        try
-        {
-            await using var connection = new NpgsqlConnection(_connectionString);
-            await connection.OpenAsync();
-            await using var transaction = await connection.BeginTransactionAsync();
 
-            var status = (request?.PaymentStatus ?? "paid").Trim().ToLowerInvariant();
-            var method = (request?.PaymentMethod ?? "cash").Trim().ToLowerInvariant();
-
-            int customerId;
-            decimal totalAmount;
-
-            await using (var cmd = new NpgsqlCommand(@"
-                UPDATE rentals 
-                SET payment_status = @payStatus,
-                    payment_method = COALESCE(NULLIF(@payMethod, ''), payment_method)
-                WHERE rental_id = @id
-                RETURNING customer_id, total_amount", connection, transaction))
-            {
-                cmd.Parameters.AddWithValue("@payStatus", status);
-                cmd.Parameters.AddWithValue("@payMethod", method);
-                cmd.Parameters.AddWithValue("@id", id);
-
-                await using var reader = await cmd.ExecuteReaderAsync();
-                if (!await reader.ReadAsync())
-                {
-                    return NotFound(new { Message = "Rental not found." });
-                }
-
-                customerId = Convert.ToInt32(reader["customer_id"], CultureInfo.InvariantCulture);
-                totalAmount = Convert.ToDecimal(reader["total_amount"], CultureInfo.InvariantCulture);
-            }
-
-            if (status == "paid")
-            {
-                // Record confirmed transaction in transactions table
-                await using var transCmd = new NpgsqlCommand(@"
-                    INSERT INTO transactions (rental_id, amount, type, method, status, paid_at)
-                    VALUES (@rid, @amt, 'payment', @method, 'confirmed', NOW())", connection, transaction);
-                transCmd.Parameters.AddWithValue("@rid", id);
-                transCmd.Parameters.AddWithValue("@amt", request?.AmountPaid ?? totalAmount);
-                transCmd.Parameters.AddWithValue("@method", method);
-                try { await transCmd.ExecuteNonQueryAsync(); } catch { }
-
-                _notificationWriter.Create(
-                    connection,
-                    customerId,
-                    "Payment Confirmed",
-                    $"Your payment for rental booking RN-{id:D6} has been verified and confirmed as PAID.",
-                    "payment",
-                    transaction);
-            }
-
-            await transaction.CommitAsync();
-            return Ok(new
-            {
-                Message = $"Payment status successfully updated to '{status.ToUpper()}'.",
-                RentalId = id,
-                PaymentStatus = status
-            });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { Message = "Payment Update Error: " + ex.Message });
-        }
-    }
 
     private string GetAdminName()
     {
@@ -1555,12 +1487,7 @@ public class RentalsController : ControllerBase
         public string? FuelLevel { get; set; }
     }
 
-    public class UpdatePaymentRequest
-    {
-        public string PaymentStatus { get; set; } = "paid";
-        public string? PaymentMethod { get; set; } = "cash";
-        public decimal? AmountPaid { get; set; }
-    }
+
 
     public class CompleteRentalRequest
     {

@@ -52,6 +52,48 @@ public class DriversController : ControllerBase
         }
     }
 
+    // ── GET /api/drivers/company-signatory ────────────────────────────────────
+    [HttpGet("company-signatory")]
+    public async Task<IActionResult> GetCompanySignatory()
+    {
+        try
+        {
+            await using var conn = await _ds.OpenConnectionAsync();
+            using var cmd = new NpgsqlCommand(@"
+                SELECT full_name, role, signature_base64, signature_url 
+                FROM users 
+                WHERE LOWER(role) IN ('admin', 'manager', 'fleet_manager', 'director') 
+                ORDER BY CASE WHEN signature_base64 IS NOT NULL AND signature_base64 != '' THEN 0 ELSE 1 END, user_id ASC 
+                LIMIT 1", conn);
+            using var r = await cmd.ExecuteReaderAsync();
+            if (await r.ReadAsync())
+            {
+                var sigRaw = SafeStr(r, "signature_base64") ?? SafeStr(r, "signature_url");
+                return Ok(new
+                {
+                    Name = SafeStr(r, "full_name") ?? "Raymart Quirante",
+                    Title = "Fleet Operations Director",
+                    Signature = FormatImageUrl(sigRaw)
+                });
+            }
+            return Ok(new
+            {
+                Name = "Raymart Quirante",
+                Title = "Fleet Operations Director",
+                Signature = (string?)null
+            });
+        }
+        catch
+        {
+            return Ok(new
+            {
+                Name = "Raymart Quirante",
+                Title = "Fleet Operations Director",
+                Signature = (string?)null
+            });
+        }
+    }
+
     // ── GET /api/drivers/{id} ─────────────────────────────────────────────────
     [HttpGet("{id:int}")]
     public IActionResult GetDriverById(int id)
@@ -604,6 +646,7 @@ public class DriversController : ControllerBase
     private static bool _schemaEnsured = false;
     private static readonly string[] DriverSchemaUpdates = new[]
     {
+        "ALTER TABLE drivers ADD COLUMN IF NOT EXISTS agency_code VARCHAR(30);",
         "ALTER TABLE drivers ADD COLUMN IF NOT EXISTS license_expiry DATE;",
         "ALTER TABLE drivers ADD COLUMN IF NOT EXISTS license_class VARCHAR(50);",
         "ALTER TABLE drivers ADD COLUMN IF NOT EXISTS restrictions VARCHAR(100);",
@@ -717,12 +760,12 @@ public class DriversController : ControllerBase
                 INSERT INTO drivers (
                     user_id, license_no, status, rating_avg, total_trips,
                     license_class, license_expiry, restrictions, conditions, skill_flags, shift_schedule,
-                    blood_type, address, birth_date, nationality, sex, weight_kg, height_m, eye_color,
+                    blood_type, address, birth_date, nationality, sex, weight_kg, height_m, eye_color, agency_code,
                     nbi_expiry, police_expiry, drug_test_expiry, medical_expiry, verification_status
                 ) VALUES (
                     @user_id, @license_no, @status, 0.0, 0,
                     @license_class, @license_expiry, @restrictions, @conditions, @skill_flags, @shift_schedule,
-                    @blood_type, @address, @birth_date, @nationality, @sex, @weight_kg, @height_m, @eye_color,
+                    @blood_type, @address, @birth_date, @nationality, @sex, @weight_kg, @height_m, @eye_color, @agency_code,
                     @nbi_expiry, @police_expiry, @drug_test_expiry, @medical_expiry, 'verified'
                 ) RETURNING driver_id", connection);
 
@@ -743,6 +786,7 @@ public class DriversController : ControllerBase
             insertCmd.Parameters.AddWithValue("@weight_kg",        OrNullStr(request.WeightKg));
             insertCmd.Parameters.AddWithValue("@height_m",         OrNullStr(request.HeightM));
             insertCmd.Parameters.AddWithValue("@eye_color",        OrNullStr(request.EyeColor));
+            insertCmd.Parameters.AddWithValue("@agency_code",      OrNullStr(request.AgencyCode));
             AddDateParam(insertCmd, "@nbi_expiry", request.NbiExpiry);
             AddDateParam(insertCmd, "@police_expiry", request.PoliceExpiry);
             AddDateParam(insertCmd, "@drug_test_expiry", request.DrugTestExpiry);
@@ -797,6 +841,7 @@ public class DriversController : ControllerBase
                         weight_kg        = @weight_kg,
                         height_m         = @height_m,
                         eye_color        = @eye_color,
+                        agency_code      = @agency_code,
                         nbi_expiry       = @nbi_expiry,
                         police_expiry    = @police_expiry,
                         drug_test_expiry = @drug_test_expiry,
@@ -819,6 +864,7 @@ public class DriversController : ControllerBase
                 updateDriverCmd.Parameters.AddWithValue("@weight_kg",        OrNullStr(request.WeightKg));
                 updateDriverCmd.Parameters.AddWithValue("@height_m",         OrNullStr(request.HeightM));
                 updateDriverCmd.Parameters.AddWithValue("@eye_color",        OrNullStr(request.EyeColor));
+                updateDriverCmd.Parameters.AddWithValue("@agency_code",      OrNullStr(request.AgencyCode));
                 AddDateParam(updateDriverCmd, "@nbi_expiry", request.NbiExpiry);
                 AddDateParam(updateDriverCmd, "@police_expiry", request.PoliceExpiry);
                 AddDateParam(updateDriverCmd, "@drug_test_expiry", request.DrugTestExpiry);
@@ -1114,14 +1160,15 @@ public class DriversController : ControllerBase
                 d.driver_id, d.user_id, d.license_no, d.status, d.rating_avg, d.total_trips,
                 d.license_class, d.license_expiry, d.shift_schedule, d.cash_on_hand, d.skill_flags,
                 d.verification_status, d.restrictions, d.conditions, d.blood_type, d.birth_date,
-                d.address, d.nationality, d.sex, d.weight_kg, d.height_m, d.eye_color,
+                d.address, d.nationality, d.sex, d.weight_kg, d.height_m, d.eye_color, d.agency_code,
                 d.nbi_expiry, d.police_expiry, d.drug_test_expiry, d.medical_expiry, d.license_photo_url,
                 u.full_name, u.email, u.phone, 
                 COALESCE(NULLIF(u.avatar_base64, ''), NULLIF(u.id_photo_url, ''), NULLIF(d.license_photo_url, '')) AS avatar_url,
                 u.signature_url, 
                 COALESCE(NULLIF(u.signature_base64, ''), NULLIF(u.signature_url, '')) AS signature_base64,
                 COALESCE(r_rev.total_rev, 0) AS total_rev,
-                v.plate_no AS vehicle_plate, v.brand, v.model, v.photo_url AS vehicle_img
+                v.plate_no AS vehicle_plate, v.brand, v.model, v.photo_url AS vehicle_img,
+                emg.emergency_contact_name, emg.emergency_contact_relationship, emg.emergency_contact_phone
             FROM drivers d
             JOIN users u ON d.user_id = u.user_id
             LEFT JOIN (
@@ -1135,7 +1182,12 @@ public class DriversController : ControllerBase
                 WHERE LOWER(COALESCE(status,'')) IN ('active','approved','in-use')
                 ORDER BY driver_id, created_at DESC
             ) curr_r ON curr_r.driver_id = d.driver_id
-            LEFT JOIN vehicles v ON v.vehicle_id = curr_r.vehicle_id ";
+            LEFT JOIN vehicles v ON v.vehicle_id = curr_r.vehicle_id
+            LEFT JOIN (
+                SELECT DISTINCT ON (driver_id) driver_id, full_name AS emergency_contact_name, relationship AS emergency_contact_relationship, phone AS emergency_contact_phone
+                FROM driver_emergency_contacts
+                ORDER BY driver_id, is_primary DESC, contact_id ASC
+            ) emg ON emg.driver_id = d.driver_id ";
 
         // Fallback SQL using only original columns (for when new columns aren't migrated yet)
         var sqlFallback = @"
@@ -1146,7 +1198,7 @@ public class DriversController : ControllerBase
                 NULL::text AS verification_status, NULL::text AS restrictions, NULL::text AS conditions,
                 NULL::text AS blood_type, NULL::date AS birth_date,
                 NULL::text AS address, NULL::text AS nationality, NULL::text AS sex,
-                NULL::text AS weight_kg, NULL::text AS height_m, NULL::text AS eye_color,
+                NULL::text AS weight_kg, NULL::text AS height_m, NULL::text AS eye_color, NULL::text AS agency_code,
                 NULL::date AS nbi_expiry, NULL::date AS police_expiry,
                 NULL::date AS drug_test_expiry, NULL::date AS medical_expiry, NULL::text AS license_photo_url,
                 u.full_name, u.email, u.phone, 
@@ -1154,7 +1206,8 @@ public class DriversController : ControllerBase
                 u.signature_url, 
                 COALESCE(NULLIF(u.signature_base64, ''), NULLIF(u.signature_url, '')) AS signature_base64,
                 COALESCE(r_rev.total_rev, 0) AS total_rev,
-                NULL::text AS vehicle_plate, NULL::text AS brand, NULL::text AS model, NULL::text AS vehicle_img
+                NULL::text AS vehicle_plate, NULL::text AS brand, NULL::text AS model, NULL::text AS vehicle_img,
+                NULL::text AS emergency_contact_name, NULL::text AS emergency_contact_relationship, NULL::text AS emergency_contact_phone
             FROM drivers d
             JOIN users u ON d.user_id = u.user_id
             LEFT JOIN (
@@ -1229,10 +1282,14 @@ public class DriversController : ControllerBase
                     WeightKg            = SafeStr(reader, "weight_kg"),
                     HeightM             = SafeStr(reader, "height_m"),
                     EyeColor            = SafeStr(reader, "eye_color"),
+                    AgencyCode          = SafeStr(reader, "agency_code"),
                     NbiExpiry           = SafeDateStr(reader, "nbi_expiry"),
                     PoliceExpiry        = SafeDateStr(reader, "police_expiry"),
                     DrugTestExpiry      = SafeDateStr(reader, "drug_test_expiry"),
-                    MedicalExpiry       = SafeDateStr(reader, "medical_expiry")
+                    MedicalExpiry       = SafeDateStr(reader, "medical_expiry"),
+                    EmergencyContactName = SafeStr(reader, "emergency_contact_name"),
+                    EmergencyContactRelationship = SafeStr(reader, "emergency_contact_relationship"),
+                    EmergencyContactPhone = SafeStr(reader, "emergency_contact_phone")
                 });
             }
         }
@@ -1442,7 +1499,7 @@ public class DriversController : ControllerBase
                 </div>
                 <div class='min-w-0 flex-1'>
                   <h1 class='text-base font-black text-slate-900 dark:text-white tracking-wide uppercase truncate'>{System.Web.HttpUtility.HtmlEncode(d.FullName)}</h1>
-                  <p class='text-xs font-bold text-orange-600 dark:text-orange-400 mt-0.5'>Senior Fleet Driver</p>
+                  <p class='text-xs font-bold text-orange-600 dark:text-orange-400 mt-0.5'>{(string.IsNullOrWhiteSpace(d.LicenseClass) ? "Fleet Driver" : System.Web.HttpUtility.HtmlEncode(d.LicenseClass + " Driver"))}</p>
                   <p class='text-[10px] text-slate-400 dark:text-slate-400 uppercase tracking-widest mt-1'>EMPLOYEE ID</p>
                   <p class='mono text-xs font-bold text-slate-700 dark:text-slate-200'>{System.Web.HttpUtility.HtmlEncode(d.EmployeeCode)}</p>
                 </div>
@@ -1452,19 +1509,19 @@ public class DriversController : ControllerBase
               <div class='grid grid-cols-2 gap-2 text-xs'>
                 <div class='bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200 dark:border-slate-800'>
                   <span class='text-[9.5px] font-bold text-slate-400 uppercase block'>LICENSE NUMBER</span>
-                  <span class='mono font-bold text-slate-800 dark:text-slate-200 text-xs'>{(string.IsNullOrWhiteSpace(d.LicenseNo) ? "N01-23-456789" : System.Web.HttpUtility.HtmlEncode(d.LicenseNo))}</span>
+                  <span class='mono font-bold text-slate-800 dark:text-slate-200 text-xs'>{(string.IsNullOrWhiteSpace(d.LicenseNo) ? "—" : System.Web.HttpUtility.HtmlEncode(d.LicenseNo))}</span>
                 </div>
                 <div class='bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200 dark:border-slate-800'>
                   <span class='text-[9.5px] font-bold text-slate-400 uppercase block'>LICENSE CLASS</span>
-                  <span class='font-bold text-slate-800 dark:text-slate-200 text-xs uppercase'>{(string.IsNullOrWhiteSpace(d.LicenseClass) ? "PROFESSIONAL" : System.Web.HttpUtility.HtmlEncode(d.LicenseClass))}</span>
+                  <span class='font-bold text-slate-800 dark:text-slate-200 text-xs uppercase'>{(string.IsNullOrWhiteSpace(d.LicenseClass) ? "—" : System.Web.HttpUtility.HtmlEncode(d.LicenseClass))}</span>
                 </div>
                 <div class='bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200 dark:border-slate-800'>
                   <span class='text-[9.5px] font-bold text-slate-400 uppercase block'>BLOOD TYPE</span>
-                  <span class='font-black text-slate-900 dark:text-white text-xs'>{(string.IsNullOrWhiteSpace(d.BloodType) ? "O+" : System.Web.HttpUtility.HtmlEncode(d.BloodType))}</span>
+                  <span class='font-black text-slate-900 dark:text-white text-xs'>{(string.IsNullOrWhiteSpace(d.BloodType) ? "—" : System.Web.HttpUtility.HtmlEncode(d.BloodType))}</span>
                 </div>
                 <div class='bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200 dark:border-slate-800'>
                   <span class='text-[9.5px] font-bold text-slate-400 uppercase block'>SHIFT SCHEDULE</span>
-                  <span class='font-bold text-slate-800 dark:text-slate-200 text-xs uppercase'>{(string.IsNullOrWhiteSpace(d.ShiftSchedule) ? "MORNING SHIFT" : System.Web.HttpUtility.HtmlEncode(d.ShiftSchedule))}</span>
+                  <span class='font-bold text-slate-800 dark:text-slate-200 text-xs uppercase'>{(string.IsNullOrWhiteSpace(d.ShiftSchedule) ? "—" : System.Web.HttpUtility.HtmlEncode(d.ShiftSchedule))}</span>
                 </div>
               </div>
 
@@ -1472,7 +1529,7 @@ public class DriversController : ControllerBase
               <div class='bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs'>
                 <div>
                   <span class='text-[9.5px] font-bold text-slate-400 uppercase block'>ASSIGNED VEHICLE</span>
-                  <span class='font-bold text-slate-900 dark:text-white text-xs'>{(string.IsNullOrWhiteSpace(d.CurrentVehicleName) ? "Standby / Fleet Pool" : System.Web.HttpUtility.HtmlEncode(d.CurrentVehicleName))}</span>
+                  <span class='font-bold text-slate-900 dark:text-white text-xs'>{(string.IsNullOrWhiteSpace(d.CurrentVehicleName) ? "Standby Pool" : System.Web.HttpUtility.HtmlEncode(d.CurrentVehicleName))}</span>
                 </div>
                 <div class='text-right'>
                   <span class='text-[9.5px] font-bold text-slate-400 uppercase block'>PLATE NUMBER</span>

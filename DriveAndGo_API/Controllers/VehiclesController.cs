@@ -65,9 +65,21 @@ public class VehiclesController : ControllerBase
             connection.Open();
 
             using var command = new NpgsqlCommand(
-                @"SELECT vehicle_id, brand, model, plate_no, type, rate_per_day, status, photo_url, latitude, longitude, COALESCE(color, 'Pearl White') AS color 
-                  FROM vehicles 
-                  ORDER BY brand ASC, model ASC", connection);
+                @"SELECT v.vehicle_id, v.brand, v.model, v.plate_no, v.type, v.rate_per_day, v.status, v.photo_url, v.latitude, v.longitude, COALESCE(v.color, 'Pearl White') AS color,
+                         ar.destination, ar.customer_name, ar.driver_name
+                  FROM vehicles v
+                  LEFT JOIN LATERAL (
+                      SELECT r.destination, u.full_name AS customer_name, du.full_name AS driver_name
+                      FROM rentals r
+                      LEFT JOIN users u ON r.customer_id = u.user_id
+                      LEFT JOIN drivers d ON r.driver_id = d.driver_id
+                      LEFT JOIN users du ON d.user_id = du.user_id
+                      WHERE r.vehicle_id = v.vehicle_id 
+                        AND LOWER(r.status) IN ('approved', 'active', 'in-use', 'ongoing', 'rented', 'pending', 'overdue')
+                      ORDER BY r.start_date DESC
+                      LIMIT 1
+                  ) ar ON (LOWER(v.status) IN ('rented', 'in-use', 'active', 'ongoing', 'overdue'))
+                  ORDER BY v.brand ASC, v.model ASC", connection);
 
             using var reader = command.ExecuteReader();
             while (reader.Read())
@@ -84,7 +96,10 @@ public class VehiclesController : ControllerBase
                     PhotoUrl = reader["photo_url"]?.ToString() ?? string.Empty,
                     Latitude = reader["latitude"] == DBNull.Value ? null : Convert.ToDouble(reader["latitude"]),
                     Longitude = reader["longitude"] == DBNull.Value ? null : Convert.ToDouble(reader["longitude"]),
-                    Color = reader["color"]?.ToString() ?? "Pearl White"
+                    Color = reader["color"]?.ToString() ?? "Pearl White",
+                    Destination = reader["destination"] == DBNull.Value ? null : reader["destination"].ToString(),
+                    CustomerName = reader["customer_name"] == DBNull.Value ? null : reader["customer_name"].ToString(),
+                    DriverName = reader["driver_name"] == DBNull.Value ? null : reader["driver_name"].ToString()
                 });
             }
             return Ok(fleet);
@@ -1010,53 +1025,66 @@ public class VehiclesController : ControllerBase
     {
         var sql =
             @"SELECT
-                vehicle_id,
-                plate_no,
-                brand,
-                model,
-                type,
-                cc,
-                status,
-                rate_per_day,
-                rate_with_driver,
-                COALESCE(photo_url, '') AS photo_url,
-                COALESCE(description, '') AS description,
-                COALESCE(seat_capacity, 1) AS seat_capacity,
-                COALESCE(transmission, 'Automatic') AS transmission,
-                COALESCE(model_3d_url, '') AS model_3d_url,
-                created_at,
-                latitude,
-                longitude,
-                current_speed,
-                last_update,
-                COALESCE(in_garage, true) AS in_garage,
-                COALESCE(fuel_level_pct, 100) AS fuel_level_pct,
-                COALESCE(odometer_km, 0) AS odometer_km,
-                COALESCE(health_score, 98) AS health_score,
-                COALESCE(engine_status, 'off') AS engine_status,
-                COALESCE(maintenance_due_km, 5000) AS maintenance_due_km,
-                COALESCE(telematics_locked, true) AS telematics_locked,
-                lto_expiry_date,
-                insurance_expiry_date,
-                COALESCE(or_cr_url, '') AS or_cr_url,
-                COALESCE(insurance_url, '') AS insurance_url,
-                COALESCE(safety_score, 95) AS safety_score,
-                COALESCE(idle_minutes, 0) AS idle_minutes,
-                COALESCE(rfid_balance_autosweep, 500.00) AS rfid_balance_autosweep,
-                COALESCE(rfid_balance_easytrip, 500.00) AS rfid_balance_easytrip,
-                COALESCE(rfid_balance_easytrip, 500.00) AS rfid_balance_easytrip,
-                COALESCE(color, 'Pearl White') AS color,
-                COALESCE(flood_risk_status, 'safe') AS flood_risk_status,
-                COALESCE(engine_water_ingress_alert, false) AS engine_water_ingress_alert,
-                COALESCE(last_weather_temp, 28.5) AS last_weather_temp
-              FROM vehicles ";
+                v.vehicle_id,
+                v.plate_no,
+                v.brand,
+                v.model,
+                v.type,
+                v.cc,
+                v.status,
+                v.rate_per_day,
+                v.rate_with_driver,
+                COALESCE(v.photo_url, '') AS photo_url,
+                COALESCE(v.description, '') AS description,
+                COALESCE(v.seat_capacity, 1) AS seat_capacity,
+                COALESCE(v.transmission, 'Automatic') AS transmission,
+                COALESCE(v.model_3d_url, '') AS model_3d_url,
+                v.created_at,
+                v.latitude,
+                v.longitude,
+                v.current_speed,
+                v.last_update,
+                COALESCE(v.in_garage, true) AS in_garage,
+                COALESCE(v.fuel_level_pct, 100) AS fuel_level_pct,
+                COALESCE(v.odometer_km, 0) AS odometer_km,
+                COALESCE(v.health_score, 98) AS health_score,
+                COALESCE(v.engine_status, 'off') AS engine_status,
+                COALESCE(v.maintenance_due_km, 5000) AS maintenance_due_km,
+                COALESCE(v.telematics_locked, true) AS telematics_locked,
+                v.lto_expiry_date,
+                v.insurance_expiry_date,
+                COALESCE(v.or_cr_url, '') AS or_cr_url,
+                COALESCE(v.insurance_url, '') AS insurance_url,
+                COALESCE(v.safety_score, 95) AS safety_score,
+                COALESCE(v.idle_minutes, 0) AS idle_minutes,
+                COALESCE(v.rfid_balance_autosweep, 500.00) AS rfid_balance_autosweep,
+                COALESCE(v.rfid_balance_easytrip, 500.00) AS rfid_balance_easytrip,
+                COALESCE(v.color, 'Pearl White') AS color,
+                COALESCE(v.flood_risk_status, 'safe') AS flood_risk_status,
+                COALESCE(v.engine_water_ingress_alert, false) AS engine_water_ingress_alert,
+                COALESCE(v.last_weather_temp, 28.5) AS last_weather_temp,
+                ar.destination,
+                ar.customer_name,
+                ar.driver_name
+              FROM vehicles v
+              LEFT JOIN LATERAL (
+                  SELECT r.destination, u.full_name AS customer_name, du.full_name AS driver_name
+                  FROM rentals r
+                  LEFT JOIN users u ON r.customer_id = u.user_id
+                  LEFT JOIN drivers d ON r.driver_id = d.driver_id
+                  LEFT JOIN users du ON d.user_id = du.user_id
+                  WHERE r.vehicle_id = v.vehicle_id 
+                    AND LOWER(r.status) IN ('approved', 'active', 'in-use', 'ongoing', 'rented', 'pending', 'overdue')
+                  ORDER BY r.start_date DESC
+                  LIMIT 1
+              ) ar ON (LOWER(v.status) IN ('rented', 'in-use', 'active', 'ongoing', 'overdue')) ";
 
         if (!string.IsNullOrWhiteSpace(whereClause))
         {
             sql += whereClause + " ";
         }
 
-        sql += "ORDER BY brand ASC, model ASC";
+        sql += "ORDER BY v.brand ASC, v.model ASC";
         return new NpgsqlCommand(sql, connection);
     }
 
@@ -1102,7 +1130,10 @@ public class VehiclesController : ControllerBase
             Color                = reader["color"]?.ToString() ?? "Pearl White",
             FloodRiskStatus      = reader["flood_risk_status"]?.ToString() ?? "safe",
             EngineWaterIngressAlert = reader["engine_water_ingress_alert"] != DBNull.Value && Convert.ToBoolean(reader["engine_water_ingress_alert"]),
-            LastWeatherTemp      = reader["last_weather_temp"] == DBNull.Value ? 28.5m : Convert.ToDecimal(reader["last_weather_temp"])
+            LastWeatherTemp      = reader["last_weather_temp"] == DBNull.Value ? 28.5m : Convert.ToDecimal(reader["last_weather_temp"]),
+            Destination          = reader["destination"] == DBNull.Value ? null : reader["destination"].ToString(),
+            CustomerName         = reader["customer_name"] == DBNull.Value ? null : reader["customer_name"].ToString(),
+            DriverName           = reader["driver_name"] == DBNull.Value ? null : reader["driver_name"].ToString()
         };
     }
 

@@ -25,27 +25,27 @@ namespace DriveAndGo_API.Contracts
         public string? VerificationStatus { get; set; }
         public string? SignatureUrl       { get; set; }
         public string? SignatureBase64    { get; set; }
+        public string? EmergencyContactName { get; set; }
+        public string? EmergencyContactRelationship { get; set; }
+        public string? EmergencyContactPhone { get; set; }
+        public string? AgencyCode         { get; set; }
+        public string? LicenseClass       { get; set; }
+        public string? Restrictions       { get; set; }
+        public string? Conditions         { get; set; }
+        public string? BirthDate          { get; set; }
+        public string? Address            { get; set; }
+        public string? BloodType          { get; set; }
+        public string? Nationality        { get; set; }
+        public string? Sex                { get; set; }
+        public string? WeightKg           { get; set; }
+        public string? HeightM            { get; set; }
+        public string? EyeColor           { get; set; }
+        public string? LicensePhotoUrl    { get; set; }
     }
 
     // ── Full driver detail DTO for profile modals ──
     public class DriverDetailDto : DriverListDto
     {
-        // License info
-        public string? LicensePhotoUrl  { get; set; }
-        public string? LicenseClass     { get; set; }
-        public string? Restrictions     { get; set; }
-        public string? Conditions       { get; set; }
-
-        // Personal info
-        public string? BirthDate        { get; set; }
-        public string? Address          { get; set; }
-        public string? BloodType        { get; set; }
-        public string? Nationality      { get; set; }
-        public string? Sex              { get; set; }
-        public string? WeightKg         { get; set; }
-        public string? HeightM          { get; set; }
-        public string? EyeColor         { get; set; }
-
         // Compliance documents expiries
         public string? NbiExpiry        { get; set; }
         public string? PoliceExpiry     { get; set; }
@@ -193,6 +193,8 @@ namespace DriveAndGo_API.Contracts
         public string? WeightKg       { get; set; }
         public string? HeightM        { get; set; }
         public string? EyeColor       { get; set; }
+        public string? AgencyCode     { get; set; }
+        public string? AvatarUrl      { get; set; }
         public string? NbiExpiry      { get; set; }
         public string? PoliceExpiry   { get; set; }
         public string? DrugTestExpiry { get; set; }
