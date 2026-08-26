@@ -40,6 +40,10 @@ namespace DriveAndGo_Admin
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Action<string> OnNavigateToAccountRequested { get; set; }
 
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public Action<int> OnUnreadCountChanged { get; set; }
+
         public ChatOverlayPanel()
         {
             this.Dock = DockStyle.Fill;
@@ -436,6 +440,15 @@ namespace DriveAndGo_Admin
                     case "NAVIGATE_TO_ACCOUNT":
                         string custId = root.TryGetProperty("customerId", out var cIdProp) ? cIdProp.GetString() : "";
                         this.BeginInvoke((System.Windows.Forms.MethodInvoker)(() => OnNavigateToAccountRequested?.Invoke(custId)));
+                        break;
+
+                    case "updateUnreadCount":
+                    case "UPDATE_UNREAD_COUNT":
+                        if (root.TryGetProperty("count", out var countProp))
+                        {
+                            int count = countProp.GetInt32();
+                            this.BeginInvoke((MethodInvoker)(() => OnUnreadCountChanged?.Invoke(count)));
+                        }
                         break;
 
                     case "showNotification":

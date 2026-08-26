@@ -24,5 +24,33 @@ namespace DriveAndGo_API.Models
 
         [JsonPropertyName("includeReceipt")]
         public bool IncludeReceipt { get; set; } = false;
+
+        [JsonPropertyName("isRescheduled")]
+        public bool IsRescheduled { get; set; } = false;
+
+        [JsonPropertyName("originalPickupDate")]
+        public string? OriginalPickupDate { get; set; }
+
+        [JsonPropertyName("originalDropoffDate")]
+        public string? OriginalDropoffDate { get; set; }
+
+        [JsonPropertyName("perkFuelWaiver")]
+        public bool PerkFuelWaiver { get; set; } = false;
+
+        [JsonPropertyName("perkTollCredits")]
+        public bool PerkTollCredits { get; set; } = false;
+
+        [JsonPropertyName("perkWashWaiver")]
+        public bool PerkWashWaiver { get; set; } = false;
+
+        [JsonPropertyName("includeCourtesyPromo")]
+        public bool IncludeCourtesyPromo { get; set; } = false;
+
+        [JsonPropertyName("courtesyPromoCode")]
+        public string? CourtesyPromoCode { get; set; }
+
+        [JsonPropertyName("courtesyPromoDiscount")]
+        public string? CourtesyPromoDiscount { get; set; }
     }
 }
+

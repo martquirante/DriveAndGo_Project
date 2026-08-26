@@ -334,8 +334,29 @@
     .doc-expired { background: rgba(239,68,68,0.1);  color: #ef4444; }
 
     /* KPI spark */
-    .kpi-card { border-radius: 14px; padding: 18px; position: relative; overflow: hidden; transition: box-shadow 0.2s, transform 0.2s; }
-    .kpi-card:hover { transform: translateY(-2px); }
+    .kpi-card { 
+      border-radius: 16px; 
+      padding: 18px; 
+      position: relative; 
+      overflow: hidden; 
+      cursor: pointer;
+      user-select: none;
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, background 0.25s ease; 
+    }
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 45%;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, transparent 100%);
+      pointer-events: none;
+      border-radius: 16px 16px 0 0;
+    }
+    .kpi-card:hover { 
+      transform: translateY(-4px) scale(1.02); 
+    }
 
     /* Inspector panel */
     #inspector-panel { transition: width 0.25s cubic-bezier(0.16,1,0.3,1); }
@@ -909,7 +930,7 @@
         <div>
           <div class="flex items-center justify-between mb-2">
             <p id="modal-lic-heading-title" class="text-xs font-black text-[#FF6B00] uppercase tracking-wider flex items-center gap-1.5">
-              <i data-lucide="shield-check" class="w-4 h-4"></i> Professional Driver's License
+              <i data-lucide="shield-check" class="w-4 h-4"></i> Driver's License
             </p>
             <div class="flex items-center gap-1.5">
               <button onclick="flipCard('modal-lto-flip', event)" class="px-3 py-1 rounded-lg bg-[#1E293B] hover:bg-orange-500/20 text-orange-400 border border-[#2D3B4F] text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm">
@@ -948,7 +969,7 @@
                       <p class="text-[#001f3f] text-[9px] font-black leading-tight tracking-wider">REPUBLIC OF THE PHILIPPINES</p>
                       <p class="text-slate-700 text-[7px] font-extrabold leading-tight">DEPARTMENT OF TRANSPORTATION</p>
                       <p class="text-slate-700 text-[7px] font-extrabold leading-tight">LAND TRANSPORTATION OFFICE</p>
-                      <p class="text-[#0038A8] text-[9.5px] font-black leading-tight mt-0.5 tracking-wide"><span id="modal-lic-class-title">PROFESSIONAL</span> DRIVER'S LICENSE</p>
+                      <p class="text-[#0038A8] text-[9.5px] font-black leading-tight mt-0.5 tracking-wide"><span id="modal-lic-class-title">DRIVER'S</span> LICENSE</p>
                     </div>
 
                     <!-- LTO Round Seal SVG -->
@@ -991,52 +1012,52 @@
                     <!-- Full Name -->
                     <div>
                       <span class="text-slate-500 uppercase text-[7px] font-bold">Last Name, First Name, Middle Name</span>
-                      <div id="modal-driver-fullname" class="font-black text-[#001f3f] text-xs uppercase tracking-wide truncate">DELA CRUZ, JUAN SANTOS</div>
+                      <div id="modal-driver-fullname" class="font-black text-[#001f3f] text-xs uppercase tracking-wide truncate">—</div>
                     </div>
 
                     <!-- Nationality, Sex, Birth, Height, Weight -->
                     <div class="grid grid-cols-5 gap-1 pt-0.5">
                       <div>
                         <span class="text-slate-500 uppercase text-[6.5px] font-bold block">Nationality</span>
-                        <span class="font-extrabold text-[8px]" id="modal-lic-nat">PHL</span>
+                        <span class="font-extrabold text-[8px]" id="modal-lic-nat">—</span>
                       </div>
                       <div>
                         <span class="text-slate-500 uppercase text-[6.5px] font-bold block">Sex</span>
-                        <span class="font-extrabold text-[8px]" id="modal-lic-sex">M</span>
+                        <span class="font-extrabold text-[8px]" id="modal-lic-sex">—</span>
                       </div>
                       <div>
                         <span class="text-slate-500 uppercase text-[6.5px] font-bold block">Date of Birth</span>
-                        <span class="font-extrabold text-[8px]" id="modal-lic-bday">1987/10/04</span>
+                        <span class="font-extrabold text-[8px]" id="modal-lic-bday">—</span>
                       </div>
                       <div>
                         <span class="text-slate-500 uppercase text-[6.5px] font-bold block">Weight (kg)</span>
-                        <span class="font-extrabold text-[8px]" id="modal-lic-weight">70</span>
+                        <span class="font-extrabold text-[8px]" id="modal-lic-weight">—</span>
                       </div>
                       <div>
                         <span class="text-slate-500 uppercase text-[6.5px] font-bold block">Height (m)</span>
-                        <span class="font-extrabold text-[8px]" id="modal-lic-height">1.70</span>
+                        <span class="font-extrabold text-[8px]" id="modal-lic-height">—</span>
                       </div>
                     </div>
 
                     <!-- Address -->
                     <div class="pt-0.5">
                       <span class="text-slate-500 uppercase text-[6.5px] font-bold block">Address</span>
-                      <div id="modal-lic-addr" class="font-bold text-[8px] leading-tight text-slate-800 truncate">CSJDM | NORZAGARAY, BULACAN, PHILIPPINES</div>
+                      <div id="modal-lic-addr" class="font-bold text-[8px] leading-tight text-slate-800 truncate">—</div>
                     </div>
 
                     <!-- License No, Expiration, Agency -->
                     <div class="grid grid-cols-3 gap-1 pt-0.5 bg-sky-500/10 p-1.5 rounded-lg border border-sky-300/40">
                       <div>
                         <span class="text-slate-600 uppercase text-[6.5px] font-extrabold block">License No.</span>
-                        <span id="modal-lic-no" class="font-black text-[#001f3f] font-mono text-[9.5px]">N01-23-456789</span>
+                        <span id="modal-lic-no" class="font-black text-[#001f3f] font-mono text-[9.5px]">—</span>
                       </div>
                       <div>
                         <span class="text-slate-600 uppercase text-[6.5px] font-extrabold block">Expiration Date</span>
-                        <span id="modal-lic-expiry" class="font-black text-red-600 font-mono text-[9.5px]">2028/10/04</span>
+                        <span id="modal-lic-expiry" class="font-black text-red-600 font-mono text-[9.5px]">—</span>
                       </div>
                       <div>
                         <span class="text-slate-600 uppercase text-[6.5px] font-extrabold block">Agency Code</span>
-                        <span id="modal-lic-agency" class="font-bold text-[#001f3f] text-[9.5px]">N32</span>
+                        <span id="modal-lic-agency" class="font-bold text-[#001f3f] text-[9.5px]">—</span>
                       </div>
                     </div>
 
@@ -1044,19 +1065,19 @@
                     <div class="grid grid-cols-4 gap-1 pt-0.5">
                       <div>
                         <span class="text-slate-500 uppercase text-[6.5px] font-bold block">Blood Type</span>
-                        <span id="modal-lic-blood" class="font-extrabold text-[8px]">O+</span>
+                        <span id="modal-lic-blood" class="font-extrabold text-[8px]">—</span>
                       </div>
                       <div>
                         <span class="text-slate-500 uppercase text-[6.5px] font-bold block">Eyes Color</span>
-                        <span class="font-extrabold text-[8px]">BLACK</span>
+                        <span id="modal-lic-eyes" class="font-extrabold text-[8px]">—</span>
                       </div>
                       <div>
                         <span class="text-slate-500 uppercase text-[6.5px] font-bold block">Restrictions</span>
-                        <span id="modal-lic-rest" class="font-extrabold text-[8px]">1, 2</span>
+                        <span id="modal-lic-rest" class="font-extrabold text-[8px]">—</span>
                       </div>
                       <div>
                         <span class="text-slate-500 uppercase text-[6.5px] font-bold block">Conditions</span>
-                        <span id="modal-lic-cond" class="font-extrabold text-[8px]">NONE</span>
+                        <span id="modal-lic-cond" class="font-extrabold text-[8px]">—</span>
                       </div>
                     </div>
 
@@ -1089,27 +1110,29 @@
                   <div class="flex items-center justify-between border-b border-slate-200 pb-1">
                     <span class="font-black text-[8px] text-[#001f3f] tracking-wide">LICENSE INFORMATION</span>
                     <div class="flex items-center gap-3">
-                      <span>DL NO.: <strong class="font-mono text-[#001f3f]" id="modal-back-dlno">N01-23-456789</strong></span>
-                      <span>BLOOD TYPE: <strong class="text-[#001f3f]" id="modal-back-blood">O+</strong></span>
+                      <span>DL NO.: <strong class="font-mono text-[#001f3f]" id="modal-back-dlno">—</strong></span>
+                      <span>BLOOD TYPE: <strong class="text-[#001f3f]" id="modal-back-blood">—</strong></span>
                     </div>
                   </div>
 
-                  <!-- Driving Category Matrix -->
-                  <div class="border border-slate-300 rounded-lg overflow-hidden text-[6.5px]">
-                    <div class="grid grid-cols-4 bg-slate-100 font-extrabold text-slate-700 text-center p-1 border-b border-slate-200">
-                      <div>DRIVING CATEGORY</div>
-                      <div>VEHICLE CATEGORY</div>
-                      <div>DATE ISSUED</div>
-                      <div>VALID UNTIL</div>
-                    </div>
-                    <div class="grid grid-cols-4 text-center p-1 border-b border-slate-100">
-                      <div class="font-bold">A</div><div>MOTORCYCLE</div><div id="modal-back-issued-a">2023/01/01</div><div id="modal-back-expiry-a">2028/01/01</div>
-                    </div>
-                    <div class="grid grid-cols-4 text-center p-1 border-b border-slate-100 bg-slate-50/50">
-                      <div class="font-bold">B</div><div>LIGHT VEHICLE</div><div id="modal-back-issued-b">2023/01/01</div><div id="modal-back-expiry-b">2028/01/01</div>
-                    </div>
-                    <div class="grid grid-cols-4 text-center p-1">
-                      <div class="font-bold">C</div><div>LIGHT TRUCK</div><div>—</div><div>—</div>
+                  <!-- Driving Category Matrix Container -->
+                  <div id="modal-back-category-matrix-container">
+                    <div class="border border-slate-300 rounded-lg overflow-hidden text-[6.5px]">
+                      <div class="grid grid-cols-4 bg-slate-100 font-extrabold text-slate-700 text-center p-1 border-b border-slate-200">
+                        <div>CATEGORY</div>
+                        <div>VEHICLE</div>
+                        <div>RESTRICTION</div>
+                        <div>VALID UNTIL</div>
+                      </div>
+                      <div class="grid grid-cols-4 text-center p-1 border-b border-slate-100">
+                        <div class="font-bold">A</div><div>MOTORCYCLE</div><div>1 / A</div><div id="modal-back-expiry-a">—</div>
+                      </div>
+                      <div class="grid grid-cols-4 text-center p-1 border-b border-slate-100 bg-slate-50/50">
+                        <div class="font-bold">B</div><div>LIGHT VEHICLE</div><div>2 / B</div><div id="modal-back-expiry-b">—</div>
+                      </div>
+                      <div class="grid grid-cols-4 text-center p-1">
+                        <div class="font-bold">C</div><div>HEAVY TRUCK</div><div>—</div><div>—</div>
+                      </div>
                     </div>
                   </div>
 
@@ -1134,7 +1157,7 @@
                     </div>
                     <div class="flex items-center justify-between text-[6.5px] text-slate-500 mt-0.5 px-1">
                       <span>SECURITY ENCRYPTED 2D BARCODE</span>
-                      <span>SERIAL NO.: <strong class="font-mono text-slate-800" id="modal-lic-serial">008492019</strong></span>
+                      <span>SERIAL NO.: <strong class="font-mono text-slate-800" id="modal-lic-serial">—</strong></span>
                     </div>
                   </div>
                 </div>
@@ -1204,29 +1227,29 @@
 
               <!-- Driver Identity -->
               <div class="w-full text-center mt-1">
-                <p id="modal-badge-name" class="font-black text-white text-xs uppercase tracking-wide truncate leading-tight">Juan Dela Cruz</p>
-                <p id="modal-badge-role" class="text-[#FF6B00] font-bold text-[9.5px] leading-tight mt-0.5 uppercase tracking-wider">Senior Fleet Driver</p>
+                <p id="modal-badge-name" class="font-black text-white text-xs uppercase tracking-wide truncate leading-tight">—</p>
+                <p id="modal-badge-role" class="text-[#FF6B00] font-bold text-[9.5px] leading-tight mt-0.5 uppercase tracking-wider">Fleet Driver</p>
                 <p class="text-slate-400 text-[6.5px] font-bold uppercase tracking-widest mt-1">EMPLOYEE ID</p>
-                <p id="modal-badge-empid" class="text-slate-100 font-mono text-[10.5px] font-black tracking-widest leading-none mt-0.5">DRV-2024-00125</p>
+                <p id="modal-badge-empid" class="text-slate-100 font-mono text-[10.5px] font-black tracking-widest leading-none mt-0.5">—</p>
               </div>
 
               <!-- 4-Column Spec Matrix -->
               <div class="grid grid-cols-4 border-y border-white/10 py-1 text-center my-1 divide-x divide-white/10 w-full bg-white/[0.02]">
                 <div>
                   <span class="text-[6px] font-bold text-slate-400 uppercase block">BLOOD TYPE</span>
-                  <span id="modal-badge-blood" class="text-[9px] font-black text-white leading-tight">O+</span>
+                  <span id="modal-badge-blood" class="text-[9px] font-black text-white leading-tight">—</span>
                 </div>
                 <div>
                   <span class="text-[6px] font-bold text-slate-400 uppercase block">SHIFT</span>
-                  <span id="modal-badge-shift" class="text-[8.5px] font-black text-white uppercase leading-tight">MORNING</span>
+                  <span id="modal-badge-shift" class="text-[8.5px] font-black text-white uppercase leading-tight">—</span>
                 </div>
                 <div>
                   <span class="text-[6px] font-bold text-slate-400 uppercase block">LICENSE</span>
-                  <span id="modal-badge-lic" class="text-[8.5px] font-black text-white uppercase leading-tight">PROF B</span>
+                  <span id="modal-badge-lic" class="text-[8.5px] font-black text-white uppercase leading-tight">—</span>
                 </div>
                 <div>
                   <span class="text-[6px] font-bold text-slate-400 uppercase block">EXPIRY</span>
-                  <span id="modal-badge-expiry" class="text-[9px] font-black text-white leading-tight">2028</span>
+                  <span id="modal-badge-expiry" class="text-[9px] font-black text-white leading-tight">—</span>
                 </div>
               </div>
 
@@ -1309,15 +1332,15 @@
                 <div class="space-y-0.5 text-[6.5px]">
                   <div class="flex justify-between border-b border-white/5 pb-0.5">
                     <span class="text-slate-400 font-semibold">CONTACT PERSON:</span>
-                    <span id="modal-badge-back-ec" class="font-bold text-white uppercase truncate max-w-[120px]">Maria Dela Cruz</span>
+                    <span id="modal-badge-back-ec" class="font-bold text-white uppercase truncate max-w-[120px]">—</span>
                   </div>
                   <div class="flex justify-between border-b border-white/5 pb-0.5">
                     <span class="text-slate-400 font-semibold">RELATIONSHIP:</span>
-                    <span id="modal-badge-back-rel" class="font-bold text-white uppercase">SPOUSE</span>
+                    <span id="modal-badge-back-rel" class="font-bold text-white uppercase">—</span>
                   </div>
                   <div class="flex justify-between">
                     <span class="text-slate-400 font-semibold">PHONE NUMBER:</span>
-                    <span id="modal-badge-back-ec-phone" class="font-bold font-mono text-orange-400">+63 935 966 7178</span>
+                    <span id="modal-badge-back-ec-phone" class="font-bold font-mono text-orange-400">—</span>
                   </div>
                 </div>
               </div>
@@ -1326,31 +1349,31 @@
               <div class="grid grid-cols-2 gap-1 border border-white/10 rounded-lg p-1 text-[6.5px]">
                 <div class="border-r border-white/10 pr-1">
                   <span class="text-slate-400 text-[5.5px] uppercase font-bold block">BLOOD GROUP</span>
-                  <span id="modal-badge-back-blood" class="font-black text-white text-[8px]">O+</span>
+                  <span id="modal-badge-back-blood" class="font-black text-white text-[8px]">—</span>
                 </div>
                 <div>
-                  <span class="text-slate-400 text-[5.5px] uppercase font-bold block">MEDICAL CLEARANCE</span>
-                  <span class="font-black text-white text-[7.5px]">TIER 2 (CLEARED)</span>
+                  <span class="text-slate-400 text-[5.5px] uppercase font-bold block">CLEARANCE</span>
+                  <span id="modal-badge-back-clearance" class="font-black text-white text-[7.5px]">CLEARED</span>
                 </div>
                 <div class="border-r border-t border-white/10 pr-1 pt-0.5 mt-0.5">
-                  <span class="text-slate-400 text-[5.5px] uppercase font-bold block">LTO LICENSE CROSS-REF</span>
-                  <span id="modal-badge-back-dl" class="font-mono font-bold text-white text-[7px]">N04-11-22-123456</span>
+                  <span class="text-slate-400 text-[5.5px] uppercase font-bold block">DL CROSS-REF</span>
+                  <span id="modal-badge-back-dl" class="font-mono font-bold text-white text-[7px]">—</span>
                 </div>
                 <div class="border-t border-white/10 pt-0.5 mt-0.5">
                   <span class="text-slate-400 text-[5.5px] uppercase font-bold block">LTO AGENCY CODE</span>
-                  <span id="modal-badge-back-agency" class="font-bold text-white text-[7px]">NCR-11</span>
+                  <span id="modal-badge-back-agency" class="font-bold text-white text-[7px]">—</span>
                 </div>
               </div>
 
               <!-- Signatory & Policy (Side-by-Side) -->
               <div class="grid grid-cols-12 gap-2 pt-0.5 items-end">
-                <div class="col-span-6">
+                <div id="modal-officer-signatory-container" class="col-span-6">
                   <span class="text-[#FF6B00] text-[5.5px] font-bold uppercase block">AUTHORIZED OFFICER</span>
-                  <svg class="w-20 h-5 my-0.5" viewBox="0 0 160 50" fill="none">
-                    <path d="M10 35 C 30 10, 45 40, 60 15 C 75 -5, 80 45, 95 25 C 110 5, 120 35, 140 20 C 150 15, 155 25, 130 38 C 105 50, 40 45, 15 42" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
-                  </svg>
-                  <p class="font-bold text-white text-[6.5px] uppercase leading-none">ANTONIO R. GARCIA</p>
-                  <p class="text-slate-400 text-[5.5px] uppercase leading-none mt-0.5">Fleet Operations Manager</p>
+                  <div class="h-5 flex items-center justify-center my-0.5">
+                    <span class="text-[5px] text-slate-400 font-mono italic">— Pending Signature —</span>
+                  </div>
+                  <p class="font-bold text-white text-[6.5px] uppercase leading-none">Raymart Quirante</p>
+                  <p class="text-slate-400 text-[5.5px] uppercase leading-none mt-0.5">Fleet Operations Director</p>
                 </div>
                 <div class="col-span-6 text-[5.5px] text-slate-400 leading-tight">
                   <span class="text-[#FF6B00] font-bold uppercase block mb-0.5">TERMS &amp; PROPERTY</span>
@@ -1365,7 +1388,7 @@
                   <div class="flex-1 h-full mx-0.5" style="background: repeating-linear-gradient(90deg,#000 0,#000 1.5px,#fff 1.5px,#fff 3px,#000 3px,#000 4px,#fff 4px,#fff 7px,#000 7px,#000 8.5px,#fff 8.5px,#fff 10px,#000 10px,#000 12px,#fff 12px,#fff 14px);"></div>
                   <div class="w-1 h-full bg-black"></div>
                 </div>
-                <p id="modal-badge-back-barcode-label" class="text-center font-mono text-[7px] text-slate-300 font-bold tracking-[0.25em] mt-0.5">DRV-2024-00125</p>
+                <p id="modal-badge-back-barcode-label" class="text-center font-mono text-[7px] text-slate-300 font-bold tracking-[0.25em] mt-0.5">—</p>
               </div>
             </div>
 
@@ -2200,6 +2223,9 @@ function getNetworkVerifyBase() {
   return 'http://martquirante:5233/api';
 }
 
+// ── Company Signatory State ──
+let companySignatory = { name: 'Raymart Quirante', title: 'Fleet Operations Director', signature: null };
+
 // ── Media & Asset Format Helpers ──
 function getDriverAvatarSrc(d) {
   if (!d) return null;
@@ -2225,9 +2251,139 @@ function getDriverSignatureSrc(d) {
   return 'data:image/png;base64,' + s;
 }
 
+// ── DB-Driven Emergency Contact Resolver (Never invented, never self-duplicating) ──
+function getDriverEmergencyContact(d) {
+  if (!d) return { name: '— (None on file)', rel: '—', phone: '—', hasData: false };
+  const ec = (d.emergencyContacts && d.emergencyContacts.length > 0) ? d.emergencyContacts[0] : null;
+  const name = (ec && ec.fullName) || d.emergencyContactName || '';
+  const rel = (ec && ec.relationship) || d.emergencyContactRelationship || '';
+  const phone = (ec && ec.phone) || d.emergencyContactPhone || '';
+
+  if (name || phone || rel) {
+    return {
+      name: name || '—',
+      rel: (rel || 'Not Specified').toUpperCase(),
+      phone: phone || '—',
+      hasData: true
+    };
+  }
+  return {
+    name: '— (None on file)',
+    rel: '—',
+    phone: '—',
+    hasData: false
+  };
+}
+
+// ── Real Officer Signatory Renderer (DB/Accounts backed only — Zero fake SVGs) ──
+function getOfficerSignatoryHtml(size = 'normal') {
+  const name = (companySignatory && companySignatory.name) ? companySignatory.name : 'Raymart Quirante';
+  const title = (companySignatory && companySignatory.title) ? companySignatory.title : 'Fleet Operations Director';
+  const sig = companySignatory && companySignatory.signature;
+  
+  if (size === 'mini') {
+    return `
+      <span class="text-[#FF6B00] text-[4.5px] font-bold uppercase block">AUTHORIZED OFFICER</span>
+      <div class="h-3.5 flex items-center justify-center my-0.5">
+        ${sig ? `<img src="${sig}" class="max-h-3.5 max-w-[65px] object-contain mx-auto" alt="Officer Signature" />` : `<span class="text-[4px] text-slate-400 font-mono italic">— Pending Signature —</span>`}
+      </div>
+      <p class="font-bold text-white text-[5.5px] uppercase leading-none truncate">${escHtml(name)}</p>
+      <p class="text-slate-400 text-[4.5px] uppercase leading-none mt-0.5">${escHtml(title)}</p>
+    `;
+  }
+  if (size === 'zoom') {
+    return `
+      <span class="text-[#FF6B00] text-[7px] font-bold uppercase block">AUTHORIZED COMPANY OFFICER</span>
+      <div class="h-6 flex items-center justify-center my-0.5">
+        ${sig ? `<img src="${sig}" class="max-h-6 max-w-[120px] object-contain mx-auto" alt="Officer Signature" />` : `<span class="text-[6.5px] text-slate-400 font-mono italic">— Pending Officer Signature —</span>`}
+      </div>
+      <p class="font-bold text-white text-[8px] uppercase leading-none truncate">${escHtml(name)}</p>
+      <p class="text-slate-400 text-[7px] uppercase leading-none mt-0.5">${escHtml(title)}</p>
+    `;
+  }
+  return `
+    <span class="text-[#FF6B00] text-[5.5px] font-bold uppercase block">AUTHORIZED OFFICER</span>
+    <div class="h-5 flex items-center justify-center my-0.5">
+      ${sig ? `<img src="${sig}" class="max-h-5 max-w-[90px] object-contain mx-auto" alt="Officer Signature" />` : `<span class="text-[5px] text-slate-400 font-mono italic">— Pending Officer Signature —</span>`}
+    </div>
+    <p class="font-bold text-white text-[6.5px] uppercase leading-none truncate">${escHtml(name)}</p>
+    <p class="text-slate-400 text-[5.5px] uppercase leading-none mt-0.5">${escHtml(title)}</p>
+  `;
+}
+
+// ── Licensee / Driver Signature Renderer (DB/Accounts backed only) ──
+function getLicenseeSignatureHtml(d, size = 'normal') {
+  const sig = getDriverSignatureSrc(d);
+  if (size === 'mini') {
+    return sig 
+      ? `<img src="${sig}" class="max-h-3.5 max-w-[60px] object-contain mx-auto" alt="Driver Signature" />`
+      : `<span class="text-[5.5px] text-slate-400 font-mono italic">—</span>`;
+  }
+  if (size === 'zoom') {
+    return sig 
+      ? `<img src="${sig}" class="max-h-6 max-w-[140px] object-contain mx-auto" alt="Driver Signature" />`
+      : `<span class="text-[8px] text-slate-400 font-mono italic">— No Signature on File —</span>`;
+  }
+  return sig 
+    ? `<img src="${sig}" class="max-h-5 max-w-[120px] object-contain mx-auto" alt="Driver Signature" />`
+    : `<span class="text-[7.5px] text-slate-400 font-mono italic">— No Signature on File —</span>`;
+}
+
+// ── Authentic Driving Category Matrix Generator (Derived strictly from real DB restrictions) ──
+function getDrivingCategoryMatrixHtml(d, isHd = false) {
+  if (!d) return '';
+  const expiry = d.licenseExpiry || '—';
+  const rest = (d.restrictions || '').toUpperCase();
+  const licClass = (d.licenseClass || '').toUpperCase();
+
+  // Restriction 1 or A = Motorcycle
+  const hasA = rest.includes('1') || rest.includes('A');
+  // Restriction 2 or B = Light Vehicle / Car
+  const hasB = rest.includes('2') || rest.includes('B') || licClass.includes('PROF') || licClass.includes('NON-PROF') || (!rest && d.licenseNo);
+  // Restriction 3 or C = Heavy / Commercial Truck
+  const hasC = rest.includes('3') || rest.includes('C') || rest.includes('8');
+
+  const pSize = isHd ? 'p-1.5' : 'p-0.5';
+  const textClass = isHd ? 'text-[8px]' : 'text-[5px]';
+
+  return `
+    <div class="border border-slate-300 rounded overflow-hidden ${textClass}">
+      <div class="grid grid-cols-4 bg-slate-100 font-extrabold text-slate-700 text-center ${pSize} border-b border-slate-200">
+        <div>CATEGORY</div>
+        <div>VEHICLE</div>
+        <div>RESTRICTION</div>
+        <div>VALID UNTIL</div>
+      </div>
+      <div class="grid grid-cols-4 text-center ${pSize} border-b border-slate-100 ${hasA ? '' : 'text-slate-400 opacity-60'}">
+        <div class="font-bold">A</div>
+        <div>MOTORCYCLE</div>
+        <div>${hasA ? '1 / A' : '—'}</div>
+        <div>${hasA ? escHtml(expiry) : '—'}</div>
+      </div>
+      <div class="grid grid-cols-4 text-center ${pSize} border-b border-slate-100 bg-slate-50/50 ${hasB ? '' : 'text-slate-400 opacity-60'}">
+        <div class="font-bold">B</div>
+        <div>LIGHT VEHICLE</div>
+        <div>${hasB ? '2 / B' : '—'}</div>
+        <div>${hasB ? escHtml(expiry) : '—'}</div>
+      </div>
+      <div class="grid grid-cols-4 text-center ${pSize} ${hasC ? '' : 'text-slate-400 opacity-60'}">
+        <div class="font-bold">C</div>
+        <div>HEAVY TRUCK</div>
+        <div>${hasC ? '3 / C' : '—'}</div>
+        <div>${hasC ? escHtml(expiry) : '—'}</div>
+      </div>
+    </div>
+  `;
+}
+
 // ── Main data load ──
 async function fetchDriversData() {
   try {
+    // Also fetch company authorized signatory asynchronously
+    apiFetch('/drivers/company-signatory')
+      .then(res => { if (res && res.name) companySignatory = res; })
+      .catch(() => {});
+
     // Try primary localhost URL first
     let data;
     try {
@@ -2276,19 +2432,81 @@ function buildKPIs() {
 
   kpis.forEach((k, i) => {
     const el = document.createElement('div');
-    el.className = 'kpi-card glass anim-up';
+    el.className = 'kpi-card glass anim-up group cursor-pointer select-none';
     el.style.animationDelay = `${i * 60}ms`;
-    el.innerHTML = `
+    el.style.perspective = '1000px';
+    el.style.transformStyle = 'preserve-3d';
+    el.style.position = 'relative';
+    el.style.overflow = 'hidden';
+    el.style.willChange = 'transform, box-shadow, border-color';
+
+    // Top Shine Gradient
+    const topShine = document.createElement('div');
+    topShine.style.cssText = 'position:absolute;top:0;left:0;right:0;height:45%;border-radius:16px 16px 0 0;background:linear-gradient(180deg,rgba(255,255,255,0.08) 0%,transparent 100%);pointer-events:none;z-index:1;';
+    el.appendChild(topShine);
+
+    // Dynamic Radial Glare Layer
+    const glareEl = document.createElement('div');
+    glareEl.style.cssText = 'position:absolute;inset:0;border-radius:16px;pointer-events:none;z-index:2;background:radial-gradient(circle at 50% 50%, rgba(255,255,255,0) 0%, rgba(255,255,255,0) 65%);transition:opacity 0.4s ease;';
+    el.appendChild(glareEl);
+
+    // Card Content Wrapper (with preserve-3d and translateZ for true depth)
+    const contentEl = document.createElement('div');
+    contentEl.style.cssText = 'position:relative;z-index:10;transform-style:preserve-3d;';
+    contentEl.innerHTML = `
       <div class="flex items-center justify-between mb-2">
-        <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:${k.color}18">
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-300" style="background:${k.color}22">
           <i data-lucide="${k.icon}" class="w-4 h-4" style="color:${k.color}"></i>
         </div>
-        ${buildSparklineSVG(k.sparkColor)}
+        <div class="group-hover:scale-105 transition-transform duration-300">
+          ${buildSparklineSVG(k.sparkColor)}
+        </div>
       </div>
       <p class="text-[10px] font-bold uppercase tracking-wider" style="color:${k.color}">${k.label}</p>
       <p class="text-xl font-black mt-0.5 leading-tight">${k.value}</p>
-      <p class="text-[10px] mt-1" style="color:${k.color}88">${k.sub}</p>
+      <p class="text-[10px] mt-1" style="color:${k.color}99">${k.sub}</p>
     `;
+    el.appendChild(contentEl);
+
+    // 3D Parallax Tilt Physics Handler
+    let rafId = null;
+    el.addEventListener('mousemove', (e) => {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const rect = el.getBoundingClientRect();
+        const relX = e.clientX - rect.left;
+        const relY = e.clientY - rect.top;
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        const normX = (relX - centerX) / centerX;
+        const normY = (relY - centerY) / centerY;
+        const tiltX = normY * -12;
+        const tiltY = normX * 12;
+
+        el.style.transform = `perspective(1000px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) scale3d(1.04, 1.04, 1.04) translateZ(8px)`;
+        el.style.borderColor = `${k.color}95`;
+        el.style.boxShadow = `0 18px 36px rgba(0,0,0,0.45), 0 0 26px ${k.color}35, 0 0 0 1px rgba(255,255,255,0.08)`;
+        el.style.transition = 'transform 0.08s ease-out, box-shadow 0.2s ease, border-color 0.2s ease';
+
+        const glareX = (relX / rect.width) * 100;
+        const glareY = (relY / rect.height) * 100;
+        glareEl.style.background = `radial-gradient(circle at ${glareX}% ${glareY}%, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0) 65%)`;
+      });
+    });
+
+    el.addEventListener('mouseenter', () => {
+      el.style.transition = 'transform 0.1s ease-out, box-shadow 0.25s ease, border-color 0.2s ease';
+    });
+
+    el.addEventListener('mouseleave', () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      el.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1) translateZ(0px)';
+      el.style.borderColor = '';
+      el.style.boxShadow = '';
+      el.style.transition = 'transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s ease, border-color 0.3s ease';
+      glareEl.style.background = 'radial-gradient(circle at 50% 50%, rgba(255,255,255,0) 0%, rgba(255,255,255,0) 65%)';
+    });
+
     grid.appendChild(el);
   });
   lucide.createIcons();
@@ -2537,7 +2755,7 @@ function renderInspector(d) {
     <div class="flex flex-col gap-1.5 flex-shrink-0">
       <div class="flex items-center justify-between">
         <span class="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-          <i data-lucide="shield-check" class="w-3.5 h-3.5 text-[#FF6B00]"></i> Professional Driver's License
+          <i data-lucide="shield-check" class="w-3.5 h-3.5 text-[#FF6B00]"></i> ${escHtml(d.licenseClass || 'Driver')} License
         </span>
         <button onclick="flipCard('lto-card-flip-${d.driverId}', event)" class="text-[9px] text-[#64748B] hover:text-orange-400 font-bold flex items-center gap-1 transition-colors px-2 py-0.5 rounded bg-[#1E293B]/60 border border-[#1E293B] cursor-pointer">
           <i data-lucide="refresh-cw" class="w-2.5 h-2.5"></i> Flip Card
@@ -2602,7 +2820,7 @@ function renderInspector(d) {
                 <!-- Signature of Licensee -->
                 <div class="w-full mt-0.5 text-center">
                   <div class="h-3.5 flex items-center justify-center truncate">
-                    ${dSigSrc ? `<img src="${dSigSrc}" class="max-h-3.5 max-w-[60px] object-contain mx-auto" alt="Driver Signature" />` : `<span class="text-[5.5px] text-slate-400 font-mono italic">—</span>`}
+                    ${getLicenseeSignatureHtml(d, 'mini')}
                   </div>
                   <div class="border-t border-slate-400/80 pt-0.5 text-[4.5px] font-extrabold text-slate-600 uppercase tracking-tight">SIGNATURE OF LICENSEE</div>
                 </div>
@@ -2618,62 +2836,62 @@ function renderInspector(d) {
                 <div class="grid grid-cols-5 gap-0.5 pt-0.5">
                   <div>
                     <span class="text-slate-500 uppercase text-[4.5px] font-bold block">Nationality</span>
-                    <span class="font-extrabold text-[6px]">${escHtml(d.nationality || 'PHL')}</span>
+                    <span class="font-extrabold text-[6px]">${escHtml(d.nationality || '—')}</span>
                   </div>
                   <div>
                     <span class="text-slate-500 uppercase text-[4.5px] font-bold block">Sex</span>
-                    <span class="font-extrabold text-[6px]">${escHtml(d.sex || 'M')}</span>
+                    <span class="font-extrabold text-[6px]">${escHtml(d.sex || '—')}</span>
                   </div>
                   <div>
                     <span class="text-slate-500 uppercase text-[4.5px] font-bold block">Birth Date</span>
-                    <span class="font-extrabold text-[6px]">${escHtml(d.birthDate || '1987/10/04')}</span>
+                    <span class="font-extrabold text-[6px]">${escHtml(d.birthDate || '—')}</span>
                   </div>
                   <div>
                     <span class="text-slate-500 uppercase text-[4.5px] font-bold block">Weight</span>
-                    <span class="font-extrabold text-[6px]">${d.weightKg || '70'}</span>
+                    <span class="font-extrabold text-[6px]">${d.weightKg || '—'}</span>
                   </div>
                   <div>
                     <span class="text-slate-500 uppercase text-[4.5px] font-bold block">Height</span>
-                    <span class="font-extrabold text-[6px]">${d.heightM || '1.70'}</span>
+                    <span class="font-extrabold text-[6px]">${d.heightM || '—'}</span>
                   </div>
                 </div>
 
                 <div>
                   <span class="text-slate-500 uppercase text-[4.5px] font-bold block">Address</span>
-                  <div class="font-bold text-[6px] leading-tight text-slate-800 truncate">${escHtml((d.address || '123 SAMPLE STREET, CITY OF MANILA').toUpperCase())}</div>
+                  <div class="font-bold text-[6px] leading-tight text-slate-800 truncate">${escHtml((d.address || '—').toUpperCase())}</div>
                 </div>
 
                 <div class="grid grid-cols-3 gap-0.5 bg-sky-500/10 p-0.5 rounded border border-sky-300/40">
                   <div>
                     <span class="text-slate-600 uppercase text-[4.5px] font-extrabold block">License No.</span>
-                    <span class="font-black text-[#001f3f] font-mono text-[7px]">${escHtml(d.licenseNo || 'N01-23-456789')}</span>
+                    <span class="font-black text-[#001f3f] font-mono text-[7px]">${escHtml(d.licenseNo || '—')}</span>
                   </div>
                   <div>
                     <span class="text-slate-600 uppercase text-[4.5px] font-extrabold block">Expiration</span>
-                    <span class="font-black text-red-600 font-mono text-[7px]">${escHtml(d.licenseExpiry || '2028/10/04')}</span>
+                    <span class="font-black text-red-600 font-mono text-[7px]">${escHtml(d.licenseExpiry || '—')}</span>
                   </div>
                   <div>
                     <span class="text-slate-600 uppercase text-[4.5px] font-extrabold block">Agency</span>
-                    <span class="font-bold text-[#001f3f] text-[7px]">${escHtml(d.agencyCode || 'N32')}</span>
+                    <span class="font-bold text-[#001f3f] text-[7px]">${escHtml(d.agencyCode || '—')}</span>
                   </div>
                 </div>
 
                 <div class="grid grid-cols-4 gap-0.5">
                   <div>
                     <span class="text-slate-500 uppercase text-[4.5px] font-bold block">Blood</span>
-                    <span class="font-extrabold text-[6px]">${escHtml(d.bloodType || 'O+')}</span>
+                    <span class="font-extrabold text-[6px]">${escHtml(d.bloodType || '—')}</span>
                   </div>
                   <div>
                     <span class="text-slate-500 uppercase text-[4.5px] font-bold block">Eyes</span>
-                    <span class="font-extrabold text-[6px]">BLACK</span>
+                    <span class="font-extrabold text-[6px]">${escHtml(d.eyeColor || '—')}</span>
                   </div>
                   <div>
                     <span class="text-slate-500 uppercase text-[4.5px] font-bold block">Restrictions</span>
-                    <span class="font-extrabold text-[6px]">${escHtml(d.restrictions || '1, 2')}</span>
+                    <span class="font-extrabold text-[6px]">${escHtml(d.restrictions || '—')}</span>
                   </div>
                   <div>
                     <span class="text-slate-500 uppercase text-[4.5px] font-bold block">Conditions</span>
-                    <span class="font-extrabold text-[6px]">${escHtml(d.conditions || 'NONE')}</span>
+                    <span class="font-extrabold text-[6px]">${escHtml(d.conditions || '—')}</span>
                   </div>
                 </div>
 
@@ -2704,41 +2922,29 @@ function renderInspector(d) {
               <div class="flex items-center justify-between border-b border-slate-200 pb-0.5">
                 <span class="font-black text-[6px] text-[#001f3f] tracking-wide">LICENSE INFORMATION</span>
                 <div class="flex items-center gap-2">
-                  <span>DL NO.: <strong class="font-mono text-[#001f3f]">${escHtml(d.licenseNo || 'N01-23-456789')}</strong></span>
-                  <span>BLOOD: <strong class="text-[#001f3f]">${escHtml(d.bloodType || 'O+')}</strong></span>
+                  <span>DL NO.: <strong class="font-mono text-[#001f3f]">${escHtml(d.licenseNo || '—')}</strong></span>
+                  <span>BLOOD: <strong class="text-[#001f3f]">${escHtml(d.bloodType || '—')}</strong></span>
                 </div>
               </div>
 
-              <!-- Driving Category Matrix -->
-              <div class="border border-slate-300 rounded overflow-hidden text-[5px]">
-                <div class="grid grid-cols-4 bg-slate-100 font-extrabold text-slate-700 text-center p-0.5 border-b border-slate-200">
-                  <div>CATEGORY</div>
-                  <div>VEHICLE</div>
-                  <div>ISSUED</div>
-                  <div>VALID</div>
-                </div>
-                <div class="grid grid-cols-4 text-center p-0.5 border-b border-slate-100">
-                  <div class="font-bold">A</div><div>MOTORCYCLE</div><div>2023/01/01</div><div>${escHtml(d.licenseExpiry || '2028/01/01')}</div>
-                </div>
-                <div class="grid grid-cols-4 text-center p-0.5 border-b border-slate-100 bg-slate-50/50">
-                  <div class="font-bold">B</div><div>LIGHT VEHICLE</div><div>2023/01/01</div><div>${escHtml(d.licenseExpiry || '2028/01/01')}</div>
-                </div>
-                <div class="grid grid-cols-4 text-center p-0.5">
-                  <div class="font-bold">C</div><div>LIGHT TRUCK</div><div>—</div><div>—</div>
-                </div>
-              </div>
+              <!-- Driving Category Matrix (DB Driven) -->
+              ${getDrivingCategoryMatrixHtml(d, false)}
 
-              <!-- Emergency Contact -->
-              <div class="bg-slate-50 p-1 rounded border border-slate-200 flex items-center justify-between text-[5px]">
-                <div>
-                  <span class="text-slate-500 uppercase font-bold block text-[4.5px]">Emergency Contact:</span>
-                  <span class="font-black text-slate-900 truncate">${escHtml(d.fullName || '—')}</span>
-                </div>
-                <div class="text-right">
-                  <span class="text-slate-500 uppercase font-bold block text-[4.5px]">Contact Number:</span>
-                  <span class="font-bold font-mono text-slate-800">${escHtml(d.phone || '0935-966-7178')}</span>
-                </div>
-              </div>
+              <!-- Emergency Contact (From Database) -->
+              ${(() => {
+                const ec = getDriverEmergencyContact(d);
+                return `
+                <div class="bg-slate-50 p-1 rounded border border-slate-200 flex items-center justify-between text-[5px]">
+                  <div>
+                    <span class="text-slate-500 uppercase font-bold block text-[4.5px]">Emergency Contact:</span>
+                    <span class="font-black text-slate-900 truncate">${escHtml(ec.name)}</span>
+                  </div>
+                  <div class="text-right">
+                    <span class="text-slate-500 uppercase font-bold block text-[4.5px]">Contact Number:</span>
+                    <span class="font-bold font-mono text-slate-800">${escHtml(ec.phone)}</span>
+                  </div>
+                </div>`;
+              })()}
 
               <!-- 2D Barcode -->
               <div class="pt-0.5">
@@ -2807,7 +3013,7 @@ function renderInspector(d) {
             <!-- Driver Full Name & Title -->
             <div class="w-full mt-0.5">
               <p class="font-black text-white text-[11.5px] uppercase tracking-tight truncate leading-tight">${escHtml(d.fullName || '—')}</p>
-              <p class="text-[#FF6B00] font-bold text-[8px] leading-tight mt-0.5 uppercase tracking-wider">Senior Fleet Driver</p>
+              <p class="text-[#FF6B00] font-bold text-[8px] leading-tight mt-0.5 uppercase tracking-wider">${escHtml(d.licenseClass ? (d.licenseClass + ' Fleet Driver') : 'Fleet Driver')}</p>
               <p class="text-slate-400 text-[5.5px] font-bold uppercase tracking-widest mt-0.5">EMPLOYEE ID</p>
               <p class="text-slate-100 font-mono text-[9px] font-black tracking-widest leading-none mt-0.5">${escHtml(empCode)}</p>
             </div>
@@ -2816,19 +3022,19 @@ function renderInspector(d) {
             <div class="grid grid-cols-4 border-y border-white/10 py-1 text-center my-0.5 divide-x divide-white/10 w-full bg-white/[0.03] rounded-sm">
               <div>
                 <span class="text-[5px] font-bold text-slate-400 uppercase block">BLOOD</span>
-                <span class="text-[8px] font-black text-white leading-tight">${escHtml(d.bloodType || 'O+')}</span>
+                <span class="text-[8px] font-black text-white leading-tight">${escHtml(d.bloodType || '—')}</span>
               </div>
               <div>
                 <span class="text-[5px] font-bold text-slate-400 uppercase block">SHIFT</span>
-                <span class="text-[7px] font-black text-white uppercase leading-tight">${escHtml((d.shiftSchedule || 'MORNING').toUpperCase())}</span>
+                <span class="text-[7px] font-black text-white uppercase leading-tight">${escHtml((d.shiftSchedule || '—').toUpperCase())}</span>
               </div>
               <div>
                 <span class="text-[5px] font-bold text-slate-400 uppercase block">LICENSE</span>
-                <span class="text-[7px] font-black text-white uppercase leading-tight">${escHtml((d.licenseClass || 'PROF B').toUpperCase())}</span>
+                <span class="text-[7px] font-black text-white uppercase leading-tight">${escHtml((d.licenseClass || '—').toUpperCase())}</span>
               </div>
               <div>
                 <span class="text-[5px] font-bold text-slate-400 uppercase block">EXPIRY</span>
-                <span class="text-[8px] font-black text-white leading-tight">${d.licenseExpiry ? d.licenseExpiry.slice(0, 4) : '2028'}</span>
+                <span class="text-[8px] font-black text-white leading-tight">${d.licenseExpiry ? d.licenseExpiry.slice(0, 4) : '—'}</span>
               </div>
             </div>
 
@@ -2896,54 +3102,53 @@ function renderInspector(d) {
               </div>
             </div>
 
-            <!-- IN CASE OF EMERGENCY (ICE Table) -->
-            <div class="border border-white/10 rounded-lg p-1 bg-white/[0.02]">
-              <p class="text-[5.5px] font-black text-[#FF6B00] uppercase tracking-wider mb-0.5">IN CASE OF EMERGENCY</p>
-              <div class="space-y-0.5 text-[5.5px]">
-                <div class="flex justify-between border-b border-white/5 pb-0.5">
-                  <span class="text-slate-400 font-semibold">CONTACT:</span>
-                  <span class="font-bold text-white uppercase truncate max-w-[100px]">${escHtml(d.fullName || '—')}</span>
+            <!-- IN CASE OF EMERGENCY (ICE Table - DB Driven) -->
+            ${(() => {
+              const ec = getDriverEmergencyContact(d);
+              return `
+              <div class="border border-white/10 rounded-lg p-1 bg-white/[0.02]">
+                <p class="text-[5.5px] font-black text-[#FF6B00] uppercase tracking-wider mb-0.5">IN CASE OF EMERGENCY</p>
+                <div class="space-y-0.5 text-[5.5px]">
+                  <div class="flex justify-between border-b border-white/5 pb-0.5">
+                    <span class="text-slate-400 font-semibold">CONTACT:</span>
+                    <span class="font-bold text-white uppercase truncate max-w-[100px]">${escHtml(ec.name)}</span>
+                  </div>
+                  <div class="flex justify-between border-b border-white/5 pb-0.5">
+                    <span class="text-slate-400 font-semibold">RELATION:</span>
+                    <span class="font-bold text-white uppercase">${escHtml(ec.rel)}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-slate-400 font-semibold">PHONE:</span>
+                    <span class="font-bold font-mono text-orange-400">${escHtml(ec.phone)}</span>
+                  </div>
                 </div>
-                <div class="flex justify-between border-b border-white/5 pb-0.5">
-                  <span class="text-slate-400 font-semibold">RELATION:</span>
-                  <span class="font-bold text-white uppercase">SPOUSE</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-slate-400 font-semibold">PHONE:</span>
-                  <span class="font-bold font-mono text-orange-400">${escHtml(d.phone || '0935-966-7178')}</span>
-                </div>
-              </div>
-            </div>
+              </div>`;
+            })()}
 
             <!-- Medical & License Cross-Reference (2x2 Matrix) -->
             <div class="grid grid-cols-2 gap-0.5 border border-white/10 rounded-lg p-0.5 text-[5.5px]">
               <div class="border-r border-white/10 pr-0.5">
                 <span class="text-slate-400 text-[5px] uppercase font-bold block">BLOOD</span>
-                <span class="font-black text-white text-[7px]">${escHtml(d.bloodType || 'O+')}</span>
+                <span class="font-black text-white text-[7px]">${escHtml(d.bloodType || '—')}</span>
               </div>
               <div>
                 <span class="text-slate-400 text-[5px] uppercase font-bold block">CLEARANCE</span>
-                <span class="font-black text-white text-[6.5px]">TIER 2</span>
+                <span class="font-black text-white text-[6.5px]">TIER 2 (CLEARED)</span>
               </div>
               <div class="border-r border-t border-white/10 pr-0.5 pt-0.5 mt-0.5">
                 <span class="text-slate-400 text-[5px] uppercase font-bold block">DL CROSS-REF</span>
-                <span class="font-mono font-bold text-white text-[6px] truncate block">${escHtml(d.licenseNo || 'N04-11-22-123456')}</span>
+                <span class="font-mono font-bold text-white text-[6px] truncate block">${escHtml(d.licenseNo || '—')}</span>
               </div>
               <div class="border-t border-white/10 pt-0.5 mt-0.5">
                 <span class="text-slate-400 text-[5px] uppercase font-bold block">AGENCY</span>
-                <span class="font-bold text-white text-[6px]">${escHtml(d.agencyCode || 'NCR-11')}</span>
+                <span class="font-bold text-white text-[6px]">${escHtml(d.agencyCode || '—')}</span>
               </div>
             </div>
 
-            <!-- Signatory & Policy (Side-by-Side) -->
+            <!-- Signatory & Policy (DB Signatory Only) -->
             <div class="grid grid-cols-12 gap-1 pt-0.5 items-end">
               <div class="col-span-6">
-                <span class="text-[#FF6B00] text-[5px] font-bold uppercase block">AUTHORIZED OFFICER</span>
-                <svg class="w-14 h-3.5 my-0.5" viewBox="0 0 160 50" fill="none">
-                  <path d="M10 35 C 30 10, 45 40, 60 15 C 75 -5, 80 45, 95 25 C 110 5, 120 35, 140 20 C 150 15, 155 25, 130 38 C 105 50, 40 45, 15 42" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
-                </svg>
-                <p class="font-bold text-white text-[5.5px] uppercase leading-none">ANTONIO R. GARCIA</p>
-                <p class="text-slate-400 text-[4.5px] uppercase leading-none mt-0.5">Operations Manager</p>
+                ${getOfficerSignatoryHtml('mini')}
               </div>
               <div class="col-span-6 text-[5px] text-slate-400 leading-tight">
                 <span class="text-[#FF6B00] font-bold uppercase block mb-0.5">PROPERTY NOTICE</span>
@@ -3088,9 +3293,6 @@ function renderInspector(d) {
         <button onclick="switchInspectorTab('badge')" class="py-1 px-1.5 rounded-lg text-[10px] font-bold transition-all text-center flex items-center justify-center gap-1 cursor-pointer ${activeInspectorTab === 'badge' ? 'bg-[#FF6B00] text-white shadow-md' : 'text-[#94A3B8] hover:text-white hover:bg-[#1E293B]'}">
           <i data-lucide="id-card" class="w-3 h-3"></i> Badge
         </button>
-        <button onclick="switchInspectorTab('earnings')" class="py-1 px-1.5 rounded-lg text-[10px] font-bold transition-all text-center flex items-center justify-center gap-1 cursor-pointer ${activeInspectorTab === 'earnings' ? 'bg-[#FF6B00] text-white shadow-md' : 'text-[#94A3B8] hover:text-white hover:bg-[#1E293B]'}">
-          <i data-lucide="wallet" class="w-3 h-3"></i> Earnings
-        </button>
         <button onclick="switchInspectorTab('all')" class="py-1 px-1.5 rounded-lg text-[10px] font-bold transition-all text-center flex items-center justify-center gap-1 cursor-pointer ${activeInspectorTab === 'all' ? 'bg-[#FF6B00] text-white shadow-md' : 'text-[#94A3B8] hover:text-white hover:bg-[#1E293B]'}">
           <i data-lucide="layers" class="w-3 h-3"></i> All
         </button>
@@ -3132,8 +3334,8 @@ async function openIdentificationModal(driverId) {
   const d = allDrivers.find(x => x.driverId === driverId);
   if (!d) return;
 
-  const empCode = d.employeeCode || `DRG-DRV-2024-${String(d.driverId).padStart(5,'0')}`;
-  const licClass = (d.licenseClass || 'Professional').toUpperCase();
+  const empCode = d.employeeCode || `DRV-${String(d.driverId).padStart(4,'0')}`;
+  const licClass = (d.licenseClass || '').toUpperCase() || 'DRIVER';
   const initials = (d.fullName||'').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
 
   // Format full name: DELA CRUZ, JUAN PEDRO
@@ -3147,7 +3349,7 @@ async function openIdentificationModal(driverId) {
 
   // Titles
   const licHeading = document.getElementById('modal-lic-heading-title');
-  if (licHeading) licHeading.innerHTML = `<i data-lucide="shield-check" class="w-4 h-4"></i> ${d.licenseClass || 'Professional'} Driver's License`;
+  if (licHeading) licHeading.innerHTML = `<i data-lucide="shield-check" class="w-4 h-4"></i> ${escHtml(d.licenseClass || 'Driver')} License`;
   const licClassTitle = document.getElementById('modal-lic-class-title');
   if (licClassTitle) licClassTitle.textContent = licClass;
 
@@ -3160,48 +3362,44 @@ async function openIdentificationModal(driverId) {
 
   const licSigEl = document.getElementById('modal-lic-sig');
   if (licSigEl) {
-    if (sig) {
-      licSigEl.innerHTML = `<img src="${sig}" class="max-h-5 max-w-[120px] object-contain mx-auto" alt="Driver Signature" />`;
-    } else {
-      licSigEl.innerHTML = `<span class="text-[7.5px] text-slate-400 font-mono italic">—</span>`;
-    }
+    licSigEl.innerHTML = getLicenseeSignatureHtml(d, 'normal');
   }
 
   const bdayEl = document.getElementById('modal-lic-bday');
-  if (bdayEl) bdayEl.textContent = d.birthDate || '1987/10/04';
+  if (bdayEl) bdayEl.textContent = d.birthDate || '—';
 
   const sexEl = document.getElementById('modal-lic-sex');
-  if (sexEl) sexEl.textContent = d.sex || 'M';
+  if (sexEl) sexEl.textContent = d.sex || '—';
 
   const heightEl = document.getElementById('modal-lic-height');
-  if (heightEl) heightEl.textContent = d.heightM ? `${d.heightM}` : '1.70';
+  if (heightEl) heightEl.textContent = d.heightM ? `${d.heightM}` : '—';
 
   const weightEl = document.getElementById('modal-lic-weight');
-  if (weightEl) weightEl.textContent = d.weightKg ? `${d.weightKg}` : '70';
+  if (weightEl) weightEl.textContent = d.weightKg ? `${d.weightKg}` : '—';
 
   const natEl = document.getElementById('modal-lic-nat');
-  if (natEl) natEl.textContent = d.nationality || 'PHL';
+  if (natEl) natEl.textContent = d.nationality || '—';
 
   const addrEl = document.getElementById('modal-lic-addr');
-  if (addrEl) addrEl.textContent = (d.address || 'CSJDM | NORZAGARAY, BULACAN, PHILIPPINES').toUpperCase();
+  if (addrEl) addrEl.textContent = (d.address || '—').toUpperCase();
 
   const licNoEl = document.getElementById('modal-lic-no');
-  if (licNoEl) licNoEl.textContent = d.licenseNo || 'N01-23-456789';
+  if (licNoEl) licNoEl.textContent = d.licenseNo || '—';
 
   const expiryEl = document.getElementById('modal-lic-expiry');
-  if (expiryEl) expiryEl.textContent = d.licenseExpiry || '2028/10/04';
+  if (expiryEl) expiryEl.textContent = d.licenseExpiry || '—';
 
   const agencyEl = document.getElementById('modal-lic-agency');
-  if (agencyEl) agencyEl.textContent = d.agencyCode || 'N32';
+  if (agencyEl) agencyEl.textContent = d.agencyCode || '—';
 
   const bloodEl = document.getElementById('modal-lic-blood');
-  if (bloodEl) bloodEl.textContent = d.bloodType || 'O+';
+  if (bloodEl) bloodEl.textContent = d.bloodType || '—';
 
   const restEl = document.getElementById('modal-lic-rest');
-  if (restEl) restEl.textContent = d.restrictions || '1, 2';
+  if (restEl) restEl.textContent = d.restrictions || '—';
 
   const condEl = document.getElementById('modal-lic-cond');
-  if (condEl) condEl.textContent = d.conditions || 'NONE';
+  if (condEl) condEl.textContent = d.conditions || '—';
 
   // LTO Photo
   const ltoPhoto = document.getElementById('modal-lic-photo');
@@ -3215,22 +3413,31 @@ async function openIdentificationModal(driverId) {
 
   // LTO Back
   const backDlNo = document.getElementById('modal-back-dlno');
-  if (backDlNo) backDlNo.textContent = d.licenseNo || 'N01-23-456789';
+  if (backDlNo) backDlNo.textContent = d.licenseNo || '—';
 
   const backBlood = document.getElementById('modal-back-blood');
-  if (backBlood) backBlood.textContent = d.bloodType || 'O+';
+  if (backBlood) backBlood.textContent = d.bloodType || '—';
 
   const backSerial = document.getElementById('modal-lic-serial');
-  if (backSerial) backSerial.textContent = String(d.driverId * 849201 + 100000000).slice(0, 9);
+  if (backSerial) backSerial.textContent = d.licenseNo || empCode;
+
+  // Render authentic DB-driven category matrix
+  const categoryMatrixContainer = document.getElementById('modal-back-category-matrix-container');
+  if (categoryMatrixContainer) {
+    categoryMatrixContainer.innerHTML = getDrivingCategoryMatrixHtml(d, false);
+  }
 
   const backExpiryA = document.getElementById('modal-back-expiry-a');
-  if (backExpiryA) backExpiryA.textContent = d.licenseExpiry || '2028/01/01';
+  if (backExpiryA) backExpiryA.textContent = d.licenseExpiry || '—';
   const backExpiryB = document.getElementById('modal-back-expiry-b');
-  if (backExpiryB) backExpiryB.textContent = d.licenseExpiry || '2028/01/01';
+  if (backExpiryB) backExpiryB.textContent = d.licenseExpiry || '—';
 
   // Employee Badge
   const badgeName = document.getElementById('modal-badge-name');
-  if (badgeName) badgeName.textContent = d.fullName || 'Juan Dela Cruz';
+  if (badgeName) badgeName.textContent = d.fullName || '—';
+
+  const badgeRole = document.getElementById('modal-badge-role');
+  if (badgeRole) badgeRole.textContent = d.licenseClass ? `${d.licenseClass} Fleet Driver` : 'Fleet Driver';
 
   const badgeEmpId = document.getElementById('modal-badge-empid');
   if (badgeEmpId) badgeEmpId.textContent = empCode;
@@ -3245,13 +3452,13 @@ async function openIdentificationModal(driverId) {
   }
 
   const badgeBlood = document.getElementById('modal-badge-blood');
-  if (badgeBlood) badgeBlood.textContent = d.bloodType || 'O+';
+  if (badgeBlood) badgeBlood.textContent = d.bloodType || '—';
   const badgeShift = document.getElementById('modal-badge-shift');
-  if (badgeShift) badgeShift.textContent = (d.shiftSchedule || 'MORNING').toUpperCase();
+  if (badgeShift) badgeShift.textContent = (d.shiftSchedule || '—').toUpperCase();
   const badgeLic = document.getElementById('modal-badge-lic');
-  if (badgeLic) badgeLic.textContent = (d.licenseClass || 'PROF B').toUpperCase();
+  if (badgeLic) badgeLic.textContent = (d.licenseClass || '—').toUpperCase();
   const badgeExpiry = document.getElementById('modal-badge-expiry');
-  if (badgeExpiry) badgeExpiry.textContent = d.licenseExpiry ? d.licenseExpiry.slice(0, 4) : '2028';
+  if (badgeExpiry) badgeExpiry.textContent = d.licenseExpiry ? d.licenseExpiry.slice(0, 4) : '—';
 
   // Badge QR Code
   const qrContainer = document.getElementById('modal-badge-qr');
@@ -3268,37 +3475,51 @@ async function openIdentificationModal(driverId) {
     });
   }
 
-  // Badge Back Details
+  // Emergency Contact & Signatory Binding (Initial from memory)
+  const ecInfo = getDriverEmergencyContact(d);
   const badgeBackEc = document.getElementById('modal-badge-back-ec');
-  if (badgeBackEc) badgeBackEc.textContent = d.fullName || 'Juan Dela Cruz';
+  if (badgeBackEc) badgeBackEc.textContent = ecInfo.name;
   const badgeBackEcPhone = document.getElementById('modal-badge-back-ec-phone');
-  if (badgeBackEcPhone) badgeBackEcPhone.textContent = d.phone || '0935-966-7178';
+  if (badgeBackEcPhone) badgeBackEcPhone.textContent = ecInfo.phone;
+  const badgeBackRel = document.getElementById('modal-badge-back-rel');
+  if (badgeBackRel) badgeBackRel.textContent = ecInfo.rel;
+
+  const backEc = document.getElementById('modal-back-ec');
+  if (backEc) backEc.textContent = ecInfo.name;
+  const backEcPhone = document.getElementById('modal-back-ec-phone');
+  if (backEcPhone) backEcPhone.textContent = ecInfo.phone;
+
   const badgeBackBlood = document.getElementById('modal-badge-back-blood');
-  if (badgeBackBlood) badgeBackBlood.textContent = d.bloodType || 'O+';
+  if (badgeBackBlood) badgeBackBlood.textContent = d.bloodType || '—';
   const badgeBackDl = document.getElementById('modal-badge-back-dl');
-  if (badgeBackDl) badgeBackDl.textContent = d.licenseNo || 'N04-11-22-123456';
+  if (badgeBackDl) badgeBackDl.textContent = d.licenseNo || '—';
   const badgeBackAgency = document.getElementById('modal-badge-back-agency');
-  if (badgeBackAgency) badgeBackAgency.textContent = d.agencyCode || 'NCR-11';
+  if (badgeBackAgency) badgeBackAgency.textContent = d.agencyCode || '—';
   const badgeBackBarcode = document.getElementById('modal-badge-back-barcode-label');
   if (badgeBackBarcode) badgeBackBarcode.textContent = empCode;
 
-  // Fetch detailed emergency contact if available
+  const officerBox = document.getElementById('modal-officer-signatory-container');
+  if (officerBox) officerBox.innerHTML = getOfficerSignatoryHtml('normal');
+
+  // Fetch detailed emergency contact from API for real-time verification
   try {
     const detail = await apiFetch(`/drivers/${driverId}/details`);
-    const ec = detail.emergencyContacts && detail.emergencyContacts[0];
-    const backEc = document.getElementById('modal-back-ec');
-    if (backEc) backEc.textContent = ec ? ec.fullName : (d.fullName || '—');
-    const backEcPhone = document.getElementById('modal-back-ec-phone');
-    if (backEcPhone) backEcPhone.textContent = ec ? ec.phone : (d.phone || '0935-966-7178');
-    if (badgeBackEc) badgeBackEc.textContent = ec ? ec.fullName : (d.fullName || '—');
-    if (badgeBackEcPhone) badgeBackEcPhone.textContent = ec ? ec.phone : (d.phone || '0935-966-7178');
-    const badgeBackRel = document.getElementById('modal-badge-back-rel');
-    if (badgeBackRel && ec && ec.relationship) badgeBackRel.textContent = ec.relationship.toUpperCase();
-  } catch {
-    const backEc = document.getElementById('modal-back-ec');
-    if (backEc) backEc.textContent = d.fullName || '—';
-    const backEcPhone = document.getElementById('modal-back-ec-phone');
-    if (backEcPhone) backEcPhone.textContent = d.phone || '0935-966-7178';
+    if (detail && detail.emergencyContacts && detail.emergencyContacts.length > 0) {
+      const ec = detail.emergencyContacts[0];
+      if (backEc) backEc.textContent = ec.fullName || '—';
+      if (backEcPhone) backEcPhone.textContent = ec.phone || '—';
+      if (badgeBackEc) badgeBackEc.textContent = ec.fullName || '—';
+      if (badgeBackEcPhone) badgeBackEcPhone.textContent = ec.phone || '—';
+      if (badgeBackRel) badgeBackRel.textContent = (ec.relationship || '—').toUpperCase();
+    } else {
+      if (backEc) backEc.textContent = '—';
+      if (backEcPhone) backEcPhone.textContent = '—';
+      if (badgeBackEc) badgeBackEc.textContent = '—';
+      if (badgeBackEcPhone) badgeBackEcPhone.textContent = '—';
+      if (badgeBackRel) badgeBackRel.textContent = '—';
+    }
+  } catch (err) {
+    console.warn('Driver detail fetch notice:', err);
   }
 
   const verAt = document.getElementById('id-verified-at');
@@ -3499,10 +3720,7 @@ function renderZoomCard() {
                 </div>
                 <div class="w-full mt-1.5 text-center">
                   <div class="h-6 flex items-center justify-center truncate">
-                    ${zoomSigSrc ? 
-                      `<img src="${zoomSigSrc}" class="max-h-6 max-w-[140px] object-contain mx-auto" alt="Driver Signature" />` : 
-                      `<span class="text-[8.5px] text-slate-400 font-mono italic">—</span>`
-                    }
+                    ${getLicenseeSignatureHtml(d, 'zoom')}
                   </div>
                   <div class="border-t border-slate-400/80 pt-0.5 text-[7.5px] font-extrabold text-slate-600 uppercase tracking-tight">SIGNATURE OF LICENSEE</div>
                 </div>
@@ -3517,62 +3735,62 @@ function renderZoomCard() {
                 <div class="grid grid-cols-5 gap-1 pt-0.5">
                   <div>
                     <span class="text-slate-500 uppercase text-[7.5px] font-bold block">Nationality</span>
-                    <span class="font-extrabold text-[9px]">${escHtml(d.nationality || 'PHL')}</span>
+                    <span class="font-extrabold text-[9px]">${escHtml(d.nationality || '—')}</span>
                   </div>
                   <div>
                     <span class="text-slate-500 uppercase text-[7.5px] font-bold block">Sex</span>
-                    <span class="font-extrabold text-[9px]">${escHtml(d.sex || 'M')}</span>
+                    <span class="font-extrabold text-[9px]">${escHtml(d.sex || '—')}</span>
                   </div>
                   <div>
                     <span class="text-slate-500 uppercase text-[7.5px] font-bold block">Date of Birth</span>
-                    <span class="font-extrabold text-[9px]">${escHtml(d.birthDate || '1987/10/04')}</span>
+                    <span class="font-extrabold text-[9px]">${escHtml(d.birthDate || '—')}</span>
                   </div>
                   <div>
                     <span class="text-slate-500 uppercase text-[7.5px] font-bold block">Weight (kg)</span>
-                    <span class="font-extrabold text-[9px]">${d.weightKg || '70'}</span>
+                    <span class="font-extrabold text-[9px]">${d.weightKg || '—'}</span>
                   </div>
                   <div>
                     <span class="text-slate-500 uppercase text-[7.5px] font-bold block">Height (m)</span>
-                    <span class="font-extrabold text-[9px]">${d.heightM || '1.70'}</span>
+                    <span class="font-extrabold text-[9px]">${d.heightM || '—'}</span>
                   </div>
                 </div>
 
                 <div class="pt-0.5">
                   <span class="text-slate-500 uppercase text-[7.5px] font-bold block">Address</span>
-                  <div class="font-bold text-[9px] leading-tight text-slate-800 truncate">${escHtml((d.address || 'CSJDM | NORZAGARAY, BULACAN, PHILIPPINES').toUpperCase())}</div>
+                  <div class="font-bold text-[9px] leading-tight text-slate-800 truncate">${escHtml((d.address || '—').toUpperCase())}</div>
                 </div>
 
                 <div class="grid grid-cols-3 gap-1.5 pt-0.5 bg-sky-500/10 p-2 rounded-lg border border-sky-300/40">
                   <div>
                     <span class="text-slate-600 uppercase text-[7.5px] font-extrabold block">License No.</span>
-                    <span class="font-black text-[#001f3f] font-mono text-[11px]">${escHtml(d.licenseNo || 'N01-23-456789')}</span>
+                    <span class="font-black text-[#001f3f] font-mono text-[11px]">${escHtml(d.licenseNo || '—')}</span>
                   </div>
                   <div>
                     <span class="text-slate-600 uppercase text-[7.5px] font-extrabold block">Expiration Date</span>
-                    <span class="font-black text-red-600 font-mono text-[11px]">${escHtml(d.licenseExpiry || '2028/10/04')}</span>
+                    <span class="font-black text-red-600 font-mono text-[11px]">${escHtml(d.licenseExpiry || '—')}</span>
                   </div>
                   <div>
                     <span class="text-slate-600 uppercase text-[7.5px] font-extrabold block">Agency Code</span>
-                    <span class="font-bold text-[#001f3f] text-[11px]">${escHtml(d.agencyCode || 'N32')}</span>
+                    <span class="font-bold text-[#001f3f] text-[11px]">${escHtml(d.agencyCode || '—')}</span>
                   </div>
                 </div>
 
                 <div class="grid grid-cols-4 gap-1 pt-0.5">
                   <div>
                     <span class="text-slate-500 uppercase text-[7.5px] font-bold block">Blood Type</span>
-                    <span class="font-extrabold text-[9px]">${escHtml(d.bloodType || 'O+')}</span>
+                    <span class="font-extrabold text-[9px]">${escHtml(d.bloodType || '—')}</span>
                   </div>
                   <div>
                     <span class="text-slate-500 uppercase text-[7.5px] font-bold block">Eyes Color</span>
-                    <span class="font-extrabold text-[9px]">BLACK</span>
+                    <span class="font-extrabold text-[9px]">${escHtml(d.eyeColor || '—')}</span>
                   </div>
                   <div>
                     <span class="text-slate-500 uppercase text-[7.5px] font-bold block">Restrictions</span>
-                    <span class="font-extrabold text-[9px]">${escHtml(d.restrictions || '1, 2')}</span>
+                    <span class="font-extrabold text-[9px]">${escHtml(d.restrictions || '—')}</span>
                   </div>
                   <div>
                     <span class="text-slate-500 uppercase text-[7.5px] font-bold block">Conditions</span>
-                    <span class="font-extrabold text-[9px]">${escHtml(d.conditions || 'NONE')}</span>
+                    <span class="font-extrabold text-[9px]">${escHtml(d.conditions || '—')}</span>
                   </div>
                 </div>
 
@@ -3601,39 +3819,29 @@ function renderZoomCard() {
               <div class="flex items-center justify-between border-b border-slate-200 pb-1">
                 <span class="font-black text-[9.5px] text-[#001f3f] tracking-wide">LICENSE INFORMATION</span>
                 <div class="flex items-center gap-4">
-                  <span>DL NO.: <strong class="font-mono text-[#001f3f]">${escHtml(d.licenseNo || 'N01-23-456789')}</strong></span>
-                  <span>BLOOD TYPE: <strong class="text-[#001f3f]">${escHtml(d.bloodType || 'O+')}</strong></span>
+                  <span>DL NO.: <strong class="font-mono text-[#001f3f]">${escHtml(d.licenseNo || '—')}</strong></span>
+                  <span>BLOOD TYPE: <strong class="text-[#001f3f]">${escHtml(d.bloodType || '—')}</strong></span>
                 </div>
               </div>
 
-              <div class="border border-slate-300 rounded-lg overflow-hidden text-[8px]">
-                <div class="grid grid-cols-4 bg-slate-100 font-extrabold text-slate-700 text-center p-1.5 border-b border-slate-200">
-                  <div>DRIVING CATEGORY</div>
-                  <div>VEHICLE CATEGORY</div>
-                  <div>DATE ISSUED</div>
-                  <div>VALID UNTIL</div>
-                </div>
-                <div class="grid grid-cols-4 text-center p-1.5 border-b border-slate-100">
-                  <div class="font-bold">A</div><div>MOTORCYCLE</div><div>2023/01/01</div><div>${escHtml(d.licenseExpiry || '2028/01/01')}</div>
-                </div>
-                <div class="grid grid-cols-4 text-center p-1.5 border-b border-slate-100 bg-slate-50/50">
-                  <div class="font-bold">B</div><div>LIGHT VEHICLE</div><div>2023/01/01</div><div>${escHtml(d.licenseExpiry || '2028/01/01')}</div>
-                </div>
-                <div class="grid grid-cols-4 text-center p-1.5">
-                  <div class="font-bold">C</div><div>LIGHT TRUCK</div><div>—</div><div>—</div>
-                </div>
-              </div>
+              <!-- Driving Category Matrix (DB Driven) -->
+              ${getDrivingCategoryMatrixHtml(d, true)}
 
-              <div class="bg-slate-50 p-2 rounded-lg border border-slate-200 flex items-center justify-between text-[8px]">
-                <div>
-                  <span class="text-slate-500 uppercase font-bold block text-[7px]">In Case of Emergency Notify:</span>
-                  <span class="font-black text-slate-900">${escHtml(d.fullName || '—')}</span>
-                </div>
-                <div class="text-right">
-                  <span class="text-slate-500 uppercase font-bold block text-[7px]">Contact Number:</span>
-                  <span class="font-bold font-mono text-slate-800">${escHtml(d.phone || '0935-966-7178')}</span>
-                </div>
-              </div>
+              <!-- Emergency Contact (From Database) -->
+              ${(() => {
+                const ec = getDriverEmergencyContact(d);
+                return `
+                <div class="bg-slate-50 p-2 rounded-lg border border-slate-200 flex items-center justify-between text-[8px]">
+                  <div>
+                    <span class="text-slate-500 uppercase font-bold block text-[7px]">In Case of Emergency Notify:</span>
+                    <span class="font-black text-slate-900">${escHtml(ec.name)}</span>
+                  </div>
+                  <div class="text-right">
+                    <span class="text-slate-500 uppercase font-bold block text-[7px]">Contact Number:</span>
+                    <span class="font-bold font-mono text-slate-800">${escHtml(ec.phone)}</span>
+                  </div>
+                </div>`;
+              })()}
 
               <div class="pt-1">
                 <div class="w-full h-10 bg-white p-1 rounded border border-slate-300 flex items-center justify-between overflow-hidden shadow-inner">
@@ -3643,7 +3851,7 @@ function renderZoomCard() {
                 </div>
                 <div class="flex items-center justify-between text-[7.5px] text-slate-500 mt-1 px-1">
                   <span>SECURITY ENCRYPTED 2D BARCODE</span>
-                  <span>SERIAL NO.: <strong class="font-mono text-slate-800">${String((d.driverId || 1) * 849201 + 100000000).slice(0, 9)}</strong></span>
+                  <span>SERIAL NO.: <strong class="font-mono text-slate-800">${escHtml(d.licenseNo || empCode)}</strong></span>
                 </div>
               </div>
             </div>
@@ -3683,7 +3891,7 @@ function renderZoomCard() {
             <!-- Driver Full Name & Title -->
             <div class="w-full mt-1">
               <p class="font-black text-white text-base uppercase tracking-wide truncate leading-tight">${escHtml(d.fullName || '—')}</p>
-              <p class="text-[#FF6B00] font-bold text-xs leading-tight mt-0.5 uppercase tracking-wider">Senior Fleet Driver</p>
+              <p class="text-[#FF6B00] font-bold text-xs leading-tight mt-0.5 uppercase tracking-wider">${escHtml(d.licenseClass ? (d.licenseClass + ' Fleet Driver') : 'Fleet Driver')}</p>
               <p class="text-slate-400 text-[8px] font-bold uppercase tracking-widest mt-1">EMPLOYEE ID</p>
               <p class="text-slate-100 font-mono text-sm font-black tracking-widest leading-none mt-0.5">${escHtml(empCode)}</p>
             </div>
@@ -3692,19 +3900,19 @@ function renderZoomCard() {
             <div class="grid grid-cols-4 border-y border-white/10 py-1.5 text-center my-1.5 divide-x divide-white/10 w-full bg-white/[0.02]">
               <div>
                 <span class="text-[7.5px] font-bold text-slate-400 uppercase block">BLOOD TYPE</span>
-                <span class="text-xs font-black text-white leading-tight">${escHtml(d.bloodType || 'O+')}</span>
+                <span class="text-xs font-black text-white leading-tight">${escHtml(d.bloodType || '—')}</span>
               </div>
               <div>
                 <span class="text-[7.5px] font-bold text-slate-400 uppercase block">SHIFT</span>
-                <span class="text-[11px] font-black text-white uppercase leading-tight">${escHtml((d.shiftSchedule || 'MORNING').toUpperCase())}</span>
+                <span class="text-[11px] font-black text-white uppercase leading-tight">${escHtml((d.shiftSchedule || '—').toUpperCase())}</span>
               </div>
               <div>
                 <span class="text-[7.5px] font-bold text-slate-400 uppercase block">LICENSE</span>
-                <span class="text-[11px] font-black text-white uppercase leading-tight">${escHtml((d.licenseClass || 'PROF B').toUpperCase())}</span>
+                <span class="text-[11px] font-black text-white uppercase leading-tight">${escHtml((d.licenseClass || '—').toUpperCase())}</span>
               </div>
               <div>
                 <span class="text-[7.5px] font-bold text-slate-400 uppercase block">EXPIRY</span>
-                <span class="text-xs font-black text-white leading-tight">${d.licenseExpiry ? d.licenseExpiry.slice(0, 4) : '2028'}</span>
+                <span class="text-xs font-black text-white leading-tight">${d.licenseExpiry ? d.licenseExpiry.slice(0, 4) : '—'}</span>
               </div>
             </div>
 
@@ -3779,30 +3987,34 @@ function renderZoomCard() {
               </div>
             </div>
 
-            <!-- IN CASE OF EMERGENCY (ICE Table) -->
-            <div class="border border-white/10 rounded-xl p-2 bg-white/[0.02]">
-              <p class="text-[8px] font-black text-[#FF6B00] uppercase tracking-wider mb-1">IN CASE OF EMERGENCY</p>
-              <div class="space-y-1 text-[8px]">
-                <div class="flex justify-between border-b border-white/5 pb-0.5">
-                  <span class="text-slate-400 font-semibold">CONTACT PERSON:</span>
-                  <span class="font-bold text-white uppercase truncate max-w-[150px]">${escHtml(d.fullName || '—')}</span>
+            <!-- IN CASE OF EMERGENCY (ICE Table - DB Driven) -->
+            ${(() => {
+              const ec = getDriverEmergencyContact(d);
+              return `
+              <div class="border border-white/10 rounded-xl p-2 bg-white/[0.02]">
+                <p class="text-[8px] font-black text-[#FF6B00] uppercase tracking-wider mb-1">IN CASE OF EMERGENCY</p>
+                <div class="space-y-1 text-[8px]">
+                  <div class="flex justify-between border-b border-white/5 pb-0.5">
+                    <span class="text-slate-400 font-semibold">CONTACT PERSON:</span>
+                    <span class="font-bold text-white uppercase truncate max-w-[150px]">${escHtml(ec.name)}</span>
+                  </div>
+                  <div class="flex justify-between border-b border-white/5 pb-0.5">
+                    <span class="text-slate-400 font-semibold">RELATIONSHIP:</span>
+                    <span class="font-bold text-white uppercase">${escHtml(ec.rel)}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-slate-400 font-semibold">PHONE NUMBER:</span>
+                    <span class="font-bold font-mono text-orange-400">${escHtml(ec.phone)}</span>
+                  </div>
                 </div>
-                <div class="flex justify-between border-b border-white/5 pb-0.5">
-                  <span class="text-slate-400 font-semibold">RELATIONSHIP:</span>
-                  <span class="font-bold text-white uppercase">SPOUSE</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-slate-400 font-semibold">PHONE NUMBER:</span>
-                  <span class="font-bold font-mono text-orange-400">${escHtml(d.phone || '0935-966-7178')}</span>
-                </div>
-              </div>
-            </div>
+              </div>`;
+            })()}
 
             <!-- Medical & License Cross-Reference (2x2 Matrix) -->
             <div class="grid grid-cols-2 gap-1.5 border border-white/10 rounded-xl p-1.5 text-[8px]">
               <div class="border-r border-white/10 pr-1.5">
                 <span class="text-slate-400 text-[7px] uppercase font-bold block">BLOOD GROUP</span>
-                <span class="font-black text-white text-[10px]">${escHtml(d.bloodType || 'O+')}</span>
+                <span class="font-black text-white text-[10px]">${escHtml(d.bloodType || '—')}</span>
               </div>
               <div>
                 <span class="text-slate-400 text-[7px] uppercase font-bold block">MEDICAL CLEARANCE TIER</span>
@@ -3810,23 +4022,18 @@ function renderZoomCard() {
               </div>
               <div class="border-r border-t border-white/10 pr-1.5 pt-1 mt-0.5">
                 <span class="text-slate-400 text-[7px] uppercase font-bold block">LTO LICENSE CROSS-REF NO.</span>
-                <span class="font-mono font-bold text-white text-[8.5px]">${escHtml(d.licenseNo || 'N04-11-22-123456')}</span>
+                <span class="font-mono font-bold text-white text-[8.5px]">${escHtml(d.licenseNo || '—')}</span>
               </div>
               <div class="border-t border-white/10 pt-1 mt-0.5">
                 <span class="text-slate-400 text-[7px] uppercase font-bold block">LTO ISSUING AGENCY CODE</span>
-                <span class="font-bold text-white text-[8.5px]">${escHtml(d.agencyCode || 'NCR-11')}</span>
+                <span class="font-bold text-white text-[8.5px]">${escHtml(d.agencyCode || '—')}</span>
               </div>
             </div>
 
-            <!-- Signatory & Policy (Side-by-Side) -->
+            <!-- Signatory & Policy (DB Signatory Only) -->
             <div class="grid grid-cols-12 gap-2 pt-1 items-end">
               <div class="col-span-6">
-                <span class="text-[#FF6B00] text-[7px] font-bold uppercase block">AUTHORIZED COMPANY OFFICER</span>
-                <svg class="w-24 h-6 my-0.5" viewBox="0 0 160 50" fill="none">
-                  <path d="M10 35 C 30 10, 45 40, 60 15 C 75 -5, 80 45, 95 25 C 110 5, 120 35, 140 20 C 150 15, 155 25, 130 38 C 105 50, 40 45, 15 42" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
-                </svg>
-                <p class="font-bold text-white text-[8px] uppercase leading-none">ANTONIO R. GARCIA</p>
-                <p class="text-slate-400 text-[7px] uppercase leading-none mt-0.5">Fleet Operations Manager</p>
+                ${getOfficerSignatoryHtml('zoom')}
               </div>
               <div class="col-span-6 text-[7px] text-slate-400 leading-tight">
                 <span class="text-[#FF6B00] font-bold uppercase block mb-0.5">TERMS &amp; PROPERTY</span>
@@ -4125,6 +4332,27 @@ async function submitEmergencyContact() {
     document.getElementById('emg-new-primary').checked = false;
     document.getElementById('emg-add-form').classList.add('hidden');
     await reloadEmergencyModal();
+    
+    // Instantly sync local driver state & re-render inspector & zoom view
+    const d = allDrivers.find(x => x.driverId === activeEmergencyDriverId);
+    if (d) {
+      const detail = await apiFetch(`/drivers/${activeEmergencyDriverId}/details`);
+      if (detail) {
+        d.emergencyContacts = detail.emergencyContacts || [];
+        const pri = d.emergencyContacts.find(c => c.isPrimary) || d.emergencyContacts[0];
+        if (pri) {
+          d.emergencyContactName = pri.fullName;
+          d.emergencyContactRelationship = pri.relationship;
+          d.emergencyContactPhone = pri.phone;
+        } else {
+          d.emergencyContactName = null;
+          d.emergencyContactRelationship = null;
+          d.emergencyContactPhone = null;
+        }
+      }
+      if (selectedDriverId === activeEmergencyDriverId) renderInspector(d);
+      if (zoomDriverId === activeEmergencyDriverId) renderZoomCard();
+    }
   } catch (e) {
     toast('Failed to save contact: ' + e.message, 'error');
   }
@@ -4137,6 +4365,27 @@ async function deleteEmergencyContact(contactId) {
     await apiFetch(`/drivers/${activeEmergencyDriverId}/emergency-contacts/${contactId}`, { method: 'DELETE' });
     toast('Emergency contact removed');
     await reloadEmergencyModal();
+
+    // Instantly sync local driver state & re-render inspector & zoom view
+    const d = allDrivers.find(x => x.driverId === activeEmergencyDriverId);
+    if (d) {
+      const detail = await apiFetch(`/drivers/${activeEmergencyDriverId}/details`);
+      if (detail) {
+        d.emergencyContacts = detail.emergencyContacts || [];
+        const pri = d.emergencyContacts.find(c => c.isPrimary) || d.emergencyContacts[0];
+        if (pri) {
+          d.emergencyContactName = pri.fullName;
+          d.emergencyContactRelationship = pri.relationship;
+          d.emergencyContactPhone = pri.phone;
+        } else {
+          d.emergencyContactName = null;
+          d.emergencyContactRelationship = null;
+          d.emergencyContactPhone = null;
+        }
+      }
+      if (selectedDriverId === activeEmergencyDriverId) renderInspector(d);
+      if (zoomDriverId === activeEmergencyDriverId) renderZoomCard();
+    }
   } catch (e) {
     toast('Failed to delete contact: ' + e.message, 'error');
   }
@@ -4992,7 +5241,60 @@ function setDateFilter(val, label) {
 // ── Print actions ──
 function printPayslip() { window.print(); }
 function printBadge() {
-  toast('Badge printing — use Ctrl+P and select PVC ID card size', 'info');
+  const modal = document.getElementById('modal-identification');
+  if (!modal || modal.classList.contains('hidden')) {
+    toast('Please open an identification card modal first.', 'warning');
+    return;
+  }
+  const ltoCard = document.getElementById('modal-lto-flip');
+  const badgeCard = document.getElementById('modal-badge-flip');
+  const driverName = document.getElementById('modal-driver-fullname')?.textContent || 'Driver_ID';
+
+  const printWin = window.open('', '_blank', 'width=850,height=900');
+  if (!printWin) {
+    window.print();
+    return;
+  }
+  printWin.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Official ID Print - ${driverName}</title>
+      <script src="https://cdn.tailwindcss.com"><\/script>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@700;800&display=swap">
+      <style>
+        body { font-family: 'Inter', sans-serif; background: #f8fafc; padding: 24px; text-align: center; }
+        .print-card-box { width: 320px; margin: 12px auto; page-break-inside: avoid; }
+        .flip-card { transform-style: preserve-3d; }
+        .flip-back { transform: none !important; }
+        @media print {
+          body { background: white; padding: 0; }
+          .no-print { display: none !important; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="no-print mb-4 p-3 bg-slate-100 rounded-xl max-w-lg mx-auto flex justify-between items-center">
+        <span class="text-xs font-bold text-slate-700">Official DriveAndGo Identification Print Preview</span>
+        <button onclick="window.print()" style="background:#FF6B00;color:white;padding:6px 16px;border-radius:8px;font-weight:bold;font-size:12px;border:none;cursor:pointer;">Print Official ID</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:24px;">
+        <div>
+          <h3 style="font-size:11px;font-weight:800;margin-bottom:6px;color:#0F172A;text-transform:uppercase;">EMPLOYEE ID BADGE</h3>
+          <div class="print-card-box" style="height:380px;">${badgeCard ? badgeCard.innerHTML : ''}</div>
+        </div>
+        <div>
+          <h3 style="font-size:11px;font-weight:800;margin-bottom:6px;color:#0F172A;text-transform:uppercase;">LTO DRIVER LICENSE</h3>
+          <div class="print-card-box" style="height:310px;">${ltoCard ? ltoCard.innerHTML : ''}</div>
+        </div>
+      </div>
+      <script>
+        setTimeout(() => { window.print(); }, 400);
+      <\/script>
+    </body>
+    </html>
+  `);
+  printWin.document.close();
 }
 
 // ── Universal Styled Native .XLSX & CSV Export Engine (Zero Excel Warnings) ──

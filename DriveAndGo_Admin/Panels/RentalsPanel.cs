@@ -23,7 +23,7 @@ namespace DriveAndGo_Admin.Panels
             this.Dock      = DockStyle.Fill;
             this.BackColor = ThemeManager.CurrentBackground;
             BuildLoading();
-            this.HandleCreated += async (s, e) => await InitWebView();
+            _ = InitWebView();
             ThemeManager.ThemeChanged += ThemeChanged_Handler;
             this.Disposed += (s, e) => ThemeManager.ThemeChanged -= ThemeChanged_Handler;
         }
@@ -36,7 +36,7 @@ namespace DriveAndGo_Admin.Panels
                 bool dk = ThemeManager.IsDarkMode;
                 _webView.BeginInvoke((MethodInvoker)(async () =>
                 {
-                    await _webView.CoreWebView2.ExecuteScriptAsync($"setTheme({(dk ? "true" : "false")});");
+                    await _webView.CoreWebView2.ExecuteScriptAsync($"if(window.setTheme) setTheme({(dk ? "true" : "false")});");
                 }));
             }
         }
@@ -51,7 +51,7 @@ namespace DriveAndGo_Admin.Panels
 
             _loadingLabel = new Label
             {
-                Text = "Loading Rentals Management\u2026",
+                Text = "Loading Rentals Management…",
                 Font = new Font("Segoe UI", 14F, FontStyle.Bold),
                 ForeColor = Color.FromArgb(255, 107, 0),
                 AutoSize = true,
@@ -61,8 +61,8 @@ namespace DriveAndGo_Admin.Panels
             _loadingPanel.Controls.Add(_loadingLabel);
             _loadingPanel.Resize += (s, e) =>
                 _loadingLabel.Location = new Point(
-                    (_loadingPanel.Width - _loadingLabel.Width) / 2,
-                    (_loadingPanel.Height - _loadingLabel.Height) / 2);
+                    Math.Max(10, (_loadingPanel.Width - _loadingLabel.Width) / 2),
+                    Math.Max(10, (_loadingPanel.Height - _loadingLabel.Height) / 2));
 
             this.Controls.Add(_loadingPanel);
         }
@@ -73,41 +73,58 @@ namespace DriveAndGo_Admin.Panels
 
             try
             {
-                _webView = new WebView2 { Dock = DockStyle.Fill };
+                string htmlPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "RentalsWeb.html");
+                if (!File.Exists(htmlPath))
+                {
+                    htmlPath = @"C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\WebAssets\RentalsWeb.html";
+                }
+
+                _webView = new WebView2 { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.Transparent };
                 this.Controls.Add(_webView);
                 _webView.BringToFront();
 
-                var env = await CoreWebView2Environment.CreateAsync(null, Path.GetTempPath());
+                var env = await CoreWebView2Environment.CreateAsync(null, Path.Combine(Path.GetTempPath(), "DriveAndGo_RentalsWV2"));
                 await _webView.EnsureCoreWebView2Async(env);
 
-                string outputAssetsFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets");
-                if (!Directory.Exists(outputAssetsFolder))
-                    Directory.CreateDirectory(outputAssetsFolder);
-
-                string[] sourceCandidates =
+                _webView.CoreWebView2.WebMessageReceived += (s, e) =>
                 {
-                    Path.Combine(Application.StartupPath, "WebAssets", "RentalsWeb.html"),
-                    Path.Combine(Application.StartupPath, "RentalsWeb.html"),
-                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "RentalsWeb.html"),
-                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "RentalsWeb.html"),
-                    Path.GetFullPath(Path.Combine(Application.StartupPath, @"..\..\WebAssets\RentalsWeb.html")),
-                    Path.GetFullPath(Path.Combine(Application.StartupPath, @"..\..\..\WebAssets\RentalsWeb.html")),
-                    @"C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\WebAssets\RentalsWeb.html"
+                    try
+                    {
+                        string json = e.WebMessageAsJson;
+                        using var doc = System.Text.Json.JsonDocument.Parse(json);
+                        if (doc.RootElement.TryGetProperty("action", out var act))
+                        {
+                            string action = act.GetString();
+                            if (action == "openPromoCodes" || action == "managePromos")
+                            {
+                                this.BeginInvoke((MethodInvoker)(() =>
+                                {
+                                    using var dlg = new PromoCodesForm();
+                                    dlg.ShowDialog(this.FindForm());
+                                }));
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[RentalsPanel] WebMessage error: {ex.Message}");
+                    }
                 };
 
-                string sourceHtml = sourceCandidates.FirstOrDefault(File.Exists);
-                string destHtml = Path.Combine(outputAssetsFolder, "RentalsWeb.html");
+                string apiBase = ApiService.BaseUrl.TrimEnd('/');
+                string networkBase = ApiService.ResolveNetworkBaseUrl().TrimEnd('/');
+                string currentAdmin = !string.IsNullOrWhiteSpace(SessionManager.FullName) ? SessionManager.FullName : "Admin";
+                string jwtToken = SessionManager.JwtToken ?? SessionManager.Token ?? "";
+                bool dk = ThemeManager.IsDarkMode;
 
-                if (!string.IsNullOrEmpty(sourceHtml))
-                {
-                    if (!string.Equals(sourceHtml, destHtml, StringComparison.OrdinalIgnoreCase))
-                        File.Copy(sourceHtml, destHtml, true);
-                }
-
-                _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                    "appassets",
-                    outputAssetsFolder,
-                    CoreWebView2HostResourceAccessKind.Allow);
+                await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
+                    $"window.API_BASE_URL = '{apiBase}'; " +
+                    $"window.API_NETWORK_URL = '{networkBase}'; " +
+                    $"window.AUTH_TOKEN = '{jwtToken.Replace("'", "\\'")}'; " +
+                    $"localStorage.setItem('auth_token', '{jwtToken.Replace("'", "\\'")}'); " +
+                    $"window.CURRENT_ADMIN_NAME = '{currentAdmin.Replace("'", "\\'")}'; " +
+                    $"localStorage.setItem('admin_name', '{currentAdmin.Replace("'", "\\'")}'); " +
+                    $"document.documentElement.setAttribute('data-theme', '{(dk ? "dark" : "light")}');");
 
                 _webView.NavigationCompleted += async (s, e) =>
                 {
@@ -115,33 +132,16 @@ namespace DriveAndGo_Admin.Panels
 
                     _webReady = true;
                     if (_loadingPanel != null) _loadingPanel.Visible = false;
-                    bool dk = ThemeManager.IsDarkMode;
-                    string networkBase = ApiService.ResolveNetworkBaseUrl().TrimEnd('/');
-                    string currentAdmin = !string.IsNullOrWhiteSpace(SessionManager.FullName) ? SessionManager.FullName : "Raymart Quirante";
-                    await _webView.CoreWebView2.ExecuteScriptAsync($"window.API_BASE_URL = 'http://localhost:5233/api'; window.API_NETWORK_URL = '{networkBase}'; window.CURRENT_ADMIN_NAME = '{currentAdmin.Replace("'", "\\'")}'; localStorage.setItem('admin_name', '{currentAdmin.Replace("'", "\\'")}'); setTheme({(dk ? "true" : "false")}); if (window.fetchRentalsData) window.fetchRentalsData();");
+
+                    await _webView.CoreWebView2.ExecuteScriptAsync(
+                        $"window.API_BASE_URL = '{apiBase}'; " +
+                        $"window.API_NETWORK_URL = '{networkBase}'; " +
+                        $"window.AUTH_TOKEN = '{jwtToken.Replace("'", "\\'")}'; " +
+                        $"if(window.setTheme) setTheme({(dk ? "true" : "false")}); " +
+                        $"if (window.fetchRentalsData) window.fetchRentalsData();");
                 };
 
-                if (File.Exists(destHtml))
-                {
-                    _webView.CoreWebView2.Navigate("https://appassets/RentalsWeb.html");
-                }
-                else
-                {
-                    string fallbackPath = sourceCandidates.FirstOrDefault(File.Exists);
-                    if (!string.IsNullOrEmpty(fallbackPath))
-                    {
-                        _webView.CoreWebView2.Navigate(new Uri(fallbackPath).AbsoluteUri);
-                    }
-                    else
-                    {
-                        _webView.NavigateToString(
-                            "<html><body style='background:#090D16;color:#F8FAFC;font-family:Segoe UI;" +
-                            "display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>" +
-                            "<div style='text-align:center'><div style='font-size:36px;color:#FF6B00;'>⬡</div>" +
-                            "<p style='font-weight:bold;font-size:16px;'>RentalsWeb.html not found in WebAssets.</p>" +
-                            "<p style='color:#94A3B8;font-size:12px;'>Please ensure RentalsWeb.html is copied to output directory.</p></div></body></html>");
-                    }
-                }
+                _webView.CoreWebView2.Navigate("file:///" + htmlPath.Replace('\\', '/') + "?v=" + DateTime.UtcNow.Ticks);
             }
             catch (Exception ex)
             {

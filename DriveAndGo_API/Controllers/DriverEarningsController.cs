@@ -27,12 +27,23 @@ namespace DriveAndGo_API.Controllers
                 // Select completed drivers and sum their rental payouts/splits
                 // Average speed, braking warnings, rating and compliance score
                 await using var cmd = new NpgsqlCommand(@"
-                    SELECT d.driver_id, d.full_name, d.status,
+                    SELECT d.driver_id, COALESCE(u.full_name, 'Driver #' || d.driver_id) AS full_name,
+                           CASE
+                               WHEN LOWER(d.status) IN ('suspended', 'inactive', 'on-leave') THEN d.status
+                               WHEN EXISTS (
+                                   SELECT 1 FROM rentals r2 
+                                   WHERE r2.driver_id = d.driver_id 
+                                     AND LOWER(r2.status) IN ('approved', 'active', 'in-use', 'ongoing', 'rented', 'pending', 'overdue')
+                               ) THEN 'assigned'
+                               ELSE 'available'
+                           END AS status,
                            COALESCE(SUM(r.total_amount), 0) as raw_revenue
                     FROM drivers d
-                    LEFT JOIN rentals r ON d.driver_id = r.driver_id AND r.status = 'completed'
-                    GROUP BY d.driver_id, d.full_name, d.status
+                    JOIN users u ON d.user_id = u.user_id
+                    LEFT JOIN rentals r ON d.driver_id = r.driver_id AND LOWER(r.status) = 'completed'
+                    GROUP BY d.driver_id, u.full_name, d.status
                     ORDER BY raw_revenue DESC", conn);
+
 
                 await using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())

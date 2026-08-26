@@ -1,48 +1,491 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background-color: #0B101E; /* matches form card color */
-    overflow: hidden;
-    width: 100vw;
-    height: 100vh;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg:          #0B0B16;
+    --card-bg:     #0F0F1E;
+    --text-main:   #E1E4F8;
+    --text-sub:    #6B6E94;
+    --border:      #20213A;
+    --accent:      #FF5A1F;
+    --accent-glow: rgba(255,90,31,0.55);
+    --accent-dim:  rgba(255,90,31,0.15);
+    --pill-bg:     rgba(255,255,255,0.035);
+    --pill-border: rgba(255,255,255,0.08);
+    --green:       #22D364;
   }
-  .video-container {
-    width: 100%;
-    height: 100%;
+  [data-theme="light"] {
+    --bg:          #F2F4FF;
+    --card-bg:     #FFFFFF;
+    --text-main:   #0F0F1E;
+    --text-sub:    #6E73A0;
+    --border:      #DADAF0;
+    --accent:      #FF5A1F;
+    --accent-glow: rgba(255,90,31,0.4);
+    --accent-dim:  rgba(255,90,31,0.10);
+    --pill-bg:     rgba(0,0,0,0.025);
+    --pill-border: rgba(0,0,0,0.08);
+    --green:       #16A34A;
+  }
+
+  html, body {
+    width: 100vw; height: 100vh;
+    background: transparent;
     overflow: hidden;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+  }
+
+  /* ── CARD ────────────────────────────────────────────────────────────── */
+  .card {
     position: relative;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background-color: #000;
-    border-radius: 8px; /* Sleek rectangular corners */
+    width: 100%; height: 100%;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 18px 26px 14px;
   }
-  video {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    opacity: 0.9;
-  }
-  /* Vignette filter overlay */
-  .vignette {
+
+  /* ── GHOST WATERMARK ─────────────────────────────────────────────────── */
+  .watermark {
     position: absolute;
-    inset: 0;
-    background: radial-gradient(circle at center, transparent 30%, rgba(5, 11, 20, 0.5) 100%);
+    left: 50%; top: 50%;
+    transform: translate(-50%, -52%);
+    font-size: 108px;
+    font-weight: 900;
+    letter-spacing: 18px;
+    color: var(--text-main);
+    opacity: 0.025;
+    user-select: none;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  [data-theme="light"] .watermark { opacity: 0.04; }
+
+  /* ── HUD CORNERS ─────────────────────────────────────────────────────── */
+  .hud { position:absolute; width:14px; height:14px; border-color:var(--accent); border-style:solid; opacity:.45; z-index:3; }
+  .hud-tl { top:10px; left:10px;   border-width:2px 0 0 2px; }
+  .hud-tr { top:10px; right:10px;  border-width:2px 2px 0 0; }
+  .hud-bl { bottom:10px; left:10px;  border-width:0 0 2px 2px; }
+  .hud-br { bottom:10px; right:10px; border-width:0 2px 2px 0; }
+
+  /* ── TOP BAR ─────────────────────────────────────────────────────────── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    z-index: 2;
+  }
+  .logo-area { display:flex; align-items:center; gap:10px; }
+  .logo-img  { width:36px; height:36px; object-fit:contain;
+               filter:drop-shadow(0 0 4px var(--accent-glow)); }
+  .logo-text-wrap { line-height:1.2; }
+  .logo-brand { font-size:14px; font-weight:800; color:var(--text-main); letter-spacing:.5px; }
+  .logo-brand span { color:var(--accent); }
+  .logo-sub   { font-size:8.5px; font-weight:700; color:var(--accent); letter-spacing:1.8px; text-transform:uppercase; }
+
+  .ver-badge {
+    display:flex; align-items:center; gap:6px;
+    font-size:10px; font-weight:700; color:var(--text-sub);
+    letter-spacing:1px; border:1px solid var(--border);
+    border-radius:6px; padding:3px 10px;
+  }
+  .ver-badge .dot {
+    width:6px; height:6px; border-radius:50%;
+    background:var(--accent); flex-shrink:0;
+    animation: pdot 1.6s ease-in-out infinite;
+  }
+  @keyframes pdot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.3;transform:scale(.65)} }
+
+  /* ── HEADLINE ─────────────────────────────────────────────────────────── */
+  .headline { text-align:center; margin-top:6px; flex-shrink:0; z-index:2; }
+  .headline-title { font-size:12px; font-weight:700; letter-spacing:3.5px;
+                    color:var(--text-main); text-transform:uppercase; }
+  .headline-sub   { font-size:8.5px; letter-spacing:1.8px; color:var(--text-sub); margin-top:2px; }
+
+  /* ── VEHICLE RUNWAY STAGE ────────────────────────────────────────────── */
+  .vehicle-stage {
+    position: relative;
+    flex: 1;
+    width: 100%;
+    z-index: 2;
+    overflow: visible;
+    min-height: 140px;
+    margin-top: 4px;
+  }
+
+  /* Moving Vehicle Container that travels along the X-axis */
+  .moving-vehicle-wrapper {
+    position: absolute;
+    bottom: -2px; /* wheels perfectly touching the laser line */
+    left: 0;
+    width: 220px;
+    height: 120px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    will-change: transform;
+    transition: transform 0.08s linear;
     pointer-events: none;
   }
+
+  .moving-vehicle-wrapper video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    mix-blend-mode: screen; /* Seamless blend on dark card */
+  }
+  [data-theme="light"] .moving-vehicle-wrapper video {
+    mix-blend-mode: multiply; /* Seamless blend on light card */
+  }
+
+  .car-glow {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 86%;
+    height: 24px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center, var(--accent-glow) 0%, transparent 75%);
+    filter: blur(6px);
+    pointer-events: none;
+    animation: gbreath 2s ease-in-out infinite;
+  }
+  @keyframes gbreath { 0%,100%{opacity:.85} 50%{opacity:.4} }
+
+  /* ── PROGRESS SECTION ────────────────────────────────────────────────── */
+  .progress-section { flex-shrink:0; z-index:2; padding:0 2px; }
+
+  .track-wrap {
+    position:relative; height:4px;
+    background:var(--accent-dim); border-radius:4px; overflow:visible;
+  }
+  .track-fill {
+    height:100%; width:0%;
+    border-radius:4px; background:var(--accent);
+    box-shadow:0 0 8px 2px var(--accent-glow), 0 0 20px 5px rgba(255,90,31,.28);
+    transition:width .08s linear; position:relative;
+  }
+  /* Spark tip */
+  .track-fill::after {
+    content:''; position:absolute; right:-3px; top:50%;
+    transform:translateY(-50%);
+    width:8px; height:8px; border-radius:50%;
+    background:#fff;
+    box-shadow:0 0 6px 3px var(--accent), 0 0 14px 5px var(--accent-glow);
+    opacity:.9;
+  }
+
+  /* Centered Percentage with % symbol */
+  .pct-center-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin-top: 6px;
+  }
+  .pct-number-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    line-height: 1;
+  }
+  .pct-num {
+    font-size: 38px;
+    font-weight: 900;
+    color: var(--accent);
+    letter-spacing: -0.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .pct-sign {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--accent);
+    margin-left: 2px;
+  }
+  .pct-caption {
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: var(--text-sub);
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  /* ── TELEMETRY PILLS ─────────────────────────────────────────────────── */
+  .telemetry {
+    display:flex; justify-content:center; gap:8px;
+    margin-top:10px; flex-shrink:0; z-index:2; flex-wrap:nowrap;
+  }
+  .pill {
+    display:flex; align-items:center; gap:7px;
+    padding:6px 10px; border-radius:8px;
+    background:var(--pill-bg); border:1px solid var(--pill-border);
+    min-width:0; flex:1; max-width:145px;
+    transition: all 0.25s ease;
+  }
+  .pill-svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    fill: var(--accent);
+    opacity: 0.9;
+  }
+  .pill-info { line-height:1.25; overflow:hidden; }
+  .pill-label {
+    font-size:7px; letter-spacing:1px;
+    color:var(--text-sub); text-transform:uppercase; display:block;
+    white-space:nowrap;
+  }
+  .pill-value {
+    font-size:10px; font-weight:700; color:var(--accent);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;
+  }
+  .pill-value.ok  { color:var(--green) !important; }
+  .pill-value.live { animation:livepulse 2s ease-in-out infinite; }
+  @keyframes livepulse { 0%,100%{opacity:1} 50%{opacity:.65} }
+
+  /* ── FOOTER ──────────────────────────────────────────────────────────── */
+  .footer {
+    text-align:center; font-size:7.5px; font-weight:700;
+    letter-spacing:2.8px; color:var(--text-sub); text-transform:uppercase;
+    margin-top:8px; flex-shrink:0; z-index:2;
+  }
+  .footer em { color:var(--accent); font-style:normal; }
 </style>
 </head>
 <body>
-<div class="video-container">
-  <video autoplay loop muted playsinline>
-    <source src="../Resources/loadingScreenVideo/loadingScreenVideo-enhanced.mp4" type="video/mp4">
-  </video>
-  <div class="vignette"></div>
+<div class="card">
+  <div class="hud hud-tl"></div>
+  <div class="hud hud-tr"></div>
+  <div class="hud hud-bl"></div>
+  <div class="hud hud-br"></div>
+
+  <div class="watermark">LOADING</div>
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="logo-area">
+      <img class="logo-img" src="../Resources/DriveAndGo_Logo.png" alt="Drive&amp;Go"
+           onerror="this.style.display='none'">
+      <div class="logo-text-wrap">
+        <div class="logo-brand">DRIVE<span>&amp;</span>GO</div>
+        <div class="logo-sub">Luxury Car Rental</div>
+      </div>
+    </div>
+    <div class="ver-badge">VER 3.2.0 <span class="dot"></span></div>
+  </div>
+
+  <!-- Headline -->
+  <div class="headline">
+    <div class="headline-title">Preparing Your Drive Experience</div>
+    <div class="headline-sub">We are getting everything ready</div>
+  </div>
+
+  <!-- Vehicle Stage with Traveling Car -->
+  <div class="vehicle-stage" id="vehicleStage">
+    <div class="moving-vehicle-wrapper" id="movingVehicle">
+      <video id="carVideo" autoplay loop muted playsinline></video>
+      <div class="car-glow"></div>
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-section">
+    <div class="track-wrap">
+      <div class="track-fill" id="trackFill"></div>
+    </div>
+    <div class="pct-center-wrap">
+      <div class="pct-number-row">
+        <span class="pct-num" id="pctNum">0</span><span class="pct-sign">%</span>
+      </div>
+      <div class="pct-caption">LOADING ASSETS</div>
+    </div>
+  </div>
+
+  <!-- Telemetry Pills with Crisp SVG Vector Icons (No Emojis) -->
+  <div class="telemetry">
+    <!-- Fleet Sync Pill -->
+    <div class="pill">
+      <svg class="pill-svg" viewBox="0 0 24 24">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5h-2v-2h2v2zm0-4h-2V7h2v5.5z"/>
+      </svg>
+      <div class="pill-info">
+        <span class="pill-label">Fleet Sync</span>
+        <span class="pill-value" id="pillFleet">Syncing…</span>
+      </div>
+    </div>
+
+    <!-- Location Pill -->
+    <div class="pill">
+      <svg class="pill-svg" viewBox="0 0 24 24">
+        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+      </svg>
+      <div class="pill-info">
+        <span class="pill-label">Location</span>
+        <span class="pill-value live" id="pillLocation">Locating…</span>
+      </div>
+    </div>
+
+    <!-- Weather Pill -->
+    <div class="pill">
+      <svg class="pill-svg" viewBox="0 0 24 24">
+        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/>
+      </svg>
+      <div class="pill-info">
+        <span class="pill-label">Weather</span>
+        <span class="pill-value live" id="pillWeather">25°C</span>
+      </div>
+    </div>
+
+    <!-- Wind Pill -->
+    <div class="pill">
+      <svg class="pill-svg" viewBox="0 0 24 24">
+        <path d="M14.5 17c0 1.65-1.35 3-3 3s-3-1.35-3-3h2c0 .55.45 1 1 1s1-.45 1-1-1-1-1-1H2v-2h9.5c1.65 0 3 1.35 3 3zm3.5-6c0-1.65-1.35-3-3-3s-3 1.35-3 3h2c0-.55.45-1 1-1s1 .45 1 1-.45 1-1 1H2v2h16c1.65 0 3-1.35 3-3zm-2-7c-1.65 0-3 1.35-3 3h2c0-.55.45-1 1-1s1 .45 1 1-.45 1-1 1H2v2h14c1.65 0 3-1.35 3-3s-1.35-3-3-3z"/>
+      </svg>
+      <div class="pill-info">
+        <span class="pill-label">Wind</span>
+        <span class="pill-value live" id="pillWind">12 km/h</span>
+      </div>
+    </div>
+
+    <!-- Security Pill -->
+    <div class="pill">
+      <svg class="pill-svg" viewBox="0 0 24 24">
+        <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/>
+      </svg>
+      <div class="pill-info">
+        <span class="pill-label">Security</span>
+        <span class="pill-value" id="pillSec">Checking…</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">Elevate Every Journey &nbsp;•&nbsp; <em>Secured by Obsidian-9</em></div>
 </div>
+
+<script>
+(function () {
+  // ── Dynamic Theme Controller ───────────────────────────────────────────────
+  const vid  = document.getElementById('carVideo');
+  const base = '../Resources/loadingScreenVideo/';
+
+  function applyTheme(themeMode) {
+    const isDark = (themeMode !== 'light');
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+
+    const targetSrc = isDark
+      ? base + 'loadingScreenFordBlack.mp4'
+      : base + 'loadingScreenFordWhite.mp4';
+
+    // Only reload video if source changed
+    const curSrc = vid.getAttribute('src') || '';
+    if (!curSrc.includes(isDark ? 'loadingScreenFordBlack.mp4' : 'loadingScreenFordWhite.mp4')) {
+      vid.src = targetSrc;
+      vid.load();
+      vid.play().catch(() => {});
+    }
+  }
+
+  // Read URL query parameter: ?theme=light / ?theme=dark
+  const urlParams = new URLSearchParams(window.location.search);
+  const initialTheme = urlParams.get('theme') || document.documentElement.getAttribute('data-theme') || 'dark';
+  applyTheme(initialTheme);
+
+  // Global theme updater callable from C#
+  window.setTheme = function (themeMode) {
+    applyTheme(themeMode);
+  };
+
+  // ── DOM refs ──────────────────────────────────────────────────────────────
+  const trackFill     = document.getElementById('trackFill');
+  const pctNum        = document.getElementById('pctNum');
+  const vehicleStage  = document.getElementById('vehicleStage');
+  const movingVehicle = document.getElementById('movingVehicle');
+  const pillFleet     = document.getElementById('pillFleet');
+  const pillLocation  = document.getElementById('pillLocation');
+  const pillWeather   = document.getElementById('pillWeather');
+  const pillWind      = document.getElementById('pillWind');
+  const pillSec       = document.getElementById('pillSec');
+
+  // ── Instant Client-Side Geolocation Fetch (Self-healing fallback) ─────────
+  fetch('http://ip-api.com/json/?fields=status,city,country')
+    .then(r => r.json())
+    .then(d => {
+      if (d && d.status === 'success') {
+        const loc = (d.city ? d.city + ', ' : '') + (d.country || '');
+        if (loc) window.setLocation(loc);
+      }
+    })
+    .catch(() => {});
+
+  // ── window.setProgress(pct) — called by C# every 16 ms ──────────────────
+  window.setProgress = function (pct) {
+    const p = Math.min(100, Math.max(0, pct));
+    trackFill.style.width = p + '%';
+    pctNum.textContent    = Math.round(p);
+
+    // Dynamic horizontal car position: travels smoothly across from left (0%) to right (100%)
+    if (vehicleStage && movingVehicle) {
+      const stageW = vehicleStage.clientWidth;
+      const carW   = movingVehicle.offsetWidth || 220;
+      const maxTravel = Math.max(0, stageW - carW);
+      const posX = (p / 100) * maxTravel;
+      movingVehicle.style.transform = `translateX(${posX}px)`;
+    }
+
+    if (p >= 33) markOk(pillFleet, 'Synced ✓');
+    if (p >= 66) markOk(pillSec,   'Secure ✓');
+  };
+
+  // ── window.setLocation(label) — called by C# or client fetch ─────────────
+  window.setLocation = function (label) {
+    if (!label) return;
+    pillLocation.textContent = label;
+    pillLocation.classList.remove('live');
+    pillLocation.classList.add('ok');
+  };
+
+  // ── window.setWeather(temp, condition, wind) — called by C# ──────────────
+  window.setWeather = function (temp, condition, wind) {
+    const cleanTemp = (temp || '').replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim();
+    if (cleanTemp) {
+      pillWeather.textContent = cleanTemp;
+      pillWeather.classList.remove('live');
+    }
+    if (wind) {
+      pillWind.textContent = wind;
+      pillWind.classList.remove('live');
+    }
+  };
+
+  function markOk(el, text) {
+    el.textContent = text;
+    el.classList.add('ok');
+    el.classList.remove('live');
+  }
+
+  // ── Fallback self-animation if C# doesn't drive progress ─────────────────
+  let selfPct = 0, externalControl = false;
+  const selfTick = setInterval(() => {
+    if (externalControl) { clearInterval(selfTick); return; }
+    if (selfPct < 95)    { selfPct += (Math.random() * 0.5 + 0.15); window.setProgress(selfPct); }
+  }, 80);
+
+  const _orig = window.setProgress;
+  window.setProgress = function (pct) { externalControl = true; _orig(pct); };
+})();
+</script>
 </body>
 </html>

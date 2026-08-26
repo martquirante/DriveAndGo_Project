@@ -242,6 +242,21 @@ export default function RentalsOverview() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button 
+            onClick={() => {
+              if (window.chrome && window.chrome.webview) {
+                window.chrome.webview.postMessage({ action: 'openPromoCodes' });
+              }
+            }} 
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-orange-500/30 bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 text-xs font-bold transition-all shadow-sm cursor-pointer" 
+            title="Manage Promo Codes & Discounts"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/>
+              <path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/>
+            </svg>
+            <span>Promo Codes</span>
+          </button>
           <button onClick={fetchData} className="p-2 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:border-orange-500/40 transition-all" title="Refresh Live Data">
             <IconRefresh size={16} className={loading ? 'animate-spin' : ''} />
           </button>

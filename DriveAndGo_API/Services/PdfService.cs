@@ -431,5 +431,323 @@ namespace DriveAndGo_API.Services
                 .SetTextAlignment(align)
                 .SetPadding(7.5f);
         }
+
+        // ─────────────────────────────────────────────────────────────────────
+        //  VEHICLE RETURN CERTIFICATE & FINAL SETTLEMENT RECEIPT
+        // ─────────────────────────────────────────────────────────────────────
+        public byte[] GenerateVehicleReturnCertificatePdf(VehicleReturnEmailData d)
+        {
+            using var ms = new MemoryStream();
+            using (var writer = new PdfWriter(ms))
+            using (var pdf    = new PdfDocument(writer))
+            using (var doc    = new Document(pdf))
+            {
+                pdf.SetDefaultPageSize(PageSize.A4);
+                doc.SetMargins(30, 32, 28, 32);
+
+                PdfFont fontBold   = PdfFontFactory.CreateFont(StandardFonts.HELVETICA_BOLD);
+                PdfFont fontNormal = PdfFontFactory.CreateFont(StandardFonts.HELVETICA);
+
+                // Color palette matching user's approved design
+                var OrangeAccent  = new DeviceRgb(255, 107, 0);
+                var NavyBg        = new DeviceRgb(11, 25, 44);
+                var SlateGray     = new DeviceRgb(100, 116, 139);
+                var LightGrayBg   = new DeviceRgb(248, 250, 252);
+                var BorderColor   = new DeviceRgb(226, 232, 240);
+                var GreenAccent   = new DeviceRgb(5, 150, 105);
+                var BlackText     = new DeviceRgb(15, 23, 42);
+
+                // ── Generate QR Code PNG ──
+                byte[]? qrBytes = null;
+                try
+                {
+                    using var qrGenerator = new QRCoder.QRCodeGenerator();
+                    var qrData   = qrGenerator.CreateQrCode(d.VerificationUrl, QRCoder.QRCodeGenerator.ECCLevel.M);
+                    var qrCode   = new QRCoder.PngByteQRCode(qrData);
+                    qrBytes      = qrCode.GetGraphic(6);
+                }
+                catch { /* QR generation failed gracefully */ }
+
+                // ══════════════════════════════════════════════════
+                //  TOP HEADER (Logo | Title | Cert# & QR)
+                // ══════════════════════════════════════════════════
+                var headerTbl = new Table(UnitValue.CreatePercentArray(new float[] { 25, 48, 27 }))
+                    .UseAllAvailableWidth()
+                    .SetMarginBottom(0);
+
+                // Cell 1 – Logo
+                var logoCell = new Cell().SetBorder(Border.NO_BORDER).SetPaddingRight(8).SetVerticalAlignment(VerticalAlignment.MIDDLE);
+                string[] logoPaths =
+                {
+                    System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "DriveAndGo_Logo.png"),
+                    System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "logo.png"),
+                    System.IO.Path.Combine(Directory.GetCurrentDirectory(),       "Resources", "DriveAndGo_Logo.png"),
+                    @"C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_API\Resources\DriveAndGo_Logo.png"
+                };
+                string? foundLogo = logoPaths.FirstOrDefault(File.Exists);
+                if (!string.IsNullOrEmpty(foundLogo))
+                {
+                    try
+                    {
+                        var imgData = ImageDataFactory.Create(foundLogo);
+                        logoCell.Add(new iText.Layout.Element.Image(imgData).ScaleToFit(130f, 45f));
+                    }
+                    catch { logoCell.Add(new Paragraph("Drive&Go").SetFont(fontBold).SetFontColor(OrangeAccent).SetFontSize(18)); }
+                }
+                else
+                {
+                    logoCell.Add(new Paragraph("Drive&Go").SetFont(fontBold).SetFontColor(OrangeAccent).SetFontSize(18));
+                }
+                headerTbl.AddCell(logoCell);
+
+                // Cell 2 – Title
+                var titleCell = new Cell()
+                    .SetBorder(Border.NO_BORDER)
+                    .SetVerticalAlignment(VerticalAlignment.MIDDLE);
+                titleCell.Add(new Paragraph("VEHICLE RETURN CERTIFICATE &")
+                    .SetFont(fontBold).SetFontSize(15f).SetFontColor(BlackText).SetMarginBottom(1));
+                titleCell.Add(new Paragraph("FINAL SETTLEMENT RECEIPT")
+                    .SetFont(fontBold).SetFontSize(15f).SetFontColor(BlackText));
+                headerTbl.AddCell(titleCell);
+
+                // Cell 3 – Cert# box + QR Code
+                var certCell = new Cell()
+                    .SetBorder(Border.NO_BORDER)
+                    .SetVerticalAlignment(VerticalAlignment.MIDDLE)
+                    .SetTextAlignment(TextAlignment.RIGHT);
+                certCell.Add(new Paragraph("CERTIFICATE NO:")
+                    .SetFont(fontNormal).SetFontSize(8f).SetFontColor(SlateGray).SetTextAlignment(TextAlignment.RIGHT));
+                certCell.Add(new Paragraph(d.ReturnCertCode)
+                    .SetFont(fontBold).SetFontSize(13f).SetFontColor(OrangeAccent).SetTextAlignment(TextAlignment.RIGHT).SetMarginBottom(4));
+                if (qrBytes != null)
+                {
+                    try
+                    {
+                        var qrImgData = ImageDataFactory.Create(qrBytes);
+                        var qrImg = new iText.Layout.Element.Image(qrImgData).ScaleToFit(58f, 58f);
+                        certCell.Add(qrImg);
+                        certCell.Add(new Paragraph("SCAN TO VERIFY ONLINE")
+                            .SetFont(fontNormal).SetFontSize(6.5f).SetFontColor(SlateGray).SetTextAlignment(TextAlignment.RIGHT));
+                    }
+                    catch { }
+                }
+                headerTbl.AddCell(certCell);
+                doc.Add(headerTbl);
+
+                // ── Orange top accent bar ──
+                var topBar = new Table(1).UseAllAvailableWidth().SetMarginBottom(10);
+                topBar.AddCell(new Cell().SetHeight(3f).SetBackgroundColor(OrangeAccent).SetBorder(Border.NO_BORDER));
+                doc.Add(topBar);
+
+                // ── Date & Branch meta-bar ──
+                doc.Add(new Paragraph($"   Date & Time:  {d.ReturnDate}       |       Branch:  {d.CompanyAddress}")
+                    .SetFont(fontNormal).SetFontSize(9f).SetFontColor(SlateGray)
+                    .SetBorderBottom(new SolidBorder(BorderColor, 1)).SetPaddingBottom(6).SetMarginBottom(12));
+
+                // ══════════════════════════════════════════════════
+                //  SECTION 1 – Customer & Vehicle Registration
+                // ══════════════════════════════════════════════════
+                doc.Add(BuildSectionHeader("1", "CUSTOMER & VEHICLE REGISTRATION", fontBold, OrangeAccent, BlackText));
+
+                var sec1 = new Table(UnitValue.CreatePercentArray(new float[] { 50, 50 }))
+                    .UseAllAvailableWidth()
+                    .SetMarginBottom(14)
+                    .SetBorder(new SolidBorder(BorderColor, 1))
+                    .SetBorderRadius(new iText.Layout.Properties.BorderRadius(6));
+
+                var custCell = new Cell().SetBorder(Border.NO_BORDER).SetPadding(12);
+                custCell.Add(new Paragraph("Customer Name").SetFont(fontNormal).SetFontSize(8f).SetFontColor(SlateGray));
+                custCell.Add(new Paragraph(d.CustomerName.ToUpperInvariant()).SetFont(fontBold).SetFontSize(13f).SetFontColor(BlackText).SetMarginBottom(8));
+                custCell.Add(new Paragraph($"Contact  {d.CustomerPhone}").SetFont(fontNormal).SetFontSize(8.5f).SetFontColor(BlackText).SetMarginBottom(2));
+                custCell.Add(new Paragraph($"Email    {d.CustomerEmail}").SetFont(fontNormal).SetFontSize(8.5f).SetFontColor(BlackText));
+                sec1.AddCell(custCell);
+
+                var vehCell = new Cell()
+                    .SetBorder(Border.NO_BORDER)
+                    .SetBorderLeft(new SolidBorder(BorderColor, 1))
+                    .SetPadding(12);
+                vehCell.Add(new Paragraph("Vehicle").SetFont(fontNormal).SetFontSize(8f).SetFontColor(SlateGray));
+                vehCell.Add(new Paragraph(d.VehicleName.ToUpperInvariant()).SetFont(fontBold).SetFontSize(13f).SetFontColor(BlackText).SetMarginBottom(8));
+                vehCell.Add(new Paragraph($"Plate No.   {d.PlateNo}").SetFont(fontNormal).SetFontSize(8.5f).SetFontColor(BlackText).SetMarginBottom(2));
+                vehCell.Add(new Paragraph($"Rental Period:  {d.PickupDate}  -  {d.ReturnDate}  ({d.DurationDays} Days)").SetFont(fontNormal).SetFontSize(8.5f).SetFontColor(BlackText));
+                sec1.AddCell(vehCell);
+
+                doc.Add(sec1);
+
+                // ══════════════════════════════════════════════════
+                //  SECTION 2 – Handover vs Return Inspection Matrix
+                // ══════════════════════════════════════════════════
+                doc.Add(BuildSectionHeader("2", "HANDOVER VS RETURN INSPECTION MATRIX", fontBold, OrangeAccent, BlackText));
+
+                var matrixTbl = new Table(UnitValue.CreatePercentArray(new float[] { 28, 22, 22, 28 }))
+                    .UseAllAvailableWidth()
+                    .SetMarginBottom(14);
+
+                matrixTbl.AddCell(CreateHeaderCell("Inspection Item",  fontBold));
+                matrixTbl.AddCell(CreateHeaderCell("Pickup Handover",  fontBold, TextAlignment.CENTER));
+                matrixTbl.AddCell(CreateHeaderCell("Final Return",     fontBold, TextAlignment.CENTER));
+                matrixTbl.AddCell(CreateHeaderCell("Difference / Status", fontBold, TextAlignment.CENTER));
+
+                string odomDiff     = (d.ReturnOdometer.HasValue && d.StartOdometer.HasValue) ? $"+{d.ReturnOdometer.Value - d.StartOdometer.Value:N0} km Traveled" : "N/A";
+                string retOdoStr    = d.ReturnOdometer.HasValue ? $"{d.ReturnOdometer.Value:N0} km" : "N/A";
+                string startOdoStr  = d.StartOdometer.HasValue  ? $"{d.StartOdometer.Value:N0} km"  : "N/A";
+                string damageStatus = d.HasDamage ? "DAMAGE NOTED" : "NO DAMAGE PASSED";
+                string accessStatus = d.HasDamage ? "VERIFY WITH ADMIN" : "ALL ITEMS RETURNED";
+
+                AddMatrixRow(matrixTbl, "Odometer Mileage", startOdoStr, retOdoStr, odomDiff,     fontNormal, GreenAccent, false);
+                AddMatrixRow(matrixTbl, "Fuel Tank Level",  "100% (Full)", $"{d.ReturnFuel} (Full)", "0% Fuel Differential", fontNormal, GreenAccent, false);
+                AddMatrixRow(matrixTbl, "Exterior Body",    "Clean / Good", "Clean / Passed", damageStatus, fontNormal, d.HasDamage ? new DeviceRgb(220,38,38) : GreenAccent, false);
+                AddMatrixRow(matrixTbl, "Interior & Accessories", "Key & RFID Present", "Key & RFID Returned", accessStatus, fontNormal, d.HasDamage ? new DeviceRgb(220,38,38) : GreenAccent, true);
+
+                doc.Add(matrixTbl);
+
+                // ══════════════════════════════════════════════════
+                //  SECTION 3 – Final Billing & Settlement Ledger
+                // ══════════════════════════════════════════════════
+                doc.Add(BuildSectionHeader("3", "FINAL BILLING & SETTLEMENT LEDGER", fontBold, OrangeAccent, BlackText));
+
+                var billWrap = new Table(UnitValue.CreatePercentArray(new float[] { 58, 42 }))
+                    .UseAllAvailableWidth()
+                    .SetMarginBottom(14);
+
+                // Left: line items
+                var billLeft = new Cell().SetBorder(Border.NO_BORDER).SetPaddingRight(14);
+                AddBillRow(billLeft, "Base Rental Charge",           $"₱{d.BaseAmount:N2}",   fontNormal, fontBold, BlackText, false);
+                AddBillRow(billLeft, "Extra Mileage / Fuel Fee",     $"₱{d.PenaltyFee:N2}",   fontNormal, fontBold, BlackText, false);
+                AddBillRow(billLeft, "Late Penalty Surcharges",      $"₱{d.PenaltyFee:N2}",   fontNormal, fontBold, BlackText, false);
+                AddBillRow(billLeft, "Damage Assessment",            $"₱{d.DamageFee:N2}",    fontNormal, fontBold, BlackText, false);
+
+                var totalLine = new Table(UnitValue.CreatePercentArray(new float[] { 60, 40 })).UseAllAvailableWidth()
+                    .SetBorderTop(new SolidBorder(OrangeAccent, 1.5f)).SetMarginTop(4);
+                totalLine.AddCell(new Cell().SetBorder(Border.NO_BORDER).Add(
+                    new Paragraph("TOTAL PAID").SetFont(fontBold).SetFontSize(11f).SetFontColor(BlackText)));
+                totalLine.AddCell(new Cell().SetBorder(Border.NO_BORDER).Add(
+                    new Paragraph($"₱{d.TotalSettled:N2}").SetFont(fontBold).SetFontSize(11f).SetFontColor(OrangeAccent).SetTextAlignment(TextAlignment.RIGHT)));
+                billLeft.Add(totalLine);
+                billWrap.AddCell(billLeft);
+
+                // Right: PAID IN FULL badge
+                var paidBadge = new Cell()
+                    .SetBorder(new SolidBorder(GreenAccent, 2f))
+                    .SetBorderRadius(new iText.Layout.Properties.BorderRadius(8))
+                    .SetPadding(14)
+                    .SetTextAlignment(TextAlignment.CENTER)
+                    .SetVerticalAlignment(VerticalAlignment.MIDDLE);
+                paidBadge.Add(new Paragraph("PAID IN FULL")
+                    .SetFont(fontBold).SetFontSize(16f).SetFontColor(GreenAccent).SetTextAlignment(TextAlignment.CENTER));
+                paidBadge.Add(new Paragraph("ZERO BALANCE CLEARED")
+                    .SetFont(fontBold).SetFontSize(9f).SetFontColor(GreenAccent).SetTextAlignment(TextAlignment.CENTER).SetCharacterSpacing(0.5f));
+                paidBadge.Add(new Paragraph($"(₱0.00 DUE)")
+                    .SetFont(fontBold).SetFontSize(11f).SetFontColor(GreenAccent).SetTextAlignment(TextAlignment.CENTER));
+                billWrap.AddCell(paidBadge);
+
+                doc.Add(billWrap);
+
+                // ══════════════════════════════════════════════════
+                //  SECTION 4 – Authorization & Security Seal
+                // ══════════════════════════════════════════════════
+                doc.Add(BuildSectionHeader("4", "OFFICIAL AUTHORIZATION & SECURITY SEAL", fontBold, OrangeAccent, BlackText));
+
+                var sigTbl = new Table(UnitValue.CreatePercentArray(new float[] { 35, 35, 30 }))
+                    .UseAllAvailableWidth()
+                    .SetMarginBottom(10);
+
+                // Customer sig
+                var custSig = new Cell().SetBorder(Border.NO_BORDER).SetPaddingRight(12);
+                custSig.Add(new Paragraph("________________________")
+                    .SetFont(fontNormal).SetFontSize(10f).SetFontColor(SlateGray));
+                custSig.Add(new Paragraph(d.CustomerName)
+                    .SetFont(fontBold).SetFontSize(9f).SetFontColor(BlackText).SetMarginTop(3));
+                custSig.Add(new Paragraph("(Signed Digitally)")
+                    .SetFont(fontNormal).SetFontSize(8f).SetFontColor(SlateGray));
+                custSig.Add(new Paragraph("CUSTOMER SIGNATURE")
+                    .SetFont(fontBold).SetFontSize(7.5f).SetFontColor(OrangeAccent).SetCharacterSpacing(0.5f));
+                sigTbl.AddCell(custSig);
+
+                // Admin inspector sig
+                var adminSig = new Cell().SetBorder(Border.NO_BORDER).SetPaddingRight(12);
+                adminSig.Add(new Paragraph("________________________")
+                    .SetFont(fontNormal).SetFontSize(10f).SetFontColor(SlateGray));
+                adminSig.Add(new Paragraph(d.AdminName)
+                    .SetFont(fontBold).SetFontSize(9f).SetFontColor(BlackText).SetMarginTop(3));
+                adminSig.Add(new Paragraph("(Admin)")
+                    .SetFont(fontNormal).SetFontSize(8f).SetFontColor(SlateGray));
+                adminSig.Add(new Paragraph("INSPECTING ADMIN OFFICER")
+                    .SetFont(fontBold).SetFontSize(7.5f).SetFontColor(OrangeAccent).SetCharacterSpacing(0.5f));
+                sigTbl.AddCell(adminSig);
+
+                // Official seal + clearance statement
+                var sealCell = new Cell().SetBorder(Border.NO_BORDER);
+                sealCell.Add(new Paragraph("DRIVE & GO")
+                    .SetFont(fontBold).SetFontSize(9f).SetFontColor(NavyBg).SetTextAlignment(TextAlignment.CENTER));
+                sealCell.Add(new Paragraph("VEHICLE INSPECTED & SETTLED")
+                    .SetFont(fontBold).SetFontSize(8f).SetFontColor(NavyBg).SetTextAlignment(TextAlignment.CENTER));
+                sealCell.Add(new Paragraph("OFFICIAL VERIFICATION SEAL")
+                    .SetFont(fontNormal).SetFontSize(7f).SetFontColor(SlateGray).SetTextAlignment(TextAlignment.CENTER));
+                sealCell.Add(new Paragraph($"This certifies that the vehicle was officially received in good order and all obligations under booking {d.AgreementCode} are fully settled.")
+                    .SetFont(fontNormal).SetFontSize(7.5f).SetFontColor(SlateGray).SetTextAlignment(TextAlignment.CENTER).SetMarginTop(4));
+                sigTbl.AddCell(sealCell);
+
+                doc.Add(sigTbl);
+
+                // Terms note
+                doc.Add(new Paragraph(
+                    "Terms & Notes:\n" +
+                    "  \u2022  This certificate serves as the official proof of vehicle return and settlement.\n" +
+                    "  \u2022  No further balance is due from the customer under this booking.\n" +
+                    "  \u2022  Please keep this document for your records.")
+                    .SetFont(fontNormal).SetFontSize(8f).SetFontColor(SlateGray)
+                    .SetBorder(new SolidBorder(BorderColor, 0.8f))
+                    .SetPadding(8).SetMarginBottom(10));
+
+                // Footer
+                var footer = new Table(1).UseAllAvailableWidth().SetMarginTop(6);
+                footer.AddCell(new Cell()
+                    .SetBackgroundColor(NavyBg)
+                    .SetBorder(Border.NO_BORDER)
+                    .SetPadding(10)
+                    .Add(new Paragraph($"Drive&Go Corporate Office   |   {d.CompanyAddress}   |   {d.CompanyPhone}   |   {d.CompanyEmail}   |   Booking Ref No: {d.AgreementCode}   |   Page 1 of 1")
+                        .SetFont(fontNormal).SetFontSize(7.5f).SetFontColor(new DeviceRgb(148,163,184))
+                        .SetTextAlignment(TextAlignment.CENTER)));
+                doc.Add(footer);
+            }
+
+            return ms.ToArray();
+        }
+
+        private static Paragraph BuildSectionHeader(string num, string title, PdfFont fontBold, DeviceRgb orange, DeviceRgb dark)
+        {
+            return new Paragraph($"{num}.  {title}")
+                .SetFont(fontBold).SetFontSize(10f)
+                .SetFontColor(orange)
+                .SetBorderBottom(new SolidBorder(new DeviceRgb(226, 232, 240), 1))
+                .SetPaddingBottom(5).SetMarginBottom(8);
+        }
+
+        private static void AddMatrixRow(Table tbl, string item, string pickup, string ret, string status, PdfFont fontNormal, DeviceRgb statusColor, bool isLast)
+        {
+            var border = isLast ? (Border)Border.NO_BORDER : new SolidBorder(new DeviceRgb(226, 232, 240), 0.5f);
+            var bodyBorder = new SolidBorder(new DeviceRgb(226, 232, 240), 0.5f);
+
+            tbl.AddCell(new Cell().SetBorder(bodyBorder).SetPadding(8)
+                .Add(new Paragraph(item).SetFont(fontNormal).SetFontSize(9f).SetFontColor(new DeviceRgb(15,23,42))));
+            tbl.AddCell(new Cell().SetBorder(bodyBorder).SetPadding(8).SetTextAlignment(TextAlignment.CENTER)
+                .Add(new Paragraph(pickup).SetFont(fontNormal).SetFontSize(9f).SetFontColor(new DeviceRgb(15,23,42))));
+            tbl.AddCell(new Cell().SetBorder(bodyBorder).SetPadding(8).SetTextAlignment(TextAlignment.CENTER)
+                .Add(new Paragraph(ret).SetFont(fontNormal).SetFontSize(9f).SetFontColor(new DeviceRgb(15,23,42))));
+            tbl.AddCell(new Cell().SetBorder(bodyBorder).SetPadding(8).SetTextAlignment(TextAlignment.CENTER)
+                .Add(new Paragraph(status).SetFont(fontNormal).SetFontSize(9f).SetFontColor(statusColor)));
+        }
+
+        private static void AddBillRow(Cell container, string label, string amount, PdfFont fontNormal, PdfFont fontBold, DeviceRgb color, bool isTotalRow)
+        {
+            var row = new Table(UnitValue.CreatePercentArray(new float[] { 60, 40 })).UseAllAvailableWidth();
+            row.AddCell(new Cell().SetBorder(Border.NO_BORDER).Add(
+                new Paragraph(label).SetFont(fontNormal).SetFontSize(9.5f).SetFontColor(color)));
+            row.AddCell(new Cell().SetBorder(Border.NO_BORDER).Add(
+                new Paragraph(amount).SetFont(isTotalRow ? fontBold : fontNormal).SetFontSize(9.5f).SetFontColor(color).SetTextAlignment(TextAlignment.RIGHT)));
+            container.Add(row);
+        }
     }
 }
+

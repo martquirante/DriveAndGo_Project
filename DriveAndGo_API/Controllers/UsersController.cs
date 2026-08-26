@@ -520,4 +520,89 @@ public class UsersController : ControllerBase
             return StatusCode(500, new { Message = "Failed to update password: " + ex.Message });
         }
     }
+
+    public class CreateCustomerRequest
+    {
+        public string FullName { get; set; } = string.Empty;
+        public string? Email { get; set; }
+        public string? Phone { get; set; }
+        public string? AvatarBase64 { get; set; }
+        public string? IdPhotoUrl { get; set; }
+        public string? Address { get; set; }
+        public string? DriverLicenseNo { get; set; }
+        public string? InitialPassword { get; set; }
+    }
+
+    [HttpPost]
+    public IActionResult CreateCustomer([FromBody] CreateCustomerRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.FullName))
+        {
+            return BadRequest(new { Message = "Customer full name is required." });
+        }
+
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            string cleanPhone = string.IsNullOrWhiteSpace(request.Phone) ? string.Empty : request.Phone.Trim();
+            string email = string.IsNullOrWhiteSpace(request.Email)
+                ? $"walkin_{DateTime.UtcNow.Ticks}@driveandgo.com"
+                : request.Email.Trim();
+
+            // Check if phone or email already matches an existing customer
+            using var checkCmd = new NpgsqlCommand(
+                @"SELECT user_id, full_name, email, phone FROM users 
+                  WHERE email = @email OR (phone = @phone AND phone <> '') 
+                  LIMIT 1", connection);
+            checkCmd.Parameters.AddWithValue("@email", email);
+            checkCmd.Parameters.AddWithValue("@phone", cleanPhone);
+            using var reader = checkCmd.ExecuteReader();
+            if (reader.Read())
+            {
+                return Ok(new
+                {
+                    UserId = Convert.ToInt32(reader["user_id"]),
+                    FullName = reader["full_name"]?.ToString() ?? request.FullName.Trim(),
+                    Email = reader["email"]?.ToString() ?? email,
+                    Phone = reader["phone"]?.ToString() ?? cleanPhone,
+                    Role = "customer",
+                    Message = "Customer record found."
+                });
+            }
+            reader.Close();
+
+            string rawPassword = string.IsNullOrWhiteSpace(request.InitialPassword) ? "DriveAndGoWalkIn2026!" : request.InitialPassword.Trim();
+            string defaultHash = BCryptNet.HashPassword(rawPassword);
+
+            using var insertCmd = new NpgsqlCommand(@"
+                INSERT INTO users (full_name, email, password_hash, phone, role, avatar_base64, id_photo_url, created_at)
+                VALUES (@full_name, @email, @password_hash, @phone, 'customer', @avatar_base64, @id_photo_url, NOW())
+                RETURNING user_id", connection);
+
+            insertCmd.Parameters.AddWithValue("@full_name", request.FullName.Trim());
+            insertCmd.Parameters.AddWithValue("@email", email);
+            insertCmd.Parameters.AddWithValue("@password_hash", defaultHash);
+            insertCmd.Parameters.AddWithValue("@phone", cleanPhone);
+            insertCmd.Parameters.AddWithValue("@avatar_base64", string.IsNullOrWhiteSpace(request.AvatarBase64) ? (object)DBNull.Value : request.AvatarBase64.Trim());
+            insertCmd.Parameters.AddWithValue("@id_photo_url", string.IsNullOrWhiteSpace(request.IdPhotoUrl) ? (object)DBNull.Value : request.IdPhotoUrl.Trim());
+
+            var newId = Convert.ToInt32(insertCmd.ExecuteScalar());
+
+            return Ok(new
+            {
+                UserId = newId,
+                FullName = request.FullName.Trim(),
+                Email = email,
+                Phone = cleanPhone,
+                Role = "customer",
+                Message = "Walk-in customer registered successfully."
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+        }
+    }
 }

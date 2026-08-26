@@ -46,6 +46,23 @@ namespace DriveAndGo_API.Controllers
 
                 rentalData.CustomerEmail = request.RecipientEmail.Trim();
                 rentalData.PersonalMessage = request.PersonalMessage;
+                rentalData.IsRescheduled = request.IsRescheduled;
+                rentalData.OriginalPickupDate = request.OriginalPickupDate;
+                rentalData.OriginalDropoffDate = request.OriginalDropoffDate;
+                rentalData.PerkFuelWaiver = request.PerkFuelWaiver;
+                rentalData.PerkTollCredits = request.PerkTollCredits;
+                rentalData.PerkWashWaiver = request.PerkWashWaiver;
+                rentalData.IncludePromoGift = request.IncludeCourtesyPromo;
+                rentalData.PromoCode = request.CourtesyPromoCode;
+                rentalData.PromoDescription = !string.IsNullOrWhiteSpace(request.CourtesyPromoDiscount)
+                    ? $"{request.CourtesyPromoDiscount} discount courtesy gift on your next Drive&Go booking."
+                    : "Special courtesy discount on your next Drive&Go booking.";
+
+                var serverBase = NetworkHelper.GetServerBaseUrl(_configuration);
+                rentalData.AcceptScheduleUrl = $"{serverBase}/api/Rentals/respond/{rentalData.AgreementCode}?action=accept";
+                rentalData.RequestRescheduleUrl = $"{serverBase}/api/Rentals/respond/{rentalData.AgreementCode}?action=reschedule";
+                rentalData.DeclineBookingUrl = $"{serverBase}/api/Rentals/respond/{rentalData.AgreementCode}?action=decline";
+
 
                 byte[]? pdfBytes = null;
                 if (request.AttachPdf)

@@ -995,29 +995,61 @@ public class MessagesController : ControllerBase
                 }
             }
 
-            // 4. Include all registered DB users (customers, drivers) so every DB account is searchable even before first message
-            foreach (var u in allUsers)
+            return Ok(list);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = ex.Message });
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  GET /api/messages/contacts?query=...
+    //  Returns all registered customers & drivers for search, new chats & forward.
+    // ══════════════════════════════════════════════════════════════════
+    [HttpGet("contacts")]
+    public async Task<IActionResult> GetContacts([FromQuery] string? query = null)
+    {
+        try
+        {
+            await using var conn = await _ds.OpenConnectionAsync();
+            var sql = "SELECT user_id, full_name, email, COALESCE(phone, '') AS phone, COALESCE(role, 'Customer') AS role, id_photo_url FROM users WHERE 1=1";
+            if (!string.IsNullOrWhiteSpace(query))
             {
-                string uIdStr = u.userId.ToString();
-                if (!seenIds.Contains(uIdStr) && !seenIds.Contains($"c{u.userId}") && !seenIds.Contains($"d{u.userId}"))
-                {
-                    seenIds.Add(uIdStr);
-                    list.Add(new
-                    {
-                        id             = uIdStr,
-                        name           = u.fullName,
-                        role           = string.Equals(u.role, "driver", StringComparison.OrdinalIgnoreCase) ? "Driver" : "Customer",
-                        lastMessage    = "Tap to start conversation",
-                        time           = "",
-                        deliveryStatus = "sent",
-                        unreadCount    = 0,
-                        avatarUrl      = u.avatarUrl,
-                        isOnline       = (bool?)null
-                    });
-                }
+                sql += " AND (full_name ILIKE @q OR email ILIKE @q OR phone ILIKE @q OR role ILIKE @q)";
+            }
+            sql += " ORDER BY role ASC, full_name ASC";
+
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            if (!string.IsNullOrWhiteSpace(query))
+            {
+                cmd.Parameters.AddWithValue("@q", $"%{query.Trim()}%");
             }
 
-            return Ok(list);
+            var contacts = new List<object>();
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                int uid = reader.GetInt32(0);
+                string name = reader["full_name"]?.ToString() ?? "";
+                string rawRole = reader["role"]?.ToString()?.Trim() ?? "customer";
+                string role = string.IsNullOrWhiteSpace(rawRole) ? "Customer" : char.ToUpper(rawRole[0]) + (rawRole.Length > 1 ? rawRole.Substring(1).ToLower() : "");
+                string? avatar = reader["id_photo_url"] == DBNull.Value ? null : reader["id_photo_url"].ToString();
+                string email = reader["email"]?.ToString() ?? "";
+                string phone = reader["phone"] == DBNull.Value ? "" : reader["phone"].ToString() ?? "";
+
+                contacts.Add(new
+                {
+                    id = uid.ToString(),
+                    name,
+                    role,
+                    email,
+                    phone,
+                    avatarUrl = avatar
+                });
+            }
+
+            return Ok(contacts);
         }
         catch (Exception ex)
         {

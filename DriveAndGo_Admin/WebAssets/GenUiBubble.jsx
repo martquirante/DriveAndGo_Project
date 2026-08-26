@@ -190,14 +190,22 @@ const QUICK_EMOJIS = ['👍','❤️','😂','😮','😢','😡'];
       border: 1px solid rgba(255,255,255,0.08);
       border-radius: 0 18px 18px 18px;
       padding: 10px 14px;
-      word-break: break-word;
-      overflow-wrap: anywhere;
-      white-space: pre-wrap;
+      min-width: 48px;
       max-width: 100%;
+      box-sizing: border-box;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      white-space: pre-wrap;
       font-size: 13px;
       font-weight: 400;
       line-height: 1.55;
       color: #e2e8f0;
+    }
+    [data-theme="light"] .gub-human-bubble {
+      background: #f1f5f9 !important;
+      border: 1px solid #cbd5e1 !important;
+      color: #0f172a !important;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
 
     /* ── AI incoming bubble ── */
@@ -206,14 +214,22 @@ const QUICK_EMOJIS = ['👍','❤️','😂','😮','😢','😡'];
       border: 1px solid rgba(234,88,12,0.2);
       border-radius: 0 18px 18px 18px;
       padding: 10px 14px;
-      word-break: break-word;
-      overflow-wrap: anywhere;
-      white-space: pre-wrap;
+      min-width: 48px;
       max-width: 100%;
+      box-sizing: border-box;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      white-space: pre-wrap;
       font-size: 13px;
       font-weight: 400;
       line-height: 1.6;
       color: #e2e8f0;
+    }
+    [data-theme="light"] .gub-ai-bubble {
+      background: #fff7ed !important;
+      border: 1px solid #fed7aa !important;
+      color: #1e293b !important;
+      box-shadow: 0 1px 3px rgba(234,88,12,0.08);
     }
 
     /* ── Outgoing bubble ── */
@@ -221,10 +237,12 @@ const QUICK_EMOJIS = ['👍','❤️','😂','😮','😢','😡'];
       background: linear-gradient(135deg, #ea580c, #d97706);
       border-radius: 18px 18px 0 18px;
       padding: 10px 14px;
-      word-break: break-word;
-      overflow-wrap: anywhere;
-      white-space: pre-wrap;
+      min-width: 48px;
       max-width: 100%;
+      box-sizing: border-box;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      white-space: pre-wrap;
       font-size: 13px;
       font-weight: 500;
       line-height: 1.55;
@@ -729,12 +747,14 @@ function MarkdownTable({ headerCols, dataRows }) {
     return dataRows.filter(row => row.some(cell => String(cell).toLowerCase().includes(q)));
   }, [dataRows, searchQuery]);
 
+  const isDark = (typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') !== 'light');
+
   const modalContent = isFullscreen ? React.createElement('div', {
     className: 'gub-overlay',
     style: {
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
       width: '100vw', height: '100vh', zIndex: 999999,
-      background: 'rgba(10, 15, 26, 0.95)',
+      background: isDark ? 'rgba(10, 15, 26, 0.92)' : 'rgba(15, 23, 42, 0.55)',
       backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: '12px', boxSizing: 'border-box'
@@ -744,12 +764,12 @@ function MarkdownTable({ headerCols, dataRows }) {
     React.createElement('div', {
       className: 'gub-modal',
       style: {
-        background: '#131722',
+        background: isDark ? '#131722' : '#ffffff',
         borderRadius: 16,
         padding: '16px 20px',
         width: '98vw', maxWidth: 1250, maxHeight: '94vh',
-        boxShadow: '0 32px 96px rgba(0,0,0,0.95), 0 0 0 1px rgba(255,255,255,0.15)',
-        border: '1px solid rgba(255,255,255,0.14)',
+        boxShadow: isDark ? '0 32px 96px rgba(0,0,0,0.95), 0 0 0 1px rgba(255,255,255,0.15)' : '0 32px 96px rgba(15,23,42,0.22), 0 0 0 1px rgba(0,0,0,0.08)',
+        border: isDark ? '1px solid rgba(255,255,255,0.14)' : '1px solid #cbd5e1',
         display: 'flex', flexDirection: 'column', gap: 12,
         overflow: 'hidden', boxSizing: 'border-box'
       },
@@ -759,19 +779,19 @@ function MarkdownTable({ headerCols, dataRows }) {
       React.createElement('div', {
         style: {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 10,
+          borderBottom: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e2e8f0', paddingBottom: 10,
           gap: 8, flexWrap: 'nowrap', width: '100%', overflow: 'hidden'
         }
       },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1, overflow: 'hidden' } },
           React.createElement('span', { style: { width: 8, height: 8, borderRadius: '50%', background: '#ea580c', boxShadow: '0 0 8px #ea580c', flexShrink: 0 } }),
-          React.createElement('h3', { style: { color: '#f8fafc', fontSize: 13, fontWeight: 700, margin: 0, letterSpacing: '0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, 'Fleet Overview — Fullscreen HD View'),
+          React.createElement('h3', { style: { color: isDark ? '#f8fafc' : '#0f172a', fontSize: 13, fontWeight: 700, margin: 0, letterSpacing: '0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, 'Fleet Overview — Fullscreen HD View'),
           React.createElement('span', { style: { fontSize: 9.5, color: '#ea580c', background: 'rgba(234,88,12,0.18)', border: '1px solid rgba(234,88,12,0.4)', borderRadius: 999, padding: '2px 8px', fontWeight: 700, flexShrink: 0, whiteSpace: 'nowrap' } }, `${filteredRows.length} Rows`)
         ),
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 } },
           React.createElement('div', { style: { position: 'relative', display: 'flex', alignItems: 'center' } },
             React.createElement('svg', {
-              width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: '#94a3b8',
+              width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: isDark ? '#94a3b8' : '#64748b',
               strokeWidth: 2.2, strokeLinecap: 'round', strokeLinejoin: 'round',
               style: { position: 'absolute', left: 9, pointerEvents: 'none' }
             },
@@ -784,8 +804,9 @@ function MarkdownTable({ headerCols, dataRows }) {
               value: searchQuery,
               onChange: e => setSearchQuery(e.target.value),
               style: {
-                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.18)',
-                borderRadius: 6, padding: '4px 10px 4px 28px', color: '#f8fafc', fontSize: 11,
+                background: isDark ? 'rgba(255,255,255,0.06)' : '#f8fafc',
+                border: isDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid #cbd5e1',
+                borderRadius: 6, padding: '4px 10px 4px 28px', color: isDark ? '#f8fafc' : '#0f172a', fontSize: 11,
                 outline: 'none', width: 145
               }
             })
@@ -794,8 +815,9 @@ function MarkdownTable({ headerCols, dataRows }) {
             onClick: () => setIsFullscreen(false),
             title: 'Close (ESC)',
             style: {
-              background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)',
-              borderRadius: '50%', width: 28, height: 28, color: '#e4e6eb',
+              background: isDark ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
+              border: isDark ? '1px solid rgba(255,255,255,0.18)' : '1px solid #cbd5e1',
+              borderRadius: '50%', width: 28, height: 28, color: isDark ? '#e4e6eb' : '#334155',
               fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center',
               justifyContent: 'center', transition: 'all 0.15s', flexShrink: 0
             }
@@ -803,14 +825,14 @@ function MarkdownTable({ headerCols, dataRows }) {
         )
       ),
       // Table Content
-      React.createElement('div', { style: { flex: 1, overflowY: 'auto', overflowX: 'auto', borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)' } },
+      React.createElement('div', { style: { flex: 1, overflowY: 'auto', overflowX: 'auto', borderRadius: 12, border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #e2e8f0' } },
         React.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' } },
           React.createElement('thead', null,
-            React.createElement('tr', { style: { background: 'rgba(234, 88, 12, 0.2)', borderBottom: '1px solid rgba(255,255,255,0.12)', position: 'sticky', top: 0, zIndex: 1 } },
+            React.createElement('tr', { style: { background: isDark ? 'rgba(234, 88, 12, 0.2)' : '#ffedd5', borderBottom: isDark ? '1px solid rgba(255,255,255,0.12)' : '1px solid #fed7aa', position: 'sticky', top: 0, zIndex: 1 } },
               headerCols.map((col, cIdx) =>
                 React.createElement('th', {
                   key: cIdx,
-                  style: { padding: '12px 16px', color: '#fb923c', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' },
+                  style: { padding: '12px 16px', color: isDark ? '#fb923c' : '#c2410c', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' },
                   dangerouslySetInnerHTML: { __html: parseInlineMarkdown(col) }
                 })
               )
@@ -821,14 +843,16 @@ function MarkdownTable({ headerCols, dataRows }) {
               React.createElement('tr', {
                 key: rIdx,
                 style: {
-                  borderBottom: '1px solid rgba(255,255,255,0.05)',
-                  background: rIdx % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'rgba(255,255,255,0.04)'
+                  borderBottom: isDark ? '1px solid rgba(255,255,255,0.05)' : '1px solid #f1f5f9',
+                  background: isDark
+                    ? (rIdx % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'rgba(255,255,255,0.04)')
+                    : (rIdx % 2 === 0 ? '#ffffff' : '#f8fafc')
                 }
               },
                 row.map((cell, cIdx) =>
                   React.createElement('td', {
                     key: cIdx,
-                    style: { padding: '12px 16px', color: '#e2e8f0', whiteSpace: 'nowrap' },
+                    style: { padding: '12px 16px', color: isDark ? '#e2e8f0' : '#0f172a', fontWeight: 600, whiteSpace: 'nowrap' },
                     dangerouslySetInnerHTML: { __html: parseInlineMarkdown(cell) }
                   })
                 )

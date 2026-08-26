@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DriveAndGo Notifications</title>
+    <title>DriveAndGo Notification Center</title>
 
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -29,17 +29,47 @@
         html, body, #root {
             margin: 0;
             padding: 0;
+            width: 100vw;
+            height: 100vh;
             background: transparent !important;
             background-color: transparent !important;
             overflow: hidden;
         }
 
+        /* Glassmorphic Backdrop Overlay - Subtle & Clear Glass UI */
+        .glass-backdrop-dark {
+            background-color: rgba(2, 6, 23, 0.45) !important;
+            -webkit-backdrop-filter: blur(4px) saturate(130%);
+            backdrop-filter: blur(4px) saturate(130%);
+        }
+        .glass-backdrop-light {
+            background-color: rgba(15, 23, 42, 0.16) !important;
+            -webkit-backdrop-filter: blur(4px) saturate(120%);
+            backdrop-filter: blur(4px) saturate(120%);
+        }
+
+        /* Glassmorphic Centered Card */
+        .glass-card-dark {
+            background: rgba(15, 23, 42, 0.86) !important;
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            backdrop-filter: blur(16px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.16) !important;
+            box-shadow: 0 24px 60px -10px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+        }
+        .glass-card-light {
+            background: rgba(255, 255, 255, 0.92) !important;
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            backdrop-filter: blur(16px) saturate(180%);
+            border: 1px solid rgba(203, 213, 225, 0.90) !important;
+            box-shadow: 0 24px 60px -10px rgba(15, 23, 42, 0.16), 0 0 0 1px rgba(255, 255, 255, 0.8) !important;
+        }
+
         /* Custom Glassmorphic Scrollbar */
         .custom-scrollbar::-webkit-scrollbar {
-            width: 4px;
+            width: 5px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
-            background: rgba(128, 128, 128, 0.05);
+            background: rgba(128, 128, 128, 0.06);
             border-radius: 8px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
@@ -47,42 +77,70 @@
             border-radius: 8px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: rgba(249, 115, 22, 0.6);
+            background: rgba(249, 115, 22, 0.7);
         }
 
-        @keyframes fadeInScale {
-            from {
+        @keyframes modalPopIn {
+            0% {
                 opacity: 0;
-                transform: translateY(-8px) scale(0.98);
+                transform: scale(0.96) translateY(10px);
             }
-            to {
+            100% {
                 opacity: 1;
-                transform: translateY(0) scale(1);
+                transform: scale(1) translateY(0);
             }
         }
-        .animate-pop-in {
-            animation: fadeInScale 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        .animate-modal {
+            animation: modalPopIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes fadeInOverlay {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        .animate-overlay {
+            animation: fadeInOverlay 0.18s ease-out forwards;
         }
     </style>
 </head>
 
 <body class="bg-transparent" style="background: transparent !important;">
 
-    <div id="root" class="bg-transparent" style="background: transparent !important;"></div>
+    <div id="root" class="bg-transparent w-full h-full flex items-center justify-center" style="background: transparent !important;"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useMemo, useRef } = React;
 
-        // ─── SVG VECTOR ICONS (NO TEXT EMOJIS) ──────────────────────────────────
-        const IconBell = ({ sz = 16, className = "" }) => (
+        // ─── UNIQUE SVG VECTOR ICONS (ZERO EMOJIS) ──────────────────────────────────
+        const IconBell = ({ sz = 18, className = "" }) => (
             <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
         );
 
-        const IconCloudRain = ({ sz = 16, className = "" }) => (
+        const IconCar = ({ sz = 18, className = "" }) => (
+            <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 11.2 2 11.6 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>
+        );
+
+        const IconCreditCard = ({ sz = 18, className = "" }) => (
+            <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+        );
+
+        const IconUser = ({ sz = 18, className = "" }) => (
+            <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        );
+
+        const IconWrench = ({ sz = 18, className = "" }) => (
+            <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        );
+
+        const IconAlertTriangle = ({ sz = 18, className = "" }) => (
+            <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        );
+
+        const IconCloudRain = ({ sz = 18, className = "" }) => (
             <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path><path d="M16 14v6"></path><path d="M8 14v6"></path><path d="M12 16v6"></path></svg>
         );
 
-        const IconShieldAlert = ({ sz = 16, className = "" }) => (
+        const IconShieldAlert = ({ sz = 18, className = "" }) => (
             <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
         );
 
@@ -94,10 +152,22 @@
             <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M18 6 7 17l-5-5"></path><path d="m22 10-7.5 7.5L13 16"></path></svg>
         );
 
+        const IconCheck = ({ sz = 14, className = "" }) => (
+            <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="20 6 9 17 4 12"></polyline></svg>
+        );
+
+        const IconX = ({ sz = 18, className = "" }) => (
+            <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        );
+
+        const IconSearch = ({ sz = 16, className = "" }) => (
+            <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        );
+
         const formatTime = (tStr) => {
             if (!tStr) return 'Just now';
             const s = String(tStr);
-            if (s === 'Just now' || s.endsWith('m ago') || s.endsWith('h ago')) return s;
+            if (s === 'Just now' || s.endsWith('m ago') || s.endsWith('h ago') || s.endsWith('d ago')) return s;
             try {
                 const d = new Date(s);
                 if (isNaN(d.getTime())) return s;
@@ -106,6 +176,8 @@
                 if (mins < 60) return `${mins}m ago`;
                 const hrs = Math.floor(mins / 60);
                 if (hrs < 24) return `${hrs}h ago`;
+                const days = Math.floor(hrs / 24);
+                if (days < 7) return `${days}d ago`;
                 return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
             } catch(e) {
                 return 'Just now';
@@ -113,34 +185,25 @@
         };
 
         const NotificationsApp = () => {
-            const cardRef = React.useRef(null);
             const [theme, setTheme] = useState(() => {
                 return document.documentElement.getAttribute('data-theme') || 'dark';
             });
-            const [notifications, setNotifications] = useState([
-                {
-                    id: '1',
-                    type: 'flood',
-                    title: 'España Blvd Flood Hazard Alert',
-                    body: '1 Active Vehicle in España Blvd Flood Zone (Tire-Deep: 25-35 cm).',
-                    time: 'Just now',
-                    unread: true
-                },
-                {
-                    id: '2',
-                    type: 'weather',
-                    title: 'PAGASA Monsoon Weather Advisory',
-                    body: 'PAGASA Yellow Advisory Target: Rental Garage Hub (SJDM / Metro Manila).',
-                    time: '5m ago',
-                    unread: true
-                }
-            ]);
+            const [notifications, setNotifications] = useState([]);
+            const [backdropImg, setBackdropImg] = useState(null);
+            const [filterTab, setFilterTab] = useState('all'); // 'all' | 'unread' | 'bookings' | 'alerts'
+            const [searchQuery, setSearchQuery] = useState('');
 
             useEffect(() => {
                 window.setFlyoutTheme = function(mode) {
                     if (mode === 'light' || mode === 'dark') {
                         document.documentElement.setAttribute('data-theme', mode);
                         setTheme(mode);
+                    }
+                };
+
+                window.setBackdropSnapshot = function(dataUrl) {
+                    if (dataUrl) {
+                        setBackdropImg(dataUrl);
                     }
                 };
 
@@ -169,33 +232,63 @@
                     } catch(e) { }
                 };
 
-                return () => obs.disconnect();
-            }, []);
-
-            useEffect(() => {
-                const notifyHeight = () => {
-                    if (cardRef.current && window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
-                        const h = cardRef.current.offsetHeight;
-                        window.chrome.webview.postMessage("resize_flyout:" + h);
-                    }
-                };
-
-                notifyHeight();
-
-                let ro;
-                if (cardRef.current && typeof ResizeObserver !== 'undefined') {
-                    ro = new ResizeObserver(() => notifyHeight());
-                    ro.observe(cardRef.current);
+                // Notify C# host that React is mounted and ready for data!
+                if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+                    window.chrome.webview.postMessage("flyout_ready");
                 }
 
-                return () => {
-                    if (ro) ro.disconnect();
+                // Close on Escape key
+                const handleKeyDown = (e) => {
+                    if (e.key === 'Escape') {
+                        handleClose();
+                    }
                 };
-            }, [notifications, theme]);
+                window.addEventListener('keydown', handleKeyDown);
+
+                return () => {
+                    obs.disconnect();
+                    window.removeEventListener('keydown', handleKeyDown);
+                };
+            }, []);
+
+            const isDark = theme === 'dark';
+
+            const handleClose = () => {
+                if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+                    window.chrome.webview.postMessage("close_flyout");
+                }
+            };
 
             const handleItemClick = (notif) => {
+                // Optimistically mark as read in local React state
+                setNotifications(prev => prev.map(item => {
+                    const idMatch = (item.id && item.id === notif.id) || 
+                                    (item.title === notif.title && item.body === notif.body);
+                    return idMatch ? { ...item, unread: false } : item;
+                }));
+
                 if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
                     window.chrome.webview.postMessage("notification_clicked:" + JSON.stringify(notif));
+                }
+            };
+
+            const handleMarkSingleRead = (e, notif) => {
+                e.stopPropagation();
+                setNotifications(prev => prev.map(item => {
+                    const idMatch = (item.id && item.id === notif.id) || 
+                                    (item.title === notif.title && item.body === notif.body);
+                    return idMatch ? { ...item, unread: false } : item;
+                }));
+
+                if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+                    window.chrome.webview.postMessage("mark_as_read:" + JSON.stringify(notif));
+                }
+            };
+
+            const handleMarkAllRead = () => {
+                setNotifications(prev => prev.map(item => ({ ...item, unread: false })));
+                if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+                    window.chrome.webview.postMessage("mark_all_read");
                 }
             };
 
@@ -206,89 +299,334 @@
                 }
             };
 
-            const unreadCount = notifications.filter(n => n.unread).length;
-            const isDark = theme === 'dark';
+            const unreadCount = useMemo(() => {
+                return notifications.filter(n => n.unread).length;
+            }, [notifications]);
+
+            const filteredNotifications = useMemo(() => {
+                return notifications.filter(n => {
+                    const rawTitle = String(n.title || n.Title || '').toLowerCase();
+                    const rawBody = String(n.body || n.Body || '').toLowerCase();
+                    const rawType = String(n.type || n.Type || '').toLowerCase();
+
+                    // Tab filter
+                    if (filterTab === 'unread' && !n.unread) return false;
+                    if (filterTab === 'bookings') {
+                        const isBooking = rawType.includes('booking') || rawType.includes('rental') || rawTitle.includes('booking') || rawTitle.includes('conforme') || rawTitle.includes('schedule');
+                        if (!isBooking) return false;
+                    }
+                    if (filterTab === 'alerts') {
+                        const isAlert = rawType.includes('overdue') || rawType.includes('maintenance') || rawType.includes('weather') || rawType.includes('security') || rawTitle.includes('overdue') || rawTitle.includes('alert') || rawTitle.includes('urgent');
+                        if (!isAlert) return false;
+                    }
+
+                    // Search Query filter
+                    if (searchQuery.trim()) {
+                        const q = searchQuery.toLowerCase().trim();
+                        return rawTitle.includes(q) || rawBody.includes(q) || rawType.includes(q);
+                    }
+
+                    return true;
+                });
+            }, [notifications, filterTab, searchQuery]);
 
             return (
-                <div className="w-full h-auto p-1 flex justify-end bg-transparent" style={{ background: 'transparent' }}>
-                    <div ref={cardRef} className={`w-full h-auto backdrop-blur-2xl border rounded-3xl p-4 flex flex-col gap-3 animate-pop-in overflow-hidden transition-all duration-200 ${
-                        isDark 
-                          ? 'bg-[#0c0e1a]/95 border-white/20 text-white shadow-[0_20px_50px_rgba(0,0,0,0.9)]' 
-                          : 'bg-white/95 border-slate-200/90 text-slate-900 shadow-[0_20px_50px_rgba(0,0,0,0.15)]'
-                    }`}>
+                <div 
+                    onClick={handleClose} 
+                    className="w-full h-full relative flex items-center justify-center p-4 sm:p-6 animate-overlay cursor-pointer overflow-hidden"
+                >
+                    {/* Live Frosted Glass Screen Backdrop Snapshot */}
+                    {backdropImg && (
+                        <img
+                            src={backdropImg}
+                            alt="Live Backdrop"
+                            className={`absolute inset-0 w-full h-full object-cover pointer-events-none transition-all duration-300 ${
+                                isDark 
+                                  ? 'filter blur-[4px] brightness-[0.55] saturate-[120%] scale-102' 
+                                  : 'filter blur-[4px] brightness-[0.96] saturate-[110%] scale-102'
+                            }`}
+                        />
+                    )}
+
+                    {/* Translucent Frosted Glass Tint Overlay (Gentle and Clear) */}
+                    <div 
+                        className={`absolute inset-0 pointer-events-none transition-colors ${
+                            isDark ? 'bg-slate-950/30' : 'bg-slate-900/08'
+                        }`} 
+                    />
+
+                    {/* CENTERED GLASS DIALOG CONTAINER */}
+                    <div 
+                        onClick={(e) => e.stopPropagation()} 
+                        className={`relative z-10 w-full max-w-2xl max-h-[85vh] rounded-3xl flex flex-col overflow-hidden animate-modal cursor-default transition-all duration-200 ${
+                            isDark 
+                              ? 'glass-card-dark text-white' 
+                              : 'glass-card-light text-slate-900'
+                        }`}
+                    >
                         
-                        {/* HEADER */}
-                        <div className={`flex items-center justify-between pb-3 border-b shrink-0 ${isDark ? 'border-white/10 text-white' : 'border-slate-200/90 text-slate-900'}`}>
-                            <div className="flex items-center gap-2 font-black text-sm tracking-wide">
-                                <div className={`p-1.5 rounded-xl border ${
-                                    isDark ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' : 'bg-orange-500/15 text-orange-600 border-orange-500/25'
-                                }`}>
-                                    <IconBell sz={16} />
+                        {/* ── HEADER ────────────────────────────────────────────────────────── */}
+                        <div className={`p-5 pb-4 border-b flex flex-col gap-3.5 shrink-0 ${
+                            isDark ? 'border-white/10 bg-white/[0.03]' : 'border-slate-200/80 bg-slate-50/70'
+                        }`}>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-2.5 rounded-2xl border shadow-sm ${
+                                        isDark 
+                                          ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' 
+                                          : 'bg-orange-500/15 text-orange-600 border-orange-500/25'
+                                    }`}>
+                                        <IconBell sz={22} />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <h2 className={`text-lg font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                                Notification Center
+                                            </h2>
+                                            {unreadCount > 0 ? (
+                                                <span className="px-2.5 py-0.5 rounded-full bg-orange-500 text-white font-black text-xs shadow-sm">
+                                                    {unreadCount} Unread
+                                                </span>
+                                            ) : (
+                                                <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
+                                                    isDark ? 'bg-white/5 border-white/10 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-500'
+                                                }`}>
+                                                    All Caught Up
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className={`text-xs mt-0.5 font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                            Real-time operational alerts, booking requests, and fleet activity
+                                        </p>
+                                    </div>
                                 </div>
-                                <span>Notifications</span>
-                                {unreadCount > 0 && (
-                                    <span className="px-2 py-0.5 rounded-full bg-orange-500 text-white font-black text-[10px] animate-pulse">
-                                        {unreadCount}
-                                    </span>
-                                )}
+
+                                <div className="flex items-center gap-1.5">
+                                    {unreadCount > 0 && (
+                                        <button
+                                            onClick={handleMarkAllRead}
+                                            title="Mark all notifications as read"
+                                            className={`flex items-center gap-1.5 text-xs font-bold py-1.5 px-3 rounded-xl border transition-all ${
+                                                isDark 
+                                                  ? 'bg-white/5 hover:bg-white/10 border-white/10 text-orange-400 hover:text-orange-300' 
+                                                  : 'bg-orange-50 hover:bg-orange-100/70 border-orange-200/80 text-orange-600'
+                                            }`}
+                                        >
+                                            <IconCheckCheck sz={15} />
+                                            <span>Mark all read</span>
+                                        </button>
+                                    )}
+
+                                    <button
+                                        onClick={handleClose}
+                                        title="Close (Esc)"
+                                        className={`p-2 rounded-xl border transition-all ${
+                                            isDark 
+                                              ? 'bg-white/5 hover:bg-white/15 border-white/10 text-slate-400 hover:text-white' 
+                                              : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-500 hover:text-slate-800'
+                                        }`}
+                                    >
+                                        <IconX sz={18} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* ── FILTER TABS & SEARCH BAR ──────────────────────────────────── */}
+                            <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-1">
+                                <div className={`flex items-center p-1 rounded-2xl border gap-1 w-full sm:w-auto ${
+                                    isDark ? 'bg-white/[0.04] border-white/10' : 'bg-slate-100 border-slate-200'
+                                }`}>
+                                    {[
+                                        { id: 'all', label: 'All' },
+                                        { id: 'unread', label: `Unread (${unreadCount})` },
+                                        { id: 'bookings', label: 'Bookings' },
+                                        { id: 'alerts', label: 'Alerts' }
+                                    ].map((tab) => {
+                                        const active = filterTab === tab.id;
+                                        return (
+                                            <button
+                                                key={tab.id}
+                                                onClick={() => setFilterTab(tab.id)}
+                                                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${
+                                                    active
+                                                      ? 'bg-orange-500 text-white shadow-md'
+                                                      : isDark
+                                                        ? 'text-slate-400 hover:text-white hover:bg-white/5'
+                                                        : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                                                }`}
+                                            >
+                                                {tab.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                <div className={`relative flex items-center w-full sm:w-56 px-3 py-1.5 rounded-2xl border ${
+                                    isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-100/80 border-slate-200 text-slate-900'
+                                }`}>
+                                    <IconSearch sz={14} className={isDark ? "text-slate-400 mr-2" : "text-slate-500 mr-2"} />
+                                    <input
+                                        type="text"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        placeholder="Search notifications..."
+                                        className="bg-transparent text-xs w-full focus:outline-none placeholder:text-slate-400 font-medium"
+                                    />
+                                    {searchQuery && (
+                                        <button onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-white">
+                                            <IconX sz={13} />
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
-                        {/* LIST CONTAINER */}
-                        <div className="max-h-[280px] overflow-y-auto pr-1 my-2.5 flex flex-col gap-2 custom-scrollbar">
-                            {notifications.length === 0 ? (
-                                <div className={`py-8 flex flex-col items-center justify-center text-center p-4 ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>
-                                    <div className={`w-10 h-10 rounded-2xl border flex items-center justify-center mb-2 ${
-                                        isDark ? 'bg-white/5 border-white/10 text-gray-500' : 'bg-slate-100 border-slate-200 text-slate-400'
+                        {/* ── NOTIFICATION LIST CONTAINER ──────────────────────────────────── */}
+                        <div className="flex-1 overflow-y-auto p-4 sm:p-5 flex flex-col gap-2.5 custom-scrollbar min-h-[260px] max-h-[500px]">
+                            {filteredNotifications.length === 0 ? (
+                                <div className={`py-16 flex flex-col items-center justify-center text-center p-6 ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>
+                                    <div className={`w-14 h-14 rounded-3xl border flex items-center justify-center mb-3.5 shadow-sm ${
+                                        isDark ? 'bg-white/5 border-white/10 text-gray-400' : 'bg-slate-100 border-slate-200 text-slate-400'
                                     }`}>
-                                        <IconCheckCheck sz={20} />
+                                        <IconCheckCheck sz={26} />
                                     </div>
-                                    <span className="text-xs font-semibold">No active notifications</span>
-                                    <span className="text-[10px] opacity-75 mt-0.5">All fleet advisories are cleared</span>
+                                    <h3 className={`text-sm font-black ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                                        {searchQuery || filterTab !== 'all' ? 'No matching notifications found' : 'No Active Notifications'}
+                                    </h3>
+                                    <p className="text-xs opacity-75 mt-1 max-w-sm">
+                                        {searchQuery || filterTab !== 'all' 
+                                            ? 'Try clearing your search query or selecting a different filter tab.' 
+                                            : 'Everything is up to date! New rental approvals, alerts, and system notices will appear here in real time.'}
+                                    </p>
                                 </div>
                             ) : (
-                                notifications.map((n, idx) => {
-                                    let icon = <IconBell sz={16} className={isDark ? "text-blue-400" : "text-blue-600"} />;
-                                    let badgeBg = isDark ? "bg-blue-500/20 text-blue-400 border-blue-500/30" : "bg-blue-500/15 text-blue-600 border-blue-500/25";
+                                filteredNotifications.map((n, idx) => {
+                                    const rawTitle = String(n.title || n.Title || n.titleText || 'System Notification');
+                                    const rawBody = String(n.body || n.Body || n.bodyText || '');
+                                    const rawType = String(n.type || n.Type || '').toLowerCase();
 
-                                    const rawTitle = String(n.title || n.Title || n.titleText || 'Fleet Advisory');
-                                    const rawBody = String(n.body || n.Body || n.bodyText || 'Action required for fleet unit.');
-
-                                    const displayTitle = rawTitle.trim() || 'Fleet Advisory';
-                                    const displayBody = rawBody.trim() || 'Notification Details';
-                                    const tLow = displayTitle.toLowerCase();
+                                    const displayTitle = rawTitle.trim() || 'System Alert';
+                                    const displayBody = rawBody.trim() || 'Details available.';
+                                    const tLow = (displayTitle + ' ' + rawType).toLowerCase();
                                     const displayTime = formatTime(n.time || n.Time);
+                                    const isUnread = Boolean(n.unread);
 
-                                    if (tLow.includes('weather') || tLow.includes('pagasa') || tLow.includes('monsoon')) {
-                                        icon = <IconCloudRain sz={16} className={isDark ? "text-amber-400" : "text-amber-600"} />;
-                                        badgeBg = isDark ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : "bg-amber-500/15 text-amber-600 border-amber-500/25";
-                                    } else if (tLow.includes('flood') || tLow.includes('hazard')) {
-                                        icon = <IconShieldAlert sz={16} className={isDark ? "text-cyan-400" : "text-cyan-600"} />;
-                                        badgeBg = isDark ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/30" : "bg-cyan-500/15 text-cyan-600 border-cyan-500/25";
-                                    } else if (tLow.includes('decommission') || tLow.includes('audit')) {
-                                        icon = <IconTrash2 sz={16} className={isDark ? "text-red-400" : "text-red-600"} />;
+                                    let icon = <IconBell sz={18} className={isDark ? "text-blue-400" : "text-blue-600"} />;
+                                    let badgeBg = isDark ? "bg-blue-500/20 text-blue-400 border-blue-500/30" : "bg-blue-500/15 text-blue-600 border-blue-500/25";
+                                    let categoryTag = "System";
+
+                                    if (tLow.includes('overdue') || tLow.includes('late')) {
+                                        icon = <IconAlertTriangle sz={18} className={isDark ? "text-red-400" : "text-red-600"} />;
                                         badgeBg = isDark ? "bg-red-500/20 text-red-400 border-red-500/30" : "bg-red-500/15 text-red-600 border-red-500/25";
+                                        categoryTag = "Overdue Alert";
+                                    } else if (tLow.includes('booking') || tLow.includes('rental') || tLow.includes('conforme') || tLow.includes('schedule')) {
+                                        icon = <IconCar sz={18} className={isDark ? "text-orange-400" : "text-orange-600"} />;
+                                        badgeBg = isDark ? "bg-orange-500/20 text-orange-400 border-orange-500/30" : "bg-orange-500/15 text-orange-600 border-orange-500/25";
+                                        categoryTag = "Booking Request";
+                                    } else if (tLow.includes('payment') || tLow.includes('transaction') || tLow.includes('refund') || tLow.includes('paid')) {
+                                        icon = <IconCreditCard sz={18} className={isDark ? "text-emerald-400" : "text-emerald-600"} />;
+                                        badgeBg = isDark ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : "bg-emerald-500/15 text-emerald-600 border-emerald-500/25";
+                                        categoryTag = "Payment";
+                                    } else if (tLow.includes('driver')) {
+                                        icon = <IconUser sz={18} className={isDark ? "text-purple-400" : "text-purple-600"} />;
+                                        badgeBg = isDark ? "bg-purple-500/20 text-purple-400 border-purple-500/30" : "bg-purple-500/15 text-purple-600 border-purple-500/25";
+                                        categoryTag = "Driver Update";
+                                    } else if (tLow.includes('maintenance') || tLow.includes('repair') || tLow.includes('fleet') || tLow.includes('rfid')) {
+                                        icon = <IconWrench sz={18} className={isDark ? "text-amber-400" : "text-amber-600"} />;
+                                        badgeBg = isDark ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : "bg-amber-500/15 text-amber-600 border-amber-500/25";
+                                        categoryTag = "Maintenance";
+                                    } else if (tLow.includes('weather') || tLow.includes('pagasa') || tLow.includes('monsoon')) {
+                                        icon = <IconCloudRain sz={18} className={isDark ? "text-sky-400" : "text-sky-600"} />;
+                                        badgeBg = isDark ? "bg-sky-500/20 text-sky-400 border-sky-500/30" : "bg-sky-500/15 text-sky-600 border-sky-500/25";
+                                        categoryTag = "Weather Radar";
+                                    } else if (tLow.includes('flood') || tLow.includes('hazard') || tLow.includes('security')) {
+                                        icon = <IconShieldAlert sz={18} className={isDark ? "text-cyan-400" : "text-cyan-600"} />;
+                                        badgeBg = isDark ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/30" : "bg-cyan-500/15 text-cyan-600 border-cyan-500/25";
+                                        categoryTag = "Security";
+                                    } else if (tLow.includes('decommission') || tLow.includes('audit')) {
+                                        icon = <IconTrash2 sz={18} className={isDark ? "text-red-400" : "text-red-600"} />;
+                                        badgeBg = isDark ? "bg-red-500/20 text-red-400 border-red-500/30" : "bg-red-500/15 text-red-600 border-red-500/25";
+                                        categoryTag = "Audit Log";
                                     }
 
-                                    const itemBg = isDark
-                                        ? (n.unread ? 'bg-white/[0.08] border-white/20 shadow-md hover:bg-white/[0.15] hover:border-orange-500/60' : 'bg-white/[0.02] border-white/5 opacity-75 hover:bg-white/[0.12] hover:border-orange-500/60')
-                                        : (n.unread ? 'bg-slate-50 border-slate-200/90 shadow-sm hover:bg-slate-100 hover:border-orange-500/60' : 'bg-slate-100/40 border-slate-100 opacity-80 hover:bg-slate-100 hover:border-orange-500/60');
+                                    // UNREAD CARD STYLING vs READ CARD STYLING
+                                    const cardStyle = isDark
+                                        ? (isUnread
+                                            ? 'bg-gradient-to-r from-orange-500/20 via-white/[0.08] to-white/[0.03] border-l-4 border-l-orange-500 border-white/25 shadow-lg shadow-orange-950/20 hover:border-orange-500/80 hover:bg-white/[0.12]'
+                                            : 'bg-white/[0.03] border-white/10 opacity-70 hover:opacity-100 hover:bg-white/[0.07] hover:border-white/20')
+                                        : (isUnread
+                                            ? 'bg-gradient-to-r from-orange-500/12 via-orange-50/70 to-white border-l-4 border-l-orange-500 border-orange-300 shadow-md shadow-orange-100/70 hover:border-orange-500/80 hover:bg-orange-50/90'
+                                            : 'bg-white/80 border-slate-200/90 opacity-80 hover:opacity-100 hover:bg-slate-50 hover:border-slate-300');
 
                                     return (
                                         <div
                                             key={n.id || idx}
                                             onClick={() => handleItemClick(n)}
-                                            className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 hover:scale-[1.015] active:scale-[0.99] ${itemBg}`}
+                                            className={`group p-4 rounded-2xl border transition-all cursor-pointer flex items-start gap-3.5 hover:scale-[1.008] active:scale-[0.995] ${cardStyle}`}
                                         >
-                                            <div className={`p-2 rounded-xl border shrink-0 mt-0.5 ${badgeBg}`}>
+                                            {/* Category Icon */}
+                                            <div className={`p-2.5 rounded-2xl border shrink-0 mt-0.5 shadow-sm transition-transform group-hover:scale-105 ${badgeBg}`}>
                                                 {icon}
                                             </div>
+
+                                            {/* Content Area */}
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center justify-between gap-2 mb-1">
-                                                    <h4 className={`font-black text-xs leading-snug truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>{displayTitle}</h4>
-                                                    <span className={`text-[10px] font-semibold shrink-0 whitespace-nowrap ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{displayTime}</span>
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <h4 className={`text-sm leading-snug truncate ${
+                                                            isUnread 
+                                                              ? (isDark ? 'text-white font-black' : 'text-slate-900 font-black') 
+                                                              : (isDark ? 'text-slate-200 font-bold' : 'text-slate-800 font-bold')
+                                                        }`}>
+                                                            {displayTitle}
+                                                        </h4>
+                                                        {isUnread && (
+                                                            <span className="shrink-0 px-2 py-0.2 rounded-full bg-orange-500 text-white font-black text-[9px] uppercase tracking-wider shadow-sm animate-pulse">
+                                                                New
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <span className={`text-[11px] font-semibold shrink-0 whitespace-nowrap ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                                        {displayTime}
+                                                    </span>
                                                 </div>
-                                                <p className={`text-[11px] leading-relaxed break-words font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{displayBody}</p>
+
+                                                <p className={`text-xs leading-relaxed break-words ${
+                                                    isUnread
+                                                      ? (isDark ? 'text-slate-200 font-semibold' : 'text-slate-800 font-semibold')
+                                                      : (isDark ? 'text-slate-400 font-medium' : 'text-slate-600 font-medium')
+                                                }`}>
+                                                    {displayBody}
+                                                </p>
+
+                                                <div className="flex items-center justify-between mt-2.5 pt-1">
+                                                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-lg border ${
+                                                        isDark ? 'bg-white/5 border-white/10 text-slate-400' : 'bg-slate-200/60 border-slate-300 text-slate-600'
+                                                    }`}>
+                                                        {categoryTag}
+                                                    </span>
+
+                                                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        {isUnread && (
+                                                            <button
+                                                                onClick={(e) => handleMarkSingleRead(e, n)}
+                                                                title="Mark as read"
+                                                                className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-black border transition-all ${
+                                                                    isDark 
+                                                                      ? 'bg-white/10 hover:bg-orange-500 hover:text-white border-white/20 text-orange-400' 
+                                                                      : 'bg-white hover:bg-orange-500 hover:text-white border-slate-300 text-orange-600'
+                                                                }`}
+                                                            >
+                                                                <IconCheck sz={12} />
+                                                                <span>Mark read</span>
+                                                            </button>
+                                                        )}
+                                                        <span className="text-[10px] font-bold text-orange-500">
+                                                            Click to open &rarr;
+                                                        </span>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     );
@@ -296,21 +634,35 @@
                             )}
                         </div>
 
-                        {/* FOOTER */}
-                        {notifications.length > 0 && (
-                            <div className={`pt-2 border-t flex justify-center shrink-0 ${isDark ? 'border-white/10' : 'border-slate-200/90'}`}>
+                        {/* ── FOOTER ───────────────────────────────────────────────────────── */}
+                        <div className={`p-4 border-t flex items-center justify-between shrink-0 ${
+                            isDark ? 'border-white/10 bg-white/[0.03]' : 'border-slate-200/80 bg-slate-50/70'
+                        }`}>
+                            <div className="flex items-center gap-2 text-xs font-semibold">
+                                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
+                                    Total: <strong className={isDark ? 'text-white' : 'text-slate-900'}>{notifications.length}</strong> alerts
+                                </span>
+                                {unreadCount > 0 && (
+                                    <span className="text-orange-500 font-bold">
+                                        • {unreadCount} unread
+                                    </span>
+                                )}
+                            </div>
+
+                            {notifications.length > 0 && (
                                 <button
                                     onClick={handleClearAll}
-                                    className={`text-xs font-black transition-colors uppercase tracking-wider py-1 px-5 rounded-xl ${
+                                    className={`flex items-center gap-1.5 text-xs font-bold transition-colors py-1.5 px-4 rounded-xl border ${
                                         isDark 
-                                          ? 'text-orange-400 hover:text-orange-300 hover:bg-orange-500/10' 
-                                          : 'text-orange-600 hover:text-orange-700 hover:bg-orange-500/10'
+                                          ? 'border-white/10 text-red-400 hover:bg-red-500/15 hover:border-red-500/30' 
+                                          : 'border-slate-200 text-red-600 hover:bg-red-50 hover:border-red-200'
                                     }`}
                                 >
-                                    Clear all
+                                    <IconTrash2 sz={14} />
+                                    <span>Clear all</span>
                                 </button>
-                            </div>
-                        )}
+                            )}
+                        </div>
 
                     </div>
                 </div>

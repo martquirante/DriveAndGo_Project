@@ -87,6 +87,20 @@
       border: 1px solid #E2E8F0;
     }
 
+    /* Automotive Brand Emblem Contrast Engine */
+    .brand-emblem-adaptive {
+      filter: brightness(0) !important;
+      opacity: 0.85 !important;
+      transition: filter 0.2s ease, opacity 0.2s ease;
+    }
+    [data-theme="dark"] .brand-emblem-adaptive,
+    .dark .brand-emblem-adaptive,
+    html[data-theme="dark"] .brand-emblem-adaptive,
+    body[data-theme="dark"] .brand-emblem-adaptive {
+      filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgba(255, 255, 255, 0.4)) !important;
+      opacity: 1 !important;
+    }
+
     .status-pill {
       display: inline-flex;
       align-items: center;
@@ -349,6 +363,12 @@
         <span>Export Excel</span>
       </button>
 
+      <!-- Promo Codes CTA -->
+      <button onclick="openPromoCodesModal()" class="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 text-xs font-bold transition-all shadow-sm cursor-pointer hover:border-orange-500/50">
+        <i data-lucide="ticket" class="w-4 h-4 text-orange-500"></i>
+        <span>Promo Codes</span>
+      </button>
+
       <!-- New Rental CTA -->
       <button onclick="openNewRentalModal()" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#FF6B00] hover:bg-[#E85F00] text-white text-xs font-extrabold shadow-lg shadow-orange-500/25 transition-all transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer">
         <i data-lucide="plus" class="w-4 h-4"></i>
@@ -462,8 +482,25 @@
   <!-- ── Dense Data Table Container (Reference 1 & 2) ── -->
   <div class="glass-card rounded-2xl overflow-hidden shadow-xl mb-6">
     
+    <!-- Urgency Reminder Banner for Pending Bookings -->
+    <div id="urgent-pending-banner" class="hidden mx-4 mt-4 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between animate-fadeIn">
+      <div class="flex items-center gap-2.5">
+        <div class="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+          <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <strong id="urgent-pending-title" class="text-xs font-bold text-amber-400 block">Pending Bookings Requiring Attention</strong>
+          <span id="urgent-pending-desc" class="text-[11px] text-slate-400">You have pending reservations that need review or rescheduling.</span>
+        </div>
+      </div>
+      <button onclick="document.getElementById('filter-status').value='pending'; applyFilter();" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs transition-colors shrink-0">
+        Review Pending
+      </button>
+    </div>
+
     <!-- Table Toolbar -->
     <div class="p-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+
       <div class="flex items-center gap-3">
         <span class="font-extrabold text-sm text-slate-900 dark:text-white">All Rentals</span>
         <span id="filtered-count-badge" class="text-xs font-bold px-2 py-0.5 rounded-full bg-brand/10 text-brand">0</span>
@@ -793,10 +830,6 @@
             <span class="text-slate-400">Total Amount:</span>
             <span id="dtl-total" class="font-black text-brand text-sm">—</span>
           </div>
-          <button id="btn-drawer-confirm-pay" onclick="confirmRentalPayment()" class="w-full mt-2 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/20 transition-all">
-            <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
-            <span>Confirm &amp; Mark as Paid</span>
-          </button>
         </div>
       </div>
 
@@ -997,6 +1030,21 @@
           </div>
         </div>
 
+        <!-- Customer Email Destination (Editable) -->
+        <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label class="block font-bold text-slate-800 dark:text-slate-200 text-xs flex items-center gap-1.5">
+              <i data-lucide="mail" class="w-3.5 h-3.5 text-brand"></i>
+              <span>Customer Email Destination</span>
+            </label>
+            <span class="text-[10px] text-slate-400">Confirmation &amp; PDF will be sent here</span>
+          </div>
+          <div class="relative">
+            <input id="return-customer-email" type="email" placeholder="customer@email.com" class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white font-medium focus:outline-none focus:border-brand text-xs font-mono" />
+          </div>
+        </div>
+
+
         <!-- Ending Mileage -->
         <div class="flex gap-3">
           <div class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 shrink-0">
@@ -1088,6 +1136,32 @@
           <div>
             <label class="block font-bold mb-1 text-slate-800 dark:text-slate-200">Return Remarks / Notes</label>
             <textarea id="return-notes" rows="1" placeholder="Clean interior, smooth return..." class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand resize-none min-h-[38px] max-h-36 overflow-hidden transition-[height]"></textarea>
+          </div>
+        </div>
+
+        <!-- Thank You Promo Voucher Gift (Optional) -->
+        <div class="p-3.5 rounded-xl bg-orange-500/5 dark:bg-orange-500/10 border border-orange-500/20 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <div class="w-6 h-6 rounded-lg bg-orange-500/20 flex items-center justify-center text-brand">
+                <i data-lucide="gift" class="w-3.5 h-3.5"></i>
+              </div>
+              <div>
+                <span class="font-bold text-slate-900 dark:text-white text-xs">Attach Thank You Promo Gift in Email</span>
+                <p class="text-[10px] text-slate-400">Gift a discount voucher for customer's next rental</p>
+              </div>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="return-include-promo-gift" onchange="toggleReturnPromoGift(this.checked)" class="sr-only peer" />
+              <div class="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand"></div>
+            </label>
+          </div>
+
+          <div id="return-promo-gift-selector" class="hidden pt-2 border-t border-orange-500/20">
+            <label class="block font-bold mb-1 text-slate-700 dark:text-slate-300 text-[11px]">Select Active Promo Voucher to Gift</label>
+            <select id="return-selected-promo-code" class="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-orange-500/30 text-brand font-bold focus:outline-none focus:border-brand text-xs">
+              <option value="">-- Loading Active Promo Codes... --</option>
+            </select>
           </div>
         </div>
       </div>
@@ -1267,6 +1341,53 @@
             <textarea id="cfm-message" rows="2" class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand resize-none min-h-[52px] max-h-56 overflow-hidden transition-[height]" placeholder="Add custom terms or instructions for pick-up..."></textarea>
           </div>
 
+          <!-- Delayed Booking Schedule Alert Banner -->
+
+          <div id="cfm-delayed-banner" class="hidden p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 space-y-1">
+            <div class="flex items-center gap-2 font-bold text-[11px]">
+              <i data-lucide="clock" class="w-4 h-4 text-amber-400"></i>
+              <span>Schedule Auto-Refreshed to Current Date</span>
+            </div>
+            <p id="cfm-delayed-text" class="text-[10px] text-slate-400 leading-relaxed"></p>
+          </div>
+
+          <!-- Complimentary Perks & Goodwill Section -->
+          <div class="p-3 bg-slate-100 dark:bg-slate-900/90 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <i data-lucide="gift" class="w-3.5 h-3.5 text-brand"></i>
+                <span>Complimentary Trip Perks (Optional)</span>
+              </span>
+              <span class="text-[9px] font-extrabold uppercase text-slate-400">Courtesy Perks</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10.5px]">
+              <label class="flex items-center gap-2 p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/60 cursor-pointer hover:border-brand transition-colors">
+                <input id="cfm-perk-fuel" type="checkbox" class="w-3.5 h-3.5 accent-brand" />
+                <span class="text-slate-700 dark:text-slate-300 font-medium">Free Fuel Waiver</span>
+              </label>
+              <label class="flex items-center gap-2 p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/60 cursor-pointer hover:border-brand transition-colors">
+                <input id="cfm-perk-toll" type="checkbox" class="w-3.5 h-3.5 accent-brand" />
+                <span class="text-slate-700 dark:text-slate-300 font-medium">RFID Toll Pass</span>
+              </label>
+              <label class="flex items-center gap-2 p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/60 cursor-pointer hover:border-brand transition-colors">
+                <input id="cfm-perk-wash" type="checkbox" class="w-3.5 h-3.5 accent-brand" />
+                <span class="text-slate-700 dark:text-slate-300 font-medium">Free Car Wash</span>
+              </label>
+            </div>
+
+            <!-- Courtesy Promo Code Voucher -->
+            <div class="pt-1.5 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row gap-2 items-center justify-between text-[11px]">
+              <label class="flex items-center gap-2 cursor-pointer w-full sm:w-auto">
+                <input id="cfm-promo-toggle" type="checkbox" onchange="toggleCfmPromoSelect()" class="w-3.5 h-3.5 accent-brand" />
+                <span class="font-bold text-slate-700 dark:text-slate-300 text-[10.5px]">Include Future Discount Voucher</span>
+              </label>
+              <select id="cfm-promo-select" disabled class="w-full sm:w-auto px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-[10.5px] font-mono text-brand focus:outline-none focus:border-brand">
+                <option value="">-- Select Promo Code --</option>
+              </select>
+            </div>
+          </div>
+
           <div class="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between">
             <label class="flex items-center gap-2 cursor-pointer">
               <input id="cfm-attach-pdf" type="checkbox" checked class="w-3.5 h-3.5 accent-emerald-500" />
@@ -1274,6 +1395,7 @@
             </label>
             <i data-lucide="shield-check" class="w-4 h-4 text-emerald-500"></i>
           </div>
+
         </div>
 
         <!-- Footer Actions -->
@@ -1394,63 +1516,422 @@
   </div>
 
   <!-- ══════════════════════════════════════════════════════════════════════ -->
-  <!-- 4. Dynamic New Rental Booking Modal                                   -->
+  <!-- 4. Dynamic New Rental Booking Modal (Rich Comboboxes & Brand Separation) -->
   <!-- ══════════════════════════════════════════════════════════════════════ -->
-  <div id="new-rental-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden items-center justify-center p-4">
-    <div class="glass-card rounded-2xl w-full max-w-md overflow-hidden animate-fadeIn border border-slate-200 dark:border-slate-800 shadow-2xl p-5 space-y-4 text-xs">
-      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-        <h3 class="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-          <i data-lucide="plus-circle" class="w-4 h-4 text-brand"></i>
-          <span>Create New Booking</span>
-        </h3>
-        <button onclick="closeNewRentalModal()" class="text-slate-400 hover:text-white p-1 rounded-lg"><i data-lucide="x" class="w-4 h-4"></i></button>
-      </div>
-
-      <div>
-        <label class="block font-bold mb-1 text-slate-700 dark:text-slate-300">Customer *</label>
-        <select id="new-cust-select" class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand">
-          <option value="">Loading active customers...</option>
-        </select>
-      </div>
-
-      <div>
-        <label class="block font-bold mb-1 text-slate-700 dark:text-slate-300">Available Vehicle *</label>
-        <select id="new-veh-select" onchange="calculateNewRentalTotal()" class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand">
-          <option value="">Loading available fleet...</option>
-        </select>
-      </div>
-
-      <div>
-        <label class="block font-bold mb-1 text-slate-700 dark:text-slate-300">Assign Driver (Optional)</label>
-        <select id="new-driver-select" class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-brand">
-          <option value="">Self-Drive (No Driver)</option>
-        </select>
-      </div>
-
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="block font-bold mb-1 text-slate-700 dark:text-slate-300">Pick-Up Date *</label>
-          <input id="new-start-date" type="datetime-local" onchange="calculateNewRentalTotal()" class="w-full px-2 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-xs" />
+  <div id="new-rental-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden items-center justify-center p-3 sm:p-5 overflow-y-auto">
+    <div class="glass-card rounded-3xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden animate-fadeIn border border-slate-200 dark:border-slate-800 shadow-2xl bg-white dark:bg-[#0B1120] relative my-auto">
+      
+      <!-- Header -->
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800/80 p-5 pb-3.5 shrink-0 bg-white/50 dark:bg-[#0B1120]/80 backdrop-blur-md z-10">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center text-orange-500">
+            <i data-lucide="plus-circle" class="w-4.5 h-4.5"></i>
+          </div>
+          <div>
+            <h3 class="font-black text-sm text-slate-900 dark:text-white">Create New Booking</h3>
+            <p class="text-[10px] text-slate-400 font-medium">Select customer, vehicle brand/model, and dispatch driver</p>
+          </div>
         </div>
-        <div>
-          <label class="block font-bold mb-1 text-slate-700 dark:text-slate-300">Drop-Off Date *</label>
-          <input id="new-end-date" type="datetime-local" onchange="calculateNewRentalTotal()" class="w-full px-2 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-xs" />
+        <button onclick="closeNewRentalModal()" class="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+
+      <!-- Scrollable Modal Body -->
+      <div class="p-5 pt-4 space-y-4 text-xs overflow-y-auto flex-1 custom-scrollbar">
+
+        <!-- Form Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+        
+        <!-- Customer Section (Registered vs Walk-In Customer Segmented Mode) -->
+        <div class="md:col-span-2 space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 text-xs">
+              <span>Customer Information *</span>
+            </label>
+            <!-- Mode Switcher -->
+            <div class="bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center gap-1">
+              <button type="button" id="tab-cust-registered" onclick="setCustomerMode('registered')" class="px-2.5 py-1 rounded-lg font-bold text-[11px] bg-orange-500 text-white shadow-sm transition-all cursor-pointer flex items-center gap-1">
+                <i data-lucide="user-check" class="w-3 h-3"></i>
+                <span>Registered Customer</span>
+              </button>
+              <button type="button" id="tab-cust-walkin" onclick="setCustomerMode('walkin')" class="px-2.5 py-1 rounded-lg font-bold text-[11px] text-slate-400 hover:text-white hover:bg-slate-700/50 transition-all cursor-pointer flex items-center gap-1">
+                <i data-lucide="user-plus" class="w-3 h-3"></i>
+                <span>+ Walk-In / New</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 1. Registered Customer View -->
+          <div id="cust-registered-view" class="relative" id="cust-combobox-wrapper">
+            <div class="relative" id="cust-combobox-container">
+              <button type="button" id="cust-combobox-btn" onclick="toggleCombobox('cust')" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-left flex items-center justify-between cursor-pointer hover:border-orange-500/50 transition-all">
+                <div id="cust-selected-display" class="flex items-center gap-2.5 min-w-0">
+                  <div class="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-400 text-xs font-bold shrink-0">?</div>
+                  <span class="text-slate-400 font-medium truncate">Select active customer...</span>
+                </div>
+                <i data-lucide="chevron-down" id="cust-chevron" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200"></i>
+              </button>
+
+              <!-- Dropdown Menu -->
+              <div id="cust-combobox-menu" class="absolute left-0 right-0 top-full mt-1.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-2 z-[60] hidden flex-col gap-1.5 max-h-56 overflow-y-auto">
+                <div class="px-2 py-1 relative">
+                  <input type="text" id="cust-search-input" oninput="filterComboboxList('cust')" placeholder="Search customer name, phone, email..." class="w-full pl-7 pr-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-brand" />
+                  <i data-lucide="search" class="w-3.5 h-3.5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                </div>
+                <div id="cust-options-list" class="flex flex-col gap-1"></div>
+              </div>
+            </div>
+            <input type="hidden" id="new-cust-select" value="" />
+          </div>
+
+          <!-- 2. Walk-In / New Customer Quick Registration Form -->
+          <div id="cust-walkin-view" class="hidden p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-orange-500/30 flex flex-col gap-3 animate-fadeIn">
+            <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+              <span class="text-[11px] font-black text-orange-500 uppercase tracking-wider flex items-center gap-1.5">
+                <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+                <span>Direct Walk-In Customer Form</span>
+              </span>
+              <span class="text-[10px] text-slate-400 font-medium">Auto-saves to customer accounts</span>
+            </div>
+
+            <!-- Customer Avatar / PFP Upload Row -->
+            <div class="flex items-center gap-3 p-2.5 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+              <div class="relative group cursor-pointer" onclick="document.getElementById('walkin-pfp-file').click()">
+                <div id="walkin-pfp-preview" class="w-12 h-12 rounded-full bg-orange-500/15 border-2 border-orange-500/40 flex items-center justify-center text-orange-500 font-black text-sm overflow-hidden shadow-inner shrink-0">
+                  <i data-lucide="user" class="w-6 h-6"></i>
+                </div>
+                <div class="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[9px] font-black">
+                  CHANGE
+                </div>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-bold text-slate-900 dark:text-white">Customer Profile Photo (PFP)</span>
+                  <button type="button" onclick="document.getElementById('walkin-pfp-file').click()" class="text-[10px] font-bold text-orange-500 hover:text-orange-400 cursor-pointer flex items-center gap-1">
+                    <i data-lucide="camera" class="w-3 h-3"></i>
+                    <span>Upload Photo</span>
+                  </button>
+                </div>
+                <p class="text-[10px] text-slate-400 truncate mt-0.5">Upload a photo for desk record & mobile app avatar</p>
+                <input type="file" id="walkin-pfp-file" accept="image/*" class="hidden" onchange="handleWalkinPfpSelect(event)" />
+              </div>
+            </div>
+
+            <!-- Customer Information Inputs -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label class="block text-[10px] font-bold mb-1 text-slate-700 dark:text-slate-300">Customer Full Name *</label>
+                <input type="text" id="walkin-name" oninput="updateWalkinAvatarInitial()" placeholder="e.g. Juan Dela Cruz" class="w-full px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-brand" />
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold mb-1 text-slate-700 dark:text-slate-300">Mobile / Contact Number *</label>
+                <input type="text" id="walkin-phone" placeholder="e.g. 0917 123 4567" class="w-full px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-brand" />
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold mb-1 text-slate-700 dark:text-slate-300">Email Address (Optional)</label>
+                <input type="email" id="walkin-email" placeholder="e.g. juan@example.com" class="w-full px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-brand" />
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold mb-1 text-slate-700 dark:text-slate-300">Driver's License / Valid ID (Optional)</label>
+                <input type="text" id="walkin-id-no" placeholder="e.g. N02-19-123456" class="w-full px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-brand" />
+              </div>
+            </div>
+
+            <!-- Future Mobile App Onboarding Info Pill -->
+            <div class="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-start gap-2">
+              <i data-lucide="smartphone" class="w-4 h-4 text-emerald-500 shrink-0 mt-0.5"></i>
+              <div class="text-[10px] text-emerald-600 dark:text-emerald-300 leading-tight">
+                <span class="font-bold">Mobile App Ready:</span> The customer can log in to the <b>Drive&Go Mobile App</b> anytime using their Phone or Email with OTP to view their live rental status, agreement docs, and receipts!
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 1. Car Brand Selector Combobox -->
+        <div class="relative" id="brand-combobox-wrapper">
+          <label class="block font-bold mb-1 text-slate-700 dark:text-slate-300 flex items-center justify-between">
+            <span>Vehicle Brand *</span>
+            <span id="brand-count-badge" class="text-[10px] font-semibold text-orange-500">All Brands</span>
+          </label>
+          <div class="relative">
+            <button type="button" id="brand-combobox-btn" onclick="toggleCombobox('brand')" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-left flex items-center justify-between cursor-pointer hover:border-orange-500/50 transition-all">
+              <div id="brand-selected-display" class="flex items-center gap-2 min-w-0">
+                <span class="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center text-[10px] font-bold text-orange-400 shrink-0">ALL</span>
+                <span class="text-slate-900 dark:text-white font-bold truncate">All Available Brands</span>
+              </div>
+              <i data-lucide="chevron-down" id="brand-chevron" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200"></i>
+            </button>
+
+            <!-- Dropdown Menu -->
+            <div id="brand-combobox-menu" class="absolute left-0 right-0 top-full mt-1.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-2 z-[60] hidden flex-col gap-1 max-h-56 overflow-y-auto">
+              <div id="brand-options-list" class="flex flex-col gap-1"></div>
+            </div>
+          </div>
+          <input type="hidden" id="new-brand-select" value="ALL" />
+        </div>
+
+        <!-- 2. Vehicle Model & Unit Selector Combobox (Cascaded) -->
+        <div class="relative" id="veh-combobox-wrapper">
+          <label class="block font-bold mb-1 text-slate-700 dark:text-slate-300 flex items-center justify-between">
+            <span>Model & Available Unit *</span>
+            <span id="veh-count-badge" class="text-[10px] font-semibold text-slate-400">0 Available</span>
+          </label>
+          <div class="relative">
+            <button type="button" id="veh-combobox-btn" onclick="toggleCombobox('veh')" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-left flex items-center justify-between cursor-pointer hover:border-orange-500/50 transition-all">
+              <div id="veh-selected-display" class="flex items-center gap-2 min-w-0">
+                <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 shrink-0">
+                  <i data-lucide="car" class="w-4 h-4 text-slate-400"></i>
+                </div>
+                <span class="text-slate-400 font-medium truncate">Select vehicle unit...</span>
+              </div>
+              <i data-lucide="chevron-down" id="veh-chevron" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200"></i>
+            </button>
+
+            <!-- Dropdown Menu -->
+            <div id="veh-combobox-menu" class="absolute left-0 right-0 top-full mt-1.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-2 z-[60] hidden flex-col gap-1 max-h-56 overflow-y-auto">
+              <div id="veh-options-list" class="flex flex-col gap-1"></div>
+            </div>
+          </div>
+          <input type="hidden" id="new-veh-select" value="" />
+        </div>
+
+        <!-- Driver Rich Combobox with PFP -->
+        <div class="md:col-span-2 relative" id="driver-combobox-wrapper">
+          <label class="block font-bold mb-1 text-slate-700 dark:text-slate-300 flex items-center justify-between">
+            <span>Assign Driver (Optional)</span>
+            <span class="text-[10px] font-semibold text-emerald-400">Self-Drive or Professional Chauffeur</span>
+          </label>
+          <div class="relative">
+            <button type="button" id="driver-combobox-btn" onclick="toggleCombobox('driver')" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-left flex items-center justify-between cursor-pointer hover:border-orange-500/50 transition-all">
+              <div id="driver-selected-display" class="flex items-center gap-2.5 min-w-0">
+                <div class="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 shrink-0">
+                  <i data-lucide="user" class="w-4 h-4 text-slate-400"></i>
+                </div>
+                <div>
+                  <div class="text-slate-900 dark:text-white font-bold">Self-Drive (No Driver)</div>
+                  <div class="text-[10px] text-slate-400 font-medium">Customer drives the vehicle</div>
+                </div>
+              </div>
+              <i data-lucide="chevron-down" id="driver-chevron" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200"></i>
+            </button>
+
+            <!-- Dropdown Menu -->
+            <div id="driver-combobox-menu" class="absolute left-0 right-0 top-full mt-1.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-2 z-[60] hidden flex-col gap-1 max-h-56 overflow-y-auto">
+              <div id="driver-options-list" class="flex flex-col gap-1"></div>
+            </div>
+          </div>
+          <input type="hidden" id="new-driver-select" value="" />
+        </div>
+
+        <!-- Interactive Web Range Calendar Selector -->
+        <div class="md:col-span-2 relative" id="calendar-range-wrapper">
+          <div class="flex items-center justify-between mb-1">
+            <label class="font-bold text-slate-700 dark:text-slate-300 text-xs flex items-center gap-1.5">
+              <i data-lucide="calendar" class="w-3.5 h-3.5 text-orange-500"></i>
+              <span>Rental Schedule & Duration *</span>
+            </label>
+            <span id="rental-duration-badge" class="px-2.5 py-0.5 rounded-full bg-orange-500/15 text-orange-500 font-black text-[11px] border border-orange-500/30 animate-pulse">
+              3 Days Rental
+            </span>
+          </div>
+
+          <!-- Calendar Interactive Trigger Bar -->
+          <div onclick="toggleCalendarDropdown()" class="w-full p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 hover:border-orange-500/60 transition-all cursor-pointer shadow-sm flex items-center justify-between gap-2 select-none group">
+            <!-- Pick-Up Display -->
+            <div class="flex items-center gap-2.5 min-w-0">
+              <div class="w-8 h-8 rounded-xl bg-orange-500/10 dark:bg-orange-500/20 text-orange-500 flex items-center justify-center text-xs font-black shrink-0">
+                <i data-lucide="calendar-check" class="w-4 h-4"></i>
+              </div>
+              <div class="min-w-0">
+                <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Pick-Up Date & Time</div>
+                <div id="cal-pickup-display" class="text-xs font-black text-slate-900 dark:text-white truncate">Aug 27, 2026 • 09:00 AM</div>
+              </div>
+            </div>
+
+            <!-- Duration Arrow & Badge -->
+            <div class="flex flex-col items-center shrink-0 px-2">
+              <div class="flex items-center gap-1.5 text-orange-500 text-xs font-black bg-orange-500/10 dark:bg-orange-500/20 px-2.5 py-1 rounded-full border border-orange-500/30">
+                <span id="cal-days-arrow-text">3 Days</span>
+                <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-orange-500"></i>
+              </div>
+            </div>
+
+            <!-- Drop-Off Display -->
+            <div class="flex items-center gap-2.5 min-w-0 text-right justify-end">
+              <div class="min-w-0">
+                <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Drop-Off Date & Time</div>
+                <div id="cal-dropoff-display" class="text-xs font-black text-slate-900 dark:text-white truncate">Aug 30, 2026 • 05:00 PM</div>
+              </div>
+              <div class="w-8 h-8 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-xs font-black shrink-0">
+                <i data-lucide="calendar-clock" class="w-4 h-4"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hidden inputs for backend & API form compatibility -->
+          <input id="new-start-date" type="hidden" value="" />
+          <input id="new-end-date" type="hidden" value="" />
+
+          <!-- Interactive Calendar Dropdown Panel -->
+          <div id="calendar-dropdown-menu" class="absolute left-0 right-0 top-full mt-2 rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 shadow-2xl p-4 z-[70] hidden flex-col gap-3 backdrop-blur-xl animate-fadeIn">
+            
+            <!-- Quick Preset Duration Buttons -->
+            <div class="flex items-center gap-1.5 flex-wrap pb-2 border-b border-slate-100 dark:border-slate-800/80">
+              <span class="text-[10px] font-black uppercase text-slate-400 tracking-wider mr-1">Quick Presets:</span>
+              <button type="button" onclick="applyCalendarPreset(1)" class="preset-btn px-2.5 py-1 rounded-xl text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-orange-500 hover:text-white transition-all cursor-pointer">1 Day</button>
+              <button type="button" onclick="applyCalendarPreset(2)" class="preset-btn px-2.5 py-1 rounded-xl text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-orange-500 hover:text-white transition-all cursor-pointer">Weekend (2d)</button>
+              <button type="button" onclick="applyCalendarPreset(3)" class="preset-btn px-2.5 py-1 rounded-xl text-[11px] font-bold bg-orange-500 text-white shadow-sm transition-all cursor-pointer">3 Days</button>
+              <button type="button" onclick="applyCalendarPreset(5)" class="preset-btn px-2.5 py-1 rounded-xl text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-orange-500 hover:text-white transition-all cursor-pointer">5 Days</button>
+              <button type="button" onclick="applyCalendarPreset(7)" class="preset-btn px-2.5 py-1 rounded-xl text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-orange-500 hover:text-white transition-all cursor-pointer">1 Week (7d)</button>
+              <button type="button" onclick="applyCalendarPreset(14)" class="preset-btn px-2.5 py-1 rounded-xl text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-orange-500 hover:text-white transition-all cursor-pointer">2 Weeks</button>
+              <button type="button" onclick="applyCalendarPreset(30)" class="preset-btn px-2.5 py-1 rounded-xl text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-orange-500 hover:text-white transition-all cursor-pointer">1 Month</button>
+            </div>
+
+            <!-- Month Navigator Header -->
+            <div class="flex items-center justify-between px-1">
+              <button type="button" onclick="changeCalendarMonth(-1)" class="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer flex items-center justify-center">
+                <i data-lucide="chevron-left" class="w-4 h-4"></i>
+              </button>
+              
+              <div class="flex items-center gap-2">
+                <span id="cal-month-year-label" class="font-black text-sm text-slate-900 dark:text-white">August 2026</span>
+                <button type="button" onclick="resetCalendarToToday()" class="text-[10px] font-black uppercase text-orange-500 bg-orange-500/10 hover:bg-orange-500/20 px-2 py-0.5 rounded-lg transition-colors cursor-pointer">Today</button>
+              </div>
+
+              <button type="button" onclick="changeCalendarMonth(1)" class="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer flex items-center justify-center">
+                <i data-lucide="chevron-right" class="w-4 h-4"></i>
+              </button>
+            </div>
+
+            <!-- Days of Week Header -->
+            <div class="grid grid-cols-7 gap-1 text-center font-black text-[10px] text-slate-400 uppercase tracking-wider py-1 border-b border-slate-100 dark:border-slate-800/60">
+              <span class="text-rose-400">Su</span>
+              <span>Mo</span>
+              <span>Tu</span>
+              <span>We</span>
+              <span>Th</span>
+              <span>Fr</span>
+              <span class="text-rose-400">Sa</span>
+            </div>
+
+            <!-- Days Grid (Interactive Range Highlights) -->
+            <div id="cal-days-grid" class="grid grid-cols-7 gap-y-1 gap-x-0 select-none">
+              <!-- Dynamically populated -->
+            </div>
+
+            <!-- Time Pickers Section -->
+            <div class="grid grid-cols-2 gap-3 pt-2.5 border-t border-slate-100 dark:border-slate-800/80">
+              <div>
+                <label class="block text-[10px] font-bold mb-1 text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                  <i data-lucide="clock" class="w-3 h-3 text-orange-500"></i>
+                  <span>Pick-Up Time</span>
+                </label>
+                <select id="cal-pickup-time" onchange="handleTimeChange()" class="w-full px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-brand cursor-pointer">
+                  <option value="06:00">06:00 AM (Early Bird)</option>
+                  <option value="07:00">07:00 AM</option>
+                  <option value="08:00">08:00 AM</option>
+                  <option value="09:00" selected>09:00 AM (Standard)</option>
+                  <option value="10:00">10:00 AM</option>
+                  <option value="11:00">11:00 AM</option>
+                  <option value="12:00">12:00 PM (Noon)</option>
+                  <option value="13:00">01:00 PM</option>
+                  <option value="14:00">02:00 PM</option>
+                  <option value="15:00">03:00 PM</option>
+                  <option value="16:00">04:00 PM</option>
+                  <option value="17:00">05:00 PM</option>
+                  <option value="18:00">06:00 PM</option>
+                  <option value="19:00">07:00 PM</option>
+                  <option value="20:00">08:00 PM</option>
+                  <option value="21:00">09:00 PM</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-[10px] font-bold mb-1 text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                  <i data-lucide="clock" class="w-3 h-3 text-emerald-500"></i>
+                  <span>Drop-Off Time</span>
+                </label>
+                <select id="cal-dropoff-time" onchange="handleTimeChange()" class="w-full px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-brand cursor-pointer">
+                  <option value="08:00">08:00 AM</option>
+                  <option value="09:00">09:00 AM</option>
+                  <option value="10:00">10:00 AM</option>
+                  <option value="11:00">11:00 AM</option>
+                  <option value="12:00">12:00 PM</option>
+                  <option value="13:00">01:00 PM</option>
+                  <option value="14:00">02:00 PM</option>
+                  <option value="15:00">03:00 PM</option>
+                  <option value="16:00">04:00 PM</option>
+                  <option value="17:00" selected>05:00 PM (Standard Return)</option>
+                  <option value="18:00">06:00 PM</option>
+                  <option value="19:00">07:00 PM</option>
+                  <option value="20:00">08:00 PM</option>
+                  <option value="21:00">09:00 PM</option>
+                  <option value="22:00">10:00 PM</option>
+                  <option value="23:00">11:00 PM</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Footer summary & apply button -->
+            <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/80">
+              <div class="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                Click any dates on the grid to set Pick-Up and Drop-Off.
+              </div>
+              <button type="button" onclick="closeCalendarDropdown()" class="px-4 py-1.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-black shadow-lg shadow-orange-500/30 transition-all cursor-pointer flex items-center gap-1.5">
+                <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                <span>Done</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Destination -->
+        <div class="md:col-span-2">
+          <label class="block font-bold mb-1 text-slate-700 dark:text-slate-300 flex items-center justify-between">
+            <span>Destination *</span>
+            <span class="text-[10px] text-slate-400 font-medium">Quick presets available below</span>
+          </label>
+          <input id="new-destination" type="text" placeholder="e.g. Metro Manila, Tagaytay, Baguio, Clark" class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-brand mb-1.5" />
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <button type="button" onclick="setDestinationQuick('Metro Manila Area')" class="px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-orange-500 text-[10px] font-bold border border-slate-200 dark:border-slate-700 transition-colors flex items-center gap-1"><i data-lucide="map-pin" class="w-3 h-3 text-orange-500"></i><span>Metro Manila</span></button>
+            <button type="button" onclick="setDestinationQuick('Tagaytay / Cavite')" class="px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-orange-500 text-[10px] font-bold border border-slate-200 dark:border-slate-700 transition-colors flex items-center gap-1"><i data-lucide="map-pin" class="w-3 h-3 text-orange-500"></i><span>Tagaytay</span></button>
+            <button type="button" onclick="setDestinationQuick('Baguio City')" class="px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-orange-500 text-[10px] font-bold border border-slate-200 dark:border-slate-700 transition-colors flex items-center gap-1"><i data-lucide="map-pin" class="w-3 h-3 text-orange-500"></i><span>Baguio</span></button>
+            <button type="button" onclick="setDestinationQuick('Batangas / Laiya Beach')" class="px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-orange-500 text-[10px] font-bold border border-slate-200 dark:border-slate-700 transition-colors flex items-center gap-1"><i data-lucide="map-pin" class="w-3 h-3 text-orange-500"></i><span>Batangas</span></button>
+            <button type="button" onclick="setDestinationQuick('Clark / Subic Freeport')" class="px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-orange-500 text-[10px] font-bold border border-slate-200 dark:border-slate-700 transition-colors flex items-center gap-1"><i data-lucide="map-pin" class="w-3 h-3 text-orange-500"></i><span>Clark / Subic</span></button>
+          </div>
         </div>
       </div>
 
-      <div>
-        <label class="block font-bold mb-1 text-slate-700 dark:text-slate-300">Destination *</label>
-        <input id="new-destination" type="text" placeholder="e.g. Manila Area, Tagaytay, Baguio" class="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white" />
+      <!-- Cost Calculation Breakdown Card -->
+      <div class="p-3.5 bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-orange-500/5 rounded-2xl border border-orange-500/25 flex flex-col gap-2">
+        <div class="flex justify-between items-center text-xs">
+          <span class="text-slate-600 dark:text-slate-400 font-medium">Daily Rental Rate:</span>
+          <span id="new-daily-rate-display" class="font-bold text-slate-900 dark:text-white">₱0.00/day</span>
+        </div>
+        <div class="flex justify-between items-center text-xs">
+          <span class="text-slate-600 dark:text-slate-400 font-medium">Toll Deposit & RFID Base:</span>
+          <span class="font-bold text-slate-900 dark:text-white">₱500.00</span>
+        </div>
+        <div class="flex justify-between items-center text-xs">
+          <span class="text-slate-600 dark:text-slate-400 font-medium">VAT (12%) & Platform Fee:</span>
+          <span id="new-vat-display" class="font-bold text-slate-900 dark:text-white">₱0.00</span>
+        </div>
+        <div class="border-t border-orange-500/20 pt-2 flex justify-between items-center">
+          <span class="font-extrabold text-slate-900 dark:text-white text-sm">Estimated Total:</span>
+          <span id="new-total-display" class="font-black text-brand text-base drop-shadow-sm">₱0.00</span>
+        </div>
       </div>
 
-      <div class="p-3 bg-brand/10 rounded-xl border border-brand/20 flex justify-between items-center">
-        <span class="font-bold text-slate-800 dark:text-slate-200">Estimated Total:</span>
-        <span id="new-total-display" class="font-black text-brand text-sm">₱0.00</span>
+        </div>
+
       </div>
 
-      <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
-        <button onclick="closeNewRentalModal()" class="px-4 py-2 rounded-xl text-slate-400 hover:text-slate-200 font-bold">Cancel</button>
-        <button id="btn-submit-booking" onclick="submitNewRental()" class="px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-hover text-white font-extrabold shadow-lg shadow-orange-500/25">Submit Booking</button>
+      <!-- Sticky Footer Buttons -->
+      <div class="flex items-center justify-end gap-2.5 p-4 border-t border-slate-200 dark:border-slate-800/80 shrink-0 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-md z-10">
+        <button onclick="closeNewRentalModal()" class="px-4 py-2.5 rounded-xl text-slate-400 hover:text-slate-200 font-bold transition-colors cursor-pointer">Cancel</button>
+        <button id="btn-submit-booking" onclick="submitNewRental()" class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold shadow-lg shadow-orange-500/30 transition-all cursor-pointer flex items-center gap-1.5 active:scale-95">
+          <i data-lucide="check" class="w-4 h-4"></i>
+          <span>Submit Booking</span>
+        </button>
       </div>
     </div>
   </div>
@@ -1834,7 +2315,28 @@
           document.getElementById('badge-total-count').innerText = `${allRentals.length} Bookings`;
         }
 
+        // Urgency Check for Pending Bookings
+        const urgentPending = (allRentals || []).filter(r => {
+          const st = (r.status || '').toLowerCase();
+          if (st !== 'pending') return false;
+          if (!r.startDate) return true;
+          const s = new Date(r.startDate);
+          return s <= new Date(Date.now() + 4 * 60 * 60 * 1000);
+        });
+
+        const urgentBanner = document.getElementById('urgent-pending-banner');
+        if (urgentBanner) {
+          if (urgentPending.length > 0) {
+            urgentBanner.classList.remove('hidden');
+            document.getElementById('urgent-pending-title').innerText = `${urgentPending.length} Pending Reservation(s) Require Attention`;
+            document.getElementById('urgent-pending-desc').innerText = `You have reservation requests that are scheduled to start soon or past scheduled pick-up. Click to review and Conforme.`;
+          } else {
+            urgentBanner.classList.add('hidden');
+          }
+        }
+
         applyFilter();
+
       } catch (err) {
         console.error('API Fetch Error:', err);
       }
@@ -1881,7 +2383,23 @@
 
       const filtered = allRentals.filter(r => {
         const status = (r.status || '').toLowerCase();
-        const matchStatus = statusFilter === 'all' || status === statusFilter;
+        let matchStatus = false;
+        if (statusFilter === 'all') {
+          matchStatus = true;
+        } else if (statusFilter === 'active') {
+          matchStatus = ['active', 'approved', 'in-use', 'ongoing', 'rented'].includes(status);
+        } else if (statusFilter === 'pending') {
+          matchStatus = ['pending', 'requested', 'submitted'].includes(status);
+        } else if (statusFilter === 'overdue') {
+          matchStatus = ['overdue', 'late'].includes(status);
+        } else if (statusFilter === 'completed') {
+          matchStatus = ['completed', 'returned', 'settled'].includes(status);
+        } else if (statusFilter === 'cancelled') {
+          matchStatus = ['cancelled', 'rejected'].includes(status);
+        } else {
+          matchStatus = status === statusFilter;
+        }
+
         const matchSearch = !q || (
           (r.customerName || '').toLowerCase().includes(q) ||
           (r.customerPhone || '').toLowerCase().includes(q) ||
@@ -2029,11 +2547,11 @@
 
         // Payment status badge
         const paySt = (r.paymentStatus || 'unpaid').toLowerCase();
-        let payBadge = '<button onclick="confirmRentalPaymentById(' + r.rentalId + ')" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 transition-all cursor-pointer" title="Click to verify and mark as Paid"><i data-lucide="clock" class="w-2.5 h-2.5"></i>Unpaid</button>';
+        let payBadge = '<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-500 border border-amber-500/30"><i data-lucide="clock" class="w-2.5 h-2.5"></i>Unpaid</span>';
         if (paySt === 'paid') {
           payBadge = '<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"><i data-lucide="check" class="w-2.5 h-2.5"></i>Paid</span>';
         } else if (paySt === 'partial') {
-          payBadge = '<button onclick="confirmRentalPaymentById(' + r.rentalId + ')" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 border border-sky-500/30 transition-all cursor-pointer" title="Click to mark as Fully Paid"><i data-lucide="pie-chart" class="w-2.5 h-2.5"></i>Partial</button>';
+          payBadge = '<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-sky-500/15 text-sky-400 border border-sky-500/30"><i data-lucide="pie-chart" class="w-2.5 h-2.5"></i>Partial</span>';
         } else if (paySt === 'refunded') {
           payBadge = '<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-purple-500/15 text-purple-400 border border-purple-500/30">Refunded</span>';
         }
@@ -2051,10 +2569,15 @@
               </div>
             </td>
             <td class="py-3.5 px-4">
-              <div class="font-bold text-slate-900 dark:text-white">${r.vehicleName || '—'}</div>
-              <div class="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                <span class="text-[10px] text-brand font-mono font-bold tracking-wider">${r.vehiclePlateNo || '—'}</span>
-                ${driverBadgeHtml}
+              <div class="flex items-center gap-2">
+                ${renderBrandLogoHtml(r.brand || (r.vehicleName ? r.vehicleName.split(' ')[0] : 'Car'), 'w-7 h-7', 'max-h-5 max-w-5')}
+                <div>
+                  <div class="font-bold text-slate-900 dark:text-white">${r.vehicleName || '—'}</div>
+                  <div class="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    <span class="text-[10px] text-brand font-mono font-bold tracking-wider">${r.vehiclePlateNo || '—'}</span>
+                    ${driverBadgeHtml}
+                  </div>
+                </div>
               </div>
             </td>
             <td class="py-3.5 px-4 text-slate-600 dark:text-slate-300">${startFmt}</td>
@@ -2307,8 +2830,6 @@
       const isPaid = (rental.paymentStatus || '').toLowerCase() === 'paid';
       const payBadge = document.getElementById('dtl-payment-badge');
       const payStatus = document.getElementById('dtl-payment-status');
-      const btnConfirmPay = document.getElementById('btn-drawer-confirm-pay');
-
       if (payBadge) {
         payBadge.innerText = isPaid ? 'PAID' : (rental.paymentStatus || 'UNPAID').toUpperCase();
         payBadge.className = isPaid 
@@ -2318,13 +2839,6 @@
       if (payStatus) {
         payStatus.innerText = (rental.paymentStatus || 'UNPAID').toUpperCase();
         payStatus.className = isPaid ? 'font-bold text-emerald-500 uppercase' : 'font-bold text-amber-500 uppercase';
-      }
-      if (btnConfirmPay) {
-        if (isPaid) {
-          btnConfirmPay.classList.add('hidden');
-        } else {
-          btnConfirmPay.classList.remove('hidden');
-        }
       }
 
       // Dynamic QR Code Rendering
@@ -2456,61 +2970,42 @@
       window.open(`${getApiBase()}/Rentals/${activeRental.rentalId}/pdf?adminName=${encodeURIComponent(adminName)}`, '_blank');
     }
 
-    // ── Payment Confirmation Workflow ──
-    function confirmRentalPaymentById(id) {
-      const r = allRentals.find(x => x.rentalId === id);
-      if (r) {
-        activeRental = r;
-        confirmRentalPayment();
-      }
-    }
-
-    async function confirmRentalPayment() {
-      if (!activeRental || !activeRental.rentalId) return;
-      const rentalId = activeRental.rentalId;
-      const code = activeRental.rentalCode || `RN-${String(rentalId).padStart(6, '0')}`;
-      const amountFmt = activeRental.totalAmount ? '₱' + Number(activeRental.totalAmount).toLocaleString('en-PH', { minimumFractionDigits: 2 }) : '₱0.00';
-
-      showAppDialog({
-        title: 'Confirm Payment Received',
-        message: `Mark rental booking ${code} (${amountFmt}) as PAID? This will officially verify the payment in the system and record the confirmed transaction.`,
-        type: 'info',
-        confirmText: 'Confirm & Mark as Paid',
-        cancelText: 'Cancel',
-        onConfirm: async () => {
-          try {
-            const res = await fetch(`${getApiBase()}/Rentals/${rentalId}/payment`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                paymentStatus: 'paid',
-                paymentMethod: activeRental.paymentMethod || 'cash'
-              })
-            });
-
-            if (res.ok) {
-              showToast(`Payment confirmed! Booking ${code} is now marked as PAID.`, 'success', 'Payment Verified');
-              activeRental.paymentStatus = 'paid';
-              openAgreementDrawer(activeRental);
-              fetchRentalsData();
-            } else {
-              const err = await res.json().catch(() => ({}));
-              showAppDialog({ title: 'Payment Verification Error', message: err.message || 'Failed to update payment status.', type: 'error' });
-            }
-          } catch (err) {
-            console.error('Payment confirmation error:', err);
-            showToast('Payment verified successfully!', 'success');
-            fetchRentalsData();
-          }
+    // ── Handover Modal ──
+    function setFuelLevelDirect(lvl) {
+      selectedFuel = lvl || 'full';
+      document.querySelectorAll('#handover-fuel-group .fuel-btn').forEach(btn => {
+        const text = btn.innerText.trim().toLowerCase();
+        if (text === (selectedFuel || '').toLowerCase()) {
+          btn.classList.remove('border-slate-200', 'dark:border-slate-800', 'bg-slate-100', 'dark:bg-slate-900');
+          btn.classList.add('border-brand', 'bg-brand', 'text-white');
+        } else {
+          btn.classList.remove('border-brand', 'bg-brand', 'text-white');
+          btn.classList.add('border-slate-200', 'dark:border-slate-800', 'bg-slate-100', 'dark:bg-slate-900');
         }
       });
     }
 
-    // ── Handover Modal ──
+    function selectFuelLevel(lvl) {
+      setFuelLevelDirect(lvl);
+    }
+
     function openHandoverModal(rental) {
       activeRental = rental;
       if (!rental) return;
-      document.getElementById('handover-mileage').value = '';
+
+      const lastMileage = rental.vehicleOdometer ?? rental.odometerKm ?? rental.startOdometer ?? '';
+      document.getElementById('handover-mileage').value = (lastMileage !== '' && lastMileage !== null && lastMileage !== undefined) ? lastMileage : '';
+
+      const fuelPct = rental.vehicleFuelLevelPct ?? 100;
+      let fuelLvl = 'full';
+      if (fuelPct <= 15) fuelLvl = 'empty';
+      else if (fuelPct <= 35) fuelLvl = '1/4';
+      else if (fuelPct <= 65) fuelLvl = '1/2';
+      else if (fuelPct <= 85) fuelLvl = '3/4';
+      else fuelLvl = 'full';
+
+      setFuelLevelDirect(fuelLvl);
+
       document.getElementById('handover-modal').classList.remove('hidden');
       document.getElementById('handover-modal').classList.add('flex');
     }
@@ -2518,14 +3013,7 @@
       document.getElementById('handover-modal').classList.add('hidden');
       document.getElementById('handover-modal').classList.remove('flex');
     }
-    function selectFuelLevel(lvl) {
-      selectedFuel = lvl;
-      document.querySelectorAll('#handover-fuel-group .fuel-btn').forEach(btn => {
-        btn.classList.remove('border-brand', 'bg-brand', 'text-white');
-        btn.classList.add('border-slate-200', 'dark:border-slate-800', 'bg-slate-100', 'dark:bg-slate-900');
-      });
-      event.currentTarget.classList.add('border-brand', 'bg-brand', 'text-white');
-    }
+
 
     async function submitHandover() {
       const mileage = document.getElementById('handover-mileage').value;
@@ -2703,6 +3191,19 @@
       const returnNotes = document.getElementById('return-notes');
       if (returnNotes) returnNotes.value = '';
 
+      // Customer email prefill
+      const custEmailInput = document.getElementById('return-customer-email');
+      if (custEmailInput) {
+        custEmailInput.value = rental.customerEmail || rental.email || '';
+      }
+
+      // Promo gift reset & populate active promo codes
+      const promoToggle = document.getElementById('return-include-promo-gift');
+      if (promoToggle) promoToggle.checked = false;
+      const promoSelector = document.getElementById('return-promo-gift-selector');
+      if (promoSelector) promoSelector.classList.add('hidden');
+      loadReturnActivePromoCodes();
+
       document.getElementById('return-modal').classList.remove('hidden');
       document.getElementById('return-modal').classList.add('flex');
       setTimeout(() => {
@@ -2717,6 +3218,44 @@
     function closeReturnModal() {
       document.getElementById('return-modal').classList.add('hidden');
       document.getElementById('return-modal').classList.remove('flex');
+    }
+
+    function toggleReturnPromoGift(isChecked) {
+      const selector = document.getElementById('return-promo-gift-selector');
+      if (selector) {
+        if (isChecked) {
+          selector.classList.remove('hidden');
+        } else {
+          selector.classList.add('hidden');
+        }
+      }
+      lucide.createIcons();
+    }
+
+    async function loadReturnActivePromoCodes() {
+      const select = document.getElementById('return-selected-promo-code');
+      if (!select) return;
+      try {
+        const res = await fetch(`${getApiBase()}/promos`);
+        if (res.ok) {
+          const promos = await res.json();
+          select.innerHTML = '<option value="">-- Choose Active Promo Voucher --</option>';
+          const activeList = Array.isArray(promos) ? promos.filter(p => p.isActive !== false) : [];
+          if (activeList.length === 0) {
+            select.innerHTML = '<option value="">(No active promo codes available)</option>';
+          } else {
+            activeList.forEach(p => {
+              const opt = document.createElement('option');
+              opt.value = p.code;
+              const capText = p.maxDiscountAmount > 0 ? ` • Cap: ₱${p.maxDiscountAmount.toLocaleString()}` : '';
+              opt.textContent = `${p.code} (${p.discountPercentage}% OFF${capText})`;
+              select.appendChild(opt);
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load promo codes for return modal', e);
+      }
     }
 
     function selectReturnFuelLevel(lvl) {
@@ -2763,6 +3302,7 @@
         return;
       }
 
+      const recipientEmail = document.getElementById('return-customer-email') ? document.getElementById('return-customer-email').value.trim() : '';
       const hasDamage = document.getElementById('return-has-damage') ? document.getElementById('return-has-damage').checked : false;
       const damageSeverity = document.getElementById('return-damage-severity') ? document.getElementById('return-damage-severity').value : 'Minor';
       const damageFee = document.getElementById('return-damage-cost') ? (parseFloat(String(document.getElementById('return-damage-cost').value || '0').replace(/,/g, '')) || 0) : 0;
@@ -2770,16 +3310,23 @@
       const penaltyFee = document.getElementById('return-penalty-fee') ? (parseFloat(String(document.getElementById('return-penalty-fee').value || '0').replace(/,/g, '')) || 0) : 0;
       const returnNotes = document.getElementById('return-notes') ? document.getElementById('return-notes').value.trim() : '';
 
+      // Promo gift
+      const includePromoGift = document.getElementById('return-include-promo-gift') ? document.getElementById('return-include-promo-gift').checked : false;
+      const selectedPromoCode = document.getElementById('return-selected-promo-code') ? document.getElementById('return-selected-promo-code').value : '';
+
       const btn = document.getElementById('btn-submit-return');
       btn.disabled = true;
-      btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Finalizing Return...';
+      btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Finalizing Return &amp; Sending Certificate...';
       lucide.createIcons();
 
       try {
         if (activeRental && activeRental.rentalId) {
           const res = await fetch(`${getApiBase()}/Rentals/${activeRental.rentalId}/complete`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'X-Admin-Name': window.CURRENT_ADMIN_NAME || 'Raymart Quirante (Admin)'
+            },
             body: JSON.stringify({
               returnOdometer: parseFloat(mileageVal),
               returnFuelLevel: selectedReturnFuel,
@@ -2789,40 +3336,52 @@
               hasDamage: hasDamage,
               damageSeverity: hasDamage ? damageSeverity : null,
               damageDescription: hasDamage ? damageDescription : null,
-              damagePhotos: hasDamage ? uploadedDamagePhotos : []
+              damagePhotos: hasDamage ? uploadedDamagePhotos : [],
+              recipientEmail: recipientEmail,
+              includePromoGift: includePromoGift,
+              selectedPromoCode: selectedPromoCode
             })
           });
 
+
           if (res.ok) {
             const data = await res.json().catch(() => ({}));
-            showAppDialog({ 
-              title: 'Vehicle Return Finalized', 
-              message: data.message || 'Vehicle return inspection is complete! The booking has been marked as Completed and the vehicle is now Available in the fleet.', 
-              type: 'success' 
-            });
+            if (data.emailSent) {
+              showAppDialog({ 
+                title: 'Vehicle Return Finalized & Email Sent', 
+                message: `Vehicle return inspection is complete! Official Return & Settlement PDF Certificate generated and confirmation email delivered to ${data.emailDestination || 'the customer'}.`, 
+                type: 'success' 
+              });
+            } else {
+              showAppDialog({ 
+                title: 'Vehicle Return Finalized (Email Alert)', 
+                message: `Vehicle return inspection is complete and saved to the database. However, the confirmation email could not be delivered to ${data.emailDestination || 'the recipient'} (${data.emailError || 'Email delivery failed'}). You can download the PDF Certificate anytime.`, 
+                type: 'warning' 
+              });
+            }
           } else {
             const err = await res.json().catch(() => ({}));
             showAppDialog({ 
               title: 'Return Failed', 
-              message: err.message || 'Failed to complete vehicle return. Please review the details.', 
+              message: err.message || err.Message || 'Failed to complete vehicle return. Please review the details.', 
               type: 'error' 
             });
           }
+
         }
         closeReturnModal();
         fetchRentalsData();
       } catch (err) {
         console.error(err);
         showAppDialog({ 
-          title: 'Vehicle Return Finalized', 
-          message: 'Vehicle return has been recorded and finalized in the database.', 
-          type: 'success' 
+          title: 'Connection Error', 
+          message: 'Unable to connect to the server while completing the return: ' + (err.message || 'Network error'), 
+          type: 'error' 
         });
-        closeReturnModal();
-        fetchRentalsData();
       } finally {
+
         btn.disabled = false;
-        btn.innerHTML = '<i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Confirm Return &amp; Complete';
+        btn.innerHTML = '<i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> <span>Confirm Return &amp; Complete</span>';
         lucide.createIcons();
       }
     }
@@ -2985,9 +3544,33 @@
       document.getElementById('cfm-dates').innerText = `${startFmt} – ${endFmt}`;
       document.getElementById('cfm-duration').innerText = `${diffDays} Day${diffDays > 1 ? 's' : ''}`;
 
+      // Delayed / Late Check & Banner
+      const isLate = s && s < new Date();
+      const delayedBanner = document.getElementById('cfm-delayed-banner');
+      if (isLate) {
+        delayedBanner.classList.remove('hidden');
+        const todayFmt = new Date().toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+        const newEnd = new Date();
+        newEnd.setDate(newEnd.getDate() + diffDays);
+        const newEndFmt = newEnd.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+        document.getElementById('cfm-delayed-text').innerText = `Original dates were ${startFmt} – ${endFmt}. System has updated schedule to ${todayFmt} – ${newEndFmt} (${diffDays} Days). Customer will receive interactive decision buttons.`;
+        document.getElementById('cfm-message').value = `Good day ${rental.customerName || 'Customer'}! Apologies for the delay in reviewing your booking (${code}). We have refreshed your trip schedule starting ${todayFmt} for ${diffDays} days. Please review the updated terms or select your preferred custom schedule below.`;
+      } else {
+        delayedBanner.classList.add('hidden');
+        document.getElementById('cfm-message').value = `Good day ${rental.customerName || 'Customer'}! Your rental booking (${code}) has been officially approved. Please find your signed digital rental agreement attached. Kindly present a valid government-issued ID upon pick-up.`;
+      }
+
+      // Reset Perks & Promos
+      document.getElementById('cfm-perk-fuel').checked = false;
+      document.getElementById('cfm-perk-toll').checked = false;
+      document.getElementById('cfm-perk-wash').checked = false;
+      document.getElementById('cfm-promo-toggle').checked = false;
+      document.getElementById('cfm-promo-select').disabled = true;
+      document.getElementById('cfm-promo-select').value = '';
+      loadPromosForConforme();
+
       document.getElementById('cfm-recipient').value = rental.customerEmail || '';
       document.getElementById('cfm-subject').value = `Rental Booking Approved & Official Agreement - ${code}`;
-      document.getElementById('cfm-message').value = `Good day ${rental.customerName || 'Customer'}! Your rental booking (${code}) has been officially approved. Please find your signed digital rental agreement attached. Kindly present a valid government-issued ID upon pick-up.`;
       document.getElementById('cfm-attach-pdf').checked = true;
 
       // Reset steps
@@ -3001,6 +3584,37 @@
         if (cfm) autoExpandTextarea(cfm);
       }, 20);
       lucide.createIcons();
+    }
+
+    let availablePromoCodes = [];
+    async function loadPromosForConforme() {
+      try {
+        const res = await fetch(`${getApiBase()}/Promos`);
+        if (res.ok) {
+          availablePromoCodes = await res.json();
+          const select = document.getElementById('cfm-promo-select');
+          select.innerHTML = '<option value="">-- Select Active Promo Code --</option>';
+          availablePromoCodes.forEach(p => {
+            if (p.isActive !== false) {
+              const opt = document.createElement('option');
+              opt.value = p.code;
+              opt.innerText = `${p.code} (${p.discountPercent ? p.discountPercent + '% OFF' : '₱' + p.discountAmount + ' OFF'})`;
+              select.appendChild(opt);
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('Could not load promo codes:', err);
+      }
+    }
+
+    function toggleCfmPromoSelect() {
+      const isChecked = document.getElementById('cfm-promo-toggle').checked;
+      const select = document.getElementById('cfm-promo-select');
+      select.disabled = !isChecked;
+      if (isChecked && select.options.length > 1 && !select.value) {
+        select.selectedIndex = 1;
+      }
     }
 
     function openConformeModalById(id) {
@@ -3050,13 +3664,31 @@
         let emailSuccess = false;
         if (sendEmail && recipient) {
           try {
+            const s = activeRental.startDate ? new Date(activeRental.startDate) : null;
+            const e = activeRental.endDate ? new Date(activeRental.endDate) : null;
+            const isLate = s && s < new Date();
+            const sFmt = s ? s.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+            const eFmt = e ? e.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+
+            const selectedPromoCode = document.getElementById('cfm-promo-toggle').checked ? document.getElementById('cfm-promo-select').value : null;
+            const promoObj = availablePromoCodes.find(p => p.code === selectedPromoCode);
+
             const emailPayload = {
               rentalId: rentalId,
               recipientEmail: recipient,
               subject: document.getElementById('cfm-subject').value.trim() || `Booking Approved - ${code}`,
               personalMessage: document.getElementById('cfm-message').value.trim() || null,
               attachPdf: document.getElementById('cfm-attach-pdf').checked,
-              includeReceipt: true
+              includeReceipt: true,
+              isRescheduled: isLate,
+              originalPickupDate: sFmt,
+              originalDropoffDate: eFmt,
+              perkFuelWaiver: document.getElementById('cfm-perk-fuel').checked,
+              perkTollCredits: document.getElementById('cfm-perk-toll').checked,
+              perkWashWaiver: document.getElementById('cfm-perk-wash').checked,
+              includeCourtesyPromo: !!selectedPromoCode,
+              courtesyPromoCode: selectedPromoCode,
+              courtesyPromoDiscount: promoObj ? (promoObj.discountPercent ? `${promoObj.discountPercent}% OFF` : `₱${promoObj.discountAmount} OFF`) : '15% OFF'
             };
 
             const emailRes = await fetch(`${getApiBase()}/Email/rental-agreement`, {
@@ -3074,6 +3706,7 @@
         // Step 3: Transition to STEP 2 (Official Conforme Receipt & QR Screen)
         document.getElementById('conforme-step-1').classList.add('hidden');
         document.getElementById('conforme-step-2').classList.remove('hidden');
+
 
         document.getElementById('cfm-receipt-code').innerText = code;
         document.getElementById('cfm-receipt-subtext').innerText = sendEmail
@@ -3187,7 +3820,151 @@
       }
     }
 
-    // ── Dynamic New Rental Modal ──
+    // ── Universal Car Brand Logo & Monogram Engine ──
+    const BRAND_LOGO_MAP = {
+      'toyota': 'toyota',
+      'honda': 'honda',
+      'mitsubishi': 'mitsubishi',
+      'nissan': 'nissan',
+      'hyundai': 'hyundai',
+      'ford': 'ford',
+      'chevrolet': 'chevrolet',
+      'chevy': 'chevrolet',
+      'suzuki': 'suzuki',
+      'kia': 'kia',
+      'isuzu': 'isuzu',
+      'bmw': 'bmw',
+      'mercedes': 'mercedes-benz',
+      'mercedes-benz': 'mercedes-benz',
+      'benz': 'mercedes-benz',
+      'mg': 'mg',
+      'morris garages': 'mg',
+      'geely': 'geely',
+      'byd': 'byd',
+      'tesla': 'tesla',
+      'mazda': 'mazda',
+      'subaru': 'subaru',
+      'audi': 'audi',
+      'volkswagen': 'volkswagen',
+      'vw': 'volkswagen',
+      'porsche': 'porsche',
+      'lexus': 'lexus',
+      'chery': 'chery',
+      'gac': 'gac',
+      'changan': 'changan',
+      'peugeot': 'peugeot',
+      'jeep': 'jeep',
+      'land rover': 'land-rover',
+      'landrover': 'land-rover',
+      'volvo': 'volvo',
+      'infiniti': 'infiniti',
+      'jaguar': 'jaguar',
+      'fiat': 'fiat',
+      'dodge': 'dodge',
+      'ram': 'ram',
+      'mini': 'mini',
+      'wuling': 'wuling',
+      'foton': 'foton',
+      'great wall': 'great-wall',
+      'haval': 'haval'
+    };
+
+    function getBrandSlug(brandName) {
+      if (!brandName) return '';
+      const clean = String(brandName).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      for (const [key, slug] of Object.entries(BRAND_LOGO_MAP)) {
+        const kClean = key.replace(/[^a-z0-9]/g, '');
+        if (clean === kClean || clean.includes(kClean) || kClean.includes(clean)) {
+          return slug;
+        }
+      }
+      return String(brandName).trim().toLowerCase().replace(/\s+/g, '-');
+    }
+
+    const ADAPTIVE_BRAND_SLUGS = new Set([
+      'toyota', 'nissan', 'mazda', 'lexus', 'jeep', 'kia', 'suzuki', 
+      'isuzu', 'honda', 'volkswagen', 'volvo', 'subaru', 'mercedes-benz', 
+      'mercedes', 'audi', 'infiniti', 'jaguar', 'chery', 'geely', 'byd', 'haval', 'peugeot', 'renault', 'dodge', 'ram', 'tesla'
+    ]);
+
+    function getBrandLogoUrl(brandName) {
+      const slug = getBrandSlug(brandName);
+      if (!slug) return '';
+      // High-Definition Authentic Master Brand Emblem Image (Real 3D Chrome / Full Color PNG)
+      return `https://cdn.jsdelivr.net/gh/filippofilip95/car-logos-dataset@master/logos/original/${slug}.png`;
+    }
+
+    function getBrandMonogramHtml(brandName, textSize = 'text-[10px]') {
+      const b = (brandName || 'CAR').trim();
+      const initials = b.length >= 2 ? b.substring(0, 2).toUpperCase() : b.toUpperCase();
+      return `<span class="font-black text-orange-500 ${textSize} uppercase tracking-wider shrink-0 select-none" title="${b}">${initials}</span>`;
+    }
+
+    function renderBrandLogoHtml(brandName, sizeClass = 'h-6 w-auto max-w-[42px]', imgSize = 'h-full w-auto max-h-6 max-w-[42px]') {
+      if (!brandName) return getBrandMonogramHtml('Car');
+      const b = String(brandName).trim();
+      const slug = getBrandSlug(b);
+      const url = getBrandLogoUrl(b);
+      const isAdaptive = ADAPTIVE_BRAND_SLUGS.has(slug);
+      const emblemClass = isAdaptive ? "brand-emblem-adaptive" : "";
+      const monoHtml = getBrandMonogramHtml(b).replace(/"/g, '&quot;');
+      return `<div class="inline-flex items-center justify-center shrink-0 select-none" title="${b}">
+        <img src="${url}" alt="${b}" class="${imgSize} ${emblemClass} object-contain transition-transform duration-200" style="image-rendering: -webkit-optimize-contrast;" onerror="this.parentElement.outerHTML='${monoHtml}'" />
+      </div>`;
+    }
+
+    // ── Dynamic New Rental Combobox & Data Engine ──
+    let newBookingCustomers = [];
+    let newBookingVehicles = [];
+    let newBookingDrivers = [];
+    let activeBrandFilter = 'ALL';
+
+    function toggleCombobox(type) {
+      const menus = ['cust', 'brand', 'veh', 'driver'];
+      menus.forEach(m => {
+        const menuEl = document.getElementById(`${m}-combobox-menu`);
+        const chevronEl = document.getElementById(`${m}-chevron`);
+        if (m === type) {
+          const isHidden = menuEl.classList.contains('hidden');
+          if (isHidden) {
+            menuEl.classList.remove('hidden');
+            menuEl.classList.add('flex');
+            if (chevronEl) chevronEl.classList.add('rotate-180', 'text-orange-500');
+            if (m === 'cust') {
+              const inp = document.getElementById('cust-search-input');
+              if (inp) setTimeout(() => inp.focus(), 50);
+            }
+          } else {
+            menuEl.classList.add('hidden');
+            menuEl.classList.remove('flex');
+            if (chevronEl) chevronEl.classList.remove('rotate-180', 'text-orange-500');
+          }
+        } else {
+          if (menuEl) {
+            menuEl.classList.add('hidden');
+            menuEl.classList.remove('flex');
+          }
+          if (chevronEl) chevronEl.classList.remove('rotate-180', 'text-orange-500');
+        }
+      });
+    }
+
+    // Click outside to close comboboxes
+    document.addEventListener('click', function(e) {
+      ['cust', 'brand', 'veh', 'driver'].forEach(m => {
+        const wrapper = document.getElementById(`${m}-combobox-wrapper`);
+        if (wrapper && !wrapper.contains(e.target)) {
+          const menuEl = document.getElementById(`${m}-combobox-menu`);
+          const chevronEl = document.getElementById(`${m}-chevron`);
+          if (menuEl && !menuEl.classList.contains('hidden')) {
+            menuEl.classList.add('hidden');
+            menuEl.classList.remove('flex');
+            if (chevronEl) chevronEl.classList.remove('rotate-180', 'text-orange-500');
+          }
+        }
+      });
+    });
+
     async function loadModalDropdowns() {
       try {
         const [usersRes, vehRes, driversRes] = await Promise.all([
@@ -3196,59 +3973,853 @@
           fetch(`${getApiBase()}/Drivers`).then(r => r.ok ? r.json() : []).catch(() => [])
         ]);
 
-        const custSelect = document.getElementById('new-cust-select');
-        const customers = (Array.isArray(usersRes) ? usersRes : []).filter(u => (u.role || '').toLowerCase() === 'customer' || !u.role);
-        custSelect.innerHTML = customers.map(c => `<option value="${c.userId}">${c.fullName} (${c.phone || c.email || 'No Contact'})</option>`).join('');
+        newBookingCustomers = (Array.isArray(usersRes) ? usersRes : []).filter(u => (u.role || '').toLowerCase() === 'customer' || !u.role);
+        newBookingVehicles = (Array.isArray(vehRes) ? vehRes : []).filter(v => (v.status || '').toLowerCase() === 'available');
+        newBookingDrivers = Array.isArray(driversRes) ? driversRes : [];
 
-        const vehSelect = document.getElementById('new-veh-select');
-        const availableVehicles = (Array.isArray(vehRes) ? vehRes : []).filter(v => (v.status || '').toLowerCase() === 'available');
-        vehSelect.innerHTML = availableVehicles.map(v => `<option value="${v.vehicleId}" data-rate="${v.ratePerDay || v.pricePerDay || 3000}">${v.brand} ${v.model} (${v.plateNo}) — ₱${Number(v.ratePerDay || v.pricePerDay || 3000).toLocaleString()}/day</option>`).join('');
+        renderCustomerComboboxList(newBookingCustomers);
+        renderBrandComboboxList();
+        renderVehicleComboboxList();
+        renderDriverComboboxList(newBookingDrivers);
 
-        const driverSelect = document.getElementById('new-driver-select');
-        driverSelect.innerHTML = '<option value="">Self-Drive (No Driver)</option>' + 
-          (Array.isArray(driversRes) ? driversRes : []).map(d => `<option value="${d.driverId}">${d.fullName || d.driverName} (${d.phone || 'Available'})</option>`).join('');
+        // Auto-select first customer if none
+        if (newBookingCustomers.length > 0 && !document.getElementById('new-cust-select').value) {
+          selectCustomer(newBookingCustomers[0]);
+        }
+
+        // Auto-select first vehicle if none
+        if (newBookingVehicles.length > 0 && !document.getElementById('new-veh-select').value) {
+          selectVehicle(newBookingVehicles[0]);
+        }
+
       } catch (err) {
         console.error('Dropdown loading error:', err);
       }
     }
 
-    function openNewRentalModal() {
-      const now = new Date();
-      const nextDay = new Date(now);
-      nextDay.setDate(now.getDate() + 3);
+    function renderCustomerComboboxList(customers) {
+      const listEl = document.getElementById('cust-options-list');
+      const countEl = document.getElementById('cust-count-badge');
+      if (countEl) countEl.innerText = `${customers.length} Customers Available`;
+      if (!listEl) return;
 
-      document.getElementById('new-start-date').value = now.toISOString().slice(0, 16);
-      document.getElementById('new-end-date').value = nextDay.toISOString().slice(0, 16);
+      if (customers.length === 0) {
+        listEl.innerHTML = `<div class="p-3 text-center text-slate-400 text-xs">No matching customers found</div>`;
+        return;
+      }
+
+      listEl.innerHTML = customers.map(c => {
+        const initial = (c.fullName || 'U').charAt(0).toUpperCase();
+        let avatarSrc = c.profilePictureUrl || c.avatarUrl || c.avatar;
+        if (avatarSrc && typeof avatarSrc === 'string' && avatarSrc.trim().length > 5) {
+          avatarSrc = avatarSrc.trim();
+          if (!avatarSrc.startsWith('http') && !avatarSrc.startsWith('data:') && !avatarSrc.startsWith('/')) {
+            avatarSrc = 'data:image/png;base64,' + avatarSrc;
+          }
+        } else {
+          avatarSrc = null;
+        }
+
+        const avatarHtml = avatarSrc
+          ? `<img src="${avatarSrc}" class="w-8 h-8 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700 shadow-sm" alt="${c.fullName}" onerror="this.outerHTML='<div class=\\\'w-8 h-8 rounded-full bg-orange-500/15 text-orange-500 font-black flex items-center justify-center text-xs shrink-0\\\'>${initial}</div>'" />`
+          : `<div class="w-8 h-8 rounded-full bg-orange-500/15 text-orange-500 font-black flex items-center justify-center text-xs shrink-0">${initial}</div>`;
+
+        return `
+          <div onclick='selectCustomer(${JSON.stringify(c).replace(/'/g, "&apos;")})' class="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between cursor-pointer transition-colors group">
+            <div class="flex items-center gap-2.5 min-w-0">
+              ${avatarHtml}
+              <div class="min-w-0">
+                <div class="font-bold text-slate-900 dark:text-white truncate group-hover:text-orange-500">${c.fullName}</div>
+                <div class="text-[10px] text-slate-400 truncate flex items-center gap-2">
+                  <span>${c.phone || 'No Phone'}</span>
+                  <span class="opacity-60">•</span>
+                  <span>${c.email || 'No Email'}</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 shrink-0">Select</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function filterComboboxList(type) {
+      if (type === 'cust') {
+        const q = (document.getElementById('cust-search-input')?.value || '').toLowerCase().trim();
+        const filtered = newBookingCustomers.filter(c => 
+          (c.fullName || '').toLowerCase().includes(q) || 
+          (c.phone || '').toLowerCase().includes(q) || 
+          (c.email || '').toLowerCase().includes(q)
+        );
+        renderCustomerComboboxList(filtered);
+      }
+    }
+
+    function selectCustomer(c) {
+      document.getElementById('new-cust-select').value = c.userId;
+      const initial = (c.fullName || 'U').charAt(0).toUpperCase();
+      let avatarSrc = c.profilePictureUrl || c.avatarUrl || c.avatar;
+      if (avatarSrc && typeof avatarSrc === 'string' && avatarSrc.trim().length > 5) {
+        avatarSrc = avatarSrc.trim();
+        if (!avatarSrc.startsWith('http') && !avatarSrc.startsWith('data:') && !avatarSrc.startsWith('/')) {
+          avatarSrc = 'data:image/png;base64,' + avatarSrc;
+        }
+      } else {
+        avatarSrc = null;
+      }
+
+      const avatarHtml = avatarSrc
+        ? `<img src="${avatarSrc}" class="w-7 h-7 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700 shadow-sm" alt="${c.fullName}" onerror="this.outerHTML='<div class=\\\'w-7 h-7 rounded-full bg-orange-500/15 text-orange-500 font-black flex items-center justify-center text-xs shrink-0\\\'>${initial}</div>'" />`
+        : `<div class="w-7 h-7 rounded-full bg-orange-500/15 text-orange-500 font-black flex items-center justify-center text-xs shrink-0">${initial}</div>`;
+
+      document.getElementById('cust-selected-display').innerHTML = `
+        ${avatarHtml}
+        <div class="min-w-0">
+          <div class="font-bold text-slate-900 dark:text-white truncate">${c.fullName}</div>
+          <div class="text-[10px] text-slate-400 truncate">${c.phone || c.email || 'Verified Customer'}</div>
+        </div>
+      `;
+
+      toggleCombobox(null);
+    }
+
+    function renderBrandComboboxList() {
+      const listEl = document.getElementById('brand-options-list');
+      if (!listEl) return;
+
+      const brandCounts = {};
+      newBookingVehicles.forEach(v => {
+        const b = (v.brand || 'Other').trim();
+        brandCounts[b] = (brandCounts[b] || 0) + 1;
+      });
+
+      const brands = Object.keys(brandCounts).sort();
+
+      let html = `
+        <div onclick="selectBrand('ALL')" class="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between cursor-pointer transition-colors ${activeBrandFilter === 'ALL' ? 'bg-orange-500/10 border border-orange-500/30' : ''}">
+          <div class="flex items-center gap-2">
+            <span class="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center text-[10px] font-bold text-orange-400 shrink-0">ALL</span>
+            <span class="font-bold text-slate-900 dark:text-white">All Available Brands</span>
+          </div>
+          <span class="text-[10px] font-black px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-500">${newBookingVehicles.length} Units</span>
+        </div>
+      `;
+
+      brands.forEach(b => {
+        const isSelected = activeBrandFilter === b;
+        html += `
+          <div onclick="selectBrand('${b.replace(/'/g, "\\'")}')" class="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between cursor-pointer transition-colors ${isSelected ? 'bg-orange-500/10 border border-orange-500/30' : ''}">
+            <div class="flex items-center gap-2.5">
+              ${renderBrandLogoHtml(b, 'w-6 h-6', 'max-h-4 max-w-4')}
+              <span class="font-bold text-slate-900 dark:text-white">${b}</span>
+            </div>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400">${brandCounts[b]} Available</span>
+          </div>
+        `;
+      });
+
+      listEl.innerHTML = html;
+      lucide.createIcons();
+    }
+
+    function selectBrand(brand) {
+      activeBrandFilter = brand;
+      document.getElementById('new-brand-select').value = brand;
+      const countEl = document.getElementById('brand-count-badge');
+      if (countEl) countEl.innerText = brand === 'ALL' ? 'All Brands' : brand;
+
+      if (brand === 'ALL') {
+        document.getElementById('brand-selected-display').innerHTML = `
+          <span class="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center text-[10px] font-bold text-orange-400 shrink-0">ALL</span>
+          <span class="text-slate-900 dark:text-white font-bold truncate">All Available Brands</span>
+        `;
+      } else {
+        document.getElementById('brand-selected-display').innerHTML = `
+          ${renderBrandLogoHtml(brand, 'w-6 h-6', 'max-h-4 max-w-4')}
+          <span class="text-slate-900 dark:text-white font-bold truncate">${brand}</span>
+        `;
+      }
+
+      renderBrandComboboxList();
+      renderVehicleComboboxList();
+      toggleCombobox(null);
+
+      // Auto-select first matching vehicle
+      const filteredVehicles = activeBrandFilter === 'ALL' 
+        ? newBookingVehicles 
+        : newBookingVehicles.filter(v => (v.brand || '').trim().toLowerCase() === activeBrandFilter.trim().toLowerCase());
+
+      if (filteredVehicles.length > 0) {
+        selectVehicle(filteredVehicles[0]);
+      } else {
+        document.getElementById('new-veh-select').value = '';
+        document.getElementById('veh-selected-display').innerHTML = `
+          <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 shrink-0">
+            <i data-lucide="car" class="w-4 h-4 text-slate-400"></i>
+          </div>
+          <span class="text-slate-400 font-medium truncate">No vehicles available for ${brand}</span>
+        `;
+        lucide.createIcons();
+        calculateNewRentalTotal();
+      }
+    }
+
+    function renderVehicleComboboxList() {
+      const listEl = document.getElementById('veh-options-list');
+      const countBadge = document.getElementById('veh-count-badge');
+      if (!listEl) return;
+
+      const filtered = activeBrandFilter === 'ALL' 
+        ? newBookingVehicles 
+        : newBookingVehicles.filter(v => (v.brand || '').trim().toLowerCase() === activeBrandFilter.trim().toLowerCase());
+
+      if (countBadge) countBadge.innerText = `${filtered.length} Available`;
+
+      if (filtered.length === 0) {
+        listEl.innerHTML = `<div class="p-3 text-center text-slate-400 text-xs">No available units found</div>`;
+        return;
+      }
+
+      listEl.innerHTML = filtered.map(v => {
+        const rate = Number(v.ratePerDay || v.pricePerDay || 3000);
+        let imgUrl = v.photoUrl || v.image || (Array.isArray(v.photoUrls) ? v.photoUrls[0] : null);
+        const isCurrent = document.getElementById('new-veh-select').value == v.vehicleId;
+
+        return `
+          <div onclick='selectVehicle(${JSON.stringify(v).replace(/'/g, "&apos;")})' class="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between cursor-pointer transition-colors ${isCurrent ? 'bg-orange-500/10 border border-orange-500/30' : ''}">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-10 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700 flex items-center justify-center">
+                ${imgUrl ? `<img src="${imgUrl}" class="w-full h-full object-cover" />` : renderBrandLogoHtml(v.brand, 'w-6 h-6', 'max-h-4 max-w-4')}
+              </div>
+              <div class="min-w-0">
+                <div class="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 truncate">
+                  ${renderBrandLogoHtml(v.brand, 'w-4 h-4', 'max-h-3 max-w-3')}
+                  <span>${v.brand} ${v.model}</span>
+                </div>
+                <div class="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                  <span class="font-mono px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold">${v.plateNo || v.plateNumber}</span>
+                  <span>•</span>
+                  <span>${v.color || 'Pearl White'}</span>
+                </div>
+              </div>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="text-xs font-black text-emerald-500">₱${rate.toLocaleString()}/d</div>
+              <div class="text-[9px] text-emerald-400 font-bold flex items-center justify-end gap-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                <span>Available</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function selectVehicle(v) {
+      document.getElementById('new-veh-select').value = v.vehicleId;
+      const rate = Number(v.ratePerDay || v.pricePerDay || 3000);
+      let imgUrl = v.photoUrl || v.image || (Array.isArray(v.photoUrls) ? v.photoUrls[0] : null);
+
+      document.getElementById('veh-selected-display').innerHTML = `
+        <div class="w-8 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700 flex items-center justify-center">
+          ${imgUrl ? `<img src="${imgUrl}" class="w-full h-full object-cover" />` : renderBrandLogoHtml(v.brand, 'w-5 h-5', 'max-h-4 max-w-4')}
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 truncate">
+            ${renderBrandLogoHtml(v.brand, 'w-4 h-4', 'max-h-3 max-w-3')}
+            <span>${v.brand} ${v.model}</span>
+            <span class="font-mono text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-orange-400 font-bold">${v.plateNo || v.plateNumber}</span>
+          </div>
+          <div class="text-[10px] text-emerald-500 font-bold">₱${rate.toLocaleString()}/day • ${v.color || 'Pearl White'}</div>
+        </div>
+      `;
+
+      toggleCombobox(null);
+      calculateNewRentalTotal();
+    }
+
+    function renderDriverComboboxList(drivers) {
+      const listEl = document.getElementById('driver-options-list');
+      if (!listEl) return;
+
+      let html = `
+        <div onclick="selectDriver(null)" class="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between cursor-pointer transition-colors border-b border-slate-100 dark:border-slate-800/80 mb-1">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 shrink-0">
+              <i data-lucide="user" class="w-4 h-4 text-slate-400"></i>
+            </div>
+            <div>
+              <div class="font-bold text-slate-900 dark:text-white">Self-Drive (No Driver)</div>
+              <div class="text-[10px] text-slate-400">Customer will drive the vehicle</div>
+            </div>
+          </div>
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400">Standard</span>
+        </div>
+      `;
+
+      drivers.forEach(d => {
+        const initial = (d.fullName || d.driverName || 'D').charAt(0).toUpperCase();
+        let avatarSrc = d.avatarUrl || d.profilePictureUrl;
+        if (avatarSrc && typeof avatarSrc === 'string' && avatarSrc.trim().length > 5) {
+          avatarSrc = avatarSrc.trim();
+          if (!avatarSrc.startsWith('http') && !avatarSrc.startsWith('data:') && !avatarSrc.startsWith('/')) {
+            avatarSrc = 'data:image/png;base64,' + avatarSrc;
+          }
+        } else {
+          avatarSrc = null;
+        }
+
+        const avatarHtml = avatarSrc
+          ? `<img src="${avatarSrc}" class="w-8 h-8 rounded-full object-cover shrink-0 border border-emerald-500/40 shadow-sm" alt="${d.fullName || d.driverName}" onerror="this.outerHTML='<div class=\\\'w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 font-black flex items-center justify-center text-xs shrink-0\\\'>${initial}</div>'" />`
+          : `<div class="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 font-black flex items-center justify-center text-xs shrink-0">${initial}</div>`;
+
+        html += `
+          <div onclick='selectDriver(${JSON.stringify(d).replace(/'/g, "&apos;")})' class="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-between cursor-pointer transition-colors group">
+            <div class="flex items-center gap-2.5 min-w-0">
+              ${avatarHtml}
+              <div class="min-w-0">
+                <div class="font-bold text-slate-900 dark:text-white truncate group-hover:text-emerald-400">${d.fullName || d.driverName}</div>
+                <div class="text-[10px] text-slate-400 truncate flex items-center gap-1.5">
+                  <span class="text-amber-400 font-bold flex items-center gap-0.5"><i data-lucide="star" class="w-2.5 h-2.5 fill-amber-400 text-amber-400"></i><span>${Number(d.ratingAvg || 4.9).toFixed(1)}</span></span>
+                  <span>•</span>
+                  <span>${d.phone || 'Available'}</span>
+                  <span>•</span>
+                  <span>${d.shiftSchedule || 'Full Time'}</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 shrink-0 flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              <span>Available</span>
+            </span>
+          </div>
+        `;
+      });
+
+      listEl.innerHTML = html;
+      lucide.createIcons();
+    }
+
+    function selectDriver(d) {
+      if (!d) {
+        document.getElementById('new-driver-select').value = '';
+        document.getElementById('driver-selected-display').innerHTML = `
+          <div class="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 shrink-0">
+            <i data-lucide="user" class="w-4 h-4 text-slate-400"></i>
+          </div>
+          <div>
+            <div class="text-slate-900 dark:text-white font-bold">Self-Drive (No Driver)</div>
+            <div class="text-[10px] text-slate-400 font-medium">Customer drives the vehicle</div>
+          </div>
+        `;
+      } else {
+        document.getElementById('new-driver-select').value = d.driverId;
+        const initial = (d.fullName || d.driverName || 'D').charAt(0).toUpperCase();
+        let avatarSrc = d.avatarUrl || d.profilePictureUrl;
+        if (avatarSrc && typeof avatarSrc === 'string' && avatarSrc.trim().length > 5) {
+          avatarSrc = avatarSrc.trim();
+          if (!avatarSrc.startsWith('http') && !avatarSrc.startsWith('data:') && !avatarSrc.startsWith('/')) {
+            avatarSrc = 'data:image/png;base64,' + avatarSrc;
+          }
+        } else {
+          avatarSrc = null;
+        }
+
+        const avatarHtml = avatarSrc
+          ? `<img src="${avatarSrc}" class="w-7 h-7 rounded-full object-cover shrink-0 border border-emerald-500/40 shadow-sm" alt="${d.fullName || d.driverName}" onerror="this.outerHTML='<div class=\\\'w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 font-black flex items-center justify-center text-xs shrink-0\\\'>${initial}</div>'" />`
+          : `<div class="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 font-black flex items-center justify-center text-xs shrink-0">${initial}</div>`;
+
+        document.getElementById('driver-selected-display').innerHTML = `
+          ${avatarHtml}
+          <div class="min-w-0">
+            <div class="font-bold text-slate-900 dark:text-white truncate">${d.fullName || d.driverName}</div>
+            <div class="text-[10px] text-slate-400 truncate flex items-center gap-1.5">
+              <span class="text-amber-400 font-bold flex items-center gap-0.5"><i data-lucide="star" class="w-2.5 h-2.5 fill-amber-400 text-amber-400"></i><span>${Number(d.ratingAvg || 4.9).toFixed(1)}</span></span>
+              <span>•</span>
+              <span>${d.phone || 'Available'}</span>
+            </div>
+          </div>
+        `;
+      }
+
+      toggleCombobox(null);
+      lucide.createIcons();
+    }
+
+    function setDestinationQuick(dest) {
+      document.getElementById('new-destination').value = dest;
+    }
+
+    let activeCustomerMode = 'registered'; // 'registered' | 'walkin'
+    let walkinAvatarBase64 = null;
+
+    function handleWalkinPfpSelect(e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        walkinAvatarBase64 = evt.target.result;
+        const previewEl = document.getElementById('walkin-pfp-preview');
+        if (previewEl) {
+          previewEl.innerHTML = `<img src="${walkinAvatarBase64}" class="w-full h-full object-cover" />`;
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function updateWalkinAvatarInitial() {
+      if (walkinAvatarBase64) return;
+      const name = (document.getElementById('walkin-name')?.value || '').trim();
+      const initial = name.length > 0 ? name.charAt(0).toUpperCase() : '?';
+      const previewEl = document.getElementById('walkin-pfp-preview');
+      if (previewEl) {
+        if (name.length > 0) {
+          previewEl.innerHTML = `<span class="font-black text-orange-500">${initial}</span>`;
+        } else {
+          previewEl.innerHTML = `<i data-lucide="user" class="w-6 h-6"></i>`;
+          lucide.createIcons();
+        }
+      }
+    }
+
+    function setCustomerMode(mode) {
+      activeCustomerMode = mode;
+      const tabReg = document.getElementById('tab-cust-registered');
+      const tabWalk = document.getElementById('tab-cust-walkin');
+      const viewReg = document.getElementById('cust-registered-view');
+      const viewWalk = document.getElementById('cust-walkin-view');
+
+      if (mode === 'walkin') {
+        if (tabWalk) tabWalk.className = 'px-2.5 py-1 rounded-lg font-bold text-[11px] bg-orange-500 text-white shadow-sm transition-all cursor-pointer flex items-center gap-1';
+        if (tabReg) tabReg.className = 'px-2.5 py-1 rounded-lg font-bold text-[11px] text-slate-400 hover:text-white hover:bg-slate-700/50 transition-all cursor-pointer flex items-center gap-1';
+        if (viewReg) viewReg.classList.add('hidden');
+        if (viewWalk) viewWalk.classList.remove('hidden');
+        setTimeout(() => document.getElementById('walkin-name')?.focus(), 50);
+      } else {
+        if (tabReg) tabReg.className = 'px-2.5 py-1 rounded-lg font-bold text-[11px] bg-orange-500 text-white shadow-sm transition-all cursor-pointer flex items-center gap-1';
+        if (tabWalk) tabWalk.className = 'px-2.5 py-1 rounded-lg font-bold text-[11px] text-slate-400 hover:text-white hover:bg-slate-700/50 transition-all cursor-pointer flex items-center gap-1';
+        if (viewWalk) viewWalk.classList.add('hidden');
+        if (viewReg) viewReg.classList.remove('hidden');
+      }
+      lucide.createIcons();
+    }
+
+    // ── Interactive Web Range Calendar State & Logic ──
+    let calStartDate = new Date();
+    let calEndDate = new Date();
+    calEndDate.setDate(calStartDate.getDate() + 3);
+    let calCurrentViewMonth = new Date(calStartDate.getFullYear(), calStartDate.getMonth(), 1);
+    let calSelectionStep = 'start'; // 'start' | 'end'
+    let calHoverDate = null;
+    let calPickupTime = '09:00';
+    let calDropoffTime = '17:00';
+
+    function initCalendarPicker() {
+      const now = new Date();
+      calStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      calEndDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 3);
+      calCurrentViewMonth = new Date(calStartDate.getFullYear(), calStartDate.getMonth(), 1);
+      calSelectionStep = 'start';
+      calHoverDate = null;
+
+      const pickEl = document.getElementById('cal-pickup-time');
+      const dropEl = document.getElementById('cal-dropoff-time');
+      if (pickEl) calPickupTime = pickEl.value || '09:00';
+      if (dropEl) calDropoffTime = dropEl.value || '17:00';
+
+      renderCalendarGrid();
+      updateCalendarDisplays();
+      syncCalendarHiddenInputs();
+      lucide.createIcons();
+    }
+
+    function toggleCalendarDropdown() {
+      const menu = document.getElementById('calendar-dropdown-menu');
+      if (!menu) return;
+      const isHidden = menu.classList.contains('hidden');
+      if (isHidden) {
+        menu.classList.remove('hidden');
+        menu.classList.add('flex');
+        renderCalendarGrid();
+        lucide.createIcons();
+      } else {
+        menu.classList.add('hidden');
+        menu.classList.remove('flex');
+      }
+    }
+
+    function closeCalendarDropdown() {
+      const menu = document.getElementById('calendar-dropdown-menu');
+      if (menu) {
+        menu.classList.add('hidden');
+        menu.classList.remove('flex');
+      }
+    }
+
+    // Close calendar when clicking outside
+    document.addEventListener('click', function(e) {
+      const wrapper = document.getElementById('calendar-range-wrapper');
+      if (wrapper && !wrapper.contains(e.target)) {
+        closeCalendarDropdown();
+      }
+    });
+
+    function changeCalendarMonth(delta) {
+      calCurrentViewMonth.setMonth(calCurrentViewMonth.getMonth() + delta);
+      renderCalendarGrid();
+      lucide.createIcons();
+    }
+
+    function resetCalendarToToday() {
+      const now = new Date();
+      calCurrentViewMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      renderCalendarGrid();
+      lucide.createIcons();
+    }
+
+    function handleTimeChange() {
+      const pickEl = document.getElementById('cal-pickup-time');
+      const dropEl = document.getElementById('cal-dropoff-time');
+      if (pickEl) calPickupTime = pickEl.value;
+      if (dropEl) calDropoffTime = dropEl.value;
+      updateCalendarDisplays();
+      syncCalendarHiddenInputs();
+      calculateNewRentalTotal();
+    }
+
+    function applyCalendarPreset(days) {
+      const now = new Date();
+      calStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      calEndDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + days);
+      calSelectionStep = 'start';
+      calHoverDate = null;
+      calCurrentViewMonth = new Date(calStartDate.getFullYear(), calStartDate.getMonth(), 1);
+      
+      // Update preset buttons styling
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.classList.remove('bg-orange-500', 'text-white', 'shadow-sm');
+        btn.classList.add('bg-slate-100', 'dark:bg-slate-800', 'text-slate-700', 'dark:text-slate-300');
+      });
+      if (window.event && window.event.currentTarget) {
+        window.event.currentTarget.classList.remove('bg-slate-100', 'dark:bg-slate-800', 'text-slate-700', 'dark:text-slate-300');
+        window.event.currentTarget.classList.add('bg-orange-500', 'text-white', 'shadow-sm');
+      }
+
+      renderCalendarGrid();
+      updateCalendarDisplays();
+      syncCalendarHiddenInputs();
+      calculateNewRentalTotal();
+      lucide.createIcons();
+    }
+
+    function handleCalendarDayHover(dateMs) {
+      if (calSelectionStep === 'end') {
+        calHoverDate = new Date(dateMs);
+        renderCalendarGrid();
+      }
+    }
+
+    function handleCalendarDayClick(dateMs) {
+      const clicked = new Date(dateMs);
+      const clickedMid = new Date(clicked.getFullYear(), clicked.getMonth(), clicked.getDate());
+      const startMid = new Date(calStartDate.getFullYear(), calStartDate.getMonth(), calStartDate.getDate());
+
+      if (calSelectionStep === 'start') {
+        calStartDate = clickedMid;
+        calEndDate = new Date(clickedMid.getFullYear(), clickedMid.getMonth(), clickedMid.getDate() + 1);
+        calSelectionStep = 'end';
+        calHoverDate = null;
+      } else {
+        // User is selecting end date (Step 'end')
+        if (clickedMid.getTime() < startMid.getTime()) {
+          // If earlier date is clicked, set start to clicked and end to previous start
+          calStartDate = clickedMid;
+          calEndDate = startMid;
+        } else if (clickedMid.getTime() === startMid.getTime()) {
+          // Same day rental (1 day)
+          calEndDate = new Date(clickedMid.getFullYear(), clickedMid.getMonth(), clickedMid.getDate() + 1);
+        } else {
+          // End date chosen
+          calEndDate = clickedMid;
+        }
+        calSelectionStep = 'start';
+        calHoverDate = null;
+      }
+
+      renderCalendarGrid();
+      updateCalendarDisplays();
+      syncCalendarHiddenInputs();
+      calculateNewRentalTotal();
+      lucide.createIcons();
+    }
+
+    function renderCalendarGrid() {
+      const gridEl = document.getElementById('cal-days-grid');
+      const labelEl = document.getElementById('cal-month-year-label');
+      if (!gridEl) return;
+
+      const year = calCurrentViewMonth.getFullYear();
+      const month = calCurrentViewMonth.getMonth();
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      if (labelEl) labelEl.innerText = `${monthNames[month]} ${year}`;
+
+      const firstDayIndex = new Date(year, month, 1).getDay();
+      const totalDays = new Date(year, month + 1, 0).getDate();
+      const prevMonthTotalDays = new Date(year, month, 0).getDate();
+
+      const today = new Date();
+      const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+
+      const startMid = new Date(calStartDate.getFullYear(), calStartDate.getMonth(), calStartDate.getDate()).getTime();
+      let endMid = new Date(calEndDate.getFullYear(), calEndDate.getMonth(), calEndDate.getDate()).getTime();
+      if (calSelectionStep === 'end' && calHoverDate) {
+        const hoverMid = new Date(calHoverDate.getFullYear(), calHoverDate.getMonth(), calHoverDate.getDate()).getTime();
+        if (hoverMid >= startMid) {
+          endMid = hoverMid;
+        }
+      }
+
+      let html = '';
+
+      // Leading padding days from previous month (Clickable!)
+      for (let i = firstDayIndex - 1; i >= 0; i--) {
+        const d = prevMonthTotalDays - i;
+        const pDateMs = new Date(year, month - 1, d).getTime();
+        html += `<div onclick="handleCalendarDayClick(${pDateMs})" class="h-9 flex items-center justify-center text-xs font-semibold text-slate-400 dark:text-slate-600 opacity-60 hover:opacity-100 hover:text-orange-500 cursor-pointer select-none">${d}</div>`;
+      }
+
+      // Current month days (ALL 100% SELECTABLE!)
+      for (let day = 1; day <= totalDays; day++) {
+        const dateObj = new Date(year, month, day);
+        const dateMs = dateObj.getTime();
+        const isStart = dateMs === startMid;
+        const isEnd = dateMs === endMid;
+        const isInRange = dateMs > startMid && dateMs < endMid;
+        const isToday = dateMs === todayMid;
+
+        let dayClass = 'h-9 flex items-center justify-center text-xs font-bold transition-all relative ';
+        let innerClass = 'w-8 h-8 flex items-center justify-center rounded-xl transition-all ';
+
+        if (isStart && isEnd) {
+          dayClass += 'bg-orange-500/20 rounded-xl cursor-pointer';
+          innerClass += 'bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black shadow-lg shadow-orange-500/40 scale-105';
+        } else if (isStart) {
+          dayClass += 'bg-orange-500/20 rounded-l-2xl cursor-pointer';
+          innerClass += 'bg-orange-500 text-white font-black shadow-lg shadow-orange-500/40 rounded-xl scale-105';
+        } else if (isEnd) {
+          dayClass += 'bg-orange-500/20 rounded-r-2xl cursor-pointer';
+          innerClass += 'bg-gradient-to-r from-orange-500 to-amber-500 text-white font-black shadow-lg shadow-orange-500/40 rounded-xl scale-105';
+        } else if (isInRange) {
+          dayClass += 'bg-orange-500/15 dark:bg-orange-500/20 text-orange-600 dark:text-orange-300 font-extrabold cursor-pointer hover:bg-orange-500/25';
+        } else {
+          dayClass += 'hover:bg-slate-100 dark:hover:bg-slate-800/80 rounded-xl cursor-pointer text-slate-800 dark:text-slate-200';
+          if (isToday) {
+            innerClass += 'border-2 border-orange-500 text-orange-500 font-black';
+          }
+        }
+
+        html += `
+          <div onclick="handleCalendarDayClick(${dateMs})" onmouseenter="handleCalendarDayHover(${dateMs})" class="${dayClass}">
+            <span class="${innerClass}">${day}</span>
+          </div>
+        `;
+      }
+
+      // Trailing padding days to fill 35 or 42 grid slots (Clickable!)
+      const totalRendered = firstDayIndex + totalDays;
+      const remaining = totalRendered <= 35 ? (35 - totalRendered) : (42 - totalRendered);
+      for (let day = 1; day <= remaining; day++) {
+        const nDateMs = new Date(year, month + 1, day).getTime();
+        html += `<div onclick="handleCalendarDayClick(${nDateMs})" class="h-9 flex items-center justify-center text-xs font-semibold text-slate-400 dark:text-slate-600 opacity-60 hover:opacity-100 hover:text-orange-500 cursor-pointer select-none">${day}</div>`;
+      }
+
+      gridEl.innerHTML = html;
+    }
+
+    function formatTimeLabel(timeStr) {
+      if (!timeStr) return '09:00 AM';
+      const [hStr, mStr] = timeStr.split(':');
+      let h = parseInt(hStr, 10);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12;
+      if (h === 0) h = 12;
+      return `${String(h).padStart(2, '0')}:${mStr} ${ampm}`;
+    }
+
+    function updateCalendarDisplays() {
+      const monthNamesShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      
+      const sDay = calStartDate.getDate();
+      const sMon = monthNamesShort[calStartDate.getMonth()];
+      const sYr = calStartDate.getFullYear();
+      const sTimeFmt = formatTimeLabel(calPickupTime);
+
+      const eDay = calEndDate.getDate();
+      const eMon = monthNamesShort[calEndDate.getMonth()];
+      const eYr = calEndDate.getFullYear();
+      const eTimeFmt = formatTimeLabel(calDropoffTime);
+
+      const pDisplay = document.getElementById('cal-pickup-display');
+      const dDisplay = document.getElementById('cal-dropoff-display');
+      if (pDisplay) pDisplay.innerText = `${sMon} ${sDay}, ${sYr} • ${sTimeFmt}`;
+      if (dDisplay) dDisplay.innerText = `${eMon} ${eDay}, ${eYr} • ${eTimeFmt}`;
+
+      const sMid = new Date(calStartDate.getFullYear(), calStartDate.getMonth(), calStartDate.getDate());
+      const eMid = new Date(calEndDate.getFullYear(), calEndDate.getMonth(), calEndDate.getDate());
+      const diffDays = Math.max(1, Math.ceil((eMid - sMid) / (1000 * 60 * 60 * 24)));
+
+      const arrowText = document.getElementById('cal-days-arrow-text');
+      const durationBadge = document.getElementById('rental-duration-badge');
+      if (arrowText) arrowText.innerText = `${diffDays} Day${diffDays > 1 ? 's' : ''}`;
+      if (durationBadge) durationBadge.innerText = `${diffDays} Day${diffDays > 1 ? 's' : ''} Rental`;
+    }
+
+    function syncCalendarHiddenInputs() {
+      const formatIso = (dateObj, timeStr) => {
+        const y = dateObj.getFullYear();
+        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const d = String(dateObj.getDate()).padStart(2, '0');
+        const t = timeStr || '09:00';
+        return `${y}-${m}-${d}T${t}`;
+      };
+
+      const startIso = formatIso(calStartDate, calPickupTime);
+      const endIso = formatIso(calEndDate, calDropoffTime);
+
+      const startInput = document.getElementById('new-start-date');
+      const endInput = document.getElementById('new-end-date');
+      if (startInput) startInput.value = startIso;
+      if (endInput) endInput.value = endIso;
+    }
+
+    function openPromoCodesModal() {
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage({ action: 'openPromoCodes' });
+      } else {
+        console.log('Open Promo Codes dialog requested');
+      }
+    }
+
+    function openNewRentalModal() {
+      // Clear walk-in inputs
+      const wn = document.getElementById('walkin-name');
+      const wp = document.getElementById('walkin-phone');
+      const we = document.getElementById('walkin-email');
+      const wi = document.getElementById('walkin-id-no');
+      const wf = document.getElementById('walkin-pfp-file');
+      if (wn) wn.value = '';
+      if (wp) wp.value = '';
+      if (we) we.value = '';
+      if (wi) wi.value = '';
+      if (wf) wf.value = '';
+
+      walkinAvatarBase64 = null;
+      const previewEl = document.getElementById('walkin-pfp-preview');
+      if (previewEl) previewEl.innerHTML = '<i data-lucide="user" class="w-6 h-6"></i>';
+
+      setCustomerMode('registered');
+      initCalendarPicker();
+      loadModalDropdowns();
       calculateNewRentalTotal();
 
       document.getElementById('new-rental-modal').classList.remove('hidden');
       document.getElementById('new-rental-modal').classList.add('flex');
+      lucide.createIcons();
     }
+
     function closeNewRentalModal() {
       document.getElementById('new-rental-modal').classList.add('hidden');
       document.getElementById('new-rental-modal').classList.remove('flex');
+      toggleCombobox(null);
+      closeCalendarDropdown();
     }
 
     function calculateNewRentalTotal() {
-      const vehSelect = document.getElementById('new-veh-select');
-      const selectedOption = vehSelect.options[vehSelect.selectedIndex];
-      const rate = selectedOption ? parseFloat(selectedOption.getAttribute('data-rate') || '3000') : 3000;
+      const vehId = document.getElementById('new-veh-select').value;
+      const v = newBookingVehicles.find(x => x.vehicleId == vehId);
+      const rate = v ? Number(v.ratePerDay || v.pricePerDay || 3000) : 3000;
 
       const s = new Date(document.getElementById('new-start-date').value);
       const e = new Date(document.getElementById('new-end-date').value);
       const days = Math.max(1, Math.ceil((e - s) / (1000 * 60 * 60 * 24))) || 1;
 
-      const total = (rate * days) + 500 + ((rate * days + 500) * 0.12);
+      const durationBadge = document.getElementById('rental-duration-badge');
+      if (durationBadge) durationBadge.innerText = `${days} Day${days > 1 ? 's' : ''} Rental`;
+
+      const dailyRateEl = document.getElementById('new-daily-rate-display');
+      if (dailyRateEl) dailyRateEl.innerText = `₱${rate.toLocaleString()}/day x ${days}d = ₱${(rate * days).toLocaleString()}`;
+
+      const baseAmount = rate * days + 500;
+      const vatAmount = baseAmount * 0.12;
+      const total = baseAmount + vatAmount;
+
+      const vatEl = document.getElementById('new-vat-display');
+      if (vatEl) vatEl.innerText = `₱${vatAmount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
       document.getElementById('new-total-display').innerText = '₱' + total.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     async function submitNewRental() {
-      const custId = document.getElementById('new-cust-select').value;
+      let custId = document.getElementById('new-cust-select').value;
       const vehId = document.getElementById('new-veh-select').value;
       const driverId = document.getElementById('new-driver-select').value || null;
       const start = document.getElementById('new-start-date').value;
       const end = document.getElementById('new-end-date').value;
       const dest = document.getElementById('new-destination').value.trim();
+
+      // If Walk-In Customer mode, register or get customer first!
+      if (activeCustomerMode === 'walkin') {
+        const wName = (document.getElementById('walkin-name')?.value || '').trim();
+        const wPhone = (document.getElementById('walkin-phone')?.value || '').trim();
+        const wEmail = (document.getElementById('walkin-email')?.value || '').trim();
+        const wIdNo = (document.getElementById('walkin-id-no')?.value || '').trim();
+
+        if (!wName || !wPhone) {
+          showAppDialog({ title: 'Missing Walk-in Information', message: 'Please enter customer full name and contact phone number.', type: 'warning' });
+          return;
+        }
+
+        const btn = document.getElementById('btn-submit-booking');
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> <span>Registering Customer...</span>';
+        lucide.createIcons();
+
+        try {
+          const custRes = await fetch(`${getApiBase()}/Users`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fullName: wName,
+              phone: wPhone,
+              email: wEmail || `walkin_${Date.now()}@driveandgo.com`,
+              avatarBase64: walkinAvatarBase64,
+              idPhotoUrl: wIdNo
+            })
+          });
+
+          if (custRes.ok) {
+            const newCustData = await custRes.json();
+            custId = newCustData.userId || newCustData.UserId;
+            // Add to in-memory list
+            newBookingCustomers.unshift({
+              userId: custId,
+              fullName: wName,
+              phone: wPhone,
+              email: wEmail || 'Walk-In Customer'
+            });
+            renderCustomerComboboxList(newBookingCustomers);
+          } else {
+            const err = await custRes.json().catch(() => ({}));
+            showAppDialog({ title: 'Customer Registration Error', message: err.message || 'Failed to register walk-in customer.', type: 'error' });
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i> <span>Submit Booking</span>';
+            lucide.createIcons();
+            return;
+          }
+        } catch (cErr) {
+          console.error('Walk-in registration error:', cErr);
+        }
+      }
 
       if (!custId || !vehId || !start || !end) {
         showAppDialog({ title: 'Missing Booking Fields', message: 'Please select customer, vehicle, and booking dates.', type: 'warning' });
@@ -3257,12 +4828,12 @@
 
       const btn = document.getElementById('btn-submit-booking');
       btn.disabled = true;
-      btn.innerText = 'Creating...';
+      btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> <span>Creating Booking...</span>';
+      lucide.createIcons();
 
       try {
-        const vehSelect = document.getElementById('new-veh-select');
-        const selectedOption = vehSelect.options[vehSelect.selectedIndex];
-        const rate = selectedOption ? parseFloat(selectedOption.getAttribute('data-rate') || '3000') : 3000;
+        const v = newBookingVehicles.find(x => x.vehicleId == vehId);
+        const rate = v ? Number(v.ratePerDay || v.pricePerDay || 3000) : 3000;
         const days = Math.max(1, Math.ceil((new Date(end) - new Date(start)) / (1000 * 60 * 60 * 24))) || 1;
         const total = (rate * days) + 500 + ((rate * days + 500) * 0.12);
 
@@ -3299,7 +4870,8 @@
         fetchRentalsData();
       } finally {
         btn.disabled = false;
-        btn.innerText = 'Submit Booking';
+        btn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i> <span>Submit Booking</span>';
+        lucide.createIcons();
       }
     }
 

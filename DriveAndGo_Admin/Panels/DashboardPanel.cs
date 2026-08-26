@@ -180,9 +180,18 @@ namespace DriveAndGo_Admin.Panels
                         catch { }
                     }));
                 }
+                else if (action?.Trim() == "open_rentals" || action?.Trim() == "navigate_rentals")
+                {
+                    if (this.FindForm() is MainForm mainForm)
+                    {
+                        mainForm.NavigateToRentals();
+                    }
+                }
+
             }
             catch { }
         }
+
 
         protected override void Dispose(bool disposing)
         {

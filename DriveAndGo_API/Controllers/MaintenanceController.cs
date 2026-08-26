@@ -27,8 +27,9 @@ namespace DriveAndGo_API.Controllers
 
                 using var cmd = new NpgsqlCommand(@"
                     SELECT vehicle_id, brand, model, plate_no, status,
-                           COALESCE((SELECT MAX(current_odometer) FROM fuel_logs f WHERE f.vehicle_id = v.vehicle_id), 12000) AS odometer
+                           COALESCE(v.current_odometer, 12000) AS odometer
                     FROM vehicles v", conn);
+
 
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())

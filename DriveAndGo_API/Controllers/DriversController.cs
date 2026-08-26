@@ -1157,7 +1157,13 @@ public class DriversController : ControllerBase
 
         var sql = @"
             SELECT
-                d.driver_id, d.user_id, d.license_no, d.status, d.rating_avg, d.total_trips,
+                d.driver_id, d.user_id, d.license_no,
+                CASE
+                    WHEN LOWER(d.status) IN ('suspended', 'inactive', 'on-leave') THEN d.status
+                    WHEN curr_r.vehicle_id IS NOT NULL THEN 'assigned'
+                    ELSE 'available'
+                END AS status,
+                d.rating_avg, d.total_trips,
                 d.license_class, d.license_expiry, d.shift_schedule, d.cash_on_hand, d.skill_flags,
                 d.verification_status, d.restrictions, d.conditions, d.blood_type, d.birth_date,
                 d.address, d.nationality, d.sex, d.weight_kg, d.height_m, d.eye_color, d.agency_code,
@@ -1179,15 +1185,17 @@ public class DriversController : ControllerBase
             LEFT JOIN (
                 SELECT DISTINCT ON (driver_id) driver_id, vehicle_id
                 FROM rentals
-                WHERE LOWER(COALESCE(status,'')) IN ('active','approved','in-use')
+                WHERE LOWER(COALESCE(status,'')) IN ('active','approved','in-use','ongoing','rented','overdue')
                 ORDER BY driver_id, created_at DESC
             ) curr_r ON curr_r.driver_id = d.driver_id
+
             LEFT JOIN vehicles v ON v.vehicle_id = curr_r.vehicle_id
             LEFT JOIN (
                 SELECT DISTINCT ON (driver_id) driver_id, full_name AS emergency_contact_name, relationship AS emergency_contact_relationship, phone AS emergency_contact_phone
                 FROM driver_emergency_contacts
                 ORDER BY driver_id, is_primary DESC, contact_id ASC
             ) emg ON emg.driver_id = d.driver_id ";
+
 
         // Fallback SQL using only original columns (for when new columns aren't migrated yet)
         var sqlFallback = @"

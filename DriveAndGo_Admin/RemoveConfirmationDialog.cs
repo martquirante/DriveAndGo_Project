@@ -14,14 +14,14 @@ namespace DriveAndGo_Admin
     public class RemoveConfirmationDialog : Form
     {
         // ── Colors ────────────────────────────────────────────────────────────
-        private static readonly Color BgColor     = Color.FromArgb(36, 37, 38);
-        private static readonly Color BorderColor = Color.FromArgb(60, 255, 255, 255);
-        private static readonly Color TextMain    = Color.FromArgb(228, 230, 235);
-        private static readonly Color TextSub     = Color.FromArgb(176, 179, 184);
-        private static readonly Color RemoveRed   = Color.FromArgb(224, 45, 60);
-        private static readonly Color RemoveHover = Color.FromArgb(192, 35, 47);
-        private static readonly Color CancelBg    = Color.FromArgb(30, 255, 255, 255);
-        private static readonly Color CancelHover = Color.FromArgb(55, 255, 255, 255);
+        private static Color BgColor     => Helpers.ThemeManager.CurrentCard;
+        private static Color BorderColor => Helpers.ThemeManager.CurrentBorder;
+        private static Color TextMain    => Helpers.ThemeManager.CurrentText;
+        private static Color TextSub     => Helpers.ThemeManager.CurrentSubText;
+        private static Color RemoveRed   => Helpers.ThemeManager.CurrentAccentRed;
+        private static Color RemoveHover => Color.FromArgb(220, 38, 38);
+        private static Color CancelBg    => Helpers.ThemeManager.IsDarkMode ? Color.FromArgb(24, 24, 44) : Color.FromArgb(235, 238, 250);
+        private static Color CancelHover => Helpers.ThemeManager.IsDarkMode ? Color.FromArgb(34, 34, 60) : Color.FromArgb(220, 225, 240);
 
         // ── Drag support ──────────────────────────────────────────────────────
         private Point _dragStart;

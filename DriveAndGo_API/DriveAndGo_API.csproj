@@ -14,6 +14,7 @@
 	<ItemGroup>
 		<!-- Core & Swagger (Swashbuckle 6.x is compatible with Microsoft.OpenApi 1.x) -->
 		<PackageReference Include="BCrypt.Net-Next" Version="4.1.0" />
+		<PackageReference Include="QRCoder" Version="1.6.0" />
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
 		<PackageReference Include="itext7" Version="9.6.0" />
 		<PackageReference Include="itext7.bouncy-castle-adapter" Version="9.6.0" />

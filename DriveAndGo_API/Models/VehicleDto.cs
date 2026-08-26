@@ -18,6 +18,11 @@ namespace DriveAndGo_API.Models
         public string? PhotoUrlSnake => PhotoUrl;
         public string PhotoUrl { get; set; } = "";
 
+        [JsonPropertyName("photo_urls")]
+        public System.Collections.Generic.List<string> PhotoUrls { get; set; } = new();
+        [JsonPropertyName("photoUrls")]
+        public System.Collections.Generic.List<string> PhotoUrlsCamel => PhotoUrls;
+
         public string Description { get; set; } = "";
         public int SeatCapacity { get; set; }
         public string Transmission { get; set; } = "Automatic";
@@ -74,6 +79,10 @@ namespace DriveAndGo_API.Models
         public decimal RatePerDay { get; set; }
         public string Status { get; set; } = "available";
         public string PhotoUrl { get; set; } = "";
+        [JsonPropertyName("photo_urls")]
+        public System.Collections.Generic.List<string> PhotoUrls { get; set; } = new();
+        [JsonPropertyName("photoUrls")]
+        public System.Collections.Generic.List<string> PhotoUrlsCamel => PhotoUrls;
         public double? Latitude { get; set; }
         public double? Longitude { get; set; }
         public string Color { get; set; } = "Pearl White";

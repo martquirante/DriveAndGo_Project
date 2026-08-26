@@ -1,14 +1,24 @@
 using DriveAndGo_Admin.Helpers;
-using DriveAndGo_Admin.Panels;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace DriveAndGo_Admin
 {
     public class PromoCodesForm : Form
     {
+        private WebView2 _webView;
+        private bool _isDragging = false;
+        private Point _dragCursorPoint;
+        private Point _dragFormPoint;
+
         protected override CreateParams CreateParams
         {
             get
@@ -21,73 +31,132 @@ namespace DriveAndGo_Admin
 
         public PromoCodesForm()
         {
-            this.Size = new Size(950, 600);
+            this.Size = new Size(1140, 710);
             this.FormBorderStyle = FormBorderStyle.None;
             this.StartPosition = FormStartPosition.CenterParent;
             this.BackColor = ThemeManager.CurrentBackground;
+            this.DoubleBuffered = true;
 
-            // Double Buffering
-            this.SetStyle(ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
-            this.UpdateStyles();
+            // Set rounded region for smooth corners
+            SetRoundedRegion(18);
 
-            BuildUI();
+            this.HandleCreated += async (s, e) => await InitWebViewAsync();
+            ThemeManager.ThemeChanged += OnThemeChanged;
+            this.Disposed += (s, e) => ThemeManager.ThemeChanged -= OnThemeChanged;
         }
 
-        private void BuildUI()
+        private void SetRoundedRegion(int radius)
         {
-            // Custom Title Bar
-            var titleBar = new Panel
+            try
             {
-                Dock = DockStyle.Top,
-                Height = 50,
-                BackColor = Color.FromArgb(8, 8, 16)
-            };
-            titleBar.Paint += (s, e) =>
+                using var path = new GraphicsPath();
+                int d = radius * 2;
+                var rect = new Rectangle(0, 0, this.Width, this.Height);
+                path.AddArc(rect.X, rect.Y, d, d, 180, 90);
+                path.AddArc(rect.Right - d, rect.Y, d, d, 270, 90);
+                path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90);
+                path.AddArc(rect.X, rect.Bottom - d, d, d, 90, 90);
+                path.CloseFigure();
+                this.Region = new Region(path);
+            }
+            catch { }
+        }
+
+        private async Task InitWebViewAsync()
+        {
+            try
             {
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                e.Graphics.DrawLine(new Pen(Color.FromArgb(255, 90, 31), 1), 0, titleBar.Height - 1, titleBar.Width, titleBar.Height - 1);
-            };
+                _webView = new WebView2
+                {
+                    Dock = DockStyle.Fill,
+                    DefaultBackgroundColor = ThemeManager.CurrentBackground
+                };
+                this.Controls.Add(_webView);
 
-            var lblTitle = new Label
+                var env = await CoreWebView2Environment.CreateAsync(null, Path.GetTempPath());
+                await _webView.EnsureCoreWebView2Async(env);
+
+                var s = _webView.CoreWebView2.Settings;
+                s.IsStatusBarEnabled = false;
+                s.AreDefaultContextMenusEnabled = false;
+                s.IsZoomControlEnabled = false;
+
+                string theme = ThemeManager.IsDarkMode ? "dark" : "light";
+                string apiBase = Helpers.ApiService.ResolveNetworkBaseUrl();
+                await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
+                    $"window.API_BASE_URL = '{apiBase}'; document.documentElement.setAttribute('data-theme', '{theme}');");
+
+
+                _webView.CoreWebView2.WebMessageReceived += (sender, args) =>
+                {
+                    try
+                    {
+                        string json = args.WebMessageAsJson;
+                        using var doc = JsonDocument.Parse(json);
+                        if (doc.RootElement.TryGetProperty("action", out var act))
+                        {
+                            string actionStr = act.GetString() ?? "";
+                            if (actionStr == "close")
+                            {
+                                this.BeginInvoke((Action)(() => this.Close()));
+                            }
+                            else if (actionStr == "copyToClipboard" && doc.RootElement.TryGetProperty("text", out var textEl))
+                            {
+                                string textToCopy = textEl.GetString() ?? "";
+                                if (!string.IsNullOrEmpty(textToCopy))
+                                {
+                                    this.BeginInvoke((Action)(() =>
+                                    {
+                                        try
+                                        {
+                                            Clipboard.SetDataObject(textToCopy, true);
+                                        }
+                                        catch { }
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                };
+
+                string htmlPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "promos_manager.html");
+                if (File.Exists(htmlPath))
+                {
+                    string navUrl = "file:///" + htmlPath.Replace('\\', '/') + "?theme=" + theme;
+                    _webView.CoreWebView2.Navigate(navUrl);
+                }
+                else
+                {
+                    _webView.NavigateToString("<html><body style='background:#0B0B16;color:#FFF;padding:40px;font-family:sans-serif;'><h2>promos_manager.html not found</h2></body></html>");
+                }
+            }
+            catch (Exception ex)
             {
-                Text = "PROMO CODES MANAGEMENT",
-                Font = new Font("Segoe UI", 11F, FontStyle.Bold),
-                ForeColor = Color.White,
-                AutoSize = true,
-                Location = new Point(20, 14),
-                BackColor = Color.Transparent
-            };
+                System.Diagnostics.Debug.WriteLine($"[PromoCodesForm] WebView2 init failed: {ex.Message}");
+            }
+        }
 
-            var btnClose = new Button
+        private void OnThemeChanged(object sender, EventArgs e)
+        {
+            this.BackColor = ThemeManager.CurrentBackground;
+            if (_webView?.CoreWebView2 != null)
             {
-                Text = "✕",
-                Size = new Size(36, 30),
-                Location = new Point(this.Width - 50, 10),
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 10F, FontStyle.Bold),
-                ForeColor = Color.FromArgb(200, 200, 200),
-                BackColor = Color.Transparent,
-                Cursor = Cursors.Hand
-            };
-            btnClose.FlatAppearance.BorderSize = 0;
-            btnClose.FlatAppearance.MouseOverBackColor = Color.FromArgb(239, 68, 68);
-            btnClose.Click += (s, e) => this.Close();
+                string theme = ThemeManager.IsDarkMode ? "dark" : "light";
+                _webView.BeginInvoke((Action)(async () =>
+                {
+                    await _webView.CoreWebView2.ExecuteScriptAsync($"window.setTheme && window.setTheme('{theme}');");
+                }));
+            }
+        }
 
-            titleBar.Controls.Add(lblTitle);
-            titleBar.Controls.Add(btnClose);
-            this.Controls.Add(titleBar);
-
-            // Promo Codes Panel Content
-            var promoPanel = new PromoCodesPanel { Dock = DockStyle.Fill };
-            this.Controls.Add(promoPanel);
-            promoPanel.BringToFront();
-
-            // Form border painting
-            this.Paint += (s, e) =>
-            {
-                using var pen = new Pen(Color.FromArgb(255, 90, 31), 2);
-                e.Graphics.DrawRectangle(pen, 0, 0, this.Width - 1, this.Height - 1);
-            };
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using var pen = new Pen(Color.FromArgb(100, ThemeManager.CurrentPrimary), 1.5f);
+            g.DrawRectangle(pen, 0, 0, this.Width - 1, this.Height - 1);
         }
     }
 }

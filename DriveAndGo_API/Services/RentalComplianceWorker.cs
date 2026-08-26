@@ -133,6 +133,51 @@ namespace DriveAndGo_API.Services
                     });
                 }
             }
+
+            // Sync vehicles & drivers statuses with live active rentals
+            await using (var syncCmd = new NpgsqlCommand(@"
+                UPDATE vehicles
+                SET status = 'rented'
+                WHERE vehicle_id IN (
+                    SELECT DISTINCT vehicle_id 
+                    FROM rentals 
+                    WHERE LOWER(status) IN ('approved', 'active', 'in-use', 'ongoing', 'rented', 'overdue')
+                )
+                AND LOWER(status) NOT IN ('maintenance', 'repair');
+
+                UPDATE vehicles
+                SET status = 'available'
+                WHERE vehicle_id NOT IN (
+                    SELECT DISTINCT vehicle_id 
+                    FROM rentals 
+                    WHERE LOWER(status) IN ('approved', 'active', 'in-use', 'ongoing', 'rented', 'overdue')
+                )
+                AND LOWER(status) NOT IN ('maintenance', 'repair');
+
+                UPDATE drivers
+                SET status = 'assigned'
+                WHERE driver_id IN (
+                    SELECT DISTINCT driver_id 
+                    FROM rentals 
+                    WHERE driver_id IS NOT NULL 
+                      AND LOWER(status) IN ('approved', 'active', 'in-use', 'ongoing', 'rented', 'overdue')
+                )
+                AND LOWER(status) NOT IN ('suspended', 'inactive', 'on-leave');
+
+                UPDATE drivers
+                SET status = 'available'
+                WHERE driver_id NOT IN (
+                    SELECT DISTINCT driver_id 
+                    FROM rentals 
+                    WHERE driver_id IS NOT NULL 
+                      AND LOWER(status) IN ('approved', 'active', 'in-use', 'ongoing', 'rented', 'overdue')
+                )
+                AND LOWER(status) NOT IN ('suspended', 'inactive', 'on-leave');
+            ", conn))
+            {
+                await syncCmd.ExecuteNonQueryAsync();
+            }
         }
     }
 }
+

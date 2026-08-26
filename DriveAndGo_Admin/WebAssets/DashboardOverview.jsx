@@ -873,10 +873,10 @@ export default function DashboardOverview({
           </div>
         )}
 
-        {/* ── Metric Cards — 4×2 Grid, Stagger Card 1@0ms … Card 8@315ms ─── */}
+        {/* ── Metric Cards — Responsive Adaptive Grid ─── */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
           gap: 13,
           marginBottom: 20,
         }}>

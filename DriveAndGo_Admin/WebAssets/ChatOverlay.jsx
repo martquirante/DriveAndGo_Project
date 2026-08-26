@@ -139,19 +139,6 @@ const INITIAL_CONVERSATIONS = [
     lastMessage: '[Voice Note 0:06]',
     time: '10:53 PM',
     unreadCount: 0
-  },
-  {
-    id: 'c1',
-    name: 'Joyce Dela Cruz',
-    role: 'CUSTOMER',
-    status: 'Online • Drive&Go Network',
-    isOnline: true,
-    isGroup: false,
-    avatar: 'J',
-    avatarBg: 'from-purple-500 to-indigo-600',
-    lastMessage: 'Hi, is the Ford Everest available for weekend rental?',
-    time: '11:24 AM',
-    unreadCount: 0
   }
 ];
 
@@ -167,6 +154,7 @@ const DEFAULT_SUGGESTION_PILLS = [
 const InfoPanel = ({
   conv,
   onClose,
+  viewMode = 'floating',
   apiBase,
   activeMessages,
   openAccordions,
@@ -187,8 +175,6 @@ const InfoPanel = ({
     const pfp = conv.avatarUrl || conv.pfp || conv.profilePicture;
     const fullPfp = pfp ? (pfp.startsWith('http') || pfp.startsWith('data:') ? pfp : (apiBase + (pfp.startsWith('/') ? '' : '/') + pfp)) : null;
 
-    
-
     const toggleAccordion = (key) => {
       setOpenAccordions(prev => ({ ...prev, [key]: !prev[key] }));
     };
@@ -201,8 +187,19 @@ const InfoPanel = ({
       return ['image', 'video'].includes(type) || (url && (url.match(/\.(jpeg|jpg|gif|png|webp)/i) || url.startsWith('data:image')));
     });
 
+    const isDark = (typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') !== 'light');
+
     return (
-      <div className="w-80 h-full bg-[#0d0e1b] border-l border-white/10 flex flex-col shrink-0 overflow-y-auto chat-overlay-scrollbar relative">
+      <>
+        {/* Subtle backdrop overlay on small/medium screens to dismiss info panel */}
+        <div 
+          onClick={onClose}
+          className="absolute inset-0 bg-black/40 backdrop-blur-[2px] z-30 transition-opacity animate-fadeIn cursor-pointer"
+        />
+
+        <div className={`absolute inset-y-0 right-0 w-full sm:w-80 h-full flex flex-col overflow-y-auto chat-overlay-scrollbar transition-all duration-200 z-40 border-l shadow-2xl animate-in slide-in-from-right duration-200 ${
+          isDark ? 'bg-[#0d0e1b] border-white/10 text-slate-100' : 'bg-white border-slate-200 text-slate-900 shadow-2xl'
+        }`}>
         
 
         {/* Immediate High-Priority Red Error Alert Modal Popup */}
@@ -526,8 +523,7 @@ const InfoPanel = ({
             </div>
           )}
         </div>
-
-      </div>
+      </>
     );
   };
 
@@ -540,6 +536,7 @@ function ChatOverlay({ initialQuery = '' }) {
 
   // ── States ─────────────────────────────────────────────────────────────────
   const [conversations, setConversations] = useState(INITIAL_CONVERSATIONS);
+  const [allContacts, setAllContacts] = useState([]);
   const [activeConvId, setActiveConvId] = useState('ai_copilot');
   const [activeTabFilter, setActiveTabFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -547,6 +544,41 @@ function ChatOverlay({ initialQuery = '' }) {
   const [viewMode, setViewMode] = useState('floating'); // 'floating' | 'split' | 'fullscreen'
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [newChatSearch, setNewChatSearch] = useState('');
+  const [newChatTab, setNewChatTab] = useState('all');
+
+  const [theme, setTheme] = useState(() => {
+    return (typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme')) || 'dark';
+  });
+
+  useEffect(() => {
+    window.setChatTheme = function(mode) {
+      if (mode === 'light' || mode === 'dark') {
+        document.documentElement.setAttribute('data-theme', mode);
+        setTheme(mode);
+      }
+    };
+    const obs = new MutationObserver(() => {
+      const currentMode = document.documentElement.getAttribute('data-theme') || 'dark';
+      setTheme(currentMode);
+    });
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => obs.disconnect();
+  }, []);
+
+  const isDark = theme === 'dark';
+
+  // Push total unread messages count to C# Host for FAB badge display
+  useEffect(() => {
+    const totalUnread = conversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
+    if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+      window.chrome.webview.postMessage(JSON.stringify({
+        action: "updateUnreadCount",
+        count: totalUnread
+      }));
+    }
+  }, [conversations]);
 
   // ── PILLAR 08: Info Panel State ────────────────────────────────────────────
   const [showInfoPanel, setShowInfoPanel] = useState(false);
@@ -772,18 +804,31 @@ function ChatOverlay({ initialQuery = '' }) {
     return <span className="font-extrabold text-sm text-white tracking-wider">{initial}</span>;
   };
 
+  const getRoleBadgeClasses = (role) => {
+    const r = (role || '').toUpperCase();
+    if (r.includes('ADMIN')) return 'bg-rose-500/20 text-rose-300 border border-rose-500/30';
+    if (r.includes('DRIVER')) return 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+    if (r.includes('MAINTENANCE') || r.includes('MECHANIC')) return 'bg-amber-500/20 text-amber-300 border border-amber-500/30';
+    if (r.includes('STAFF') || r.includes('DISPATCH')) return 'bg-sky-500/20 text-sky-300 border border-sky-500/30';
+    if (r.includes('GROUP')) return 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30';
+    if (r.includes('AI')) return 'bg-amber-400/20 text-amber-300 border border-amber-400/30';
+    return 'bg-purple-500/20 text-purple-400 border border-purple-500/30';
+  };
+
   const apiBase = (window.API_BASE_URL || (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'appassets' ? `${window.location.protocol}//${window.location.hostname}:5233` : 'http://localhost:5233')).replace(/\/api\/?$/i, '').replace(/\/$/, '');
   const activeMessages = messagesByConv[activeConvId] || [];
-  const activeConv = conversations.find(c => String(c.id) === String(activeConvId)) || conversations[0] || {
+  const activeConv = conversations.find(c => String(c.id) === String(activeConvId)) ||
+                     allContacts.find(c => String(c.id) === String(activeConvId)) ||
+                     conversations[0] || {
     id: activeConvId,
     name: activeConvId === 'ai_copilot' ? 'Drive&Go Copilot' : 'Conversation',
     isGroup: false,
-    avatar: '🤖',
-    avatarBg: 'from-orange-500 to-amber-600',
+    avatar: '👤',
+    avatarBg: 'from-purple-500 to-indigo-600',
     isAi: activeConvId === 'ai_copilot',
-    isOnline: true,
-    status: 'online',
-    role: 'AI Assistant'
+    isOnline: false,
+    status: 'Active Contact',
+    role: 'Customer'
   };
 
   // Is AI channel? Controls which input controls are shown
@@ -1010,8 +1055,6 @@ function ChatOverlay({ initialQuery = '' }) {
             const isGroup = !!c.isGroupChat || !!c.isGroup || cId.startsWith('gc_') || cId.startsWith('g') || cId.startsWith('@');
 
             let name = c.name;
-            if (cId === 'c1') name = 'Joyce Dela Cruz';
-            if (cId === 'd1') name = 'Marco Santos';
             if (cId === '@Drive&Go AI') name = 'Group @Drive&Go Admin';
 
             let avatar = (name || 'U')[0].toUpperCase();
@@ -1083,6 +1126,48 @@ function ChatOverlay({ initialQuery = '' }) {
       }
     } catch (err) {
       console.warn("[ChatOverlay] DB Conversations fetch warning:", err);
+    }
+  };
+
+  // 1b. Fetch All Registered Database Contacts (/api/messages/contacts)
+  const fetchDbContacts = async () => {
+    try {
+      const res = await fetch(`${apiBase}/api/messages/contacts`);
+      if (res.ok) {
+        const rawJson = await res.json();
+        const list = Array.isArray(rawJson) ? rawJson : [];
+        const formatted = list.map(c => {
+          const rawRole = (c.role || 'Customer').trim();
+          const roleUpper = rawRole.toUpperCase();
+          let avatarBg = 'from-purple-500 to-indigo-600';
+          if (roleUpper.includes('ADMIN')) avatarBg = 'from-rose-500 to-amber-600';
+          else if (roleUpper.includes('DRIVER')) avatarBg = 'from-emerald-500 to-teal-600';
+          else if (roleUpper.includes('MAINTENANCE') || roleUpper.includes('MECHANIC')) avatarBg = 'from-amber-500 to-orange-600';
+          else if (roleUpper.includes('STAFF') || roleUpper.includes('DISPATCH')) avatarBg = 'from-sky-500 to-blue-600';
+
+          return {
+            id: String(c.id),
+            name: c.name || ('User ' + c.id),
+            role: roleUpper,
+            displayRole: rawRole,
+            status: `${rawRole} Account`,
+            isOnline: false,
+            isGroup: false,
+            avatar: (c.name || 'U')[0].toUpperCase(),
+            avatarBg,
+            avatarUrl: c.avatarUrl || null,
+            email: c.email || '',
+            phone: c.phone || '',
+            lastMessage: 'Tap to start conversation',
+            time: '',
+            unreadCount: 0,
+            hasNoMessages: true
+          };
+        });
+        setAllContacts(formatted);
+      }
+    } catch (e) {
+      console.warn("[ChatOverlay] DB Contacts fetch warning:", e);
     }
   };
 
@@ -1201,6 +1286,7 @@ function ChatOverlay({ initialQuery = '' }) {
   // 3. Listen to Real-Time SignalR Web Messages from C# Host Control
   useEffect(() => {
     fetchDbConversations();
+    fetchDbContacts();
     fetchThreadMessages(activeConvId);
 
     const handleWebMessage = (e) => {
@@ -2017,24 +2103,59 @@ function ChatOverlay({ initialQuery = '' }) {
   }, []);
 
   // ── Filtered Conversations ─────────────────────────────────────────────────
-  const filteredConversations = conversations.filter(c => {
+  const filteredConversations = React.useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (q) {
-      const matchesSearch = (c.name && c.name.toLowerCase().includes(q)) ||
-                            (c.role && c.role.toLowerCase().includes(q)) ||
-                            (c.lastMessage && c.lastMessage.toLowerCase().includes(q)) ||
-                            (c.status && c.status.toLowerCase().includes(q)) ||
-                            (c.id && String(c.id).toLowerCase().includes(q)) ||
-                            (c.email && c.email.toLowerCase().includes(q)) ||
-                            (c.phone && c.phone.toLowerCase().includes(q));
-      if (!matchesSearch) return false;
+
+    // 1. If NO search query:
+    // Show only real conversations that have messages, active groups, or AI Copilot.
+    // Zero-message users stay hidden from default inbox list.
+    if (!q) {
+      return conversations.filter(c => {
+        if (c.hasNoMessages) return false;
+        if (activeTabFilter === 'unread') return (c.unreadCount || 0) > 0;
+        if (activeTabFilter === 'groups') return c.isGroup;
+        if (activeTabFilter === 'ai') return c.id === 'ai_copilot';
+        return true;
+      });
     }
 
-    if (activeTabFilter === 'unread') return c.unreadCount > 0;
-    if (activeTabFilter === 'groups') return c.isGroup;
-    if (activeTabFilter === 'ai') return c.id === 'ai_copilot';
-    return true;
-  });
+    // 2. If SEARCHING:
+    // Search across active conversations AND all registered DB contacts (customers/drivers)
+    const seenIds = new Set();
+    const result = [];
+
+    conversations.forEach(c => {
+      const matches = (c.name && c.name.toLowerCase().includes(q)) ||
+                      (c.role && c.role.toLowerCase().includes(q)) ||
+                      (c.lastMessage && c.lastMessage.toLowerCase().includes(q)) ||
+                      (c.status && c.status.toLowerCase().includes(q)) ||
+                      (c.id && String(c.id).toLowerCase().includes(q)) ||
+                      (c.email && c.email.toLowerCase().includes(q)) ||
+                      (c.phone && c.phone.toLowerCase().includes(q));
+      if (matches) {
+        seenIds.add(String(c.id));
+        result.push(c);
+      }
+    });
+
+    allContacts.forEach(c => {
+      if (!seenIds.has(String(c.id))) {
+        const matches = (c.name && c.name.toLowerCase().includes(q)) ||
+                        (c.role && c.role.toLowerCase().includes(q)) ||
+                        (c.email && c.email.toLowerCase().includes(q)) ||
+                        (c.phone && c.phone.toLowerCase().includes(q));
+        if (matches) {
+          seenIds.add(String(c.id));
+          result.push(c);
+        }
+      }
+    });
+
+    if (activeTabFilter === 'unread') return result.filter(c => (c.unreadCount || 0) > 0);
+    if (activeTabFilter === 'groups') return result.filter(c => c.isGroup);
+    if (activeTabFilter === 'ai') return result.filter(c => c.id === 'ai_copilot');
+    return result;
+  }, [conversations, allContacts, searchQuery, activeTabFilter]);
 
   // ── PILLAR 01: Online Status Helper ───────────────────────────────────────
   const getOnlineIndicator = (conv) => {
@@ -2487,11 +2608,11 @@ const handleGroupAvatarChange = async (e) => {
                 {!isSidebarCollapsed && (
                   <button
                     onClick={() => {
-                      setActiveConvId('ai_copilot');
-                      handleSendAiMessage("Show me fleet overview");
+                      setNewChatSearch('');
+                      setShowNewChatModal(true);
                     }}
                     className="w-7 h-7 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 flex items-center justify-center font-bold transition-all cursor-pointer shadow-[0_0_12px_rgba(234,88,12,0.3)]"
-                    title="New AI Copilot Session"
+                    title="Start New Conversation (Customer, Driver, AI)"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                       <line x1="12" y1="5" x2="12" y2="19"/>
@@ -2513,9 +2634,17 @@ const handleGroupAvatarChange = async (e) => {
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search conversations..."
-                    className="w-full bg-slate-950/60 border border-white/10 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-orange-500/50 transition-all"
+                    placeholder="Search conversations, drivers, customers..."
+                    className="w-full bg-slate-950/60 border border-white/10 rounded-xl pl-9 pr-8 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-orange-500/50 transition-all"
                   />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2.5 text-slate-400 hover:text-white text-xs font-bold"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
 
                 {/* Category Filter Chips */}
@@ -2539,6 +2668,58 @@ const handleGroupAvatarChange = async (e) => {
                     </button>
                   ))}
                 </div>
+
+                {/* Quick Suggested Contacts Horizontal Row */}
+                {searchQuery === '' && activeTabFilter === 'all' && allContacts.length > 0 && (
+                  <div className={`pt-1.5 pb-1 border-t flex flex-col gap-1.5 animate-fadeIn ${isDark ? 'border-white/5' : 'border-slate-200/80'}`}>
+                    <div className="flex items-center justify-between px-0.5">
+                      <span className={`text-[9.5px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        Suggested Contacts
+                      </span>
+                      <button 
+                        onClick={() => {
+                          setNewChatSearch('');
+                          setShowNewChatModal(true);
+                        }}
+                        className="text-[10px] font-bold text-orange-400 hover:text-orange-300 cursor-pointer"
+                      >
+                        All ({allContacts.length}) &rarr;
+                      </button>
+                    </div>
+                    <div 
+                      className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none"
+                      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                    >
+                      {allContacts.slice(0, 8).map(contact => {
+                        return (
+                          <button
+                            key={contact.id}
+                            onClick={() => {
+                              setActiveConvId(contact.id);
+                              setShowInfoPanel(false);
+                              setConversations(prev => {
+                                if (!prev.some(x => String(x.id) === String(contact.id))) {
+                                  return [...prev, contact];
+                                }
+                                return prev;
+                              });
+                              fetchThreadMessages(contact.id);
+                            }}
+                            className="flex flex-col items-center gap-1 shrink-0 group cursor-pointer focus:outline-none"
+                            title={`${contact.name} (${contact.role})`}
+                          >
+                            <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${contact.avatarBg || 'from-slate-700 to-slate-900'} flex items-center justify-center text-white font-black text-xs shadow-md overflow-hidden ring-2 ring-transparent group-hover:ring-orange-500 group-hover:scale-105 transition-all`}>
+                              {renderAvatarIcon(contact) || contact.avatar || (contact.name ? contact.name[0] : '👤')}
+                            </div>
+                            <span className={`text-[9.5px] font-bold max-w-[44px] truncate ${isDark ? 'text-slate-300 group-hover:text-white' : 'text-slate-700 group-hover:text-orange-600'}`}>
+                              {contact.name.split(' ')[0]}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -2547,22 +2728,38 @@ const handleGroupAvatarChange = async (e) => {
           <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1.5 chat-overlay-scrollbar">
             {filteredConversations.map(conv => {
               const isActive = conv.id === activeConvId;
+              const isUnread = (conv.unreadCount || 0) > 0;
+
+              const cardStyle = isDark
+                ? (isUnread
+                    ? 'bg-gradient-to-r from-orange-500/20 via-white/[0.08] to-white/[0.03] border-l-4 border-l-orange-500 border-white/20 shadow-md shadow-orange-950/20 hover:border-orange-500/80 hover:bg-white/[0.12]'
+                    : (isActive
+                        ? 'bg-orange-500/15 border-orange-500/30 shadow-[0_0_15px_rgba(234,88,12,0.15)]'
+                        : 'bg-slate-900/40 border-white/5 hover:bg-white/5 hover:border-white/10'))
+                : (isUnread
+                    ? 'bg-gradient-to-r from-orange-500/15 via-orange-50/80 to-white border-l-4 border-l-orange-500 border-orange-300 shadow-md shadow-orange-100/80 hover:border-orange-500/80 hover:bg-orange-50/90'
+                    : (isActive
+                        ? 'bg-orange-50 border-orange-300 shadow-sm'
+                        : 'bg-white/80 border-slate-200/80 hover:bg-slate-50 hover:border-slate-300'));
+
               return (
                 <div
                   key={conv.id}
                   onClick={() => {
                     setActiveConvId(conv.id);
                     setShowInfoPanel(false);
+                    setConversations(prev => {
+                      if (!prev.some(x => String(x.id) === String(conv.id))) {
+                        return [...prev, conv];
+                      }
+                      return prev;
+                    });
                     fetchThreadMessages(conv.id);
                   }}
                   title={isSidebarCollapsed ? conv.name : undefined}
                   className={`group p-2.5 rounded-2xl border transition-all cursor-pointer flex items-center ${
                     isSidebarCollapsed ? 'justify-center' : 'gap-3'
-                  } relative ${
-                    isActive
-                      ? 'bg-orange-500/15 border-orange-500/30 shadow-[0_0_15px_rgba(234,88,12,0.15)]'
-                      : 'bg-slate-900/40 border-white/5 hover:bg-white/5 hover:border-white/10'
-                  }`}
+                  } relative ${cardStyle}`}
                 >
                   {/* Avatar + Online Dot */}
                   <div className="relative shrink-0">
@@ -2581,7 +2778,13 @@ const handleGroupAvatarChange = async (e) => {
                   {!isSidebarCollapsed && (
                     <div className="flex-1 min-w-0 flex flex-col gap-0.5">
                       <div className="flex items-center justify-between gap-1">
-                        <span className={`text-xs font-bold truncate ${isActive ? 'text-orange-300' : 'text-slate-100'}`}>
+                        <span className={`text-xs truncate ${
+                          isUnread
+                            ? (isDark ? 'text-white font-black' : 'text-slate-950 font-black')
+                            : (isActive 
+                                ? (isDark ? 'text-orange-300 font-bold' : 'text-orange-600 font-bold')
+                                : (isDark ? 'text-slate-100 font-bold' : 'text-slate-800 font-bold'))
+                        }`}>
                           {conv.name}
                         </span>
                         <div className="flex items-center gap-1.5 shrink-0">
@@ -2592,13 +2795,24 @@ const handleGroupAvatarChange = async (e) => {
                           {conv.isGroup && conv.id !== 'ai_copilot' && (
                             <span className="text-[8px] font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-1.5 py-0.5">GC</span>
                           )}
-                          <span className="text-[10px] text-slate-400">{conv.time}</span>
+                          <span className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{conv.time}</span>
                         </div>
                       </div>
-                      <span className="text-[10px] font-semibold text-slate-400 tracking-wide uppercase">
-                        [{conv.role}]
-                      </span>
-                      <p className="text-[11px] text-slate-400 truncate">
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className={`text-[9px] font-black tracking-wider uppercase px-1.5 py-0.5 rounded-md ${getRoleBadgeClasses(conv.role)}`}>
+                          {conv.role}
+                        </span>
+                        {conv.hasNoMessages && (
+                          <span className="text-[9px] font-black text-orange-400 bg-orange-500/15 border border-orange-500/25 px-1.5 py-0.5 rounded-md">
+                            Start Chat
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-[11px] truncate mt-0.5 ${
+                        isUnread
+                          ? (isDark ? 'text-slate-200 font-bold' : 'text-slate-900 font-bold')
+                          : (isDark ? 'text-slate-400' : 'text-slate-600')
+                      }`}>
                         {conv.lastMessage || 'Channel active'}
                       </p>
                     </div>
@@ -2606,7 +2820,7 @@ const handleGroupAvatarChange = async (e) => {
 
                   {/* Unread Badge */}
                   {conv.unreadCount > 0 && (
-                    <span className="w-5 h-5 rounded-full bg-orange-600 text-white font-bold text-[10px] flex items-center justify-center shadow-[0_0_8px_rgba(234,88,12,0.6)] shrink-0">
+                    <span className="w-5 h-5 rounded-full bg-orange-600 text-white font-black text-[10px] flex items-center justify-center shadow-[0_0_8px_rgba(234,88,12,0.6)] shrink-0 animate-pulse">
                       {conv.unreadCount}
                     </span>
                   )}
@@ -2619,21 +2833,23 @@ const handleGroupAvatarChange = async (e) => {
         {/* ════════════════════════════════════════════════════════════════════
             RIGHT MAIN CANVAS: Active Message Thread & Header
            ════════════════════════════════════════════════════════════════════ */}
-        <div className="flex-1 h-full flex flex-col bg-[#07070e] relative min-w-0">
+        <div className={`flex-1 h-full flex flex-col relative min-w-[320px] overflow-hidden ${isDark ? 'bg-[#07070e] text-white' : 'bg-slate-50 text-slate-900'}`}>
           
           {/* Header Bar */}
-          <div className="h-16 px-4 border-b border-white/10 bg-[#0d0e1b]/90 backdrop-blur-xl flex items-center justify-between shrink-0 overflow-hidden min-w-0">
+          <div className={`h-16 px-4 border-b backdrop-blur-xl flex items-center justify-between shrink-0 overflow-hidden min-w-0 ${
+            isDark ? 'border-white/10 bg-[#0d0e1b]/90 text-white' : 'border-slate-200 bg-white/95 text-slate-900 shadow-sm'
+          }`}>
             <div className="flex items-center gap-3 min-w-0 overflow-hidden">
               <div className={`w-10 h-10 rounded-2xl bg-gradient-to-br ${activeConv.avatarBg || 'from-slate-800 to-slate-900'} flex items-center justify-center text-white font-bold text-sm shadow-md overflow-hidden shrink-0`}>
                 {renderAvatarIcon(activeConv) || activeConv.avatar}
               </div>
               <div className="flex flex-col min-w-0 overflow-hidden justify-center leading-tight">
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <h3 className="text-xs sm:text-sm font-bold text-white truncate min-w-0 block">{activeConv.name}</h3>
+                  <h3 className={`text-xs sm:text-sm font-bold truncate min-w-0 block ${isDark ? 'text-white' : 'text-slate-900'}`}>{activeConv.name}</h3>
                   {/* ── PILLAR 01: Dynamic Header Online Indicator ── */}
                   <div className="shrink-0">{getHeaderStatusBadge(activeConv)}</div>
                 </div>
-                <span className="text-[10px] sm:text-[11px] text-slate-400 font-medium truncate min-w-0 block mt-0.5">
+                <span className={`text-[10px] sm:text-[11px] font-medium truncate min-w-0 block mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                   {activeConv.isOnline
                     ? (activeConv.id === 'ai_copilot' ? '✨ Always Online' : activeConv.isGroup ? `${activeConv.status}` : 'Online')
                     : activeConv.status || 'Offline'}
@@ -2723,6 +2939,59 @@ const handleGroupAvatarChange = async (e) => {
                 </button>
               </div>
             )}
+            {/* Empty State Welcome & Say Hello Banner */}
+            {activeMessages.length === 0 && activeConv.id !== 'ai_copilot' && (
+              <div className="flex-1 flex flex-col items-center justify-center p-6 text-center my-auto animate-fadeIn select-none">
+                {/* Large avatar with glowing pulse */}
+                <div className="relative mb-3.5">
+                  <div className={`w-20 h-20 rounded-3xl bg-gradient-to-br ${activeConv.avatarBg || 'from-orange-500 to-amber-600'} flex items-center justify-center text-white text-3xl font-black shadow-xl ring-4 ring-orange-500/20 overflow-hidden`}>
+                    {renderAvatarIcon(activeConv) || activeConv.avatar || (activeConv.name ? activeConv.name[0] : '👤')}
+                  </div>
+                  <span className="absolute -bottom-1.5 -right-1.5 text-2xl drop-shadow-md">👋</span>
+                </div>
+
+                <h3 className={`text-base sm:text-lg font-extrabold mb-1 tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  Say hello to {activeConv.name}!
+                </h3>
+
+                <span className={`text-[10px] font-bold uppercase tracking-wider px-3 py-0.5 rounded-full mb-3 ${
+                  activeConv.role === 'DRIVER' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                  activeConv.isGroup ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
+                  'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                }`}>
+                  {activeConv.role || 'Customer'}
+                </span>
+
+                <p className={`text-xs max-w-sm leading-relaxed mb-6 font-medium ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                  You haven't exchanged messages with <strong className={isDark ? 'text-slate-200' : 'text-slate-800'}>{activeConv.name}</strong> yet. Send a message below to start the conversation!
+                </p>
+
+                {/* Quick starter conversation pills */}
+                <div className="flex flex-wrap items-center justify-center gap-2 max-w-md">
+                  {[
+                    { label: '👋 Kamusta! Paano kami makakatulong?', text: 'Hello! Kumusta po? Paano po namin kayo matutulungan sa inyong rental booking?' },
+                    { label: '🚗 Vehicle Booking Follow-up', text: 'Hi! Gusto ko lang po mag-follow up regarding your vehicle booking reservation with Drive&Go.' },
+                    { label: '📋 Document Requirement Update', text: 'Good day! May update lang po kami regarding your driver verification documents.' }
+                  ].map((starter, sIdx) => (
+                    <button
+                      key={sIdx}
+                      onClick={() => {
+                        setInputText(starter.text);
+                        if (inputRef.current) inputRef.current.focus();
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer shadow-sm hover:scale-[1.02] active:scale-[0.98] ${
+                        isDark
+                          ? 'bg-white/5 hover:bg-orange-500/20 border-white/10 hover:border-orange-500/40 text-slate-200 hover:text-orange-300'
+                          : 'bg-white hover:bg-orange-50 border-slate-200 hover:border-orange-300 text-slate-700 hover:text-orange-700'
+                      }`}
+                    >
+                      {starter.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Render Messages with Messenger Consecutive Grouping & Timestamps */}
             {(() => {
               // Find index of the last outgoing message marked seen
@@ -3229,6 +3498,7 @@ const handleGroupAvatarChange = async (e) => {
           <InfoPanel
             conv={activeConv}
             onClose={() => setShowInfoPanel(false)}
+            viewMode={viewMode}
             apiBase={apiBase}
             activeMessages={activeMessages}
             openAccordions={openAccordions}
@@ -3280,53 +3550,324 @@ const handleGroupAvatarChange = async (e) => {
           );
         })()}
 
+        {/* ── FORWARD MESSAGE MODAL ────────────────────────────────────── */}
         {systemModal?.type === 'forward' && systemModal.message && (
           <Portal>
-            <div className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setSystemModal(null)}>
-              <div className="w-full max-w-md rounded-2xl bg-[#242526] border border-white/10 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
-                  <h3 className="text-lg font-bold text-white">Forward</h3>
-                  <button onClick={() => setSystemModal(null)} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 text-white flex items-center justify-center text-sm font-bold cursor-pointer">×</button>
+            <div className="fixed inset-0 z-[99999] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setSystemModal(null)}>
+              <div className={`w-full max-w-md rounded-3xl border shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-modal ${
+                isDark ? 'bg-[#181924] border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'
+              }`} onClick={(e) => e.stopPropagation()}>
+                
+                {/* Header */}
+                <div className={`px-5 py-4 border-b flex items-center justify-between shrink-0 ${
+                  isDark ? 'border-white/10 bg-white/[0.02]' : 'border-slate-200 bg-slate-50'
+                }`}>
+                  <div>
+                    <h3 className="text-base font-extrabold tracking-tight">Forward Message</h3>
+                    <p className={`text-[11px] font-medium mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Select any group, customer, or driver to forward
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => setSystemModal(null)} 
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all cursor-pointer ${
+                      isDark ? 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    ✕
+                  </button>
                 </div>
-                <div className="p-4">
-                  <input value={forwardQuery} onChange={(e) => setForwardQuery(e.target.value)} autoFocus placeholder="Search Messenger" className="w-full bg-[#3a3b3c] border border-white/10 rounded-full px-4 py-2.5 text-sm text-white outline-none" />
+
+                {/* Search Bar */}
+                <div className="p-3.5 pb-2 shrink-0">
+                  <div className={`relative flex items-center px-3 py-2 rounded-xl border ${
+                    isDark ? 'bg-slate-900/60 border-white/10 text-white' : 'bg-slate-100/80 border-slate-200 text-slate-900'
+                  }`}>
+                    <svg className="w-4 h-4 text-slate-400 mr-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input 
+                      value={forwardQuery} 
+                      onChange={(e) => setForwardQuery(e.target.value)} 
+                      autoFocus 
+                      placeholder="Search customers, drivers, groups..." 
+                      className="w-full bg-transparent text-xs outline-none placeholder:text-slate-500 font-medium" 
+                    />
+                    {forwardQuery && (
+                      <button onClick={() => setForwardQuery('')} className="text-slate-400 hover:text-white text-xs px-1 font-bold">✕</button>
+                    )}
+                  </div>
                 </div>
-                <div className="px-2 pb-3 max-h-80 overflow-y-auto">
+
+                {/* Combined Contacts List */}
+                <div className="px-3 pb-3 flex-1 overflow-y-auto chat-overlay-scrollbar flex flex-col gap-1">
                   {(() => {
                     const q = forwardQuery.trim().toLowerCase();
-                    const list = conversations.filter(c => {
-                      if (c.id === 'ai_copilot') return false;
+                    const seenIds = new Set();
+                    const combined = [];
+
+                    conversations.forEach(c => {
+                      if (c.id === 'ai_copilot') return;
+                      const idStr = String(c.id);
+                      seenIds.add(idStr);
+                      combined.push(c);
+                    });
+
+                    allContacts.forEach(c => {
+                      const idStr = String(c.id);
+                      if (!seenIds.has(idStr)) {
+                        seenIds.add(idStr);
+                        combined.push(c);
+                      }
+                    });
+
+                    const list = combined.filter(c => {
                       if (!q) return true;
                       return (
                         (c.name && c.name.toLowerCase().includes(q)) ||
                         (c.role && c.role.toLowerCase().includes(q)) ||
-                        (c.lastMessage && c.lastMessage.toLowerCase().includes(q)) ||
-                        (c.id && String(c.id).toLowerCase().includes(q)) ||
                         (c.email && c.email.toLowerCase().includes(q)) ||
                         (c.phone && c.phone.toLowerCase().includes(q))
                       );
                     });
+
                     if (list.length === 0) {
                       return (
-                        <div className="py-8 text-center text-xs text-slate-400 font-medium">
-                          No contacts found matching "{forwardQuery}"
+                        <div className="py-12 text-center text-xs text-slate-400 font-medium">
+                          No matching contacts or groups found for "{forwardQuery}"
                         </div>
                       );
                     }
-                    return list.map(conv => (
-                      <div key={conv.id} className="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/5">
-                        <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${conv.avatarBg || 'from-slate-700 to-slate-900'} flex items-center justify-center text-white font-bold overflow-hidden shrink-0`}>
-                          {renderAvatarIcon(conv) || conv.avatar}
+
+                    return list.map(conv => {
+                      const isDriver = (conv.role || '').toUpperCase() === 'DRIVER';
+                      const isGroup = conv.isGroup;
+                      return (
+                        <div 
+                          key={conv.id} 
+                          className={`flex items-center gap-3 rounded-2xl p-2.5 transition-all border ${
+                            isDark 
+                              ? 'border-white/5 hover:border-white/15 hover:bg-white/[0.04]' 
+                              : 'border-slate-100 hover:border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className={`w-10 h-10 rounded-2xl bg-gradient-to-br ${conv.avatarBg || 'from-slate-700 to-slate-900'} flex items-center justify-center text-white font-black overflow-hidden shrink-0 shadow-sm ring-1 ring-white/10`}>
+                            {renderAvatarIcon(conv) || conv.avatar || (conv.name ? conv.name[0] : '👤')}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className={`text-xs font-black truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                {conv.name}
+                              </p>
+                              <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${getRoleBadgeClasses(conv.role)}`}>
+                                {conv.role || 'Contact'}
+                              </span>
+                            </div>
+                            <p className={`text-[11px] font-medium truncate mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                              {conv.phone || conv.email || (conv.isGroup ? 'Group Channel' : 'Active Account')}
+                            </p>
+                          </div>
+
+                          <button 
+                            onClick={() => handleForwardMessage(systemModal.message, conv.id)} 
+                            className="px-4 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-500 active:scale-95 text-white text-xs font-bold transition-all shadow-md cursor-pointer shrink-0"
+                          >
+                            Send
+                          </button>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-white truncate">{conv.name}</p>
-                          <p className="text-xs text-slate-400 truncate">{conv.role || 'Contact'}</p>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            </div>
+          </Portal>
+        )}
+
+        {/* ── NEW MESSAGE / CONTACT PICKER MODAL ─────────────────────────── */}
+        {showNewChatModal && (
+          <Portal>
+            <div className="fixed inset-0 z-[99999] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowNewChatModal(false)}>
+              <div className={`w-full max-w-lg rounded-3xl border shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-modal ${
+                isDark ? 'bg-[#181924] border-white/10 text-white' : 'bg-white border-slate-200 text-slate-900'
+              }`} onClick={(e) => e.stopPropagation()}>
+                
+                {/* Modal Header */}
+                <div className={`px-5 py-4 border-b flex items-center justify-between shrink-0 ${
+                  isDark ? 'border-white/10 bg-white/[0.02]' : 'border-slate-200 bg-slate-50'
+                }`}>
+                  <div>
+                    <h3 className="text-base font-extrabold tracking-tight">New Conversation</h3>
+                    <p className={`text-[11px] font-medium mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Select any registered Admin, Driver, Customer, Staff, or AI Copilot
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => setShowNewChatModal(false)} 
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all cursor-pointer ${
+                      isDark ? 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Search Bar & Filter Tabs */}
+                <div className="p-4 pb-2 shrink-0 flex flex-col gap-2.5">
+                  <div className={`relative flex items-center px-3.5 py-2 rounded-xl border ${
+                    isDark ? 'bg-slate-900/60 border-white/10 text-white' : 'bg-slate-100/80 border-slate-200 text-slate-900'
+                  }`}>
+                    <svg className="w-4 h-4 text-slate-400 mr-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input 
+                      value={newChatSearch} 
+                      onChange={(e) => setNewChatSearch(e.target.value)} 
+                      autoFocus 
+                      placeholder="Search by name, role, phone, or email..." 
+                      className="w-full bg-transparent text-xs outline-none placeholder:text-slate-500 font-medium" 
+                    />
+                    {newChatSearch && (
+                      <button onClick={() => setNewChatSearch('')} className="text-slate-400 hover:text-white text-xs px-1 font-bold">✕</button>
+                    )}
+                  </div>
+
+                  {/* Tabs: All, Admins, Drivers, Customers, Staff/Maintenance, AI */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs font-bold">
+                    {[
+                      { id: 'all', label: 'All Contacts' },
+                      { id: 'admin', label: 'Admins' },
+                      { id: 'driver', label: 'Drivers' },
+                      { id: 'customer', label: 'Customers' },
+                      { id: 'staff', label: 'Staff & Maintenance' },
+                      { id: 'ai', label: '✨ AI Copilot' }
+                    ].map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => setNewChatTab(t.id)}
+                        className={`px-3 py-1.5 rounded-xl whitespace-nowrap transition-all cursor-pointer text-[11px] ${
+                          newChatTab === t.id
+                            ? 'bg-orange-600 text-white shadow-md'
+                            : (isDark ? 'bg-white/5 text-slate-400 hover:text-white' : 'bg-slate-100 text-slate-600 hover:text-slate-900')
+                        }`}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Contacts List */}
+                <div className="px-4 pb-4 flex-1 overflow-y-auto chat-overlay-scrollbar flex flex-col gap-1.5">
+                  {(() => {
+                    const q = newChatSearch.trim().toLowerCase();
+                    const seen = new Set();
+                    const combined = [];
+
+                    if (newChatTab === 'all' || newChatTab === 'ai') {
+                      combined.push({
+                        id: 'ai_copilot',
+                        name: 'Drive&Go Copilot',
+                        role: 'AI COPILOT',
+                        isAi: true,
+                        avatar: '⚡',
+                        avatarBg: 'from-amber-500 to-orange-600',
+                        email: 'ai-copilot@driveandgo.internal',
+                        phone: 'Autonomous Fleet AI'
+                      });
+                    }
+
+                    allContacts.forEach(c => {
+                      const idStr = String(c.id);
+                      if (!seen.has(idStr)) {
+                        seen.add(idStr);
+                        combined.push(c);
+                      }
+                    });
+
+                    conversations.forEach(c => {
+                      if (c.id === 'ai_copilot') return;
+                      const idStr = String(c.id);
+                      if (!seen.has(idStr)) {
+                        seen.add(idStr);
+                        combined.push(c);
+                      }
+                    });
+
+                    const list = combined.filter(c => {
+                      const r = (c.role || '').toUpperCase();
+                      if (newChatTab === 'admin' && !r.includes('ADMIN')) return false;
+                      if (newChatTab === 'driver' && !r.includes('DRIVER')) return false;
+                      if (newChatTab === 'customer' && !r.includes('CUSTOMER')) return false;
+                      if (newChatTab === 'staff' && !(r.includes('MAINTENANCE') || r.includes('MECHANIC') || r.includes('STAFF') || r.includes('DISPATCH') || r.includes('ACCOUNT') || r.includes('MANAGER'))) return false;
+                      if (newChatTab === 'ai' && !c.isAi) return false;
+                      if (!q) return true;
+                      return (
+                        (c.name && c.name.toLowerCase().includes(q)) ||
+                        (c.role && c.role.toLowerCase().includes(q)) ||
+                        (c.email && c.email.toLowerCase().includes(q)) ||
+                        (c.phone && c.phone.toLowerCase().includes(q))
+                      );
+                    });
+
+                    if (list.length === 0) {
+                      return (
+                        <div className="py-12 text-center text-xs text-slate-400 font-medium">
+                          No contacts found matching your search.
                         </div>
-                        <button onClick={() => handleForwardMessage(systemModal.message, conv.id)} className="px-4 py-1.5 rounded-full bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold transition-all cursor-pointer">
-                          Send
-                        </button>
-                      </div>
-                    ));
+                      );
+                    }
+
+                    return list.map(c => {
+                      const isAi = c.isAi || c.id === 'ai_copilot';
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={() => {
+                            setActiveConvId(c.id);
+                            setShowInfoPanel(false);
+                            setShowNewChatModal(false);
+                            setConversations(prev => {
+                              if (!prev.some(x => String(x.id) === String(c.id))) {
+                                return [...prev, c];
+                              }
+                              return prev;
+                            });
+                            if (!isAi) fetchThreadMessages(c.id);
+                          }}
+                          className={`flex items-center gap-3.5 rounded-2xl p-2.5 transition-all border cursor-pointer ${
+                            isDark 
+                              ? 'border-white/5 hover:border-orange-500/40 hover:bg-white/[0.04]' 
+                              : 'border-slate-100 hover:border-orange-300 hover:bg-orange-50/50'
+                          }`}
+                        >
+                          <div className={`w-11 h-11 rounded-2xl bg-gradient-to-br ${c.avatarBg || 'from-slate-700 to-slate-900'} flex items-center justify-center text-white font-black overflow-hidden shrink-0 shadow-sm ring-1 ring-white/10`}>
+                            {renderAvatarIcon(c) || c.avatar || (c.name ? c.name[0] : '👤')}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className={`text-xs font-black truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                {c.name}
+                              </p>
+                              <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${getRoleBadgeClasses(c.role)}`}>
+                                {c.role || 'Contact'}
+                              </span>
+                            </div>
+                            <p className={`text-[11px] font-medium truncate mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                              {c.phone || c.email || 'Registered Drive&Go User'}
+                            </p>
+                          </div>
+
+                          <button
+                            className="px-3.5 py-1.5 rounded-xl bg-orange-600/20 hover:bg-orange-600 text-orange-400 hover:text-white text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
+                          >
+                            Chat &rarr;
+                          </button>
+                        </div>
+                      );
+                    });
                   })()}
                 </div>
               </div>

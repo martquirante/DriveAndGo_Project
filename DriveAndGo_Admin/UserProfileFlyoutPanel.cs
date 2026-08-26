@@ -1351,7 +1351,11 @@ namespace DriveAndGo_Admin
                 _animTimer?.Dispose();
                 _slideTimer?.Dispose();
                 _uploadTimer?.Dispose();
-                _customAvatarImage?.Dispose();
+                if (_customAvatarImage != null && !ReferenceEquals(_customAvatarImage, SessionManager.CustomAvatar))
+                {
+                    try { _customAvatarImage.Dispose(); } catch { }
+                }
+                _customAvatarImage = null;
             }
             base.Dispose(disposing);
         }

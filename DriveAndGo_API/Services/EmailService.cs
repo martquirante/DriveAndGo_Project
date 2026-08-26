@@ -17,7 +17,9 @@ namespace DriveAndGo_API.Services
             string? personalMessage,
             RentalAgreementEmailData data,
             byte[]? pdfAttachment = null);
+        Task<bool> SendVehicleReturnConfirmationAsync(VehicleReturnEmailData data, byte[]? pdfAttachment = null);
     }
+
 
     public class EmailService : IEmailService
     {
@@ -459,6 +461,117 @@ namespace DriveAndGo_API.Services
                 ? $"<div style='margin-top:12px; padding:10px 14px; background:rgba(255,107,0,0.08); border-left:3px solid #FF6B00; border-radius:6px; font-size:13px; color:#334155;'><strong>Note from Drive&Go:</strong><br/>{System.Web.HttpUtility.HtmlEncode(personalMessage)}</div>"
                 : "";
 
+            // 1. Reschedule Proposal & 3 Decision Buttons Block
+            string rescheduleNoticeBlock = "";
+            if (data.IsRescheduled)
+            {
+                var originalRange = !string.IsNullOrWhiteSpace(data.OriginalPickupDate)
+                    ? $" (Originally scheduled: {data.OriginalPickupDate})"
+                    : "";
+
+                rescheduleNoticeBlock = $@"
+<div style=""margin: 18px 0 20px 0; padding: 18px 20px; background-color: #FFF7ED; border: 1px solid #FDBA74; border-radius: 12px;"">
+  <table border=""0"" cellpadding=""0"" cellspacing=""0"" width=""100%"">
+    <tr>
+      <td width=""28"" valign=""top"" style=""padding-right: 12px;"">
+        <svg width=""24"" height=""24"" viewBox=""0 0 24 24"" fill=""none"" stroke=""#EA580C"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""><circle cx=""12"" cy=""12"" r=""10""></circle><polyline points=""12 6 12 12 16 14""></polyline></svg>
+      </td>
+      <td valign=""top"">
+        <div style=""font-size: 11px; font-weight: 800; color: #EA580C; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 2px;"">Updated Schedule Proposal{originalRange}</div>
+        <div style=""font-size: 13.5px; font-weight: 700; color: #0F172A; margin: 4px 0 6px 0;"">Proposed: {data.PickupDate} &rarr; {data.DropoffDate} ({data.DurationDays} Days)</div>
+        <div style=""font-size: 12px; color: #475569; line-height: 1.45;"">We have refreshed your trip schedule. Please select your preference below to confirm, customize your dates, or decline with full reimbursement:</div>
+      </td>
+    </tr>
+  </table>
+  
+  <!-- 3 Decision Buttons -->
+  <table border=""0"" cellpadding=""0"" cellspacing=""0"" width=""100%"" style=""margin-top: 14px;"">
+    <tr>
+      <td align=""center"" style=""padding-bottom: 8px;"">
+        <a href=""{data.AcceptScheduleUrl}"" target=""_blank"" style=""display: block; width: 100%; box-sizing: border-box; padding: 11px 16px; background-color: #059669; color: #FFFFFF !important; text-decoration: none; font-size: 12.5px; font-weight: 800; border-radius: 8px; text-align: center; letter-spacing: 0.02em;"">Confirm &amp; Accept Proposed Schedule</a>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <table border=""0"" cellpadding=""0"" cellspacing=""0"" width=""100%"">
+          <tr>
+            <td width=""48%"" align=""center"">
+              <a href=""{data.RequestRescheduleUrl}"" target=""_blank"" style=""display: block; width: 100%; box-sizing: border-box; padding: 9px 12px; background-color: #F1F5F9; border: 1px solid #CBD5E1; color: #0F172A !important; text-decoration: none; font-size: 11.5px; font-weight: 700; border-radius: 8px; text-align: center;"">Pick Custom Dates</a>
+            </td>
+            <td width=""4%"">&nbsp;</td>
+            <td width=""48%"" align=""center"">
+              <a href=""{data.DeclineBookingUrl}"" target=""_blank"" style=""display: block; width: 100%; box-sizing: border-box; padding: 9px 12px; background-color: #FEF2F2; border: 1px solid #FCA5A5; color: #DC2626 !important; text-decoration: none; font-size: 11.5px; font-weight: 700; border-radius: 8px; text-align: center;"">Decline &amp; 100% Refund</a>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</div>";
+            }
+
+            // 2. Complimentary Perks & Promo Gift Block
+            var perkItems = new List<string>();
+            if (data.PerkFuelWaiver)
+            {
+                perkItems.Add(@"
+<tr>
+  <td width=""22"" valign=""middle"" style=""padding: 6px 0;"">
+    <svg width=""16"" height=""16"" viewBox=""0 0 24 24"" fill=""none"" stroke=""#FF6B00"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""><path d=""M3 22h12""></path><path d=""M4 9h10""></path><path d=""M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18""></path><path d=""M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2a2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L18 5""></path></svg>
+  </td>
+  <td style=""padding: 6px 0 6px 8px; font-size: 12px; color: #1E293B;"">
+    <strong>Complimentary Full Tank Fuel Waiver</strong> &mdash; Return vehicle without refueling surcharge.
+  </td>
+</tr>");
+            }
+            if (data.PerkTollCredits)
+            {
+                perkItems.Add(@"
+<tr>
+  <td width=""22"" valign=""middle"" style=""padding: 6px 0;"">
+    <svg width=""16"" height=""16"" viewBox=""0 0 24 24"" fill=""none"" stroke=""#FF6B00"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""><rect x=""1"" y=""4"" width=""22"" height=""16"" rx=""2"" ry=""2""></rect><line x1=""1"" y1=""10"" x2=""23"" y2=""10""></line></svg>
+  </td>
+  <td style=""padding: 6px 0 6px 8px; font-size: 12px; color: #1E293B;"">
+    <strong>Complimentary RFID Expressway Pass</strong> &mdash; Autosweep &amp; Easytrip toll credits included.
+  </td>
+</tr>");
+            }
+            if (data.PerkWashWaiver)
+            {
+                perkItems.Add(@"
+<tr>
+  <td width=""22"" valign=""middle"" style=""padding: 6px 0;"">
+    <svg width=""16"" height=""16"" viewBox=""0 0 24 24"" fill=""none"" stroke=""#FF6B00"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""><path d=""M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6""></path></svg>
+  </td>
+  <td style=""padding: 6px 0 6px 8px; font-size: 12px; color: #1E293B;"">
+    <strong>Complimentary Post-Trip Car Wash</strong> &mdash; Return the car as-is with zero cleaning fees.
+  </td>
+</tr>");
+            }
+
+            string promoItemHtml = "";
+            if (data.IncludePromoGift && !string.IsNullOrWhiteSpace(data.PromoCode))
+            {
+                promoItemHtml = $@"
+<div style=""margin-top: 10px; padding: 12px 14px; background-color: #FFFFFF; border: 1px dashed #FF6B00; border-radius: 8px; text-align: center;"">
+  <div style=""font-size: 10px; font-weight: 800; color: #EA580C; letter-spacing: 0.05em; text-transform: uppercase;"">Goodwill Future Booking Voucher</div>
+  <div style=""font-family: 'Courier New', Courier, monospace; font-size: 18px; font-weight: 800; color: #FF6B00; letter-spacing: 2px; margin: 4px 0;"">{data.PromoCode}</div>
+  <div style=""font-size: 11px; color: #64748B;"">{System.Web.HttpUtility.HtmlEncode(data.PromoDescription ?? "Use this voucher on your next rental adventure!")}</div>
+</div>";
+            }
+
+            string perksBlock = "";
+            if (perkItems.Count > 0 || !string.IsNullOrWhiteSpace(promoItemHtml))
+            {
+                var tableRows = string.Join("", perkItems);
+                perksBlock = $@"
+<div style=""margin: 16px 0 20px 0; padding: 16px 18px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px;"">
+  <div style=""font-size: 11px; font-weight: 800; color: #FF6B00; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 8px;"">Complimentary Courtesy Perks Included</div>
+  {(perkItems.Count > 0 ? $"<table border=\"0\" cellpadding=\"0\" cellspacing=\"0\" width=\"100%\">{tableRows}</table>" : "")}
+  {promoItemHtml}
+</div>";
+            }
+
             string logoSrc = "https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png";
             string serverBase = NetworkHelper.GetServerBaseUrl(_configuration);
             var verificationUrl = $"{serverBase}/api/Rentals/verify/{data.AgreementCode}";
@@ -481,12 +594,146 @@ namespace DriveAndGo_API.Services
                 .Replace("{{VatAmount}}", data.VatAmount.ToString("N2"))
                 .Replace("{{TotalAmount}}", data.TotalAmount.ToString("N2"))
                 .Replace("{{PersonalMessageBlock}}", personalMessageHtml)
+                .Replace("{{RescheduleNoticeBlock}}", rescheduleNoticeBlock)
+                .Replace("{{PerksBlock}}", perksBlock)
                 .Replace("{{VerificationUrlEncoded}}", verificationUrlEncoded)
                 .Replace("{{PdfDownloadUrl}}", pdfDownloadUrl)
                 .Replace("{{AppDeepLink}}", appDeepLink)
                 .Replace("{{CompanyPhone}}", data.CompanyPhone)
                 .Replace("{{CompanyEmail}}", data.CompanyEmail)
                 .Replace("{{CompanyAddress}}", data.CompanyAddress);
+
+        }
+
+        private static string ExtractFirstValidImageUrl(string? raw, string fallbackUrl)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return fallbackUrl;
+            string cleaned = raw.Trim();
+            try
+            {
+                if (cleaned.StartsWith("["))
+                {
+                    using var doc = JsonDocument.Parse(cleaned);
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var elem in doc.RootElement.EnumerateArray())
+                        {
+                            string? val = elem.GetString();
+                            if (!string.IsNullOrWhiteSpace(val))
+                            {
+                                val = val.Trim();
+                                if (val.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || val.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    return val;
+                                }
+                            }
+                        }
+                    }
+                }
+                else if (cleaned.StartsWith("\"") && cleaned.EndsWith("\""))
+                {
+                    cleaned = cleaned.Trim('\"');
+                }
+            }
+            catch { }
+
+            if (cleaned.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || cleaned.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                return cleaned;
+            }
+
+            return fallbackUrl;
+        }
+
+        public async Task<bool> SendVehicleReturnConfirmationAsync(VehicleReturnEmailData data, byte[]? pdfAttachment = null)
+        {
+            string logoSrc = "https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png";
+            string defaultVehicleImg = "https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png";
+
+            // ── Build optional promo gift block ──
+            string promoGiftBlock = "";
+            if (data.IncludePromoGift && !string.IsNullOrWhiteSpace(data.PromoCode))
+            {
+                promoGiftBlock = $@"
+<div class='promo-section'>
+  <div class='promo-gift-tag'>SPECIAL LOYALTY GIFT</div>
+  <div class='promo-inner'>
+    <p class='promo-exclusive'>EXCLUSIVE THANK YOU VOUCHER</p>
+    <p class='promo-code-text'>{data.PromoCode}</p>
+    <p class='promo-desc'>{System.Web.HttpUtility.HtmlEncode(data.PromoDescription ?? "Enjoy a special discount on your next rental adventure!")}</p>
+    <p class='promo-expiry'>Valid until {System.Web.HttpUtility.HtmlEncode(data.PromoExpiry ?? "")}</p>
+  </div>
+</div>";
+            }
+
+            // ── Compute odometer diff ──
+            string odometerDiff = (data.ReturnOdometer.HasValue && data.StartOdometer.HasValue)
+                ? $"+{(data.ReturnOdometer.Value - data.StartOdometer.Value):N0}"
+                : "+0";
+
+            string inspectionSubtext = data.HasDamage ? "INSPECTED (See PDF for details)" : "NO DAMAGES RECORDED";
+            string vehicleImageUrl   = ExtractFirstValidImageUrl(data.VehicleImageUrl, defaultVehicleImg);
+            string pdfFilename       = $"Vehicle_Return_{data.AgreementCode}.pdf";
+
+            // ── Load and fill template ──
+            string? templatePath = null;
+            string[] candidatePaths =
+            {
+                System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "EmailTemplates", "VehicleReturnConfirmation.html"),
+                System.IO.Path.Combine(Directory.GetCurrentDirectory(),          "EmailTemplates", "VehicleReturnConfirmation.html")
+            };
+            foreach (var p in candidatePaths) { if (File.Exists(p)) { templatePath = p; break; } }
+
+            string htmlBody;
+            if (templatePath != null)
+            {
+                htmlBody = await File.ReadAllTextAsync(templatePath);
+            }
+            else
+            {
+                htmlBody = $"<html><body><h2>Vehicle Return Confirmed – {data.AgreementCode}</h2><p>Thank you for driving with Drive&amp;Go!</p></body></html>";
+            }
+
+            htmlBody = htmlBody
+                .Replace("{{LogoSrc}}",           logoSrc)
+                .Replace("{{AgreementCode}}",     data.AgreementCode)
+                .Replace("{{ReturnTimestamp}}",   data.ReturnDate)
+                .Replace("{{VehicleImageUrl}}",   vehicleImageUrl)
+                .Replace("{{VehicleName}}",       data.VehicleName)
+                .Replace("{{PlateNo}}",           data.PlateNo)
+                .Replace("{{CustomerName}}",      data.CustomerName)
+                .Replace("{{ReturnOdometer}}",    data.ReturnOdometer?.ToString("N0") ?? "N/A")
+                .Replace("{{OdometerDiff}}",      odometerDiff)
+                .Replace("{{ReturnFuel}}",        data.ReturnFuel)
+                .Replace("{{InspectionStatus}}",  data.InspectionStatus)
+                .Replace("{{InspectionSubtext}}", inspectionSubtext)
+                .Replace("{{BaseAmount}}",        data.BaseAmount.ToString("N2"))
+                .Replace("{{PenaltyFee}}",        data.PenaltyFee.ToString("N2"))
+                .Replace("{{DamageFee}}",         data.DamageFee.ToString("N2"))
+                .Replace("{{TotalSettled}}",      data.TotalSettled.ToString("N2"))
+                .Replace("{{PromoGiftBlock}}",    promoGiftBlock)
+                .Replace("{{PdfFilename}}",       pdfFilename)
+                .Replace("{{PdfSizeKb}}",         pdfAttachment != null ? (pdfAttachment.Length / 1024).ToString() : "~195")
+                .Replace("{{PdfDownloadUrl}}",    data.PdfDownloadUrl)
+                .Replace("{{CompanyPhone}}",      data.CompanyPhone)
+                .Replace("{{CompanyEmail}}",      data.CompanyEmail)
+                .Replace("{{CompanyAddress}}",    data.CompanyAddress);
+
+            string subject = $"Vehicle Return Confirmed - {data.AgreementCode} | Drive&Go";
+
+            // Try SMTP first
+            try
+            {
+                if (await TrySendViaSmtpAsync(data.CustomerEmail, null, subject, htmlBody, pdfAttachment, pdfFilename))
+                    return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[RETURN EMAIL SMTP ERROR] {ex.Message}");
+            }
+
+            return await SendEmailAsync(data.CustomerEmail, subject, htmlBody);
         }
     }
 }
+

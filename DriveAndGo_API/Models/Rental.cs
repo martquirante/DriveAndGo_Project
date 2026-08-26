@@ -26,9 +26,12 @@ namespace DriveAndGo_API.Models
         public string? VehicleName { get; set; }
         public string? VehiclePlateNo { get; set; }
         public decimal? VehicleRate { get; set; }
+        public decimal? VehicleOdometer { get; set; }
+        public int? VehicleFuelLevelPct { get; set; }
         public string? DriverName { get; set; }
         public string? DriverPhone { get; set; }
         public string? DriverAvatar { get; set; }
         public string? DriverSignatureBase64 { get; set; }
     }
 }
+

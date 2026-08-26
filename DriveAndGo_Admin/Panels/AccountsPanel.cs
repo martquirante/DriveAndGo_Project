@@ -22,7 +22,7 @@ namespace DriveAndGo_Admin.Panels
             this.Dock      = DockStyle.Fill;
             this.BackColor = Color.Transparent;
             BuildLoading();
-            this.HandleCreated += async (s, e) => await InitWebView();
+            _ = InitWebView();
             ThemeManager.ThemeChanged += ThemeChanged_Handler;
             this.Disposed += (s, e) => ThemeManager.ThemeChanged -= ThemeChanged_Handler;
         }
@@ -40,7 +40,7 @@ namespace DriveAndGo_Admin.Panels
             _loadingPanel = new Panel { Dock = DockStyle.Fill, BackColor = ThemeManager.CurrentBackground };
             _loadingLabel = new Label
             {
-                Text = "Loading Accounts Dashboard\u2026",
+                Text = "Loading Accounts Dashboard…",
                 Font = new Font("Segoe UI", 14F, FontStyle.Bold),
                 ForeColor = Color.FromArgb(234, 88, 12),
                 AutoSize = true,
@@ -49,14 +49,15 @@ namespace DriveAndGo_Admin.Panels
             _loadingPanel.Controls.Add(_loadingLabel);
             _loadingPanel.Resize += (s, e) =>
                 _loadingLabel.Location = new Point(
-                    (_loadingPanel.Width - _loadingLabel.Width) / 2,
-                    (_loadingPanel.Height - _loadingLabel.Height) / 2);
+                    Math.Max(10, (_loadingPanel.Width - _loadingLabel.Width) / 2),
+                    Math.Max(10, (_loadingPanel.Height - _loadingLabel.Height) / 2));
             this.Controls.Add(_loadingPanel);
         }
 
         private async Task InitWebView()
         {
-            _webView = new WebView2 { Dock = DockStyle.Fill };
+            if (_webView != null) return;
+            _webView = new WebView2 { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.Transparent };
             this.Controls.Add(_webView);
             _webView.BringToFront();
             

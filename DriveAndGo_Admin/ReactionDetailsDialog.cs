@@ -22,16 +22,16 @@ namespace DriveAndGo_Admin
         public bool RemoveMyReaction { get; private set; } = false;
 
         // ── Colors ────────────────────────────────────────────────────────────
-        private static readonly Color BgColor        = Color.FromArgb(36, 37, 38);
-        private static readonly Color BorderColor    = Color.FromArgb(60, 255, 255, 255);
-        private static readonly Color TextMain       = Color.FromArgb(228, 230, 235);
-        private static readonly Color TextSub        = Color.FromArgb(176, 179, 184);
-        private static readonly Color OrangePrimary  = Color.FromArgb(234, 88, 12);
-        private static readonly Color TabBg          = Color.FromArgb(50, 234, 88, 12);
-        private static readonly Color RowHoverBg     = Color.FromArgb(25, 255, 255, 255);
+        private static Color BgColor        => Helpers.ThemeManager.CurrentCard;
+        private static Color BorderColor    => Helpers.ThemeManager.CurrentBorder;
+        private static Color TextMain       => Helpers.ThemeManager.CurrentText;
+        private static Color TextSub        => Helpers.ThemeManager.CurrentSubText;
+        private static Color OrangePrimary  => Helpers.ThemeManager.CurrentPrimary;
+        private static Color TabBg          => Color.FromArgb(40, Helpers.ThemeManager.CurrentPrimary);
+        private static Color RowHoverBg     => Helpers.ThemeManager.IsDarkMode ? Color.FromArgb(25, 255, 255, 255) : Color.FromArgb(20, 0, 0, 0);
         // Own-row highlight: warm orange tint so it feels interactable
-        private static readonly Color OwnRowHoverBg  = Color.FromArgb(40, 234, 88, 12);
-        private static readonly Color TabBorder      = Color.FromArgb(234, 88, 12);
+        private static Color OwnRowHoverBg  => Color.FromArgb(35, Helpers.ThemeManager.CurrentPrimary);
+        private static Color TabBorder      => Helpers.ThemeManager.CurrentPrimary;
 
         // ── Data ──────────────────────────────────────────────────────────────
         private readonly Dictionary<string, string> _reactions;  // userId → emoji

@@ -84,6 +84,9 @@
 		<None Update="Resources\*.png">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
+		<None Update="Resources\notif_Effects\*.mp3">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
 	</ItemGroup>
 
 	<!-- ═══════════════════════════════════════════════════════════════════════

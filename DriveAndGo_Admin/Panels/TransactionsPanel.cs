@@ -64,7 +64,7 @@ namespace DriveAndGo_Admin.Panels
         private ComboBox cboMethod, cboStatus;
         private Label lblStats;
 
-        private Button btnExportPDF, btnReconcile;
+        private Button btnExportPDF, btnReconcile, btnConfirmPayment, btnRejectPayment;
 
         // ── State ──
         private DataTable _data = new DataTable();
@@ -187,12 +187,23 @@ namespace DriveAndGo_Admin.Panels
 
             // Action Buttons Panel
             Panel pnlActions = new Panel { Dock = DockStyle.Bottom, Height = 60, BackColor = WinColor.Transparent };
-            btnExportPDF = CreateBtn("Download PDF Receipt", ColBlue, 0, 12, 200);
+            
+            btnConfirmPayment = CreateBtn("✓ Confirm Payment", ColGreen, 10, 12, 160);
+            btnConfirmPayment.Enabled = false;
+            btnConfirmPayment.Click += OnConfirmPayment;
+
+            btnRejectPayment = CreateBtn("✕ Reject", ColRed, 180, 12, 100);
+            btnRejectPayment.Enabled = false;
+            btnRejectPayment.Click += OnRejectPayment;
+
+            btnExportPDF = CreateBtn("Download PDF", ColBlue, 0, 12, 140);
             btnExportPDF.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            btnExportPDF.Location = new Point(rightPanel.Width - 220, 12);
+            btnExportPDF.Location = new Point(rightPanel.Width - 160, 12);
             btnExportPDF.Enabled = false;
             btnExportPDF.Click += OnExportPDF;
 
+            pnlActions.Controls.Add(btnConfirmPayment);
+            pnlActions.Controls.Add(btnRejectPayment);
             pnlActions.Controls.Add(btnExportPDF);
 
             rightPanel.Controls.Add(pnlReceipt);
@@ -476,6 +487,78 @@ Please keep this receipt for your records.
 Thank you for choosing Drive & Go.
 ";
             btnExportPDF.Enabled = true;
+
+            string rawStatus = _selectedRow["status"]?.ToString()?.ToLowerInvariant() ?? "";
+            bool isPending = rawStatus == "pending" || rawStatus == "unpaid";
+            btnConfirmPayment.Enabled = isPending;
+            btnRejectPayment.Enabled = isPending;
+        }
+
+        private async void OnConfirmPayment(object s, EventArgs e)
+        {
+            if (_selectedTxId <= 0 || _selectedRow == null) return;
+
+            string txCode = $"TX-{_selectedTxId:D5}";
+            string cust = _selectedRow["customer_name"]?.ToString() ?? "Customer";
+            decimal amt = _selectedRow["amount"] != DBNull.Value ? Convert.ToDecimal(_selectedRow["amount"]) : 0;
+
+            var confirm = MessageBox.Show(
+                $"Confirm payment of ₱{amt:N2} for {cust} ({txCode})?\nThis will mark the rental record as PAID.",
+                "Confirm Payment",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (confirm != DialogResult.Yes) return;
+
+            try
+            {
+                var res = await ApiService.PatchAsync($"transactions/{_selectedTxId}/confirm", null);
+                if (res.Success)
+                {
+                    MessageBox.Show("Payment confirmed successfully! Rental status updated to PAID.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    LoadFromDB();
+                }
+                else
+                {
+                    MessageBox.Show("Failed to confirm payment: " + (res.Error ?? res.Body), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error confirming payment: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private async void OnRejectPayment(object s, EventArgs e)
+        {
+            if (_selectedTxId <= 0 || _selectedRow == null) return;
+
+            string txCode = $"TX-{_selectedTxId:D5}";
+            var confirm = MessageBox.Show(
+                $"Are you sure you want to reject transaction {txCode}?",
+                "Reject Payment",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+
+            if (confirm != DialogResult.Yes) return;
+
+            try
+            {
+                var res = await ApiService.PatchAsync($"transactions/{_selectedTxId}/reject", null);
+                if (res.Success)
+                {
+                    MessageBox.Show("Payment has been rejected.", "Rejected", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    LoadFromDB();
+                }
+                else
+                {
+                    MessageBox.Show("Failed to reject payment: " + (res.Error ?? res.Body), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error rejecting payment: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         // ══ PDF EXPORT via iText7 ══

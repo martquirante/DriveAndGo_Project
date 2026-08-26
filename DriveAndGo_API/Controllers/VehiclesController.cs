@@ -65,7 +65,13 @@ public class VehiclesController : ControllerBase
             connection.Open();
 
             using var command = new NpgsqlCommand(
-                @"SELECT v.vehicle_id, v.brand, v.model, v.plate_no, v.type, v.rate_per_day, v.status, v.photo_url, v.latitude, v.longitude, COALESCE(v.color, 'Pearl White') AS color,
+                @"SELECT v.vehicle_id, v.brand, v.model, v.plate_no, v.type, v.rate_per_day,
+                         CASE
+                             WHEN LOWER(v.status) IN ('maintenance', 'repair') THEN 'maintenance'
+                             WHEN ar.customer_name IS NOT NULL THEN 'rented'
+                             ELSE 'available'
+                         END AS status,
+                         v.photo_url, COALESCE(v.photo_urls::text, '[]') AS photo_urls, v.latitude, v.longitude, COALESCE(v.color, 'Pearl White') AS color,
                          ar.destination, ar.customer_name, ar.driver_name
                   FROM vehicles v
                   LEFT JOIN LATERAL (
@@ -75,15 +81,17 @@ public class VehiclesController : ControllerBase
                       LEFT JOIN drivers d ON r.driver_id = d.driver_id
                       LEFT JOIN users du ON d.user_id = du.user_id
                       WHERE r.vehicle_id = v.vehicle_id 
-                        AND LOWER(r.status) IN ('approved', 'active', 'in-use', 'ongoing', 'rented', 'pending', 'overdue')
+                        AND LOWER(r.status) IN ('approved', 'active', 'in-use', 'ongoing', 'rented', 'overdue')
                       ORDER BY r.start_date DESC
                       LIMIT 1
-                  ) ar ON (LOWER(v.status) IN ('rented', 'in-use', 'active', 'ongoing', 'overdue'))
+                  ) ar ON true
                   ORDER BY v.brand ASC, v.model ASC", connection);
+
 
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
+                string pUrl = reader["photo_url"]?.ToString() ?? string.Empty;
                 fleet.Add(new DriveAndGo_API.Models.VehicleFleetDto
                 {
                     VehicleId = Convert.ToInt32(reader["vehicle_id"]),
@@ -93,7 +101,8 @@ public class VehiclesController : ControllerBase
                     Type = reader["type"]?.ToString() ?? string.Empty,
                     RatePerDay = reader["rate_per_day"] == DBNull.Value ? 0 : Convert.ToDecimal(reader["rate_per_day"]),
                     Status = reader["status"]?.ToString() ?? "available",
-                    PhotoUrl = reader["photo_url"]?.ToString() ?? string.Empty,
+                    PhotoUrl = pUrl,
+                    PhotoUrls = ParsePhotoUrls(reader["photo_urls"], pUrl),
                     Latitude = reader["latitude"] == DBNull.Value ? null : Convert.ToDouble(reader["latitude"]),
                     Longitude = reader["longitude"] == DBNull.Value ? null : Convert.ToDouble(reader["longitude"]),
                     Color = reader["color"]?.ToString() ?? "Pearl White",
@@ -194,13 +203,23 @@ public class VehiclesController : ControllerBase
                 }
             }
 
+            string primaryPhoto = !string.IsNullOrWhiteSpace(vehicle.PhotoUrl) 
+                ? vehicle.PhotoUrl.Trim() 
+                : (vehicle.PhotoUrls != null && vehicle.PhotoUrls.Count > 0 ? vehicle.PhotoUrls[0].Trim() : "");
+            var allPhotos = vehicle.PhotoUrls != null ? new List<string>(vehicle.PhotoUrls) : new List<string>();
+            if (!string.IsNullOrWhiteSpace(primaryPhoto) && !allPhotos.Contains(primaryPhoto))
+            {
+                allPhotos.Insert(0, primaryPhoto);
+            }
+            string photoUrlsJson = System.Text.Json.JsonSerializer.Serialize(allPhotos);
+
             using var insertCommand = new NpgsqlCommand(
                 @"INSERT INTO vehicles
-                    (plate_no, brand, model, type, cc, status, rate_per_day, rate_with_driver, photo_url, description,
+                    (plate_no, brand, model, type, cc, status, rate_per_day, rate_with_driver, photo_url, photo_urls, description,
                      seat_capacity, transmission, model_3d_url, created_at, latitude, longitude, current_speed, last_update, in_garage,
                      lto_expiry_date, insurance_expiry_date, or_cr_url, insurance_url, color)
                   VALUES
-                    (@plate_no, @brand, @model, @type, @cc, @status, @rate_per_day, @rate_with_driver, @photo_url, @description,
+                    (@plate_no, @brand, @model, @type, @cc, @status, @rate_per_day, @rate_with_driver, @photo_url, @photo_urls::jsonb, @description,
                      @seat_capacity, @transmission, @model_3d_url, @created_at, @latitude, @longitude, @current_speed, @last_update, @in_garage,
                      @lto_expiry_date, @insurance_expiry_date, @or_cr_url, @insurance_url, @color)
                   RETURNING vehicle_id",
@@ -214,7 +233,8 @@ public class VehiclesController : ControllerBase
             insertCommand.Parameters.AddWithValue("@status", string.IsNullOrWhiteSpace(vehicle.Status) ? "available" : vehicle.Status.Trim().ToLowerInvariant());
             insertCommand.Parameters.AddWithValue("@rate_per_day", vehicle.RatePerDay);
             insertCommand.Parameters.AddWithValue("@rate_with_driver", vehicle.RateWithDriver);
-            insertCommand.Parameters.AddWithValue("@photo_url", string.IsNullOrWhiteSpace(vehicle.PhotoUrl) ? "" : vehicle.PhotoUrl.Trim());
+            insertCommand.Parameters.AddWithValue("@photo_url", primaryPhoto);
+            insertCommand.Parameters.AddWithValue("@photo_urls", photoUrlsJson);
             insertCommand.Parameters.AddWithValue("@description", string.IsNullOrWhiteSpace(vehicle.Description) ? "" : vehicle.Description.Trim());
             insertCommand.Parameters.AddWithValue("@seat_capacity", vehicle.SeatCapacity <= 0 ? 1 : vehicle.SeatCapacity);
             insertCommand.Parameters.AddWithValue("@transmission", string.IsNullOrWhiteSpace(vehicle.Transmission) ? "Automatic" : vehicle.Transmission.Trim());
@@ -296,6 +316,16 @@ public class VehiclesController : ControllerBase
                 }
             }
 
+            string primaryPhoto = !string.IsNullOrWhiteSpace(vehicle.PhotoUrl) 
+                ? vehicle.PhotoUrl.Trim() 
+                : (vehicle.PhotoUrls != null && vehicle.PhotoUrls.Count > 0 ? vehicle.PhotoUrls[0].Trim() : "");
+            var allPhotos = vehicle.PhotoUrls != null ? new List<string>(vehicle.PhotoUrls) : new List<string>();
+            if (!string.IsNullOrWhiteSpace(primaryPhoto) && !allPhotos.Contains(primaryPhoto))
+            {
+                allPhotos.Insert(0, primaryPhoto);
+            }
+            string photoUrlsJson = System.Text.Json.JsonSerializer.Serialize(allPhotos);
+
             using var updateCommand = new NpgsqlCommand(
                 @"UPDATE vehicles
                   SET plate_no = @plate_no,
@@ -307,6 +337,7 @@ public class VehiclesController : ControllerBase
                       rate_per_day = @rate_per_day,
                       rate_with_driver = @rate_with_driver,
                       photo_url = @photo_url,
+                      photo_urls = @photo_urls::jsonb,
                       description = @description,
                       seat_capacity = @seat_capacity,
                       transmission = @transmission,
@@ -332,7 +363,8 @@ public class VehiclesController : ControllerBase
             updateCommand.Parameters.AddWithValue("@status", string.IsNullOrWhiteSpace(vehicle.Status) ? "available" : vehicle.Status.Trim().ToLowerInvariant());
             updateCommand.Parameters.AddWithValue("@rate_per_day", vehicle.RatePerDay);
             updateCommand.Parameters.AddWithValue("@rate_with_driver", vehicle.RateWithDriver);
-            updateCommand.Parameters.AddWithValue("@photo_url", string.IsNullOrWhiteSpace(vehicle.PhotoUrl) ? "" : vehicle.PhotoUrl.Trim());
+            updateCommand.Parameters.AddWithValue("@photo_url", primaryPhoto);
+            updateCommand.Parameters.AddWithValue("@photo_urls", photoUrlsJson);
             updateCommand.Parameters.AddWithValue("@description", string.IsNullOrWhiteSpace(vehicle.Description) ? "" : vehicle.Description.Trim());
             updateCommand.Parameters.AddWithValue("@seat_capacity", vehicle.SeatCapacity <= 0 ? 1 : vehicle.SeatCapacity);
             updateCommand.Parameters.AddWithValue("@transmission", string.IsNullOrWhiteSpace(vehicle.Transmission) ? "Automatic" : vehicle.Transmission.Trim());
@@ -1031,10 +1063,15 @@ public class VehiclesController : ControllerBase
                 v.model,
                 v.type,
                 v.cc,
-                v.status,
+                CASE
+                    WHEN LOWER(v.status) IN ('maintenance', 'repair') THEN 'maintenance'
+                    WHEN ar.customer_name IS NOT NULL THEN 'rented'
+                    ELSE 'available'
+                END AS status,
                 v.rate_per_day,
                 v.rate_with_driver,
                 COALESCE(v.photo_url, '') AS photo_url,
+                COALESCE(v.photo_urls::text, '[]') AS photo_urls,
                 COALESCE(v.description, '') AS description,
                 COALESCE(v.seat_capacity, 1) AS seat_capacity,
                 COALESCE(v.transmission, 'Automatic') AS transmission,
@@ -1074,10 +1111,12 @@ public class VehiclesController : ControllerBase
                   LEFT JOIN drivers d ON r.driver_id = d.driver_id
                   LEFT JOIN users du ON d.user_id = du.user_id
                   WHERE r.vehicle_id = v.vehicle_id 
-                    AND LOWER(r.status) IN ('approved', 'active', 'in-use', 'ongoing', 'rented', 'pending', 'overdue')
+                    AND LOWER(r.status) IN ('approved', 'active', 'in-use', 'ongoing', 'rented', 'overdue')
                   ORDER BY r.start_date DESC
                   LIMIT 1
-              ) ar ON (LOWER(v.status) IN ('rented', 'in-use', 'active', 'ongoing', 'overdue')) ";
+              ) ar ON true ";
+
+
 
         if (!string.IsNullOrWhiteSpace(whereClause))
         {
@@ -1102,6 +1141,7 @@ public class VehiclesController : ControllerBase
             RatePerDay = reader["rate_per_day"] == DBNull.Value ? 0 : Convert.ToDecimal(reader["rate_per_day"]),
             RateWithDriver = reader["rate_with_driver"] == DBNull.Value ? 0 : Convert.ToDecimal(reader["rate_with_driver"]),
             PhotoUrl = reader["photo_url"]?.ToString() ?? string.Empty,
+            PhotoUrls = ParsePhotoUrls(reader["photo_urls"], reader["photo_url"]?.ToString() ?? string.Empty),
             Description = reader["description"]?.ToString() ?? string.Empty,
             SeatCapacity = reader["seat_capacity"] == DBNull.Value ? 1 : Convert.ToInt32(reader["seat_capacity"]),
             Transmission = reader["transmission"]?.ToString() ?? "Automatic",
@@ -1346,5 +1386,28 @@ public class VehiclesController : ControllerBase
           </script>
         </body>
         </html>";
+    }
+
+    private static List<string> ParsePhotoUrls(object? dbVal, string singlePhoto)
+    {
+        var list = new List<string>();
+        if (dbVal != null && dbVal != DBNull.Value)
+        {
+            try
+            {
+                string json = dbVal.ToString() ?? "[]";
+                var parsed = System.Text.Json.JsonSerializer.Deserialize<List<string>>(json);
+                if (parsed != null && parsed.Count > 0)
+                {
+                    list.AddRange(parsed.Where(x => !string.IsNullOrWhiteSpace(x)));
+                }
+            }
+            catch { }
+        }
+        if (list.Count == 0 && !string.IsNullOrWhiteSpace(singlePhoto))
+        {
+            list.Add(singlePhoto);
+        }
+        return list;
     }
 }

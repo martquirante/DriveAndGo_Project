@@ -18,15 +18,15 @@ namespace DriveAndGo_Admin
         public string SelectedContactName { get; private set; }
 
         // ── Colors ────────────────────────────────────────────────────────────
-        private static readonly Color BgColor     = Color.FromArgb(36, 37, 38);
-        private static readonly Color CardBg      = Color.FromArgb(58, 59, 60);
-        private static readonly Color BorderColor = Color.FromArgb(60, 255, 255, 255);
-        private static readonly Color TextMain    = Color.FromArgb(228, 230, 235);
-        private static readonly Color TextSub     = Color.FromArgb(176, 179, 184);
-        private static readonly Color OrangePrimary = Color.FromArgb(234, 88, 12);
-        private static readonly Color OrangeHover   = Color.FromArgb(210, 78, 8);
-        private static readonly Color InputBg     = Color.FromArgb(58, 59, 60);
-        private static readonly Color RowHover    = Color.FromArgb(25, 255, 255, 255);
+        private static Color BgColor       => Helpers.ThemeManager.CurrentCard;
+        private static Color CardBg        => Helpers.ThemeManager.CurrentCardHover;
+        private static Color BorderColor   => Helpers.ThemeManager.CurrentBorder;
+        private static Color TextMain      => Helpers.ThemeManager.CurrentText;
+        private static Color TextSub       => Helpers.ThemeManager.CurrentSubText;
+        private static Color OrangePrimary => Helpers.ThemeManager.CurrentPrimary;
+        private static Color OrangeHover   => Helpers.ThemeManager.CurrentPrimaryGlow;
+        private static Color InputBg       => Helpers.ThemeManager.CurrentInputBg;
+        private static Color RowHover      => Helpers.ThemeManager.IsDarkMode ? Color.FromArgb(25, 255, 255, 255) : Color.FromArgb(20, 0, 0, 0);
 
         // ── Controls ──────────────────────────────────────────────────────────
         private TextBox        _txtSearch;

@@ -31,5 +31,22 @@ namespace DriveAndGo_API.Models
         public string CompanyAddress { get; set; } = "DriveAndGo Inc., CSJDM | Norzagaray, Bulacan, Philippines";
         public string CompanyPhone { get; set; } = "+63 935 966 7178";
         public string CompanyEmail { get; set; } = "support@driveandgo.com";
+
+        public bool IsRescheduled { get; set; } = false;
+        public string? OriginalPickupDate { get; set; }
+        public string? OriginalDropoffDate { get; set; }
+        public string? AcceptScheduleUrl { get; set; }
+        public string? RequestRescheduleUrl { get; set; }
+        public string? DeclineBookingUrl { get; set; }
+
+        public bool PerkFuelWaiver { get; set; } = false;
+        public bool PerkTollCredits { get; set; } = false;
+        public bool PerkWashWaiver { get; set; } = false;
+
+        public bool IncludePromoGift { get; set; } = false;
+        public string? PromoCode { get; set; }
+        public string? PromoDescription { get; set; }
+        public string? PromoExpiry { get; set; }
     }
 }
+

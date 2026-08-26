@@ -60,6 +60,20 @@
             --shadow-glow-orange: 0 0 20px rgba(249, 115, 22, 0.25);
         }
 
+        /* Automotive Brand Emblem Contrast Engine */
+        .brand-emblem-adaptive {
+            filter: brightness(0) !important;
+            opacity: 0.85 !important;
+            transition: filter 0.2s ease, opacity 0.2s ease;
+        }
+        [data-theme="dark"] .brand-emblem-adaptive,
+        .dark .brand-emblem-adaptive,
+        html[data-theme="dark"] .brand-emblem-adaptive,
+        body[data-theme="dark"] .brand-emblem-adaptive {
+            filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgba(255, 255, 255, 0.4)) !important;
+            opacity: 1 !important;
+        }
+
         * {
             box-sizing: border-box;
         }
@@ -89,7 +103,7 @@
         }
 
         .rain-radar-tile {
-            filter: blur(6px) contrast(140%) saturate(140%);
+            filter: contrast(180%) saturate(220%) brightness(1.05);
             transition: opacity 0.3s ease;
         }
 
@@ -348,7 +362,7 @@
 
             if (category === 'pickup') {
                 return `
-                    <svg viewBox="0 0 44 80" class="w-12 h-20 filter drop-shadow-[0_8px_14px_rgba(0,0,0,0.7)]" style="display:block;">
+                    <svg viewBox="0 0 44 80" class="w-9 h-15 filter drop-shadow-[0_6px_10px_rgba(0,0,0,0.7)]" style="display:block;">
                         <defs>
                             <linearGradient id="pBody_${uid}" x1="0" y1="0" x2="1" y2="1">
                                 <stop offset="0%" stop-color="#334155"/>
@@ -382,7 +396,7 @@
 
             if (category === 'suv') {
                 return `
-                    <svg viewBox="0 0 44 76" class="w-12 h-19 filter drop-shadow-[0_8px_14px_rgba(0,0,0,0.7)]" style="display:block;">
+                    <svg viewBox="0 0 44 76" class="w-9 h-14 filter drop-shadow-[0_6px_10px_rgba(0,0,0,0.7)]" style="display:block;">
                         <defs>
                             <linearGradient id="suvBody_${uid}" x1="0" y1="0" x2="1" y2="1">
                                 <stop offset="0%" stop-color="#334155"/>
@@ -411,7 +425,7 @@
 
             if (category === 'van') {
                 return `
-                    <svg viewBox="0 0 44 82" class="w-12 h-21 filter drop-shadow-[0_8px_14px_rgba(0,0,0,0.7)]" style="display:block;">
+                    <svg viewBox="0 0 44 82" class="w-9 h-15 filter drop-shadow-[0_6px_10px_rgba(0,0,0,0.7)]" style="display:block;">
                         <defs>
                             <linearGradient id="vanBody_${uid}" x1="0" y1="0" x2="1" y2="1">
                                 <stop offset="0%" stop-color="#334155"/>
@@ -439,7 +453,7 @@
 
             if (category === 'hatchback') {
                 return `
-                    <svg viewBox="0 0 40 64" class="w-11 h-17 filter drop-shadow-[0_8px_14px_rgba(0,0,0,0.7)]" style="display:block;">
+                    <svg viewBox="0 0 40 64" class="w-8 h-13 filter drop-shadow-[0_6px_10px_rgba(0,0,0,0.7)]" style="display:block;">
                         <defs>
                             <linearGradient id="hbBody_${uid}" x1="0" y1="0" x2="1" y2="1">
                                 <stop offset="0%" stop-color="#334155"/>
@@ -464,7 +478,7 @@
 
             if (category === 'motorcycle') {
                 return `
-                    <svg viewBox="0 0 36 68" class="w-10 h-18 filter drop-shadow-[0_8px_14px_rgba(0,0,0,0.7)]" style="display:block;">
+                    <svg viewBox="0 0 36 68" class="w-7 h-13 filter drop-shadow-[0_6px_10px_rgba(0,0,0,0.7)]" style="display:block;">
                         <rect x="15" y="3" width="6" height="12" rx="3" fill="#0f172a" stroke="#475569" stroke-width="1"/>
                         <rect x="14" y="6" width="8" height="6" rx="2" fill="${hex}" opacity="0.9"/>
                         <line x1="4" y1="18" x2="32" y2="18" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round"/>
@@ -482,7 +496,7 @@
 
             if (category === 'coupe') {
                 return `
-                    <svg viewBox="0 0 42 72" class="w-12 h-19 filter drop-shadow-[0_8px_14px_rgba(0,0,0,0.7)]" style="display:block;">
+                    <svg viewBox="0 0 42 72" class="w-8 h-14 filter drop-shadow-[0_6px_10px_rgba(0,0,0,0.7)]" style="display:block;">
                         <defs>
                             <linearGradient id="cpBody_${uid}" x1="0" y1="0" x2="1" y2="1">
                                 <stop offset="0%" stop-color="#334155"/>
@@ -510,7 +524,7 @@
 
             // Default: Sedan
             return `
-                <svg viewBox="0 0 40 70" class="w-12 h-19 filter drop-shadow-[0_8px_14px_rgba(0,0,0,0.7)]" style="display:block;">
+                <svg viewBox="0 0 40 70" class="w-8 h-14 filter drop-shadow-[0_6px_10px_rgba(0,0,0,0.7)]" style="display:block;">
                     <defs>
                         <linearGradient id="sedanBody_${uid}" x1="0" y1="0" x2="1" y2="1">
                             <stop offset="0%" stop-color="#334155"/>
@@ -607,8 +621,10 @@
                 orCrUrl: v.or_cr_url || v.orCrUrl || v.OrCrUrl || '',
                 insuranceUrl: v.insurance_url || v.insuranceUrl || v.InsuranceUrl || '',
                 coordinates: [finalLat, finalLng],
-                driverName: v.driverName || v.DriverName || '',
+                driverName: v.driver_name || v.driverName || v.DriverName || '',
                 driverPhone: v.driverPhone || v.DriverPhone || '',
+                destination: v.destination || v.Destination || '',
+                customerName: v.customer_name || v.customerName || v.CustomerName || '',
                 engineStatus: (v.current_speed || 0) > 0 ? 'RUNNING' : (v.engineStatus || 'OFF').toUpperCase(),
                 maintenanceDueKm: v.maintenance_due_km || v.maintenanceDueKm || 5000,
                 documents: {
@@ -675,14 +691,20 @@
         const IconChevronDown = ({ sz, c }) => <S sz={sz} c={c} ch={<path d="m6 9 6 6 6-6" />} />;
         const IconChevronLeft = ({ sz, c }) => <S sz={sz} c={c} ch={<path d="m15 18-6-6 6-6" />} />;
         const IconChevronRight = ({ sz, c }) => <S sz={sz} c={c} ch={<path d="m9 18 6-6-6-6" />} />;
+        const IconLayers = ({ sz, c }) => <S sz={sz} c={c} ch={<><polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></>} />;
+        const IconNavigation = ({ sz, c }) => <S sz={sz} c={c} ch={<polygon points="3 11 22 2 13 21 11 13 3 11" />} />;
+        const IconMap = ({ sz, c }) => <S sz={sz} c={c} ch={<><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" /><line x1="9" x2="9" y1="3" y2="18" /><line x1="15" x2="15" y1="6" y2="21" /></>} />;
+        const IconGlobe = ({ sz, c }) => <S sz={sz} c={c} ch={<><circle cx="12" cy="12" r="10" /><line x1="2" x2="22" y1="12" y2="12" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></>} />;
         const IconZap = ({ sz, c }) => <S sz={sz} c={c} ch={<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />} />;
         const IconFolder = ({ sz, c }) => <S sz={sz} c={c} ch={<><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 8 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2z" /></>} />;
         const IconPrinter = ({ sz, c }) => <S sz={sz} c={c} ch={<><polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect width="12" height="8" x="6" y="14" /></>} />;
         const IconEye = ({ sz, c }) => <S sz={sz} c={c} ch={<><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></>} />;
         const IconDownload = ({ sz, c }) => <S sz={sz} c={c} ch={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></>} />;
         const IconTag = ({ sz, c }) => <S sz={sz} c={c} ch={<><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z" /><circle cx="7" cy="7" r="1.5" /></>} />;
-        const IconArchive = ({ sz, c }) => <S sz={sz} c={c} ch={<><rect width="20" height="5" x="2" y="3" rx="1" /><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" /><line x1="10" x2="14" y1="12" y2="12" /></>} />;
         const IconCopy = ({ sz, c }) => <S sz={sz} c={c} ch={<><rect width="13" height="13" x="9" y="9" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></>} />;
+        const IconMaximize = ({ sz, c }) => <S sz={sz} c={c} ch={<><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" /></>} />;
+        const IconCamera = ({ sz, c }) => <S sz={sz} c={c} ch={<><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" /><circle cx="12" cy="13" r="3" /></>} />;
+        const IconStar = ({ sz, c }) => <S sz={sz} c={c} ch={<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="currentColor" />} />;
 
         const getTypeIcon = (type) => {
             switch ((type || '').toLowerCase()) {
@@ -694,6 +716,115 @@
                 case 'motorcycle': return IconMotorcycle;
                 default: return IconCar;
             }
+        };
+
+        // ─── BRAND LOGO ENGINE & RESOLVER ──────────────────────────────────────────
+        const BRAND_LOGO_MAP = {
+            'toyota': 'toyota',
+            'honda': 'honda',
+            'mitsubishi': 'mitsubishi',
+            'nissan': 'nissan',
+            'hyundai': 'hyundai',
+            'ford': 'ford',
+            'chevrolet': 'chevrolet',
+            'chevy': 'chevrolet',
+            'suzuki': 'suzuki',
+            'kia': 'kia',
+            'isuzu': 'isuzu',
+            'bmw': 'bmw',
+            'mercedes': 'mercedes-benz',
+            'mercedes-benz': 'mercedes-benz',
+            'benz': 'mercedes-benz',
+            'mg': 'mg',
+            'morris garages': 'mg',
+            'geely': 'geely',
+            'byd': 'byd',
+            'tesla': 'tesla',
+            'mazda': 'mazda',
+            'subaru': 'subaru',
+            'audi': 'audi',
+            'volkswagen': 'volkswagen',
+            'vw': 'volkswagen',
+            'porsche': 'porsche',
+            'lexus': 'lexus',
+            'chery': 'chery',
+            'gac': 'gac',
+            'changan': 'changan',
+            'peugeot': 'peugeot',
+            'jeep': 'jeep',
+            'land rover': 'land-rover',
+            'landrover': 'land-rover',
+            'volvo': 'volvo',
+            'infiniti': 'infiniti',
+            'jaguar': 'jaguar',
+            'fiat': 'fiat',
+            'dodge': 'dodge',
+            'ram': 'ram',
+            'mini': 'mini',
+            'wuling': 'wuling',
+            'foton': 'foton',
+            'great wall': 'great-wall',
+            'haval': 'haval'
+        };
+
+        const getBrandSlug = (brandName) => {
+            if (!brandName) return '';
+            const clean = String(brandName).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+            for (const [key, slug] of Object.entries(BRAND_LOGO_MAP)) {
+                const kClean = key.replace(/[^a-z0-9]/g, '');
+                if (clean === kClean || clean.includes(kClean) || kClean.includes(clean)) {
+                    return slug;
+                }
+            }
+            return String(brandName).trim().toLowerCase().replace(/\s+/g, '-');
+        };
+
+        const getBrandLogoUrl = (brandName) => {
+            const slug = getBrandSlug(brandName);
+            if (!slug) return '';
+            // High-Definition Authentic Master Brand Emblem Image (Real 3D Chrome / Full Color PNG)
+            return `https://cdn.jsdelivr.net/gh/filippofilip95/car-logos-dataset@master/logos/original/${slug}.png`;
+        };
+
+        const ADAPTIVE_BRAND_SLUGS = new Set([
+            'toyota', 'nissan', 'mazda', 'lexus', 'jeep', 'kia', 'suzuki', 
+            'isuzu', 'honda', 'volkswagen', 'volvo', 'subaru', 'mercedes-benz', 
+            'mercedes', 'audi', 'infiniti', 'jaguar', 'chery', 'geely', 'byd', 'haval', 'peugeot', 'renault', 'dodge', 'ram', 'tesla'
+        ]);
+
+        const BrandLogo = ({ brand, className = "h-6 w-auto max-w-[42px]", imgClass = "h-full w-auto max-h-6 max-w-[42px]" }) => {
+            const [hasError, setHasError] = useState(false);
+            const b = (brand || 'Car').trim();
+            const slug = getBrandSlug(b);
+            const url = getBrandLogoUrl(b);
+            const initials = b.length >= 2 ? b.substring(0, 2).toUpperCase() : b.toUpperCase();
+            const isAdaptive = ADAPTIVE_BRAND_SLUGS.has(slug);
+
+            useEffect(() => {
+                setHasError(false);
+            }, [brand]);
+
+            if (hasError || !url) {
+                return (
+                    <span className="font-black text-orange-500 text-[11px] uppercase tracking-wider shrink-0 select-none" title={b}>
+                        {initials}
+                    </span>
+                );
+            }
+
+            const emblemClass = isAdaptive ? "brand-emblem-adaptive" : "";
+
+            return (
+                <div className="inline-flex items-center justify-center shrink-0 select-none" title={b}>
+                    <img 
+                        src={url} 
+                        alt={b} 
+                        className={`${imgClass} ${emblemClass} object-contain transition-transform duration-200`} 
+                        style={{ imageRendering: '-webkit-optimize-contrast' }}
+                        onError={() => setHasError(true)} 
+                    />
+                </div>
+            );
         };
 
         // ─── COMPONENTS ─────────────────────────────────────────────────────────────
@@ -1011,10 +1142,10 @@
                         <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-orange-500/10 opacity-0 group-hover:opacity-100 blur-xl transition-opacity duration-500 pointer-events-none"></div>
 
                         {/* Top Section: FULL WIDTH Image Container */}
-                        <div className="h-48 w-full relative overflow-hidden shrink-0 border-b border-[var(--border-color)] group-hover:border-orange-500/30 transition-colors">
-                            <VehicleImageComponent src={v.image} alt={v.plateNumber} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" iconSize={56} />
+                        <div className="h-48 w-full relative overflow-hidden shrink-0 border-b border-[var(--border-color)] group-hover:border-orange-500/30 transition-colors bg-gradient-to-b from-slate-100 via-slate-50 to-slate-200 dark:from-[#0B1120] dark:via-[#111827] dark:to-[#0F172A] flex items-center justify-center">
+                            <VehicleImageComponent src={v.image} alt={v.plateNumber} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out" iconSize={56} />
 
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none"></div>
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent pointer-events-none"></div>
 
                             {/* Multi-Unit Stacked Pill Badge OR Single Status Badge */}
                             {isGrouped ? (
@@ -1054,8 +1185,11 @@
                         <div className="pt-5 px-6 pb-6 flex flex-col justify-between flex-1 gap-4 relative z-10">
                             {/* Row 1: Brand & Model + Plate Number & Price */}
                             <div className="flex flex-col gap-2">
-                                <div className="text-xs font-extrabold text-orange-400 uppercase tracking-widest truncate">
-                                    {v.brand} {v.model}
+                                <div className="flex items-center gap-2">
+                                    <BrandLogo brand={v.brand} className="h-5 w-auto max-w-[32px]" imgClass="h-5 w-auto max-h-5 max-w-[32px]" />
+                                    <div className="text-xs font-extrabold text-orange-400 uppercase tracking-widest truncate">
+                                        {v.brand} {v.model}
+                                    </div>
                                 </div>
 
                                 <div className="flex justify-between items-baseline gap-2 mb-1">
@@ -1133,6 +1267,60 @@
 
         const DeckFanModal = ({ cluster, onClose, onSelectVehicle, onEditUnit, onDeleteUnit, onShowQr }) => {
             const [activeIndex, setActiveIndex] = useState(0);
+            const [fullscreenPhoto, setFullscreenPhoto] = useState(null);
+
+            const getUnitPhotos = (u) => {
+                if (!u) return [];
+                let list = [];
+                if (Array.isArray(u.photo_urls) && u.photo_urls.length > 0) list = [...u.photo_urls];
+                else if (Array.isArray(u.photoUrls) && u.photoUrls.length > 0) list = [...u.photoUrls];
+                else if (typeof u.photo_urls === 'string' && u.photo_urls.startsWith('[')) {
+                    try { list = JSON.parse(u.photo_urls); } catch(e) {}
+                }
+                const mainImg = u.image || u.photo_url || u.photoUrl || '';
+                if (mainImg && !list.includes(mainImg)) {
+                    list = [mainImg, ...list];
+                }
+                return list.length > 0 ? list : (mainImg ? [mainImg] : []);
+            };
+
+            const openFullscreen = (u, initialImg = null) => {
+                const photos = getUnitPhotos(u);
+                if (photos.length === 0) return;
+                const idx = initialImg ? Math.max(0, photos.indexOf(initialImg)) : 0;
+                setFullscreenPhoto({
+                    photos: photos,
+                    currentIndex: idx,
+                    title: `${cluster.brand} ${cluster.model}`,
+                    plate: u.plateNumber || u.plate_no || u.plateNo,
+                    color: u.color
+                });
+            };
+
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if (e.key === 'Escape') {
+                        if (fullscreenPhoto) {
+                            setFullscreenPhoto(null);
+                        } else if (onClose) {
+                            onClose();
+                        }
+                    } else if (e.key === 'ArrowLeft' && fullscreenPhoto && fullscreenPhoto.photos.length > 1) {
+                        setFullscreenPhoto(p => ({
+                            ...p,
+                            currentIndex: (p.currentIndex - 1 + p.photos.length) % p.photos.length
+                        }));
+                    } else if (e.key === 'ArrowRight' && fullscreenPhoto && fullscreenPhoto.photos.length > 1) {
+                        setFullscreenPhoto(p => ({
+                            ...p,
+                            currentIndex: (p.currentIndex + 1) % p.photos.length
+                        }));
+                    }
+                };
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [fullscreenPhoto, onClose]);
+
             if (!cluster || !cluster.units || cluster.units.length === 0) return null;
 
             const units = cluster.units;
@@ -1147,14 +1335,17 @@
 
                         {/* Header */}
                         <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-4">
-                            <div>
-                                <div className="text-xs font-black uppercase text-orange-500 tracking-widest flex items-center gap-2">
-                                    <span className="w-2 h-2 rounded-full bg-orange-500 animate-ping"></span>
-                                    <span>Model Fleet Deck ({units.length} Units Available)</span>
+                            <div className="flex items-center gap-3.5">
+                                <BrandLogo brand={cluster.brand} className="w-10 h-10" imgClass="max-h-9 max-w-9" />
+                                <div>
+                                    <div className="text-xs font-black uppercase text-orange-500 tracking-widest flex items-center gap-2">
+                                        <span className="w-2 h-2 rounded-full bg-orange-500 animate-ping"></span>
+                                        <span>Model Fleet Deck ({units.length} Units Available)</span>
+                                    </div>
+                                    <h2 className="text-3xl font-black text-[var(--text-primary)] mt-0.5">{cluster.brand} {cluster.model}</h2>
                                 </div>
-                                <h2 className="text-3xl font-black text-[var(--text-primary)] mt-1">{cluster.brand} {cluster.model}</h2>
                             </div>
-                            <button onClick={onClose} className="p-2.5 rounded-2xl bg-[var(--bg-tertiary)] hover:bg-white/10 text-[var(--text-muted)] hover:text-white transition-colors">
+                            <button onClick={onClose} className="p-2.5 rounded-2xl bg-[var(--bg-tertiary)] hover:bg-white/10 text-[var(--text-muted)] hover:text-white transition-colors cursor-pointer">
                                 <IconX sz={22} />
                             </button>
                         </div>
@@ -1165,6 +1356,7 @@
                                 {units.map((u, idx) => {
                                     const offset = idx - activeIndex;
                                     const isActive = idx === activeIndex;
+                                    const uPhotos = getUnitPhotos(u);
 
                                     let transformStyle = "scale(0.8) translate(0px, 20px) rotate(0deg)";
                                     let zIndex = 10;
@@ -1206,8 +1398,26 @@
                                                 opacity: opacity
                                             }}
                                         >
-                                            <div className="h-48 w-full relative overflow-hidden bg-[var(--bg-tertiary)] border-b border-[var(--border-color)]">
-                                                <VehicleImageComponent src={u.image} alt={u.plateNumber} className="w-full h-full object-cover" iconSize={50} />
+                                            <div 
+                                                onClick={(e) => {
+                                                    if (isActive && uPhotos.length > 0) {
+                                                        e.stopPropagation();
+                                                        openFullscreen(u);
+                                                    }
+                                                }}
+                                                className={`h-48 w-full relative overflow-hidden bg-[var(--bg-tertiary)] border-b border-[var(--border-color)] group ${isActive ? 'cursor-zoom-in' : ''}`}
+                                            >
+                                                <VehicleImageComponent src={u.image} alt={u.plateNumber} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" iconSize={50} />
+                                                
+                                                {/* Fullscreen hover badge on active card */}
+                                                {isActive && (
+                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center pointer-events-none">
+                                                        <span className="px-3 py-1.5 rounded-full bg-black/85 backdrop-blur-md text-white text-xs font-black flex items-center gap-1.5 border border-white/20 shadow-xl scale-95 group-hover:scale-100 transition-transform">
+                                                            <IconEye sz={14} /> Fullscreen ({uPhotos.length} {uPhotos.length > 1 ? 'Photos' : 'Photo'})
+                                                        </span>
+                                                    </div>
+                                                )}
+
                                                 <span className={`absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-black uppercase backdrop-blur border border-white/20 shadow-lg ${u.status === 'available' ? 'bg-emerald-500/90 text-white' : u.status === 'rented' ? 'bg-amber-500/90 text-white' : 'bg-orange-500/90 text-white'}`}>
                                                     {u.status}
                                                 </span>
@@ -1215,6 +1425,13 @@
                                                     <span className="w-3 h-3 rounded border shrink-0" style={{ backgroundColor: getColorBoxHex(u.color).hex, borderColor: getColorBoxHex(u.color).border }}></span>
                                                     <span>{u.color || 'Pearl White'}</span>
                                                 </span>
+
+                                                {/* Multi-Photo Count Badge */}
+                                                {uPhotos.length > 1 && (
+                                                    <span className="absolute bottom-3 right-3 text-[10px] font-black text-white bg-black/80 px-2 py-0.5 rounded-md backdrop-blur border border-white/10 shadow-md flex items-center gap-1">
+                                                        <IconCamera sz={11} className="inline" /> {uPhotos.length}
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="p-4 px-5 flex flex-col justify-between flex-1 bg-[var(--bg-card)]">
                                                 <div className="flex justify-between items-center">
@@ -1262,17 +1479,25 @@
                         <div className="bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-2xl p-5 flex flex-col gap-4 shadow-xl">
                             <div className="flex justify-between items-center flex-wrap gap-3">
                                 <div className="flex items-center gap-2.5">
-                                    <span className="text-xs font-extrabold text-[var(--text-secondary)] uppercase tracking-wider">Unit Focused:</span>
-                                    <span className="text-lg font-black text-orange-500">{activeUnit.brand} {activeUnit.model} ({activeUnit.plateNumber})</span>
-                                    <span className="px-3 py-1 rounded-lg text-xs font-extrabold bg-[var(--bg-card)] border border-[var(--border-color)] text-[var(--text-primary)] flex items-center gap-2">
-                                        <span className="w-3 h-3 rounded border shrink-0" style={{ backgroundColor: getColorBoxHex(activeUnit.color).hex, borderColor: getColorBoxHex(activeUnit.color).border }}></span>
-                                        <span>{activeUnit.color || 'Pearl White'}</span>
-                                    </span>
+                                    <span className="w-3.5 h-3.5 rounded border" style={{ backgroundColor: getColorBoxHex(activeUnit.color).hex, borderColor: getColorBoxHex(activeUnit.color).border }}></span>
+                                    <span className="text-xl font-black text-[var(--text-primary)]">{activeUnit.plateNumber}</span>
+                                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${activeUnit.status === 'available' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : activeUnit.status === 'rented' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'}`}>{activeUnit.status}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <button onClick={() => { onClose(); onSelectVehicle(activeUnit); }} className="px-5 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-extrabold shadow-lg shadow-orange-500/30 transition-all flex items-center gap-2 cursor-pointer hover:scale-105">
-                                        Inspect Telemetry Drawer &rarr;
+                                    <button onClick={() => onShowQr && onShowQr(activeUnit)} className="px-3.5 py-2 rounded-xl bg-[var(--bg-card)] hover:bg-white/10 text-[var(--text-primary)] font-bold text-xs border border-[var(--border-color)] flex items-center gap-1.5 transition-colors cursor-pointer">
+                                        <IconQrCode sz={14} /> Unit QR
                                     </button>
+                                    <button onClick={() => onEditUnit && onEditUnit(activeUnit)} className="px-3.5 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs shadow-md shadow-orange-500/30 flex items-center gap-1.5 transition-all cursor-pointer">
+                                        <IconEdit sz={14} /> Edit Unit
+                                    </button>
+                                    {getUnitPhotos(activeUnit).length > 0 && (
+                                        <button 
+                                            onClick={() => openFullscreen(activeUnit)} 
+                                            className="px-3.5 py-2 rounded-xl bg-[var(--bg-card)] hover:bg-white/10 text-[var(--text-primary)] font-bold text-xs border border-[var(--border-color)] flex items-center gap-1.5 transition-colors cursor-pointer"
+                                        >
+                                            <IconEye sz={14} /> Fullscreen Gallery ({getUnitPhotos(activeUnit).length})
+                                        </button>
+                                    )}
                                 </div>
                             </div>
 
@@ -1297,6 +1522,107 @@
                         </div>
 
                     </div>
+
+                    {/* FULLSCREEN PHOTO LIGHTBOX MODAL WITH MULTI-IMAGE CAROUSEL */}
+                    {fullscreenPhoto && (
+                        <div 
+                            className="fixed inset-0 z-[999999] bg-black/95 backdrop-blur-2xl flex flex-col items-center justify-between p-4 sm:p-8 animate-fade-in select-none"
+                            onClick={() => setFullscreenPhoto(null)}
+                        >
+                            {/* Top Header */}
+                            <div className="w-full flex items-center justify-between z-10" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    <div className="px-4 py-2 rounded-xl bg-orange-500 text-white text-sm font-black uppercase tracking-wider shadow-lg flex items-center gap-2.5">
+                                        <BrandLogo brand={fullscreenPhoto.title?.split(' ')[0]} className="w-6 h-6" imgClass="max-h-5 max-w-5" />
+                                        <span>{fullscreenPhoto.title}</span>
+                                    </div>
+                                    <div className="px-3.5 py-2 rounded-xl bg-white/10 backdrop-blur-md text-white text-xs font-extrabold border border-white/20">
+                                        {fullscreenPhoto.plate}
+                                    </div>
+                                    {fullscreenPhoto.color && (
+                                        <div className="px-3 py-2 rounded-xl bg-white/10 backdrop-blur-md text-white/90 text-xs font-bold border border-white/10 hidden sm:block">
+                                            Color: {fullscreenPhoto.color}
+                                        </div>
+                                    )}
+                                    {fullscreenPhoto.photos.length > 1 && (
+                                        <div className="px-3 py-2 rounded-xl bg-orange-500/20 text-orange-400 text-xs font-black border border-orange-500/30">
+                                            Photo {fullscreenPhoto.currentIndex + 1} of {fullscreenPhoto.photos.length}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <button 
+                                    onClick={() => setFullscreenPhoto(null)}
+                                    className="p-3 rounded-2xl bg-white/10 hover:bg-orange-500 text-white border border-white/20 backdrop-blur-md transition-all duration-200 cursor-pointer hover:scale-105 shadow-2xl"
+                                    title="Close (Esc)"
+                                >
+                                    <IconX sz={22} />
+                                </button>
+                            </div>
+
+                            {/* Center Photo Area with Navigation Arrows */}
+                            <div className="relative max-w-6xl max-h-[72vh] w-full flex-1 flex items-center justify-center p-2 my-auto" onClick={e => e.stopPropagation()}>
+                                {fullscreenPhoto.photos.length > 1 && (
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setFullscreenPhoto(p => ({
+                                                ...p,
+                                                currentIndex: (p.currentIndex - 1 + p.photos.length) % p.photos.length
+                                            }));
+                                        }}
+                                        className="absolute left-2 sm:left-4 z-20 p-4 rounded-full bg-black/70 hover:bg-orange-500 text-white border border-white/20 backdrop-blur-md shadow-2xl transition-all cursor-pointer hover:scale-110"
+                                        title="Previous Photo (←)"
+                                    >
+                                        <IconChevronLeft sz={28} />
+                                    </button>
+                                )}
+
+                                <img 
+                                    src={fullscreenPhoto.photos[fullscreenPhoto.currentIndex]} 
+                                    alt={`${fullscreenPhoto.plate} photo ${fullscreenPhoto.currentIndex + 1}`} 
+                                    className="max-w-full max-h-[70vh] object-contain rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.9)] border border-white/10"
+                                />
+
+                                {fullscreenPhoto.photos.length > 1 && (
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setFullscreenPhoto(p => ({
+                                                ...p,
+                                                currentIndex: (p.currentIndex + 1) % p.photos.length
+                                            }));
+                                        }}
+                                        className="absolute right-2 sm:right-4 z-20 p-4 rounded-full bg-black/70 hover:bg-orange-500 text-white border border-white/20 backdrop-blur-md shadow-2xl transition-all cursor-pointer hover:scale-110"
+                                        title="Next Photo (→)"
+                                    >
+                                        <IconChevronRight sz={28} />
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Bottom Gallery Thumbnail Strip & Hint */}
+                            <div className="w-full flex flex-col items-center gap-3 z-10" onClick={e => e.stopPropagation()}>
+                                {fullscreenPhoto.photos.length > 1 && (
+                                    <div className="flex items-center gap-2 max-w-full overflow-x-auto py-1 px-4 rounded-2xl bg-black/60 backdrop-blur-md border border-white/10">
+                                        {fullscreenPhoto.photos.map((src, i) => (
+                                            <button
+                                                key={i}
+                                                onClick={() => setFullscreenPhoto(p => ({ ...p, currentIndex: i }))}
+                                                className={`w-14 h-10 rounded-lg overflow-hidden border-2 transition-all cursor-pointer shrink-0 ${i === fullscreenPhoto.currentIndex ? 'border-orange-500 scale-105 ring-2 ring-orange-500/40 shadow-lg' : 'border-white/20 opacity-50 hover:opacity-100'}`}
+                                            >
+                                                <img src={src} className="w-full h-full object-cover" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <div className="text-xs text-white/50 font-medium tracking-wide">
+                                    Click anywhere or press ESC to exit • Use ← → keys to browse photos
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         };
@@ -1326,7 +1652,10 @@
                                         </div>
                                         <div>
                                             <div className="font-bold text-[var(--text-primary)]">{v.plateNumber}</div>
-                                            <div className="text-xs text-[var(--text-muted)]">{v.brand} {v.model}</div>
+                                            <div className="text-xs text-[var(--text-muted)] flex items-center gap-1.5 mt-0.5">
+                                                <BrandLogo brand={v.brand} className="w-5 h-5" imgClass="max-h-4 max-w-4" />
+                                                <span>{v.brand} {v.model}</span>
+                                            </div>
                                         </div>
                                     </td>
                                     <td className="p-4">
@@ -1366,24 +1695,170 @@
             </div>
         );
 
-        // ─── LEAFLET MAP PORTED FROM FleetMap.html ──────────────────────────────────
+        // ─── LEAFLET MAP & OSRM ROAD ROUTING ENGINE ──────────────────────────────────
+        const DEST_COORDS_LOOKUP = {
+            'tagaytay': [14.1153, 120.9621],
+            'makati': [14.5547, 121.0244],
+            'bgc': [14.5492, 121.0506],
+            'taguig': [14.5492, 121.0506],
+            'bonifacio': [14.5492, 121.0506],
+            'clark': [15.1852, 120.5606],
+            'pampanga': [15.0340, 120.6840],
+            'angeles': [15.1450, 120.5887],
+            'san fernando': [15.0298, 120.6897],
+            'baguio': [16.4023, 120.5960],
+            'subic': [14.8217, 120.2798],
+            'olongapo': [14.8386, 120.2842],
+            'quezon city': [14.6565, 121.0289],
+            'qc': [14.6565, 121.0289],
+            'sm north': [14.6565, 121.0289],
+            'naia': [14.5204, 121.0152],
+            'airport': [14.5204, 121.0152],
+            'pasay': [14.5378, 120.9997],
+            'moa': [14.5352, 120.9822],
+            'mall of asia': [14.5352, 120.9822],
+            'paranaque': [14.4793, 121.0198],
+            'parañaque': [14.4793, 121.0198],
+            'las pinas': [14.4445, 120.9939],
+            'las piñas': [14.4445, 120.9939],
+            'alabang': [14.4254, 121.0416],
+            'muntinlupa': [14.4081, 121.0415],
+            'batangas': [13.7565, 121.0583],
+            'lipa': [13.9419, 121.1644],
+            'nasugbu': [14.0772, 120.6329],
+            'calatagan': [13.8322, 120.6331],
+            'cavite': [14.4791, 120.8969],
+            'bacoor': [14.4624, 120.9645],
+            'dasmarinas': [14.3294, 120.9367],
+            'dasmariñas': [14.3294, 120.9367],
+            'imus': [14.4296, 120.9367],
+            'silang': [14.2307, 120.9749],
+            'laguna': [14.2691, 121.4113],
+            'santa rosa': [14.3122, 121.1114],
+            'sta rosa': [14.3122, 121.1114],
+            'nuvali': [14.2412, 121.0617],
+            'calamba': [14.2117, 121.1656],
+            'los banos': [14.1706, 121.2439],
+            'los baños': [14.1706, 121.2439],
+            'bulacan': [14.8527, 120.8160],
+            'malolos': [14.8541, 120.8160],
+            'meycauayan': [14.7397, 120.9592],
+            'marilao': [14.7578, 120.9472],
+            'bocaue': [14.7997, 120.9304],
+            'balagtas': [14.8197, 120.9094],
+            'guiguinto': [14.8322, 120.8794],
+            'plaridel': [14.8872, 120.8572],
+            'baliuag': [14.9542, 120.9011],
+            'norzagaray': [14.9150, 121.0450],
+            'san jose del monte': [14.8135, 121.0453],
+            'sjdm': [14.8135, 121.0453],
+            'manila': [14.5995, 120.9842],
+            'pasig': [14.5764, 121.0851],
+            'mandaluyong': [14.5794, 121.0359],
+            'san juan': [14.6019, 121.0355],
+            'marikina': [14.6507, 121.1029],
+            'antipolo': [14.5842, 121.1763],
+            'tanay': [14.4984, 121.2858],
+            'rizal': [14.6037, 121.3084],
+            'la union': [16.6159, 120.3209],
+            'san juan la union': [16.6719, 120.3394],
+            'vigan': [17.5705, 120.3869],
+            'ilocos': [18.1960, 120.5927],
+            'laoag': [18.1960, 120.5927],
+            'pangasinan': [15.8949, 120.2863],
+            'dagupan': [16.0433, 120.3340],
+            'hundred islands': [16.2045, 120.0406],
+            'tarlac': [15.4802, 120.5979],
+            'nueva ecija': [15.4865, 120.9734],
+            'cabanatuan': [15.4901, 120.9678]
+        };
+
+        const resolveDestinationInfo = (destStr) => {
+            if (!destStr || typeof destStr !== 'string') return null;
+            const clean = destStr.toLowerCase().trim();
+            for (const key of Object.keys(DEST_COORDS_LOOKUP)) {
+                if (clean.includes(key)) {
+                    return { name: destStr.trim(), coords: DEST_COORDS_LOOKUP[key] };
+                }
+            }
+            const coordMatch = destStr.match(/(-?\d+\.\d+)[,\s]+(-?\d+\.\d+)/);
+            if (coordMatch) {
+                return { name: destStr.trim(), coords: [parseFloat(coordMatch[1]), parseFloat(coordMatch[2])] };
+            }
+            return null;
+        };
+
+        const calcDirectDistanceMeters = (lat1, lon1, lat2, lon2) => {
+            const R = 6371e3;
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        };
+
+        const globalRouteCache = {};
+
+        const fetchOsrmDrivingRoute = async (fromLat, fromLng, toLat, toLng) => {
+            const key = `${fromLat.toFixed(4)},${fromLng.toFixed(4)};${toLat.toFixed(4)},${toLng.toFixed(4)}`;
+            if (globalRouteCache[key]) return globalRouteCache[key];
+            try {
+                const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=geojson`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.routes && data.routes.length > 0) {
+                        const r = data.routes[0];
+                        const coords = r.geometry.coordinates.map(c => [c[1], c[0]]);
+                        const result = { coords, distM: r.distance || 0, durS: r.duration || 0 };
+                        globalRouteCache[key] = result;
+                        return result;
+                    }
+                }
+            } catch (e) {
+                console.warn("OSRM fetch warning:", e);
+            }
+            return { coords: [[fromLat, fromLng], [toLat, toLng]], distM: calcDirectDistanceMeters(fromLat, fromLng, toLat, toLng), durS: 0 };
+        };
+
         const LeafletMapComponent = ({ vehicles, selectedVehicleId, onSelectVehicle, isDark, weatherData, onOpenWeatherModal, hasWeatherBanner }) => {
             const mapRef = useRef(null);
             const mapInst = useRef(null);
             const markersRef = useRef({});
             const animFramesRef = useRef({});
             const layersRef = useRef({});
+            const routesGroupRef = useRef(null);
             const floodPolygonsRef = useRef([]);
             const garageMarkerRef = useRef(null);
             const cityTempMarkersRef = useRef([]);
+            const mapTypeDropdownRef = useRef(null);
 
             const [mapType, setMapType] = useState('street');
+            const [mapTypeDropdownOpen, setMapTypeDropdownOpen] = useState(false);
+            const [showRoutes, setShowRoutes] = useState(true);
             const [trafficOn, setTrafficOn] = useState(false);
             const [radarOn, setRadarOn] = useState(true);
             const [cloudsOn, setCloudsOn] = useState(false);
             const [windOn, setWindOn] = useState(false);
             const [floodZonesOn, setFloodZonesOn] = useState(true);
             const [hoverInfo, setHoverInfo] = useState(null);
+
+            const mapTypeOptions = [
+                { id: 'street', name: 'Street View', icon: IconMap },
+                { id: 'sat', name: 'Satellite Hybrid', icon: IconGlobe },
+                { id: 'terrain', name: 'Terrain Topo', icon: IconLayers }
+            ];
+
+            useEffect(() => {
+                const handleClickOutside = (e) => {
+                    if (mapTypeDropdownRef.current && !mapTypeDropdownRef.current.contains(e.target)) {
+                        setMapTypeDropdownOpen(false);
+                    }
+                };
+                document.addEventListener('mousedown', handleClickOutside);
+                return () => document.removeEventListener('mousedown', handleClickOutside);
+            }, []);
 
             const isAnyWeatherActive = radarOn || cloudsOn || windOn || floodZonesOn;
 
@@ -1421,18 +1896,36 @@
                 L.control.zoom({ position: 'bottomleft' }).addTo(map);
                 mapInst.current = map;
 
+                // Dedicated feature group for road routes
+                routesGroupRef.current = L.featureGroup().addTo(map);
+
+                // Dedicated route rendering panes to guarantee Orange (Garage) is on TOP and Blue (Destination) is UNDERNEATH
+                if (!map.getPane('destRoutesPane')) {
+                    map.createPane('destRoutesPane');
+                    map.getPane('destRoutesPane').style.zIndex = 420;
+                }
+                if (!map.getPane('garageRoutesPane')) {
+                    map.createPane('garageRoutesPane');
+                    map.getPane('garageRoutesPane').style.zIndex = 440;
+                }
+                if (!map.getPane('routeLabelsPane')) {
+                    map.createPane('routeLabelsPane');
+                    map.getPane('routeLabelsPane').style.zIndex = 460;
+                }
+
                 // Init Layers with real-time OpenWeatherMap clouds & wind tiles (secured via API backend proxy) + RainViewer radar
                 layersRef.current = {
-                    dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { minZoom: 6, maxZoom: 20 }),
-                    light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { minZoom: 6, maxZoom: 20 }),
-                    sat: L.tileLayer('https://mt1.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}', { minZoom: 6, maxZoom: 20 }),
-                    traffic: L.tileLayer('https://mt1.google.com/vt/lyrs=h,traffic&x={x}&y={y}&z={z}', { minZoom: 6, maxZoom: 20 }),
-                    radar: L.tileLayer('https://tilecache.rainviewer.com/v2/radar/nowcast_5/512/{z}/{x}/{y}/2/1_1.png', { opacity: 0.75, minZoom: 6, maxNativeZoom: 6, maxZoom: 20, className: 'rain-radar-tile' }),
-                    clouds: L.tileLayer(`${API}/weather/tile/clouds/{z}/{x}/{y}.png`, { opacity: 0.85, minZoom: 6, maxZoom: 20, zIndex: 310 }),
-                    wind: L.tileLayer(`${API}/weather/tile/wind/{z}/{x}/{y}.png`, { opacity: 0.85, minZoom: 6, maxZoom: 20, zIndex: 320 })
+                    dark: L.tileLayer('https://mt1.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}', { minZoom: 3, maxZoom: 22 }),
+                    light: L.tileLayer('https://mt1.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}', { minZoom: 3, maxZoom: 22 }),
+                    sat: L.tileLayer('https://mt1.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}', { minZoom: 3, maxZoom: 22 }),
+                    terrain: L.tileLayer('https://mt1.google.com/vt/lyrs=p&hl=en&x={x}&y={y}&z={z}', { minZoom: 3, maxZoom: 22 }),
+                    traffic: L.tileLayer('https://mt1.google.com/vt/lyrs=h,traffic&x={x}&y={y}&z={z}', { minZoom: 3, maxZoom: 22 }),
+                    radar: L.tileLayer('https://tilecache.rainviewer.com/v2/radar/nowcast_5/512/{z}/{x}/{y}/2/1_1.png', { opacity: 0.95, minZoom: 3, maxNativeZoom: 6, maxZoom: 22, className: 'rain-radar-tile' }),
+                    clouds: L.tileLayer(`${API}/weather/tile/clouds/{z}/{x}/{y}.png`, { opacity: 0.95, minZoom: 3, maxZoom: 22, zIndex: 310 }),
+                    wind: L.tileLayer(`${API}/weather/tile/wind/{z}/{x}/{y}.png`, { opacity: 0.95, minZoom: 3, maxZoom: 22, zIndex: 320 })
                 };
 
-                layersRef.current.dark.addTo(map); // default
+                layersRef.current.light.addTo(map); // default Google Maps Street View
 
                 // Add 3D Garage Hub Marker (using garage_3D.png from WebAssets)
                 const garageIcon = L.divIcon({
@@ -1558,20 +2051,23 @@
                 const m = mapInst.current;
                 const l = layersRef.current;
 
-                m.removeLayer(l.dark);
-                m.removeLayer(l.light);
-                m.removeLayer(l.sat);
+                if (l.dark) m.removeLayer(l.dark);
+                if (l.light) m.removeLayer(l.light);
+                if (l.sat) m.removeLayer(l.sat);
+                if (l.terrain) m.removeLayer(l.terrain);
 
-                if (mapType === 'sat') {
+                if (mapType === 'sat' && l.sat) {
                     l.sat.addTo(m);
+                } else if (mapType === 'terrain' && l.terrain) {
+                    l.terrain.addTo(m);
                 } else {
-                    (isDark ? l.dark : l.light).addTo(m);
+                    (l.light || l.dark).addTo(m);
                 }
 
-                if (trafficOn) {
+                if (trafficOn && l.traffic) {
                     l.traffic.addTo(m);
                     l.traffic.bringToFront();
-                } else {
+                } else if (l.traffic) {
                     m.removeLayer(l.traffic);
                 }
 
@@ -1604,7 +2100,7 @@
 
                                 if (isMounted && mapInst.current && layersRef.current) {
                                     if (layersRef.current.radar) mapInst.current.removeLayer(layersRef.current.radar);
-                                    layersRef.current.radar = L.tileLayer(tileUrl, { opacity: 0.75, maxNativeZoom: 6, maxZoom: 20, zIndex: 300, className: 'rain-radar-tile' });
+                                    layersRef.current.radar = L.tileLayer(tileUrl, { opacity: 0.95, maxNativeZoom: 6, maxZoom: 20, zIndex: 300, className: 'rain-radar-tile' });
                                     if (radarOn) {
                                         layersRef.current.radar.addTo(mapInst.current);
                                         layersRef.current.radar.bringToFront();
@@ -1998,18 +2494,18 @@
                     ${isSelected ? `<div class='absolute -inset-3 rounded-full border-2 animate-ping opacity-60 z-0' style='border-color: ${hex}'></div>` : ''}
                     
                     <!-- Forward Headlight Beam Cone (Google Maps Style Front Navigation Light) -->
-                    <div class='absolute -top-7 left-1/2 -translate-x-1/2 pointer-events-none z-0' style='transform: rotate(${headingDeg}deg); transform-origin: center 48px; transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);'>
-                        <div style='width: 32px; height: 40px; background: radial-gradient(ellipse at bottom, rgba(56, 189, 248, 0.45) 0%, rgba(56, 189, 248, 0.12) 55%, transparent 85%); clip-path: polygon(25% 100%, 75% 100%, 100% 0%, 0% 0%);'></div>
+                    <div class='absolute -top-6 left-1/2 -translate-x-1/2 pointer-events-none z-0' style='transform: rotate(${headingDeg}deg); transform-origin: center 36px; transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);'>
+                        <div style='width: 28px; height: 36px; background: radial-gradient(ellipse at bottom, rgba(56, 189, 248, 0.45) 0%, rgba(56, 189, 248, 0.12) 55%, transparent 85%); clip-path: polygon(25% 100%, 75% 100%, 100% 0%, 0% 0%);'></div>
                     </div>
 
                     <!-- Isometric 3D Floor Shadow -->
-                    <div class='absolute bottom-3 w-12 h-5 rounded-[100%] bg-black/40 blur-[3px] transform rotateX(65deg) scale-110 z-0 shadow-2xl border border-black/20 pointer-events-none'></div>
+                    <div class='absolute bottom-3 w-10 h-4 rounded-[100%] bg-black/40 blur-[3px] transform rotateX(65deg) scale-110 z-0 shadow-2xl border border-black/20 pointer-events-none'></div>
                     
                     <!-- Isometric 3D Vehicle Icon Wrapper with Smooth Rotation -->
-                    <div class='relative z-10 bg-transparent transform ${isSelected ? 'scale-125 -translate-y-2' : 'group-hover:scale-110 group-hover:-translate-y-1'}' style='transition: transform 0.3s ease;'>
+                    <div class='relative z-10 bg-transparent transform ${isSelected ? 'scale-125 -translate-y-1.5' : 'group-hover:scale-110 group-hover:-translate-y-1'}' style='transition: transform 0.3s ease;'>
                         ${hasCustomIcon ? `
                             <div class='bg-transparent flex items-center justify-center' style='transform-style: preserve-3d; filter: drop-shadow(0px 10px 10px rgba(0,0,0,0.6));'>
-                                <img src='${iconImage}' class='w-14 h-14 object-contain bg-transparent filter drop-shadow-[0_8px_12px_rgba(0,0,0,0.7)]' style='transform: rotate(${headingDeg}deg); transform-origin: center center; transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);' onerror="this.onerror=null; this.parentElement.innerHTML=\`${renderDefaultTopDownVehicleSvg(v, hex).replace(/\n/g, '').replace(/"/g, "'")}\`;"/>
+                                <img src='${iconImage}' class='w-9 h-14 object-contain bg-transparent filter drop-shadow-[0_6px_10px_rgba(0,0,0,0.7)]' style='transform: rotate(${headingDeg}deg); transform-origin: center center; transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);' onerror="this.onerror=null; this.parentElement.innerHTML=\`${renderDefaultTopDownVehicleSvg(v, hex).replace(/\n/g, '').replace(/"/g, "'")}\`;"/>
                             </div>
                         ` : `
                             <div class='bg-transparent flex items-center justify-center' style='transform-style: preserve-3d; transform: rotate(${headingDeg}deg); transform-origin: center center; transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);'>
@@ -2019,14 +2515,14 @@
                     </div>
                     
                     <!-- Plate Label -->
-                    <div class='mt-1 bg-[#0d0e17]/90 backdrop-blur-md border border-white/20 text-white px-2.5 py-0.5 rounded-full text-[9px] font-extrabold shadow-lg whitespace-nowrap z-10 tracking-wider flex items-center gap-1 border-b-2' style='border-bottom-color: ${hex}'>
+                    <div class='mt-0.5 bg-[#0d0e17]/90 backdrop-blur-md border border-white/20 text-white px-2 py-0.5 rounded-full text-[8.5px] font-extrabold shadow-lg whitespace-nowrap z-10 tracking-wider flex items-center gap-1 border-b-2' style='border-bottom-color: ${hex}'>
                         <span class='w-1.5 h-1.5 rounded-full' style='background-color: ${hex}'></span>
                         ${v.plateNumber || ''}
                     </div>
                 </div>
             `;
 
-                    const icon = L.divIcon({ className: '', html: iconHtml, iconSize: [50, 70], iconAnchor: [25, 35] });
+                    const icon = L.divIcon({ className: '', html: iconHtml, iconSize: [44, 58], iconAnchor: [22, 29] });
 
                     if (markersRef.current[v.id]) {
                         const existingMarker = markersRef.current[v.id];
@@ -2086,54 +2582,313 @@
                 }
             }, [selectedVehicleId]);
 
+            // Live Road-Snapped Trajectories & Distances (OSRM Driving Engine)
+            useEffect(() => {
+                if (!mapInst.current || !routesGroupRef.current) return;
+                const rg = routesGroupRef.current;
+                rg.clearLayers();
+
+                if (!showRoutes) return;
+
+                const HQ_LAT = 14.871116;
+                const HQ_LNG = 121.048088;
+                let isMounted = true;
+
+                async function renderAllRoadRoutes() {
+                    const activeVehicles = vehicles.filter(v => {
+                        const vLat = v.coordinates ? v.coordinates[0] : 0;
+                        const vLng = v.coordinates ? v.coordinates[1] : 0;
+                        if (!vLat || !vLng) return false;
+                        const isFocused = selectedVehicleId ? (String(v.id) === String(selectedVehicleId) || String(v.vehicle_id) === String(selectedVehicleId)) : true;
+                        return isFocused;
+                    });
+
+                    await Promise.all(activeVehicles.map(async (v) => {
+                        if (!isMounted || !showRoutes) return;
+                        const vLat = v.coordinates[0];
+                        const vLng = v.coordinates[1];
+
+                        const distFromHqM = calcDirectDistanceMeters(HQ_LAT, HQ_LNG, vLat, vLng);
+
+                        // 1. Current Location -> Destination (Navigation Blue Line - UNDERNEATH pane z-index 420)
+                        const destInfo = resolveDestinationInfo(v.destination);
+                        if (destInfo && destInfo.coords && distFromHqM > 250) {
+                            const routeDest = await fetchOsrmDrivingRoute(vLat, vLng, destInfo.coords[0], destInfo.coords[1]);
+                            if (!isMounted || !showRoutes) return;
+                            if (routeDest && routeDest.coords && routeDest.coords.length > 1) {
+                                const destDistText = routeDest.distM >= 1000 
+                                    ? `${(routeDest.distM / 1000).toFixed(1)} km` 
+                                    : `${Math.round(routeDest.distM)} m`;
+
+                                // High Contrast Outer Glow (Underneath)
+                                const destGlow = L.polyline(routeDest.coords, {
+                                    pane: 'destRoutesPane',
+                                    color: '#0284C7',
+                                    weight: 8,
+                                    opacity: 0.25,
+                                    lineCap: 'round',
+                                    lineJoin: 'round',
+                                    className: 'cursor-pointer'
+                                });
+                                destGlow.on('click', (e) => { if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent); onSelectVehicle(v); });
+                                rg.addLayer(destGlow);
+
+                                // Inner Road Track (Vibrant Navigation Blue - Underneath)
+                                const destTrack = L.polyline(routeDest.coords, {
+                                    pane: 'destRoutesPane',
+                                    color: '#0284C7',
+                                    weight: 3.5,
+                                    opacity: 0.85,
+                                    dashArray: '6, 5',
+                                    lineCap: 'round',
+                                    lineJoin: 'round',
+                                    className: 'cursor-pointer'
+                                });
+                                destTrack.on('click', (e) => { if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent); onSelectVehicle(v); });
+                                rg.addLayer(destTrack);
+
+                                // Midpoint Distance Pill
+                                const destMidCoord = routeDest.coords[Math.floor(routeDest.coords.length / 2)];
+                                if (destMidCoord) {
+                                    const destLabelMarker = L.marker(destMidCoord, {
+                                        pane: 'routeLabelsPane',
+                                        icon: L.divIcon({
+                                            className: '',
+                                            html: `<div class='bg-[#0F172A]/95 dark:bg-[#07070E]/95 text-sky-400 border border-sky-500/80 px-2.5 py-0.5 rounded-full text-[9px] font-black shadow-2xl tracking-wider backdrop-blur-md whitespace-nowrap flex items-center gap-1.5 cursor-pointer hover:scale-105 transition-transform'><svg class='w-2.5 h-2.5 text-sky-400' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5'><circle cx='12' cy='12' r='10'/><polyline points='12 6 12 12 16 14'/></svg><span>${destDistText} to ${destInfo.name}</span></div>`,
+                                            iconSize: [140, 22],
+                                            iconAnchor: [70, 11]
+                                        }),
+                                        interactive: true
+                                    });
+                                    destLabelMarker.on('click', (e) => { if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent); onSelectVehicle(v); });
+                                    rg.addLayer(destLabelMarker);
+                                }
+
+                                // Destination Pin Marker (Google Maps Style Blue Pin)
+                                const destPinMarker = L.marker(destInfo.coords, {
+                                    pane: 'routeLabelsPane',
+                                    icon: L.divIcon({
+                                        className: '',
+                                        html: `<div class='flex flex-col items-center cursor-pointer group hover:scale-110 transition-transform'><div class='bg-blue-600 text-white font-black text-[9px] px-2.5 py-1 rounded-xl shadow-2xl border border-white/60 uppercase whitespace-nowrap flex items-center gap-1'><svg class='w-2.5 h-2.5 text-white' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3'><path d='M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z'/><circle cx='12' cy='10' r='3'/></svg><span>${destInfo.name}</span></div><div class='w-2.5 h-2.5 rounded-full bg-sky-400 border-2 border-slate-900 shadow-md mt-1'></div></div>`,
+                                        iconSize: [100, 30],
+                                        iconAnchor: [50, 28]
+                                    }),
+                                    interactive: true
+                                });
+                                destPinMarker.on('click', (e) => { if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent); onSelectVehicle(v); });
+                                rg.addLayer(destPinMarker);
+                            }
+                        }
+
+                        // 2. Garage Hub -> Current Location (Vibrant Orange Line - ON TOP pane z-index 440)
+                        if (distFromHqM > 250) {
+                            const routeHq = await fetchOsrmDrivingRoute(HQ_LAT, HQ_LNG, vLat, vLng);
+                            if (!isMounted || !showRoutes) return;
+                            if (routeHq && routeHq.coords && routeHq.coords.length > 1) {
+                                const distText = routeHq.distM >= 1000 
+                                    ? `${(routeHq.distM / 1000).toFixed(1)} km` 
+                                    : `${Math.round(routeHq.distM)} m`;
+
+                                // High Contrast Outer Glow (On Top)
+                                const glow = L.polyline(routeHq.coords, {
+                                    pane: 'garageRoutesPane',
+                                    color: '#FF6B00',
+                                    weight: 10,
+                                    opacity: 0.4,
+                                    lineCap: 'round',
+                                    lineJoin: 'round',
+                                    className: 'cursor-pointer'
+                                });
+                                glow.on('click', (e) => { if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent); onSelectVehicle(v); });
+                                rg.addLayer(glow);
+
+                                // Inner Bold Road Track (Solid High-Visibility Neon Orange - On Top)
+                                const track = L.polyline(routeHq.coords, {
+                                    pane: 'garageRoutesPane',
+                                    color: '#FF6B00',
+                                    weight: 4.5,
+                                    opacity: 1,
+                                    dashArray: '8, 6',
+                                    lineCap: 'round',
+                                    lineJoin: 'round',
+                                    className: 'cursor-pointer'
+                                });
+                                track.on('click', (e) => { if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent); onSelectVehicle(v); });
+                                rg.addLayer(track);
+
+                                // Midpoint Distance Pill Marker
+                                const midCoord = routeHq.coords[Math.floor(routeHq.coords.length / 2)];
+                                if (midCoord) {
+                                    const labelMarker = L.marker(midCoord, {
+                                        pane: 'routeLabelsPane',
+                                        icon: L.divIcon({
+                                            className: '',
+                                            html: `<div class='bg-[#0F172A]/95 dark:bg-[#07070E]/95 text-[#FF6B00] border border-[#FF6B00]/80 px-2.5 py-0.5 rounded-full text-[9px] font-black shadow-2xl tracking-wider backdrop-blur-md whitespace-nowrap flex items-center gap-1.5 cursor-pointer hover:scale-105 transition-transform'><svg class='w-2.5 h-2.5 text-[#FF6B00]' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5'><path d='M3 12h18M13 5l7 7-7 7'/></svg><span>${distText} from Garage Hub</span></div>`,
+                                            iconSize: [140, 22],
+                                            iconAnchor: [70, 11]
+                                        }),
+                                        interactive: true
+                                    });
+                                    labelMarker.on('click', (e) => { if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent); onSelectVehicle(v); });
+                                    rg.addLayer(labelMarker);
+                                }
+                            }
+                        }
+                    }));
+                }
+
+                renderAllRoadRoutes();
+
+                return () => {
+                    isMounted = false;
+                };
+            }, [vehicles, selectedVehicleId, showRoutes]);
+
             const temp = weatherData ? Math.round(weatherData.temperature_2m || 28) : 28;
             const rain = weatherData ? (weatherData.precipitation || 4.2) : 4.2;
 
             return (
                 <div className="relative w-full h-full rounded-2xl overflow-hidden border border-[var(--border-color)] shadow-[var(--shadow-card)]">
-                    {/* TOP MAP CONTROLS HEADER BAR */}
-                    <div className={`absolute ${hasWeatherBanner ? 'top-16' : 'top-3'} left-3 right-3 z-[400] flex flex-wrap items-center justify-between gap-2 pointer-events-none transition-all duration-300`}>
+                    {/* TOP LEFT MAP CONTROLS BAR (MODERN UNIFIED GLASS PILL BAR) */}
+                    <div className={`absolute ${hasWeatherBanner ? 'top-16' : 'top-3'} left-3 z-[600] flex items-center flex-nowrap whitespace-nowrap gap-1.5 p-1.5 rounded-2xl bg-slate-950/80 backdrop-blur-xl border border-white/15 shadow-[0_8px_32px_rgba(0,0,0,0.4)] pointer-events-auto max-w-[calc(100%-24px)] overflow-x-auto hide-scrollbar transition-all duration-300`}>
+                        {/* Map View Mode Dropdown Combo Box */}
+                        <div className="relative shrink-0" ref={mapTypeDropdownRef}>
+                            <button
+                                type="button"
+                                onClick={() => setMapTypeDropdownOpen(!mapTypeDropdownOpen)}
+                                className="h-7 px-3 rounded-xl text-xs font-black bg-white/10 hover:bg-white/15 text-white border border-white/15 hover:border-orange-500/60 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 whitespace-nowrap"
+                            >
+                                <IconLayers sz={13} className="text-orange-400 shrink-0" />
+                                <span>{mapTypeOptions.find(o => o.id === mapType)?.name || 'Street View'}</span>
+                                <IconChevronDown sz={11} className={`text-white/60 transition-transform duration-200 ${mapTypeDropdownOpen ? 'rotate-180 text-orange-400' : ''}`} />
+                            </button>
 
-                        {/* LEFT CONTROLS BAR (GLASSMORPHIC) */}
-                        <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-2xl bg-[var(--bg-card)] backdrop-blur-xl border border-[var(--border-color)] shadow-2xl pointer-events-auto">
-                            {/* Map Type Segment */}
-                            <div className="flex items-center gap-1 p-0.5 bg-[var(--bg-tertiary)] rounded-xl border border-[var(--border-color)]">
-                                <button onClick={() => setMapType('street')} className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${mapType === 'street' ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'text-[var(--text-muted)] hover:text-white'}`}>Street</button>
-                                <button onClick={() => setMapType('sat')} className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${mapType === 'sat' ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'text-[var(--text-muted)] hover:text-white'}`}>Satellite</button>
-                            </div>
-                            <div className="w-px h-4 bg-[var(--border-color)] mx-0.5"></div>
-                            {/* Map Overlay Toggles */}
-                            <button onClick={() => setTrafficOn(!trafficOn)} className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${trafficOn ? 'bg-red-500/90 text-white shadow-md shadow-red-500/30' : 'text-[var(--text-secondary)] hover:bg-[var(--border-highlight)]'}`}>Traffic</button>
-                            <button onClick={() => setRadarOn(!radarOn)} className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer ${radarOn ? 'bg-blue-600/90 text-white shadow-md shadow-blue-500/30' : 'text-[var(--text-secondary)] hover:bg-[var(--border-highlight)]'}`}><IconCloudRain sz={13} /> Radar</button>
-                            <button onClick={() => setCloudsOn(!cloudsOn)} className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer ${cloudsOn ? 'bg-cyan-600/90 text-white shadow-md shadow-cyan-500/30' : 'text-[var(--text-secondary)] hover:bg-[var(--border-highlight)]'}`}><IconCloud sz={13} /> Clouds</button>
-                            <button onClick={() => setWindOn(!windOn)} className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer ${windOn ? 'bg-teal-600/90 text-white shadow-md shadow-teal-500/30' : 'text-[var(--text-secondary)] hover:bg-[var(--border-highlight)]'}`}><IconWind sz={13} /> Wind</button>
-                            <button onClick={() => setFloodZonesOn(!floodZonesOn)} className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer ${floodZonesOn ? 'bg-amber-600/90 text-white shadow-md shadow-amber-500/30' : 'text-[var(--text-secondary)] hover:bg-[var(--border-highlight)]'}`}><IconAlertTriangle sz={13} /> Floods</button>
-                            <button onClick={() => { if (mapInst.current && Object.keys(markersRef.current).length) mapInst.current.fitBounds(L.featureGroup(Object.values(markersRef.current)).getBounds().pad(0.2)); }} className="px-2 py-1 rounded-xl text-[11px] font-bold text-[var(--text-muted)] hover:text-white transition-all cursor-pointer">Fit All</button>
+                            {mapTypeDropdownOpen && (
+                                <div className="absolute left-0 top-full mt-2 w-48 rounded-2xl bg-slate-900/95 backdrop-blur-2xl border border-white/15 shadow-[0_20px_60px_rgba(0,0,0,0.8)] p-1.5 z-[9999] flex flex-col gap-1 animate-scale-up ring-1 ring-white/10">
+                                    <div className="px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-slate-400 border-b border-white/10 mb-0.5">
+                                        Map View Styles
+                                    </div>
+                                    {mapTypeOptions.map(opt => {
+                                        const OptIcon = opt.icon;
+                                        const isSelected = mapType === opt.id;
+                                        return (
+                                            <button
+                                                key={opt.id}
+                                                type="button"
+                                                onClick={() => { setMapType(opt.id); setMapTypeDropdownOpen(false); }}
+                                                className={`px-2.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${isSelected ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/30' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`}
+                                            >
+                                                <span className="flex items-center gap-2.5">
+                                                    <OptIcon sz={13} className={isSelected ? 'text-white' : 'text-orange-400'} />
+                                                    <span>{opt.name}</span>
+                                                </span>
+                                                {isSelected && <IconCheck sz={13} className="text-white" />}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
 
-                        {/* RIGHT WEATHER PILL WIDGET (GLASSMORPHIC) */}
-                        <div
-                            onClick={onOpenWeatherModal}
-                            className="bg-[var(--bg-card)] backdrop-blur-xl border border-[var(--glass-border)] p-1.5 px-3 rounded-2xl shadow-2xl flex items-center gap-2.5 cursor-pointer hover:border-orange-500/60 hover:scale-105 transition-all pointer-events-auto group shrink-0"
-                            title="Click to open Live Weather & Flood Intelligence Drawer"
+                        <div className="w-px h-4 bg-white/20 mx-0.5 shrink-0"></div>
+
+                        {/* Live Road Routes Toggle */}
+                        <button
+                            type="button"
+                            onClick={() => setShowRoutes(!showRoutes)}
+                            className={`h-7 px-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0 whitespace-nowrap ${showRoutes ? 'bg-orange-500 text-white shadow-md shadow-orange-500/40 border border-orange-400/60' : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/5'}`}
                         >
-                            <div className="w-7 h-7 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 group-hover:bg-orange-500 group-hover:text-white transition-colors">
+                            <IconNavigation sz={12} className={showRoutes ? 'text-white' : 'text-orange-400'} />
+                            <span>Routes</span>
+                        </button>
+
+                        <div className="w-px h-4 bg-white/20 mx-0.5 shrink-0"></div>
+
+                        {/* Traffic Overlay Toggle */}
+                        <button
+                            type="button"
+                            onClick={() => setTrafficOn(!trafficOn)}
+                            className={`h-7 px-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0 whitespace-nowrap ${trafficOn ? 'bg-rose-600 text-white shadow-md shadow-rose-600/40 border border-rose-400/60' : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/5'}`}
+                        >
+                            <IconActivity sz={12} className={trafficOn ? 'text-white' : 'text-rose-400'} />
+                            <span>Traffic</span>
+                        </button>
+
+                        {/* Rain Radar Overlay Toggle */}
+                        <button
+                            type="button"
+                            onClick={() => setRadarOn(!radarOn)}
+                            className={`h-7 px-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0 whitespace-nowrap ${radarOn ? 'bg-blue-600 text-white shadow-md shadow-blue-600/40 border border-blue-400/60' : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/5'}`}
+                        >
+                            <IconCloudRain sz={13} className={radarOn ? 'text-white' : 'text-blue-400'} />
+                            <span>Radar</span>
+                        </button>
+
+                        {/* Clouds Overlay Toggle */}
+                        <button
+                            type="button"
+                            onClick={() => setCloudsOn(!cloudsOn)}
+                            className={`h-7 px-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0 whitespace-nowrap ${cloudsOn ? 'bg-sky-500 text-white shadow-md shadow-sky-500/40 border border-sky-300/60' : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/5'}`}
+                        >
+                            <IconCloud sz={13} className={cloudsOn ? 'text-white' : 'text-sky-400'} />
+                            <span>Clouds</span>
+                        </button>
+
+                        {/* Wind Overlay Toggle */}
+                        <button
+                            type="button"
+                            onClick={() => setWindOn(!windOn)}
+                            className={`h-7 px-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0 whitespace-nowrap ${windOn ? 'bg-teal-500 text-white shadow-md shadow-teal-500/40 border border-teal-300/60' : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/5'}`}
+                        >
+                            <IconWind sz={13} className={windOn ? 'text-white' : 'text-teal-400'} />
+                            <span>Wind</span>
+                        </button>
+
+                        {/* Flood Zones Hazard Toggle */}
+                        <button
+                            type="button"
+                            onClick={() => setFloodZonesOn(!floodZonesOn)}
+                            className={`h-7 px-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0 whitespace-nowrap ${floodZonesOn ? 'bg-amber-500 text-white shadow-md shadow-amber-500/40 border border-amber-300/60' : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/5'}`}
+                        >
+                            <IconAlertTriangle sz={13} className={floodZonesOn ? 'text-white' : 'text-amber-400'} />
+                            <span>Floods</span>
+                        </button>
+
+                        <div className="w-px h-4 bg-white/20 mx-0.5 shrink-0"></div>
+
+                        {/* Fit All Zoom */}
+                        <button
+                            type="button"
+                            onClick={() => { if (mapInst.current && Object.keys(markersRef.current).length) mapInst.current.fitBounds(L.featureGroup(Object.values(markersRef.current)).getBounds().pad(0.2)); }}
+                            className="h-7 px-2.5 rounded-xl text-xs font-black text-slate-300 hover:text-white bg-white/5 hover:bg-white/15 border border-white/5 transition-all flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
+                            title="Fit map to all vehicle locations"
+                        >
+                            <IconMaximize sz={12} className="text-slate-400" />
+                            <span>Fit All</span>
+                        </button>
+                    </div>
+
+                    {/* TOP RIGHT WEATHER PILL WIDGET (POSITIONED IN TOP-RIGHT, LOWER LEVEL) */}
+                    <div
+                        onClick={onOpenWeatherModal}
+                        className={`absolute ${hasWeatherBanner ? 'top-28' : 'top-14'} right-3 z-[500] bg-[var(--bg-card)] backdrop-blur-xl border border-[var(--glass-border)] p-1.5 px-3 rounded-2xl shadow-2xl flex items-center gap-2.5 cursor-pointer hover:border-orange-500/60 hover:scale-105 transition-all pointer-events-auto group shrink-0`}
+                    >
+                            <div className="w-7 h-7 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-500 dark:text-amber-400 shrink-0 group-hover:bg-orange-500 group-hover:text-white transition-colors">
                                 <IconCloudRain sz={15} />
                             </div>
                             <div className="flex flex-col">
                                 <div className="flex items-center gap-1.5">
-                                    <IconMapPin sz={10} className="text-orange-400 shrink-0" />
-                                    <span className="text-[10px] font-black text-white tracking-tight">Garage Hub (SJDM)</span>
-                                    <span className="text-xs font-black text-amber-400">{temp}°C</span>
-                                    <span className="text-[8px] font-black uppercase bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded border border-amber-500/30">MONSOON</span>
+                                    <IconMapPin sz={10} className="text-orange-500 dark:text-orange-400 shrink-0" />
+                                    <span className="text-[10px] font-black text-[var(--text-primary)] tracking-tight">Garage Hub (SJDM)</span>
+                                    <span className="text-xs font-black text-amber-500 dark:text-amber-400">{temp}°C</span>
+                                    <span className="text-[8px] font-black uppercase bg-amber-500/15 text-amber-700 dark:text-amber-300 px-1.5 py-0.2 rounded border border-amber-500/30">MONSOON</span>
                                 </div>
-                                <div className="text-[9px] text-[var(--text-muted)] font-medium flex items-center gap-1.5">
-                                    <span>Precip: <strong className="text-blue-400">{rain} mm/h</strong></span>
-                                    <span className="text-orange-400 font-bold group-hover:underline">Details &rarr;</span>
+                                <div className="text-[9px] text-[var(--text-secondary)] font-medium flex items-center gap-1.5">
+                                    <span>Precip: <strong className="text-blue-500 dark:text-blue-400">{rain} mm/h</strong></span>
+                                    <span className="text-orange-500 dark:text-orange-400 font-bold group-hover:underline">Details &rarr;</span>
                                 </div>
                             </div>
                         </div>
-                    </div>
 
                     {/* FLOATING MOUSE HOVER WEATHER INSPECTOR TOOLTIP BADGE */}
                     {hoverInfo && (
@@ -2768,27 +3523,41 @@
                 }
             }
 
-            const getInitialForm = (v) => ({
-                vehicleId: v?.id || v?.vehicle_id || v?.vehicleId || v?.VehicleId || initialId,
-                brand: v?.brand || v?.Brand || '',
-                model: v?.model || v?.Model || '',
-                plateNumber: v?.plateNumber || v?.plate_no || v?.plateNo || v?.PlateNumber || '',
-                type: v?.type || v?.Type || 'Car',
-                engineCc: v?.engineCc || v?.cc || v?.EngineCc || 1500,
-                dailyRatePHP: v?.dailyRatePHP || v?.rate_per_day || v?.ratePerDay || v?.RatePerDay || 2500,
-                rateWithDriverPHP: v?.rateWithDriverPHP || v?.rate_with_driver || v?.rateWithDriver || v?.RateWithDriver || 3500,
-                seatCapacity: v?.seatCapacity || v?.seat_capacity || v?.SeatCapacity || 5,
-                transmission: v?.transmission || v?.Transmission || 'Automatic',
-                status: v?.status || v?.Status || 'available',
-                description: v?.description || v?.Description || '',
-                image: v?.image || v?.photo_url || v?.photoUrl || v?.PhotoUrl || '',
-                mapIconUrl: v?.mapIconUrl || v?.map_icon_url || v?.map3DIconUrl || v?.map3dIconUrl || v?.model_3d_url || v?.model3dUrl || v?.Model3dUrl || v?.Model3DUrl || '',
-                ltoExpiryDate: formatDateSafe(v?.lto_expiry_date || v?.ltoExpiryDate || v?.documents?.ltoRegistrationExpiry, '2026-10-15'),
-                insuranceExpiryDate: formatDateSafe(v?.insurance_expiry_date || v?.insuranceExpiryDate || v?.documents?.insuranceExpiry, '2026-11-20'),
-                orCrUrl: v?.orCrUrl || v?.or_cr_url || v?.OrCrUrl || v?.documents?.orCrUrl || v?.documents?.or_cr_url || '',
-                insuranceUrl: v?.insuranceUrl || v?.insurance_url || v?.InsuranceUrl || v?.documents?.insuranceUrl || v?.documents?.insurance_url || '',
-                color: v?.color || v?.Color || 'Pearl White'
-            });
+            const getInitialForm = (v) => {
+                let rawPhotoUrls = v?.photo_urls || v?.photoUrls || v?.PhotoUrls || [];
+                if (typeof rawPhotoUrls === 'string') {
+                    try { rawPhotoUrls = JSON.parse(rawPhotoUrls); } catch(e) { rawPhotoUrls = []; }
+                }
+                if (!Array.isArray(rawPhotoUrls)) rawPhotoUrls = [];
+                const primaryImg = v?.image || v?.photo_url || v?.photoUrl || v?.PhotoUrl || (rawPhotoUrls[0] || '');
+                let initialImages = [...rawPhotoUrls];
+                if (primaryImg && !initialImages.includes(primaryImg)) {
+                    initialImages = [primaryImg, ...initialImages];
+                }
+
+                return {
+                    vehicleId: v?.id || v?.vehicle_id || v?.vehicleId || v?.VehicleId || initialId,
+                    brand: v?.brand || v?.Brand || '',
+                    model: v?.model || v?.Model || '',
+                    plateNumber: v?.plateNumber || v?.plate_no || v?.plateNo || v?.PlateNumber || '',
+                    type: v?.type || v?.Type || 'Car',
+                    engineCc: v?.engineCc || v?.cc || v?.EngineCc || 1500,
+                    dailyRatePHP: v?.dailyRatePHP || v?.rate_per_day || v?.ratePerDay || v?.RatePerDay || 2500,
+                    rateWithDriverPHP: v?.rateWithDriverPHP || v?.rate_with_driver || v?.rateWithDriver || v?.RateWithDriver || 3500,
+                    seatCapacity: v?.seatCapacity || v?.seat_capacity || v?.SeatCapacity || 5,
+                    transmission: v?.transmission || v?.Transmission || 'Automatic',
+                    status: v?.status || v?.Status || 'available',
+                    description: v?.description || v?.Description || '',
+                    images: initialImages,
+                    image: primaryImg || (initialImages[0] || ''),
+                    mapIconUrl: v?.mapIconUrl || v?.map_icon_url || v?.map3DIconUrl || v?.map3dIconUrl || v?.model_3d_url || v?.model3dUrl || v?.Model3dUrl || v?.Model3DUrl || '',
+                    ltoExpiryDate: formatDateSafe(v?.lto_expiry_date || v?.ltoExpiryDate || v?.documents?.ltoRegistrationExpiry, '2026-10-15'),
+                    insuranceExpiryDate: formatDateSafe(v?.insurance_expiry_date || v?.insuranceExpiryDate || v?.documents?.insuranceExpiry, '2026-11-20'),
+                    orCrUrl: v?.orCrUrl || v?.or_cr_url || v?.OrCrUrl || v?.documents?.orCrUrl || v?.documents?.or_cr_url || '',
+                    insuranceUrl: v?.insuranceUrl || v?.insurance_url || v?.InsuranceUrl || v?.documents?.insuranceUrl || v?.documents?.insurance_url || '',
+                    color: v?.color || v?.Color || 'Pearl White'
+                };
+            };
 
             const [form, setForm] = useState(() => getInitialForm(vehicleToEdit));
 
@@ -3009,69 +3778,102 @@
             };
 
             const handleMediaUpload = (e) => {
-                const file = e.target.files && e.target.files[0];
-                if (!file) return;
+                const files = e.target.files ? Array.from(e.target.files) : [];
+                if (files.length === 0) return;
 
-                if (!file.type.startsWith('image/')) {
-                    setUploadProgress(p => ({ ...p, image: { active: false, percent: 0, error: 'Invalid file format. Please upload an image (JPG, PNG, WEBP).' } }));
-                    return;
-                }
-                if (file.size > 10 * 1024 * 1024) {
-                    setUploadProgress(p => ({ ...p, image: { active: false, percent: 0, error: 'Image is too large. Please select a file under 10MB.' } }));
+                const validFiles = files.filter(f => f.type.startsWith('image/'));
+                if (validFiles.length === 0) {
+                    setUploadProgress(p => ({ ...p, image: { active: false, percent: 0, error: 'Invalid file format. Please upload image files (JPG, PNG, WEBP).' } }));
                     return;
                 }
 
                 setUploadProgress(p => ({ ...p, image: { active: true, percent: 20, error: '' } }));
 
-                const reader = new FileReader();
-                reader.onprogress = (pe) => {
-                    if (pe.lengthComputable) {
-                        const pct = Math.round((pe.loaded / pe.total) * 60) + 15;
-                        setUploadProgress(p => ({ ...p, image: { active: true, percent: Math.min(80, pct), error: '' } }));
-                    }
-                };
-                reader.onload = (ev) => {
-                    setUploadProgress(p => ({ ...p, image: { active: true, percent: 85, error: '' } }));
-                    const img = new Image();
-                    img.onload = () => {
-                        try {
-                            const canvas = document.createElement('canvas');
-                            let width = img.width || 800;
-                            let height = img.height || 800;
-                            const MAX_DIM = 1200;
-                            if (width > MAX_DIM || height > MAX_DIM) {
-                                if (width > height) {
-                                    height = Math.round((height * MAX_DIM) / width);
-                                    width = MAX_DIM;
-                                } else {
-                                    width = Math.round((width * MAX_DIM) / height);
-                                    height = MAX_DIM;
+                const processSingleFile = (file) => {
+                    return new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                            const img = new Image();
+                            img.onload = () => {
+                                try {
+                                    const canvas = document.createElement('canvas');
+                                    let width = img.width || 800;
+                                    let height = img.height || 800;
+                                    const MAX_DIM = 1400;
+                                    if (width > MAX_DIM || height > MAX_DIM) {
+                                        if (width > height) {
+                                            height = Math.round((height * MAX_DIM) / width);
+                                            width = MAX_DIM;
+                                        } else {
+                                            width = Math.round((width * MAX_DIM) / height);
+                                            height = MAX_DIM;
+                                        }
+                                    }
+                                    canvas.width = width;
+                                    canvas.height = height;
+                                    const ctx = canvas.getContext('2d');
+                                    ctx.drawImage(img, 0, 0, width, height);
+                                    const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                                    resolve(compressedDataUrl);
+                                } catch (err) {
+                                    reject(err);
                                 }
-                            }
-                            canvas.width = width;
-                            canvas.height = height;
-                            const ctx = canvas.getContext('2d');
-                            ctx.drawImage(img, 0, 0, width, height);
-                            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                            };
+                            img.onerror = () => reject(new Error('Corrupted image'));
+                            img.src = ev.target.result;
+                        };
+                        reader.onerror = () => reject(new Error('Failed reading file'));
+                        reader.readAsDataURL(file);
+                    });
+                };
 
-                            setUploadProgress(p => ({ ...p, image: { active: true, percent: 100, error: '' } }));
-                            setTimeout(() => {
-                                setForm(f => ({ ...f, image: compressedDataUrl }));
-                                setUploadProgress(p => ({ ...p, image: { active: false, percent: 0, error: '' } }));
-                            }, 450);
-                        } catch (err) {
-                            setUploadProgress(p => ({ ...p, image: { active: false, percent: 0, error: 'Compression error: ' + (err?.message || err) } }));
-                        }
+                Promise.all(validFiles.map(processSingleFile))
+                    .then(newImages => {
+                        setUploadProgress(p => ({ ...p, image: { active: true, percent: 100, error: '' } }));
+                        setTimeout(() => {
+                            setForm(f => {
+                                const currentImages = Array.isArray(f.images) ? [...f.images] : (f.image ? [f.image] : []);
+                                const updatedImages = [...currentImages, ...newImages];
+                                const currentPrimary = f.image && updatedImages.includes(f.image) ? f.image : (updatedImages[0] || '');
+                                return {
+                                    ...f,
+                                    images: updatedImages,
+                                    image: currentPrimary
+                                };
+                            });
+                            setUploadProgress(p => ({ ...p, image: { active: false, percent: 0, error: '' } }));
+                            if (mediaInputRef.current) mediaInputRef.current.value = '';
+                        }, 350);
+                    })
+                    .catch(err => {
+                        setUploadProgress(p => ({ ...p, image: { active: false, percent: 0, error: 'Upload error: ' + (err?.message || err) } }));
+                    });
+            };
+
+            const setPrimaryImage = (imgSrc) => {
+                setForm(f => {
+                    const currentImages = Array.isArray(f.images) ? [...f.images] : (f.image ? [f.image] : []);
+                    const filtered = currentImages.filter(x => x !== imgSrc);
+                    const updated = [imgSrc, ...filtered];
+                    return {
+                        ...f,
+                        images: updated,
+                        image: imgSrc
                     };
-                    img.onerror = () => {
-                        setUploadProgress(p => ({ ...p, image: { active: false, percent: 0, error: 'Failed to load image file. File may be corrupted.' } }));
+                });
+            };
+
+            const removeImage = (imgSrc) => {
+                setForm(f => {
+                    const currentImages = Array.isArray(f.images) ? [...f.images] : (f.image ? [f.image] : []);
+                    const updated = currentImages.filter(x => x !== imgSrc);
+                    const newPrimary = f.image === imgSrc ? (updated[0] || '') : f.image;
+                    return {
+                        ...f,
+                        images: updated,
+                        image: newPrimary
                     };
-                    img.src = ev.target.result;
-                };
-                reader.onerror = () => {
-                    setUploadProgress(p => ({ ...p, image: { active: false, percent: 0, error: 'Error reading file from disk.' } }));
-                };
-                reader.readAsDataURL(file);
+                });
             };
 
             const handleIconUpload = (e) => {
@@ -3322,6 +4124,11 @@
 
                     const shouldUpdate = (isEditMode || Boolean(targetId)) && targetId !== null && targetId > 0;
 
+                    const primaryPhoto = form.image || (Array.isArray(form.images) && form.images.length > 0 ? form.images[0] : '');
+                    const allPhotoUrls = Array.isArray(form.images) && form.images.length > 0 
+                        ? form.images 
+                        : (primaryPhoto ? [primaryPhoto] : []);
+
                     const payload = {
                         vehicleId: targetId || (form.vehicleId ? parseInt(form.vehicleId) : undefined),
                         vehicle_id: targetId || (form.vehicleId ? parseInt(form.vehicleId) : undefined),
@@ -3341,8 +4148,10 @@
                         transmission: form.transmission,
                         status: form.status,
                         description: form.description,
-                        photoUrl: form.image || '',
-                        photo_url: form.image || '',
+                        photoUrl: primaryPhoto,
+                        photo_url: primaryPhoto,
+                        photoUrls: allPhotoUrls,
+                        photo_urls: allPhotoUrls,
                         model3dUrl: form.mapIconUrl || '',
                         model_3d_url: form.mapIconUrl || '',
                         map_icon_url: form.mapIconUrl || '',
@@ -3392,8 +4201,11 @@
                             transmission: form.transmission,
                             status: form.status,
                             description: form.description,
-                            photo_url: form.image || '',
-                            image: form.image || '',
+                            photo_url: primaryPhoto,
+                            photoUrl: primaryPhoto,
+                            image: primaryPhoto,
+                            photo_urls: allPhotoUrls,
+                            photoUrls: allPhotoUrls,
                             model_3d_url: form.mapIconUrl || '',
                             map_icon_url: form.mapIconUrl || '',
                             mapIconUrl: form.mapIconUrl || '',
@@ -3505,7 +4317,15 @@
                                 {/* Brand & Model */}
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
-                                        <label className="text-xs font-semibold text-[var(--text-secondary)] mb-1 block">Brand *</label>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="text-xs font-semibold text-[var(--text-secondary)]">Brand *</label>
+                                            {form.brand && form.brand.trim().length > 0 && (
+                                                <div className="flex items-center gap-1.5 animate-fade-in">
+                                                    <BrandLogo brand={form.brand} className="w-5 h-5" imgClass="max-h-4.5 max-w-4.5" />
+                                                    <span className="text-[10px] font-bold text-orange-400 uppercase truncate max-w-[80px]">{form.brand}</span>
+                                                </div>
+                                            )}
+                                        </div>
                                         {creationMode === 'preset' && !vehicleToEdit ? (
                                             <select
                                                 value={selectedBrandPreset}
@@ -3518,7 +4338,12 @@
                                                 ))}
                                             </select>
                                         ) : (
-                                            <input type="text" value={form.brand} onChange={e => setForm({ ...form, brand: e.target.value })} className="w-full p-3 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border-color)] text-sm font-semibold text-[var(--text-primary)] focus:border-orange-500 outline-none transition-all placeholder-[var(--text-muted)]" placeholder="e.g. Honda, Ford, Toyota" />
+                                            <div className="relative flex items-center">
+                                                <input type="text" value={form.brand} onChange={e => setForm({ ...form, brand: e.target.value })} className="w-full p-3 pr-10 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border-color)] text-sm font-semibold text-[var(--text-primary)] focus:border-orange-500 outline-none transition-all placeholder-[var(--text-muted)]" placeholder="e.g. Honda, Ford, Toyota" />
+                                                <div className="absolute right-2.5 pointer-events-none">
+                                                    <BrandLogo brand={form.brand} className="w-6 h-6" imgClass="max-h-5 max-w-5" />
+                                                </div>
+                                            </div>
                                         )}
                                     </div>
                                     <div>
@@ -3727,12 +4552,30 @@
                                     </div>
                                 </div>
 
-                                {/* 1. Vehicle Photo / Media Drag & Drop Dropzone with Live Preview */}
-                                <div className="space-y-1.5">
+                                {/* 1. Vehicle Photo Gallery with Primary Cover Selector */}
+                                <div className="space-y-2">
                                     <div className="flex justify-between items-center">
-                                        <label className="text-xs font-bold text-[var(--text-secondary)]">Vehicle Photo / Media</label>
-                                        <input type="file" ref={mediaInputRef} onChange={handleMediaUpload} accept="image/*" className="hidden" />
+                                        <div className="flex items-center gap-2">
+                                            <label className="text-xs font-bold text-[var(--text-secondary)]">Vehicle Photo Gallery</label>
+                                            {form.images && form.images.length > 0 && (
+                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                                                    {form.images.length} Photos
+                                                </span>
+                                            )}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => mediaInputRef.current?.click()}
+                                            className="px-2.5 py-1 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                        >
+                                            <IconUpload sz={12} /> + Add Photos
+                                        </button>
+                                        <input type="file" ref={mediaInputRef} onChange={handleMediaUpload} accept="image/*" multiple className="hidden" />
                                     </div>
+
+                                    <p className="text-[10px] text-[var(--text-muted)] flex items-center gap-1">
+                                        Upload multiple photos. Choose one as <strong className="text-orange-400 flex items-center gap-0.5"><IconStar sz={11} className="text-amber-400" /> Primary Cover</strong> for vehicle cards, emails & receipts.
+                                    </p>
 
                                     {/* Upload Progress Bar (0-100%) */}
                                     {uploadProgress.image?.active && (
@@ -3740,7 +4583,7 @@
                                             <div className="flex justify-between items-center text-xs">
                                                 <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
                                                     <span className="animate-spin text-orange-500"><IconRefreshCw sz={13} /></span>
-                                                    <span>{uploadProgress.image.percent < 100 ? 'Uploading & Optimizing Photo...' : 'Upload Complete!'}</span>
+                                                    <span>{uploadProgress.image.percent < 100 ? 'Processing & Optimizing Photos...' : 'Upload Complete!'}</span>
                                                 </span>
                                                 <span className="font-black text-orange-500">{uploadProgress.image.percent}%</span>
                                             </div>
@@ -3770,34 +4613,52 @@
                                         </div>
                                     )}
 
-                                    {!uploadProgress.image?.active && form.image ? (
-                                        <div className="relative rounded-2xl overflow-hidden border border-orange-500/40 bg-black/40 p-1.5 flex items-center gap-3">
-                                            <div className="w-24 h-16 rounded-xl overflow-hidden bg-[var(--bg-tertiary)] shrink-0 border border-white/10">
-                                                <img src={form.image} alt="Vehicle Preview" className="w-full h-full object-cover" />
-                                            </div>
-                                            <div className="flex-1 min-w-0 pr-2">
-                                                <div className="text-xs font-black text-[var(--text-primary)] truncate">Vehicle Main Photo</div>
-                                                <div className="text-[10px] text-emerald-500 font-bold flex items-center gap-1 mt-0.5">
-                                                    <IconCheck sz={12} /> Image Ready
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-1.5 shrink-0 pr-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => mediaInputRef.current?.click()}
-                                                    className="px-2.5 py-1.5 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 text-[11px] font-bold transition-all flex items-center gap-1"
-                                                    title="Change Photo"
-                                                >
-                                                    <IconEdit sz={12} /> Change
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setForm(f => ({ ...f, image: '' }))}
-                                                    className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30 transition-all"
-                                                    title="Remove Photo"
-                                                >
-                                                    <IconTrash sz={13} />
-                                                </button>
+                                    {/* Gallery Grid of Uploaded Photos */}
+                                    {Array.isArray(form.images) && form.images.length > 0 ? (
+                                        <div className="space-y-2">
+                                            <div className="grid grid-cols-3 gap-2.5 max-h-56 overflow-y-auto pr-1">
+                                                {form.images.map((imgSrc, imgIdx) => {
+                                                    const isPrimary = (form.image === imgSrc) || (!form.image && imgIdx === 0);
+                                                    return (
+                                                        <div 
+                                                            key={imgIdx} 
+                                                            className={`relative rounded-xl overflow-hidden group aspect-[4/3] bg-black/40 border transition-all ${isPrimary ? 'border-orange-500 ring-2 ring-orange-500/40 shadow-lg shadow-orange-500/20' : 'border-[var(--border-color)] hover:border-orange-500/50'}`}
+                                                        >
+                                                            <img src={imgSrc} alt={`Vehicle photo ${imgIdx + 1}`} className="w-full h-full object-cover" />
+                                                            
+                                                            {/* Primary Badge */}
+                                                            {isPrimary ? (
+                                                                <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-orange-500 text-white text-[9px] font-black tracking-wider uppercase shadow-md flex items-center gap-1">
+                                                                    <IconStar sz={10} className="text-white" /> Primary
+                                                                </div>
+                                                            ) : (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setPrimaryImage(imgSrc)}
+                                                                    className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-black/80 hover:bg-orange-500 text-white text-[9px] font-extrabold opacity-0 group-hover:opacity-100 transition-all cursor-pointer backdrop-blur border border-white/20 shadow-md flex items-center gap-1"
+                                                                    title="Set as Primary Cover Photo"
+                                                                >
+                                                                    <IconStar sz={10} className="text-white" /> Set Primary
+                                                                </button>
+                                                            )}
+
+                                                            {/* Delete button */}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeImage(imgSrc)}
+                                                                className="absolute top-1.5 right-1.5 p-1 rounded-md bg-black/80 hover:bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-all cursor-pointer backdrop-blur border border-white/20 shadow-md"
+                                                                title="Delete Photo"
+                                                            >
+                                                                <IconTrash sz={11} />
+                                                            </button>
+
+                                                            {/* Bottom Photo Number Indicator */}
+                                                            <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/70 text-[8px] font-bold text-white/80 backdrop-blur">
+                                                                #{imgIdx + 1}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     ) : !uploadProgress.image?.active ? (
@@ -3808,7 +4669,7 @@
                                             onDrop={(e) => {
                                                 e.preventDefault();
                                                 e.currentTarget.classList.remove('border-orange-500', 'bg-orange-500/10');
-                                                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                                                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                                                     const fakeEv = { target: { files: e.dataTransfer.files } };
                                                     handleMediaUpload(fakeEv);
                                                 }
@@ -3818,8 +4679,8 @@
                                             <div className="w-10 h-10 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center group-hover:scale-110 transition-transform">
                                                 <IconUpload sz={18} />
                                             </div>
-                                            <div className="text-xs font-bold text-[var(--text-primary)]">Drag & drop vehicle photo here, or <span className="text-orange-500 underline">browse</span></div>
-                                            <div className="text-[10px] text-[var(--text-muted)]">Supports JPG, PNG, WEBP (Auto-optimized)</div>
+                                            <div className="text-xs font-bold text-[var(--text-primary)]">Drag & drop vehicle photos here, or <span className="text-orange-500 underline">browse</span></div>
+                                            <div className="text-[10px] text-[var(--text-muted)]">Multiple photos supported (JPG, PNG, WEBP)</div>
                                         </div>
                                     ) : null}
                                 </div>
@@ -3934,7 +4795,7 @@
                                                         type="button"
                                                         onClick={() => rotateMarkerImage(-90)}
                                                         disabled={isRotating}
-                                                        className="py-1.5 px-1 rounded-xl bg-[var(--bg-tertiary)] hover:bg-orange-500/20 text-white hover:text-orange-400 border border-white/10 hover:border-orange-500/40 text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                                                        className="py-1.5 px-1 rounded-xl bg-[var(--bg-tertiary)] hover:bg-orange-500/20 text-[var(--text-primary)] hover:text-orange-500 border border-[var(--border-color)] hover:border-orange-500/40 text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
                                                         title="Rotate -90° Counter-Clockwise"
                                                     >
                                                         <IconRotateCcw sz={12} /> -90°
@@ -3943,7 +4804,7 @@
                                                         type="button"
                                                         onClick={() => rotateMarkerImage(90)}
                                                         disabled={isRotating}
-                                                        className="py-1.5 px-1 rounded-xl bg-[var(--bg-tertiary)] hover:bg-orange-500/20 text-white hover:text-orange-400 border border-white/10 hover:border-orange-500/40 text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                                                        className="py-1.5 px-1 rounded-xl bg-[var(--bg-tertiary)] hover:bg-orange-500/20 text-[var(--text-primary)] hover:text-orange-500 border border-[var(--border-color)] hover:border-orange-500/40 text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
                                                         title="Rotate +90° Clockwise"
                                                     >
                                                         <IconRotateCw sz={12} /> +90°
@@ -3952,7 +4813,7 @@
                                                         type="button"
                                                         onClick={() => rotateMarkerImage(-15)}
                                                         disabled={isRotating}
-                                                        className="py-1.5 px-1 rounded-xl bg-[var(--bg-tertiary)] hover:bg-orange-500/20 text-white hover:text-orange-400 border border-white/10 hover:border-orange-500/40 text-xs font-bold transition-all flex items-center justify-center gap-0.5 cursor-pointer disabled:opacity-50"
+                                                        className="py-1.5 px-1 rounded-xl bg-[var(--bg-tertiary)] hover:bg-orange-500/20 text-[var(--text-primary)] hover:text-orange-500 border border-[var(--border-color)] hover:border-orange-500/40 text-xs font-bold transition-all flex items-center justify-center gap-0.5 cursor-pointer disabled:opacity-50"
                                                         title="Fine-tune -15°"
                                                     >
                                                         <IconRotateCcw sz={10} /> -15°
@@ -3961,7 +4822,7 @@
                                                         type="button"
                                                         onClick={() => rotateMarkerImage(15)}
                                                         disabled={isRotating}
-                                                        className="py-1.5 px-1 rounded-xl bg-[var(--bg-tertiary)] hover:bg-orange-500/20 text-white hover:text-orange-400 border border-white/10 hover:border-orange-500/40 text-xs font-bold transition-all flex items-center justify-center gap-0.5 cursor-pointer disabled:opacity-50"
+                                                        className="py-1.5 px-1 rounded-xl bg-[var(--bg-tertiary)] hover:bg-orange-500/20 text-[var(--text-primary)] hover:text-orange-500 border border-[var(--border-color)] hover:border-orange-500/40 text-xs font-bold transition-all flex items-center justify-center gap-0.5 cursor-pointer disabled:opacity-50"
                                                         title="Fine-tune +15°"
                                                     >
                                                         <IconRotateCw sz={10} /> +15°
@@ -3970,7 +4831,7 @@
                                                         type="button"
                                                         onClick={() => rotateMarkerImage(180)}
                                                         disabled={isRotating}
-                                                        className="py-1.5 px-1 rounded-xl bg-[var(--bg-tertiary)] hover:bg-orange-500/20 text-white hover:text-orange-400 border border-white/10 hover:border-orange-500/40 text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                                                        className="py-1.5 px-1 rounded-xl bg-[var(--bg-tertiary)] hover:bg-orange-500/20 text-[var(--text-primary)] hover:text-orange-500 border border-[var(--border-color)] hover:border-orange-500/40 text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
                                                         title="Flip 180°"
                                                     >
                                                         ↕ 180°

@@ -27,10 +27,12 @@ namespace DriveAndGo_API.Controllers
 
                 // 1. Query Driver licenses expiring soon (within 30 days or already expired)
                 await using var cmdDrivers = new NpgsqlCommand(@"
-                    SELECT driver_id, full_name, license_expiry
-                    FROM drivers
-                    WHERE license_expiry IS NOT NULL AND license_expiry <= NOW() + INTERVAL '30 days'
-                    ORDER BY license_expiry ASC", conn);
+                    SELECT d.driver_id, COALESCE(u.full_name, 'Driver #' || d.driver_id) AS full_name, d.license_expiry
+                    FROM drivers d
+                    JOIN users u ON d.user_id = u.user_id
+                    WHERE d.license_expiry IS NOT NULL AND d.license_expiry <= NOW() + INTERVAL '30 days'
+                    ORDER BY d.license_expiry ASC", conn);
+
 
                 await using var readerD = await cmdDrivers.ExecuteReaderAsync();
                 while (await readerD.ReadAsync())

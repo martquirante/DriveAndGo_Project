@@ -23,7 +23,7 @@ namespace DriveAndGo_Admin.Panels
             this.Dock      = DockStyle.Fill;
             this.BackColor = ThemeManager.CurrentBackground;
             BuildLoading();
-            this.HandleCreated += async (s, e) => await InitWebView();
+            _ = InitWebView();
             ThemeManager.ThemeChanged += ThemeChanged_Handler;
             this.Disposed += (s, e) => ThemeManager.ThemeChanged -= ThemeChanged_Handler;
         }
@@ -36,7 +36,7 @@ namespace DriveAndGo_Admin.Panels
                 bool dk = ThemeManager.IsDarkMode;
                 _webView.BeginInvoke((MethodInvoker)(async () =>
                 {
-                    await _webView.CoreWebView2.ExecuteScriptAsync($"setTheme({(dk ? "true" : "false")});");
+                    await _webView.CoreWebView2.ExecuteScriptAsync($"if(window.setTheme) setTheme({(dk ? "true" : "false")});");
                 }));
             }
         }
@@ -51,7 +51,7 @@ namespace DriveAndGo_Admin.Panels
 
             _loadingLabel = new Label
             {
-                Text = "Loading Driver Management\u2026",
+                Text = "Loading Driver Management…",
                 Font = new Font("Segoe UI", 14F, FontStyle.Bold),
                 ForeColor = Color.FromArgb(255, 107, 0),
                 AutoSize = true,
@@ -61,8 +61,8 @@ namespace DriveAndGo_Admin.Panels
             _loadingPanel.Controls.Add(_loadingLabel);
             _loadingPanel.Resize += (s, e) =>
                 _loadingLabel.Location = new Point(
-                    (_loadingPanel.Width  - _loadingLabel.Width)  / 2,
-                    (_loadingPanel.Height - _loadingLabel.Height) / 2);
+                    Math.Max(10, (_loadingPanel.Width  - _loadingLabel.Width)  / 2),
+                    Math.Max(10, (_loadingPanel.Height - _loadingLabel.Height) / 2));
 
             this.Controls.Add(_loadingPanel);
         }
@@ -73,41 +73,37 @@ namespace DriveAndGo_Admin.Panels
 
             try
             {
-                _webView = new WebView2 { Dock = DockStyle.Fill };
+                string htmlPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "DriversWeb.html");
+                if (!File.Exists(htmlPath))
+                {
+                    htmlPath = @"C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\WebAssets\DriversWeb.html";
+                }
+
+                _webView = new WebView2 { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.Transparent };
                 this.Controls.Add(_webView);
                 _webView.BringToFront();
 
-                var env = await CoreWebView2Environment.CreateAsync(null, Path.GetTempPath());
+                var env = await CoreWebView2Environment.CreateAsync(null, Path.Combine(Path.GetTempPath(), "DriveAndGo_DriversWV2"));
                 await _webView.EnsureCoreWebView2Async(env);
 
-                string outputAssetsFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets");
-                if (!Directory.Exists(outputAssetsFolder))
-                    Directory.CreateDirectory(outputAssetsFolder);
+                _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                _webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+                _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
 
-                string[] sourceCandidates =
-                {
-                    @"C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\WebAssets\DriversWeb.html",
-                    Path.GetFullPath(Path.Combine(Application.StartupPath, @"..\..\..\WebAssets\DriversWeb.html")),
-                    Path.GetFullPath(Path.Combine(Application.StartupPath, @"..\..\WebAssets\DriversWeb.html")),
-                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "DriversWeb.html"),
-                    Path.Combine(Application.StartupPath, "WebAssets", "DriversWeb.html"),
-                    Path.Combine(Application.StartupPath, "DriversWeb.html"),
-                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "DriversWeb.html")
-                };
+                string apiBase = ApiService.BaseUrl.TrimEnd('/');
+                string networkBase = ApiService.ResolveNetworkBaseUrl().TrimEnd('/');
+                string currentAdmin = !string.IsNullOrWhiteSpace(SessionManager.FullName) ? SessionManager.FullName : "Admin";
+                string jwtToken = SessionManager.JwtToken ?? SessionManager.Token ?? "";
+                bool dk = ThemeManager.IsDarkMode;
 
-                string sourceHtml = sourceCandidates.FirstOrDefault(File.Exists);
-                string destHtml   = Path.Combine(outputAssetsFolder, "DriversWeb.html");
-
-                if (!string.IsNullOrEmpty(sourceHtml))
-                {
-                    if (!string.Equals(sourceHtml, destHtml, StringComparison.OrdinalIgnoreCase))
-                        File.Copy(sourceHtml, destHtml, true);
-                }
-
-                _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                    "appassets",
-                    outputAssetsFolder,
-                    CoreWebView2HostResourceAccessKind.Allow);
+                await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
+                    $"window.API_BASE_URL = '{apiBase}'; " +
+                    $"window.API_NETWORK_URL = '{networkBase}'; " +
+                    $"window.AUTH_TOKEN = '{jwtToken.Replace("'", "\\'")}'; " +
+                    $"localStorage.setItem('auth_token', '{jwtToken.Replace("'", "\\'")}'); " +
+                    $"window.CURRENT_ADMIN_NAME = '{currentAdmin.Replace("'", "\\'")}'; " +
+                    $"localStorage.setItem('admin_name', '{currentAdmin.Replace("'", "\\'")}'); " +
+                    $"document.documentElement.setAttribute('data-theme', '{(dk ? "dark" : "light")}');");
 
                 _webView.NavigationCompleted += async (s, e) =>
                 {
@@ -116,42 +112,15 @@ namespace DriveAndGo_Admin.Panels
                     _webReady = true;
                     if (_loadingPanel != null) _loadingPanel.Visible = false;
 
-                    bool   dk           = ThemeManager.IsDarkMode;
-                    string networkBase  = ApiService.ResolveNetworkBaseUrl().TrimEnd('/');
-                    string currentAdmin = !string.IsNullOrWhiteSpace(SessionManager.FullName)
-                                         ? SessionManager.FullName
-                                         : "Admin";
-                    string jwtToken = SessionManager.JwtToken ?? "";
-
                     await _webView.CoreWebView2.ExecuteScriptAsync(
-                        $"window.API_BASE_URL = 'http://localhost:5233/api'; " +
+                        $"window.API_BASE_URL = '{apiBase}'; " +
                         $"window.API_NETWORK_URL = '{networkBase}'; " +
                         $"window.AUTH_TOKEN = '{jwtToken.Replace("'", "\\'")}'; " +
-                        $"localStorage.setItem('auth_token', '{jwtToken.Replace("'", "\\'")}'); " +
-                        $"window.CURRENT_ADMIN_NAME = '{currentAdmin.Replace("'", "\\'")}'; " +
-                        $"localStorage.setItem('admin_name', '{currentAdmin.Replace("'", "\\'")}'); " +
-                        $"setTheme({(dk ? "true" : "false")}); " +
+                        $"if (window.setTheme) setTheme({(dk ? "true" : "false")}); " +
                         $"if (window.fetchDriversData) window.fetchDriversData();");
                 };
 
-                if (File.Exists(destHtml))
-                {
-                    _webView.CoreWebView2.Navigate($"https://appassets/DriversWeb.html?v={DateTime.UtcNow.Ticks}");
-                }
-                else
-                {
-                    string fallbackPath = sourceCandidates.FirstOrDefault(File.Exists);
-                    if (!string.IsNullOrEmpty(fallbackPath))
-                        _webView.CoreWebView2.Navigate(new Uri(fallbackPath).AbsoluteUri);
-                    else
-                        _webView.NavigateToString(
-                            "<html><body style='background:#090D16;color:#F8FAFC;font-family:Segoe UI;" +
-                            "display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>" +
-                            "<div style='text-align:center'>" +
-                            "<p style='font-weight:bold;font-size:16px;color:#FF6B00;'>DriversWeb.html not found in WebAssets.</p>" +
-                            "<p style='color:#94A3B8;font-size:12px;'>Please ensure DriversWeb.html is copied to output directory.</p>" +
-                            "</div></body></html>");
-                }
+                _webView.CoreWebView2.Navigate("file:///" + htmlPath.Replace('\\', '/') + "?v=" + DateTime.UtcNow.Ticks);
             }
             catch (Exception ex)
             {

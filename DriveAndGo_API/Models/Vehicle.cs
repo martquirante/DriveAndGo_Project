@@ -34,6 +34,12 @@ namespace DriveAndGo_API.Models
         public string? PhotoUrlAlias { get => PhotoUrl; set => PhotoUrl = value ?? ""; }
         public string PhotoUrl { get; set; } = "";
 
+        [JsonPropertyName("photo_urls")]
+        public System.Collections.Generic.List<string> PhotoUrls { get; set; } = new();
+
+        [JsonPropertyName("photoUrls")]
+        public System.Collections.Generic.List<string> PhotoUrlsCamel { get => PhotoUrls; set => PhotoUrls = value ?? new(); }
+
         public string Description { get; set; } = "";
 
         [JsonPropertyName("seat_capacity")]

@@ -90,7 +90,136 @@ public class NotificationsController : ControllerBase
         }
     }
 
+    [HttpGet("admin")]
+    public IActionResult GetAdminNotifications()
+    {
+        try
+        {
+            var list = new List<object>();
+
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            // 1. Read persistent notifications from database
+            using (var notifCmd = new NpgsqlCommand(@"
+                SELECT notif_id, title, body, type, is_read, sent_at
+                FROM notifications
+                ORDER BY sent_at DESC, notif_id DESC
+                LIMIT 40", connection))
+            {
+                using var reader = notifCmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    list.Add(new
+                    {
+                        id = "db-" + reader["notif_id"],
+                        title = reader["title"]?.ToString() ?? "System Notification",
+                        body = reader["body"]?.ToString() ?? "",
+                        type = reader["type"]?.ToString() ?? "general",
+                        unread = reader["is_read"] == DBNull.Value || !Convert.ToBoolean(reader["is_read"]),
+                        time = reader["sent_at"] == DBNull.Value ? DateTime.UtcNow : Convert.ToDateTime(reader["sent_at"])
+                    });
+                }
+            }
+
+            // 2. Add Live Alerts for Overdue Rentals
+            using (var overdueCmd = new NpgsqlCommand(@"
+                SELECT r.rental_id, COALESCE(r.rental_code, CONCAT('RN-', LPAD(r.rental_id::text, 6, '0'))) AS code,
+                       COALESCE(u.full_name, 'Customer') AS cust_name,
+                       CONCAT(v.brand, ' ', v.model) AS veh_name,
+                       v.plate_no,
+                       r.end_date
+                FROM rentals r
+                LEFT JOIN users u ON r.customer_id = u.user_id
+                LEFT JOIN vehicles v ON r.vehicle_id = v.vehicle_id
+                WHERE LOWER(COALESCE(r.status, '')) IN ('active', 'in-use', 'ongoing', 'overdue')
+                  AND r.end_date < NOW()
+                ORDER BY r.end_date ASC
+                LIMIT 10", connection))
+            {
+                using var reader = overdueCmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var code = reader["code"]?.ToString() ?? "";
+                    var cust = reader["cust_name"]?.ToString() ?? "";
+                    var veh = reader["veh_name"]?.ToString() ?? "";
+                    var plate = reader["plate_no"]?.ToString() ?? "";
+                    var end = Convert.ToDateTime(reader["end_date"]);
+                    var hoursLate = Math.Max(1, (int)(DateTime.UtcNow - end).TotalHours);
+
+                    list.Add(new
+                    {
+                        id = "overdue-" + reader["rental_id"],
+                        title = $"⚠️ Vehicle Overdue: {plate}",
+                        body = $"{veh} ({cust}) is {hoursLate} hour(s) past scheduled drop-off.",
+                        type = "overdue",
+                        unread = true,
+                        time = end
+                    });
+                }
+            }
+
+            // 3. Add Live Alerts for Pending Bookings (highlighting imminent / past schedule)
+            using (var pendingCmd = new NpgsqlCommand(@"
+                SELECT r.rental_id, COALESCE(r.rental_code, CONCAT('RN-', LPAD(r.rental_id::text, 6, '0'))) AS code,
+                       COALESCE(u.full_name, 'Customer') AS cust_name,
+                       CONCAT(v.brand, ' ', v.model) AS veh_name,
+                       r.start_date,
+                       r.created_at
+                FROM rentals r
+                LEFT JOIN users u ON r.customer_id = u.user_id
+                LEFT JOIN vehicles v ON r.vehicle_id = v.vehicle_id
+                WHERE LOWER(COALESCE(r.status, '')) = 'pending'
+                ORDER BY r.start_date ASC, r.created_at DESC
+                LIMIT 15", connection))
+            {
+                using var reader = pendingCmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var code = reader["code"]?.ToString() ?? "";
+                    var cust = reader["cust_name"]?.ToString() ?? "";
+                    var veh = reader["veh_name"]?.ToString() ?? "";
+                    var start = reader["start_date"] == DBNull.Value ? DateTime.UtcNow : Convert.ToDateTime(reader["start_date"]);
+                    var created = reader["created_at"] == DBNull.Value ? DateTime.UtcNow : Convert.ToDateTime(reader["created_at"]);
+
+                    bool isImminentOrPast = start <= DateTime.UtcNow.AddHours(24);
+                    string title = isImminentOrPast 
+                        ? $"⏳ Urgent Conforme Required: {code}" 
+                        : $"New Booking Request: {code}";
+                    
+                    string body = isImminentOrPast
+                        ? $"Trip scheduled for {start:MMM dd, h:mm tt} ({cust} - {veh}). Conforme review required."
+                        : $"{cust} requested booking for {veh}. Awaiting Conforme approval.";
+
+                    list.Add(new
+                    {
+                        id = "pending-" + reader["rental_id"],
+                        title = title,
+                        body = body,
+                        type = "booking",
+                        unread = true,
+                        time = isImminentOrPast ? DateTime.UtcNow : created
+                    });
+                }
+            }
+
+
+            // Order combined list by time descending and take top 50
+            var ordered = list.OrderByDescending(x => {
+                var prop = x.GetType().GetProperty("time");
+                return prop != null ? (DateTime)prop.GetValue(x)! : DateTime.MinValue;
+            }).Take(50).ToList();
+
+            return Ok(ordered);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "DB Error: " + ex.Message });
+        }
+    }
+
     [HttpGet]
+
     public IActionResult GetNotifications([FromQuery] int? userId)
     {
         try

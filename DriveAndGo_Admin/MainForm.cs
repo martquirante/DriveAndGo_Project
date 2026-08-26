@@ -1,5 +1,6 @@
 #nullable disable
 using DriveAndGo_Admin.Helpers;
+using DriveAndGo_Admin.Models;
 using DriveAndGo_Admin.Panels;
 using Microsoft.AspNetCore.SignalR.Client;
 using System;
@@ -32,7 +33,7 @@ namespace DriveAndGo_Admin
         private readonly Dictionary<Type, UserControl> _panelCache = new();
         private HubConnection _hubConnection;
         private int          _unreadNotifCount   = 0;
-        private List<dynamic> _notifications     = new();
+        private List<NotificationItemModel> _notifications = new();
 
         // ── Window drag state ─────────────────────────────────────────────────────
         private bool  _dragging;
@@ -74,6 +75,7 @@ namespace DriveAndGo_Admin
         // ── Chat overlay (lazy) ───────────────────────────────────────────────────
         private ChatOverlayPanel _chatOverlay;
         private bool _chatVisible = false;
+        private int  _unreadChatCount = 0;
 
         // ── Notification flyout ───────────────────────────────────────────────────
         private NotificationFlyoutPanel _notifFlyout;
@@ -219,6 +221,11 @@ namespace DriveAndGo_Admin
             InitializeSignalR();
             InitializeNetworkMonitoring();
             FetchUserProfileFromApiAsync();
+            this.HandleCreated += async (s, e) =>
+            {
+                await EnsureNotificationFlyoutInitializedAsync();
+                _ = PreloadAllPanelsAsync();
+            };
         }
 
         private Panel _pnlOfflineWarning;
@@ -414,15 +421,34 @@ namespace DriveAndGo_Admin
                 _hubConnection.On<JsonElement>("ReceiveNotification", (notif) =>
                 {
                     if (this.IsDisposed || !this.IsHandleCreated) return;
-                    this.Invoke((System.Windows.Forms.MethodInvoker)(() =>
+                    this.Invoke((System.Windows.Forms.MethodInvoker)(async () =>
                     {
+                        NotificationSoundHelper.PlayNotificationSound();
                         _unreadNotifCount++;
-                        btnNotifications.Invalidate();
+                        btnNotifications?.Invalidate();
                         try
                         {
-                            string title = notif.GetProperty("title").GetString();
-                            string body  = notif.GetProperty("body").GetString();
-                            _notifications.Insert(0, new { Title = title, Body = body, Time = DateTime.Now });
+                            string notifId = notif.TryGetProperty("id", out var i) ? i.GetString() ?? "" : ("sig-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+                            string title = notif.TryGetProperty("title", out var t) ? t.GetString() ?? "System Alert" : "System Alert";
+                            string body  = notif.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
+                            string type  = notif.TryGetProperty("type", out var tp) ? tp.GetString() ?? "general" : "general";
+
+                            var newObj = new NotificationItemModel
+                            {
+                                id = notifId,
+                                title = title,
+                                body = body,
+                                type = type,
+                                time = "Just now",
+                                unread = true
+                            };
+                            _notifications.Insert(0, newObj);
+
+                            if (_globalNotifWebView != null && _globalNotifWebView.CoreWebView2 != null)
+                            {
+                                var singleJson = JsonSerializer.Serialize(newObj);
+                                await _globalNotifWebView.CoreWebView2.ExecuteScriptAsync($"if(window.addSingleNotification) window.addSingleNotification({singleJson});");
+                            }
 
                             var tt = new ToolTip();
                             tt.ToolTipIcon  = ToolTipIcon.Info;
@@ -433,12 +459,59 @@ namespace DriveAndGo_Admin
                     }));
                 });
 
+                _hubConnection.On<string, string, string, string, string>(
+                    "ReceiveChatMessage",
+                    (senderId, receiverId, body, timestamp, messageId) =>
+                {
+                    if (this.IsDisposed || !this.IsHandleCreated) return;
+                    this.BeginInvoke((System.Windows.Forms.MethodInvoker)(() =>
+                    {
+                        if (!_chatVisible && senderId != "admin")
+                        {
+                            NotificationSoundHelper.PlayNotificationSound();
+                            _unreadChatCount++;
+                            _fabPanel?.Invalidate();
+                        }
+                    }));
+                });
+
                 await _hubConnection.StartAsync();
+                _ = FetchAdminNotificationsFromApiAsync();
+                _ = FetchInitialUnreadChatCountAsync();
             }
             catch (Exception ex)
             {
                 Console.WriteLine("SignalR failed: " + ex.Message);
             }
+        }
+
+        private async Task FetchInitialUnreadChatCountAsync()
+        {
+            try
+            {
+                var res = await ApiService.GetAsync("messages/conversations?userId=admin");
+                if (res.Success && !string.IsNullOrWhiteSpace(res.Body))
+                {
+                    using var doc = JsonDocument.Parse(res.Body);
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                    {
+                        int totalUnread = 0;
+                        foreach (var conv in doc.RootElement.EnumerateArray())
+                        {
+                            if (conv.TryGetProperty("unreadCount", out var u) && u.TryGetInt32(out int c) && c > 0)
+                            {
+                                totalUnread += c;
+                            }
+                        }
+                        if (!_chatVisible)
+                        {
+                            _unreadChatCount = totalUnread;
+                            this.BeginInvoke((System.Windows.Forms.MethodInvoker)(() => _fabPanel?.Invalidate()));
+                        }
+                    }
+                }
+            }
+            catch { }
         }
 
         // ══════════════════════════════════════════════════════════════════════════
@@ -1639,6 +1712,23 @@ namespace DriveAndGo_Admin
                     { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
                 g.DrawString(icon, iconFont, Brushes.White,
                     new RectangleF(0, 0, FabSize, FabSize), fmt);
+
+                // ── Unread message badge ──
+                if (_unreadChatCount > 0 && !_chatVisible)
+                {
+                    string badgeText = _unreadChatCount > 99 ? "99+" : _unreadChatCount.ToString();
+                    int bSize = 18;
+                    int bx = FabSize - bSize - 4;
+                    int by = 3;
+                    var bRect = new Rectangle(bx, by, bSize, bSize);
+                    using var badgeBrush = new SolidBrush(Color.FromArgb(239, 68, 68));
+                    g.FillEllipse(badgeBrush, bRect);
+                    using var borderPen = new Pen(Color.White, 1.5f);
+                    g.DrawEllipse(borderPen, bRect);
+                    using var bFont = new Font("Segoe UI", 7.5f, FontStyle.Bold);
+                    using var bFmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                    g.DrawString(badgeText, bFont, Brushes.White, bRect, bFmt);
+                }
             };
 
             // ── Hover glow ──
@@ -1666,11 +1756,24 @@ namespace DriveAndGo_Admin
             {
                 // ── Show ──
                 _chatVisible = true;
+                _unreadChatCount = 0;
                 _fabPanel?.Invalidate();
 
                 if (_chatOverlay == null || _chatOverlay.IsDisposed)
                 {
                     _chatOverlay = new ChatOverlayPanel();
+                    _chatOverlay.OnUnreadCountChanged = (count) =>
+                    {
+                        if (this.IsDisposed || !this.IsHandleCreated) return;
+                        this.BeginInvoke((System.Windows.Forms.MethodInvoker)(() =>
+                        {
+                            if (!_chatVisible)
+                            {
+                                _unreadChatCount = count;
+                                _fabPanel?.Invalidate();
+                            }
+                        }));
+                    };
                 }
 
                 _chatOverlay.OnToggleFullscreenRequested = (isFullscreen) =>
@@ -2165,6 +2268,8 @@ namespace DriveAndGo_Admin
                     this.ClientSize.Height - 700 - FabMargin - FabSize - 12);
 
             // Reposition notification & profile flyouts if open
+            if (_globalNotifHostPanel != null && !_globalNotifHostPanel.IsDisposed)
+                _globalNotifHostPanel.SetBounds(0, 0, this.ClientSize.Width, this.ClientSize.Height);
             _notifFlyout?.Reanchor(btnNotifications);
             _profileFlyout?.Reanchor(userAvatarPanel);
 
@@ -2659,13 +2764,25 @@ namespace DriveAndGo_Admin
                 return;
             }
 
+            NotificationSoundHelper.PlayNotificationSound();
             _unreadNotifCount++;
-            btnNotifications.Invalidate();
-            _notifications.Insert(0, new { Title = title, Body = body, Time = DateTime.Now });
+            btnNotifications?.Invalidate();
 
-            if (_notifFlyout != null && !_notifFlyout.IsDisposed)
+            var newObj = new NotificationItemModel
             {
-                _notifFlyout.RebuildList();
+                id = "local-" + Guid.NewGuid().ToString("N").Substring(0, 8),
+                title = title,
+                body = body,
+                type = "general",
+                time = "Just now",
+                unread = true
+            };
+            _notifications.Insert(0, newObj);
+
+            if (_globalNotifWebView != null && _globalNotifWebView.CoreWebView2 != null)
+            {
+                var singleJson = JsonSerializer.Serialize(newObj);
+                _ = _globalNotifWebView.CoreWebView2.ExecuteScriptAsync($"if(window.addSingleNotification) window.addSingleNotification({singleJson});");
             }
         }
 
@@ -2673,18 +2790,268 @@ namespace DriveAndGo_Admin
         private Microsoft.Web.WebView2.WinForms.WebView2 _globalNotifWebView;
         private bool _isNotifFlyoutVisible = false;
 
+        public async Task FetchAdminNotificationsFromApiAsync()
+        {
+            try
+            {
+                var res = await ApiService.GetAsync("Notifications/admin");
+                if (res != null && res.Success && !string.IsNullOrWhiteSpace(res.Body))
+                {
+                    using var doc = JsonDocument.Parse(res.Body);
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                    {
+                        _notifications.Clear();
+                        int unread = 0;
+                        foreach (var item in doc.RootElement.EnumerateArray())
+                        {
+                            string id = item.TryGetProperty("id", out var i) ? i.GetString() ?? "" : "";
+                            string title = item.TryGetProperty("title", out var t) ? t.GetString() ?? "System Alert" : "System Alert";
+                            string body = item.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
+                            string type = item.TryGetProperty("type", out var tp) ? tp.GetString() ?? "general" : "general";
+                            bool isUnread = item.TryGetProperty("unread", out var u) && u.GetBoolean();
+                            string time = item.TryGetProperty("time", out var tm) ? tm.GetString() ?? "Just now" : "Just now";
+
+                            // Check local persistent read cache
+                            if (!string.IsNullOrEmpty(id) && NotificationCacheHelper.IsRead(id))
+                            {
+                                isUnread = false;
+                            }
+
+                            if (isUnread) unread++;
+
+                            _notifications.Add(new NotificationItemModel
+                            {
+                                id = id,
+                                title = title,
+                                body = body,
+                                type = type,
+                                unread = isUnread,
+                                time = time
+                            });
+                        }
+
+                        _unreadNotifCount = unread;
+                        btnNotifications?.Invalidate();
+
+                        await SendNotificationsToWebViewAsync();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[NotifFetch] Error: " + ex.Message);
+            }
+        }
+
+        private async Task SendNotificationsToWebViewAsync()
+        {
+            if (_globalNotifWebView != null && _globalNotifWebView.CoreWebView2 != null)
+            {
+                try
+                {
+                    var json = JsonSerializer.Serialize(_notifications);
+                    string themeMode = ThemeManager.IsDarkMode ? "dark" : "light";
+                    await _globalNotifWebView.CoreWebView2.ExecuteScriptAsync(
+                        $"if(window.setNotifications) window.setNotifications({json}); if(window.setFlyoutTheme) window.setFlyoutTheme('{themeMode}');");
+                }
+                catch { }
+            }
+        }
+
+        private string CaptureScreenSnapshotBase64()
+        {
+            try
+            {
+                int w = this.ClientSize.Width;
+                int h = this.ClientSize.Height;
+                if (w <= 0 || h <= 0) return "";
+
+                using var bmp = new Bitmap(w, h);
+                using var g = Graphics.FromImage(bmp);
+                Point screenPt = this.PointToScreen(Point.Empty);
+                g.CopyFromScreen(screenPt.X, screenPt.Y, 0, 0, new Size(w, h), CopyPixelOperation.SourceCopy);
+
+                using var ms = new MemoryStream();
+                bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Jpeg);
+                return "data:image/jpeg;base64," + Convert.ToBase64String(ms.ToArray());
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        private async Task EnsureNotificationFlyoutInitializedAsync()
+        {
+            if (_globalNotifHostPanel != null && !_globalNotifHostPanel.IsDisposed) return;
+
+            _globalNotifHostPanel = new Panel
+            {
+                Bounds = new Rectangle(0, 0, this.ClientSize.Width, this.ClientSize.Height),
+                BackColor = Color.Transparent,
+                Visible = false
+            };
+
+            _globalNotifWebView = new Microsoft.Web.WebView2.WinForms.WebView2
+            {
+                Dock = DockStyle.Fill,
+                DefaultBackgroundColor = System.Drawing.Color.FromArgb(0, 0, 0, 0)
+            };
+            _globalNotifHostPanel.Controls.Add(_globalNotifWebView);
+            this.Controls.Add(_globalNotifHostPanel);
+
+            try
+            {
+                var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, System.IO.Path.Combine(System.IO.Path.GetTempPath(), "DriveAndGo_Notif_Cache"));
+                await _globalNotifWebView.EnsureCoreWebView2Async(env);
+
+                _globalNotifWebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                _globalNotifWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+
+                _globalNotifWebView.NavigationCompleted += async (s, e) =>
+                {
+                    await SendNotificationsToWebViewAsync();
+                };
+
+                _globalNotifWebView.CoreWebView2.WebMessageReceived += (s, args) =>
+                {
+                    try
+                    {
+                        string msg = args.TryGetWebMessageAsString();
+                        if (string.IsNullOrEmpty(msg)) return;
+
+                        if (msg == "flyout_ready")
+                        {
+                            this.BeginInvoke((Action)(async () =>
+                            {
+                                await SendNotificationsToWebViewAsync();
+                            }));
+                            return;
+                        }
+                        else if (msg == "close_flyout")
+                        {
+                            this.BeginInvoke((Action)(() =>
+                            {
+                                if (_globalNotifHostPanel != null && !_globalNotifHostPanel.IsDisposed)
+                                {
+                                    _globalNotifHostPanel.Hide();
+                                    _isNotifFlyoutVisible = false;
+                                }
+                            }));
+                        }
+                        else if (msg.StartsWith("notification_clicked:"))
+                        {
+                            string json = msg.Substring("notification_clicked:".Length);
+                            using var doc = JsonDocument.Parse(json);
+                            var root = doc.RootElement;
+                            string id = root.TryGetProperty("id", out var idProp) ? idProp.GetString() ?? "" : "";
+                            string title = root.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+                            string body = root.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
+
+                            if (!string.IsNullOrWhiteSpace(id))
+                            {
+                                NotificationCacheHelper.MarkRead(id);
+                                if (id.StartsWith("db-", StringComparison.OrdinalIgnoreCase) && int.TryParse(id.Substring(3), out int dbId))
+                                {
+                                    _ = ApiService.PatchAsync($"Notifications/{dbId}/read", null);
+                                }
+                                else if (int.TryParse(id, out int directId))
+                                {
+                                    _ = ApiService.PatchAsync($"Notifications/{directId}/read", null);
+                                }
+                            }
+
+                            var existing = _notifications.Find(x => (!string.IsNullOrEmpty(id) && x.id == id) || (x.title == title && x.body == body));
+                            if (existing != null)
+                            {
+                                existing.unread = false;
+                            }
+
+                            _unreadNotifCount = _notifications.FindAll(n => n.unread).Count;
+
+                            this.BeginInvoke((Action)(() =>
+                            {
+                                btnNotifications?.Invalidate();
+                                if (_globalNotifHostPanel != null && !_globalNotifHostPanel.IsDisposed)
+                                {
+                                    _globalNotifHostPanel.Hide();
+                                    _isNotifFlyoutVisible = false;
+                                }
+                                HandleNotificationClick(title, body);
+                            }));
+                        }
+                        else if (msg.StartsWith("mark_as_read:"))
+                        {
+                            string json = msg.Substring("mark_as_read:".Length);
+                            using var doc = JsonDocument.Parse(json);
+                            var root = doc.RootElement;
+                            string id = root.TryGetProperty("id", out var idProp) ? idProp.GetString() ?? "" : "";
+                            string title = root.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+                            string body = root.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
+
+                            if (!string.IsNullOrWhiteSpace(id))
+                            {
+                                NotificationCacheHelper.MarkRead(id);
+                                if (id.StartsWith("db-", StringComparison.OrdinalIgnoreCase) && int.TryParse(id.Substring(3), out int dbId))
+                                {
+                                    _ = ApiService.PatchAsync($"Notifications/{dbId}/read", null);
+                                }
+                                else if (int.TryParse(id, out int directId))
+                                {
+                                    _ = ApiService.PatchAsync($"Notifications/{directId}/read", null);
+                                }
+                            }
+
+                            var existing = _notifications.Find(x => (!string.IsNullOrEmpty(id) && x.id == id) || (x.title == title && x.body == body));
+                            if (existing != null)
+                            {
+                                existing.unread = false;
+                            }
+
+                            _unreadNotifCount = _notifications.FindAll(n => n.unread).Count;
+                            this.BeginInvoke((Action)(() => btnNotifications?.Invalidate()));
+                        }
+                        else if (msg == "mark_all_read")
+                        {
+                            _ = ApiService.PatchAsync("Notifications/read-all", null);
+                            var ids = new List<string>();
+                            foreach (var n in _notifications)
+                            {
+                                n.unread = false;
+                                if (!string.IsNullOrEmpty(n.id)) ids.Add(n.id);
+                            }
+                            NotificationCacheHelper.MarkAllRead(ids);
+                            _unreadNotifCount = 0;
+                            this.BeginInvoke((Action)(() => btnNotifications?.Invalidate()));
+                        }
+                        else if (msg == "notifications_cleared")
+                        {
+                            _ = ApiService.PatchAsync("Notifications/read-all", null);
+                            var ids = new List<string>();
+                            foreach (var n in _notifications)
+                            {
+                                if (!string.IsNullOrEmpty(n.id)) ids.Add(n.id);
+                            }
+                            NotificationCacheHelper.MarkAllRead(ids);
+                            _notifications.Clear();
+                            _unreadNotifCount = 0;
+                            this.BeginInvoke((Action)(() => btnNotifications?.Invalidate()));
+                        }
+                    }
+                    catch { }
+                };
+
+                string htmlPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "NotificationsFlyout.html");
+                _globalNotifWebView.CoreWebView2.Navigate("file:///" + htmlPath.Replace('\\', '/') + "?v=" + DateTime.UtcNow.Ticks);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[NotifFlyout] Init error: " + ex.Message);
+            }
+        }
+
         private async void ToggleNotifFlyout()
         {
-            _unreadNotifCount = 0;
-            btnNotifications?.Invalidate();
-
-            if (_notifications.Count == 0)
-            {
-                _notifications.Add(new { title = "España Blvd Flood Hazard Alert", body = "1 Active Vehicle in España Blvd Flood Zone (Tire-Deep: 25-35 cm).", time = "Just now", unread = true });
-                _notifications.Add(new { title = "PAGASA Monsoon Weather Advisory", body = "PAGASA Yellow Advisory Target: Rental Garage Hub (SJDM / Metro Manila).", time = "5m ago", unread = true });
-                _notifications.Add(new { title = "Vehicle Decommission Audit", body = "Vehicle Toyota Vios (XWK-9492) removed from active fleet. Reason: Sold.", time = "1h ago", unread = false });
-            }
-
             if (_isNotifFlyoutVisible && _globalNotifHostPanel != null)
             {
                 _globalNotifHostPanel.Hide();
@@ -2692,92 +3059,26 @@ namespace DriveAndGo_Admin
                 return;
             }
 
-            if (_globalNotifHostPanel == null || _globalNotifHostPanel.IsDisposed)
-            {
-                _globalNotifHostPanel = new Panel
-                {
-                    Size = new Size(360, 360),
-                    BackColor = Color.Transparent,
-                    Visible = false
-                };
+            // 1. Capture live screen snapshot of whatever panel is currently active
+            string snapshotBase64 = CaptureScreenSnapshotBase64();
 
-                Point screenPt = btnNotifications.PointToScreen(new Point(0, 0));
-                Point parentPt = this.PointToClient(screenPt);
-                _globalNotifHostPanel.Location = new Point(parentPt.X + btnNotifications.Width - 360, parentPt.Y + btnNotifications.Height + 6);
+            // 2. Fetch latest notifications
+            await FetchAdminNotificationsFromApiAsync();
 
-                _globalNotifWebView = new Microsoft.Web.WebView2.WinForms.WebView2 { 
-                    Dock = DockStyle.Fill,
-                    DefaultBackgroundColor = System.Drawing.Color.FromArgb(0, 0, 0, 0)
-                };
-                _globalNotifHostPanel.Controls.Add(_globalNotifWebView);
-                this.Controls.Add(_globalNotifHostPanel);
+            // 3. Ensure flyout is initialized
+            await EnsureNotificationFlyoutInitializedAsync();
 
-                try
-                {
-                    var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, System.IO.Path.Combine(System.IO.Path.GetTempPath(), "DriveAndGo_Notif_Cache"));
-                    await _globalNotifWebView.EnsureCoreWebView2Async(env);
+            _globalNotifHostPanel.SetBounds(0, 0, this.ClientSize.Width, this.ClientSize.Height);
 
-                    _globalNotifWebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-                    _globalNotifWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
-
-                    _globalNotifWebView.CoreWebView2.WebMessageReceived += (s, args) =>
-                    {
-                        try
-                        {
-                            string msg = args.TryGetWebMessageAsString();
-                            if (msg.StartsWith("notification_clicked:"))
-                            {
-                                string json = msg.Substring("notification_clicked:".Length);
-                                using var doc = JsonDocument.Parse(json);
-                                var root = doc.RootElement;
-                                string title = root.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
-                                string body = root.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
-
-                                _globalNotifHostPanel.Hide();
-                                _isNotifFlyoutVisible = false;
-
-                                HandleNotificationClick(title, body);
-                            }
-                            else if (msg == "notifications_cleared")
-                            {
-                                _notifications.Clear();
-                                _unreadNotifCount = 0;
-                                btnNotifications?.Invalidate();
-                            }
-                            else if (msg.StartsWith("resize_flyout:"))
-                            {
-                                if (int.TryParse(msg.Substring("resize_flyout:".Length), out int h))
-                                {
-                                    int clampedH = Math.Min(400, Math.Max(100, h + 10));
-                                    this.BeginInvoke((Action)(() =>
-                                    {
-                                        if (_globalNotifHostPanel != null && !_globalNotifHostPanel.IsDisposed)
-                                        {
-                                            _globalNotifHostPanel.Height = clampedH;
-                                        }
-                                    }));
-                                }
-                            }
-                        }
-                        catch { }
-                    };
-
-                    string htmlPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "NotificationsFlyout.html");
-                    _globalNotifWebView.CoreWebView2.Navigate("file:///" + htmlPath.Replace('\\', '/') + "?v=" + DateTime.UtcNow.Ticks);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine("[NotifFlyout] Init error: " + ex.Message);
-                }
-            }
-
+            // 4. Send snapshot + notifications + theme to webview
             if (_globalNotifWebView != null && _globalNotifWebView.CoreWebView2 != null)
             {
                 try
                 {
                     var json = JsonSerializer.Serialize(_notifications);
                     string themeMode = ThemeManager.IsDarkMode ? "dark" : "light";
-                    await _globalNotifWebView.CoreWebView2.ExecuteScriptAsync($"if(window.setNotifications) window.setNotifications({json}); if(window.setFlyoutTheme) window.setFlyoutTheme('{themeMode}');");
+                    await _globalNotifWebView.CoreWebView2.ExecuteScriptAsync(
+                        $"if(window.setBackdropSnapshot) window.setBackdropSnapshot('{snapshotBase64}'); if(window.setNotifications) window.setNotifications({json}); if(window.setFlyoutTheme) window.setFlyoutTheme('{themeMode}');");
                 }
                 catch { }
             }
@@ -2785,6 +3086,64 @@ namespace DriveAndGo_Admin
             _globalNotifHostPanel.BringToFront();
             _globalNotifHostPanel.Show();
             _isNotifFlyoutVisible = true;
+        }
+
+        /// <summary>
+        /// Proactively instantiates and preloads all secondary WebView panels in the background
+        /// so that navigating to Fleet, Rentals, Drivers, Accounts, Calendar, Weather, or Promo Codes
+        /// is 100% instantaneous with 0ms first-click delay.
+        /// </summary>
+        private async Task PreloadAllPanelsAsync()
+        {
+            // List of WebView panels to preload and warm up in memory
+            Type[] preloadTypes = new Type[]
+            {
+                typeof(FleetPanel),
+                typeof(RentalsPanel),
+                typeof(DriversPanel),
+                typeof(AccountsPanel),
+                typeof(CalendarPanel),
+                typeof(WeatherPanel),
+                typeof(PromoCodesPanel)
+            };
+
+            // Small initial pause to let Dashboard finish its first frame
+            await Task.Delay(400);
+
+            foreach (var panelType in preloadTypes)
+            {
+                if (this.IsDisposed || !this.IsHandleCreated) return;
+
+                try
+                {
+                    if (!_panelCache.ContainsKey(panelType) || _panelCache[panelType] == null || _panelCache[panelType].IsDisposed)
+                    {
+                        var panel = (UserControl)Activator.CreateInstance(panelType);
+                        panel.BackColor = ThemeManager.CurrentBackground;
+                        panel.Size = contentPanel.ClientSize;
+                        panel.Dock = DockStyle.Fill;
+                        panel.Visible = false;
+                        SetDoubleBuffer(panel);
+
+                        // Adding to contentPanel triggers WinForms HandleCreated,
+                        // which automatically starts EnsureCoreWebView2Async and HTML compilation in background
+                        if (!contentPanel.Controls.Contains(panel))
+                        {
+                            contentPanel.Controls.Add(panel);
+                            contentPanel.Controls.SetChildIndex(panel, contentPanel.Controls.Count - 1);
+                        }
+
+                        _panelCache[panelType] = panel;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Preloader] Preload error for {panelType.Name}: {ex.Message}");
+                }
+
+                // Stagger loading so main UI thread stays 100% silky smooth
+                await Task.Delay(150);
+            }
         }
 
         private void ToggleProfileFlyout()
@@ -2906,16 +3265,47 @@ namespace DriveAndGo_Admin
             }
         }
 
+        public void NavigateToRentals()
+
+        {
+            if (this.InvokeRequired)
+            {
+                this.Invoke((Action)(() => NavigateToRentals()));
+                return;
+            }
+            btnRentals?.PerformClick();
+        }
+
         public void HandleNotificationClick(string title, string body)
+
         {
             // Close notifications panel flyout
-            ToggleNotifFlyout();
-
-            string combined = $"{title} {body}".ToLower();
-
-            if (combined.Contains("weather") || combined.Contains("pagasa") || combined.Contains("monsoon") || combined.Contains("flood") || combined.Contains("rain"))
+            if (_globalNotifHostPanel != null && !_globalNotifHostPanel.IsDisposed)
             {
-                // 1. Weather / Flood Advisory -> Navigate to Fleet Overview Panel and trigger Weather & PAGASA Radar Analytics Modal!
+                _globalNotifHostPanel.Hide();
+                _isNotifFlyoutVisible = false;
+            }
+
+            string combined = $"{title} {body}".ToLowerInvariant();
+
+            if (combined.Contains("driver"))
+            {
+                // 1. Driver Alerts -> Navigate to Drivers Panel
+                btnDrivers?.PerformClick();
+            }
+            else if (combined.Contains("booking") || combined.Contains("rental") || combined.Contains("conforme") || combined.Contains("schedule") || combined.Contains("overdue"))
+            {
+                // 2. Rentals & Bookings -> Navigate to Rentals Panel
+                btnRentals?.PerformClick();
+            }
+            else if (combined.Contains("transaction") || combined.Contains("payment") || combined.Contains("refund") || combined.Contains("invoice"))
+            {
+                // 3. Transactions / Financials -> Navigate to Transactions or Rentals
+                btnTransactions?.PerformClick();
+            }
+            else if (combined.Contains("weather") || combined.Contains("pagasa") || combined.Contains("monsoon") || combined.Contains("flood") || combined.Contains("rain"))
+            {
+                // 4. Weather / Flood Advisory -> Navigate to Fleet Overview Panel and trigger Weather & PAGASA Radar Analytics Modal!
                 btnVehicles?.PerformClick();
                 var fp = contentPanel.Controls.OfType<FleetPanel>().FirstOrDefault();
                 if (fp != null)
@@ -2923,26 +3313,22 @@ namespace DriveAndGo_Admin
                     fp.ExecuteScriptAsync("window.showWeatherAdvisoryFromNotif && window.showWeatherAdvisoryFromNotif();");
                 }
             }
-            else if (combined.Contains("decommission") || combined.Contains("audit") || combined.Contains("removed"))
+            else if (combined.Contains("fleet") || combined.Contains("vehicle") || combined.Contains("maintenance") || combined.Contains("repair") || combined.Contains("decommission") || combined.Contains("audit") || combined.Contains("rfid"))
             {
-                // 2. Vehicle Decommission Audit -> Navigate to Fleet Overview Panel
+                // 5. Fleet / Vehicle Alerts -> Navigate to Fleet Overview Panel
                 btnVehicles?.PerformClick();
-            }
-            else if (combined.Contains("rental") || combined.Contains("overdue") || combined.Contains("payment") || combined.Contains("refund") || combined.Contains("invoice"))
-            {
-                // 3. Rentals / Overdue -> Navigate to Rentals Panel
-                btnRentals?.PerformClick();
             }
             else if (combined.Contains("account") || combined.Contains("user"))
             {
-                // 4. Accounts -> Navigate to Accounts Panel
+                // 6. Accounts -> Navigate to Accounts Panel
                 btnAccounts?.PerformClick();
             }
             else
             {
-                btnVehicles?.PerformClick();
+                btnDashboard?.PerformClick();
             }
         }
+
 
         // ── Custom flyout panel ──
         public class NotificationFlyoutPanel : Panel

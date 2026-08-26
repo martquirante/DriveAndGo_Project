@@ -41,7 +41,7 @@ namespace DriveAndGo_API.Services
                     cmd.ExecuteNonQuery();
                 }
 
-                // 3. promo_codes table
+                // 3. promo_codes table & schema migration
                 using (var cmd = new NpgsqlCommand(@"
                     CREATE TABLE IF NOT EXISTS promo_codes (
                         promo_id SERIAL PRIMARY KEY,
@@ -49,11 +49,64 @@ namespace DriveAndGo_API.Services
                         discount_percentage DECIMAL(5, 2) NOT NULL DEFAULT 0,
                         max_discount_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
                         is_active BOOLEAN NOT NULL DEFAULT TRUE,
-                        expiry_date TIMESTAMP NOT NULL
-                    );", conn))
+                        expiry_date TIMESTAMP NOT NULL DEFAULT (NOW() + INTERVAL '90 days')
+                    );
+
+                    ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS discount_percentage DECIMAL(5, 2) DEFAULT 0;
+                    ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS max_discount_amount DECIMAL(10, 2) DEFAULT 0;
+                    ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
+                    ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS expiry_date TIMESTAMP DEFAULT (NOW() + INTERVAL '90 days');
+
+                    DO $$
+                    BEGIN
+                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'promo_codes' AND column_name = 'discount_value') THEN
+                            ALTER TABLE promo_codes ALTER COLUMN discount_value DROP NOT NULL;
+                            UPDATE promo_codes SET discount_percentage = discount_value WHERE (discount_percentage IS NULL OR discount_percentage = 0) AND discount_value > 0;
+                        END IF;
+                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'promo_codes' AND column_name = 'discount_type') THEN
+                            ALTER TABLE promo_codes ALTER COLUMN discount_type DROP NOT NULL;
+                        END IF;
+                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'promo_codes' AND column_name = 'valid_until') THEN
+                            ALTER TABLE promo_codes ALTER COLUMN valid_until DROP NOT NULL;
+                            UPDATE promo_codes SET expiry_date = valid_until WHERE expiry_date IS NULL;
+                        END IF;
+                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'promo_codes' AND column_name = 'valid_from') THEN
+                            ALTER TABLE promo_codes ALTER COLUMN valid_from DROP NOT NULL;
+                        END IF;
+                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'promo_codes' AND column_name = 'min_rental_days') THEN
+                            ALTER TABLE promo_codes ALTER COLUMN min_rental_days DROP NOT NULL;
+                        END IF;
+                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'promo_codes' AND column_name = 'max_uses') THEN
+                            ALTER TABLE promo_codes ALTER COLUMN max_uses DROP NOT NULL;
+                        END IF;
+                        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'promo_codes' AND column_name = 'used_count') THEN
+                            ALTER TABLE promo_codes ALTER COLUMN used_count DROP NOT NULL;
+                        END IF;
+                    END $$;
+
+                    -- One-time cleanup of initial demo codes
+                    DELETE FROM promo_codes WHERE code IN ('WELCOME10', 'VIP-LUXURY-20', 'WEEKEND-ESCAPE');
+                ", conn))
                 {
                     cmd.ExecuteNonQuery();
                 }
+
+                // 3b. rentals table column migrations for return workflow
+                using (var cmd = new NpgsqlCommand(@"
+                    ALTER TABLE rentals ADD COLUMN IF NOT EXISTS return_odometer DECIMAL(10, 2) DEFAULT 0;
+                    ALTER TABLE rentals ADD COLUMN IF NOT EXISTS return_fuel_level VARCHAR(30);
+                    ALTER TABLE rentals ADD COLUMN IF NOT EXISTS return_notes TEXT;
+                    ALTER TABLE rentals ADD COLUMN IF NOT EXISTS penalty_fee DECIMAL(10, 2) DEFAULT 0;
+                    ALTER TABLE rentals ADD COLUMN IF NOT EXISTS damage_fee DECIMAL(10, 2) DEFAULT 0;
+                    ALTER TABLE rentals ADD COLUMN IF NOT EXISTS start_odometer DECIMAL(10, 2) DEFAULT 0;
+                ", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
+
+
+
 
                 // 4. chat_messages table
                 using (var cmd = new NpgsqlCommand(@"
@@ -186,6 +239,7 @@ namespace DriveAndGo_API.Services
                     );
                     ALTER TABLE damage_claims ADD COLUMN IF NOT EXISTS photo_urls JSONB DEFAULT '[]'::jsonb;
                     ALTER TABLE rentals ADD COLUMN IF NOT EXISTS return_photos JSONB DEFAULT '[]'::jsonb;
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS photo_urls JSONB DEFAULT '[]'::jsonb;
                 ", conn))
                 {
                     cmd.ExecuteNonQuery();
@@ -465,12 +519,62 @@ namespace DriveAndGo_API.Services
                     cmd.ExecuteNonQuery();
                 }
 
-                Console.WriteLine("Database tables initialized successfully.");
+                // 25. Reconcile Fleet & Driver Statuses with live active Rentals
+                using (var cmd = new NpgsqlCommand(@"
+
+                    -- Set vehicles to 'rented' if they have an active/ongoing/overdue rental
+                    UPDATE vehicles
+                    SET status = 'rented'
+                    WHERE vehicle_id IN (
+                        SELECT DISTINCT vehicle_id 
+                        FROM rentals 
+                        WHERE LOWER(status) IN ('approved', 'active', 'in-use', 'ongoing', 'rented', 'overdue')
+                    )
+                    AND LOWER(status) NOT IN ('maintenance', 'repair');
+
+                    -- Set vehicles to 'available' if they have NO active/ongoing/overdue rental
+                    UPDATE vehicles
+                    SET status = 'available'
+                    WHERE vehicle_id NOT IN (
+                        SELECT DISTINCT vehicle_id 
+                        FROM rentals 
+                        WHERE LOWER(status) IN ('approved', 'active', 'in-use', 'ongoing', 'rented', 'overdue')
+                    )
+                    AND LOWER(status) NOT IN ('maintenance', 'repair');
+
+                    -- Set drivers to 'assigned' if assigned to active/ongoing/overdue rental
+                    UPDATE drivers
+                    SET status = 'assigned'
+                    WHERE driver_id IN (
+                        SELECT DISTINCT driver_id 
+                        FROM rentals 
+                        WHERE driver_id IS NOT NULL 
+                          AND LOWER(status) IN ('approved', 'active', 'in-use', 'ongoing', 'rented', 'overdue')
+                    )
+                    AND LOWER(status) NOT IN ('suspended', 'inactive', 'on-leave');
+
+                    -- Set drivers to 'available' if they have NO active/ongoing/overdue rental
+                    UPDATE drivers
+                    SET status = 'available'
+                    WHERE driver_id NOT IN (
+                        SELECT DISTINCT driver_id 
+                        FROM rentals 
+                        WHERE driver_id IS NOT NULL 
+                          AND LOWER(status) IN ('approved', 'active', 'in-use', 'ongoing', 'rented', 'overdue')
+                    )
+                    AND LOWER(status) NOT IN ('suspended', 'inactive', 'on-leave');
+                ", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
+                Console.WriteLine("Database tables initialized and fleet/driver statuses reconciled successfully.");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Database initialization error: {ex.Message}");
             }
+
         }
     }
 }
