@@ -31,8 +31,9 @@ namespace DriveAndGo_API.Controllers
                 var weatherApiKey = _configuration["WEATHERAPI_KEY"] ?? Environment.GetEnvironmentVariable("WEATHERAPI_KEY") ?? "";
                 if (!string.IsNullOrWhiteSpace(weatherApiKey) && weatherApiKey != "YOUR_WEATHERAPI_KEY")
                 {
+                    using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2.0));
                     var url = $"https://api.weatherapi.com/v1/current.json?key={weatherApiKey}&q=14.871116,121.048088&aqi=no";
-                    var res = await _httpClient.GetAsync(url);
+                    var res = await _httpClient.GetAsync(url, cts.Token);
                     if (res.IsSuccessStatusCode)
                     {
                         var jsonStr = await res.Content.ReadAsStringAsync();
@@ -78,8 +79,9 @@ namespace DriveAndGo_API.Controllers
                 var openWeatherKey = _configuration["OPENWEATHER_API_KEY"] ?? Environment.GetEnvironmentVariable("OPENWEATHER_API_KEY") ?? "";
                 if (!string.IsNullOrWhiteSpace(openWeatherKey) && openWeatherKey != "YOUR_OPENWEATHER_API_KEY")
                 {
+                    using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2.0));
                     var url = $"https://api.openweathermap.org/data/2.5/weather?lat=14.871116&lon=121.048088&units=metric&appid={openWeatherKey}";
-                    var res = await _httpClient.GetAsync(url);
+                    var res = await _httpClient.GetAsync(url, cts.Token);
                     if (res.IsSuccessStatusCode)
                     {
                         var jsonStr = await res.Content.ReadAsStringAsync();
@@ -124,8 +126,9 @@ namespace DriveAndGo_API.Controllers
             // 3. Fallback: Open-Meteo API
             try
             {
+                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2.5));
                 var url = "https://api.open-meteo.com/v1/forecast?latitude=14.871116&longitude=121.048088&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m&timezone=Asia%2FManila";
-                var res = await _httpClient.GetAsync(url);
+                var res = await _httpClient.GetAsync(url, cts.Token);
                 if (res.IsSuccessStatusCode)
                 {
                     var jsonStr = await res.Content.ReadAsStringAsync();
@@ -165,21 +168,223 @@ namespace DriveAndGo_API.Controllers
                 Console.WriteLine($"Open-Meteo fallback error: {ex.Message}");
             }
 
-            return Ok(new
+            // 4. Fallback: wttr.in Live Meteorological Stream API
+            try
             {
-                provider = "Fallback Systems",
-                location = "Rental Garage Hub (SJDM / Metro Manila)",
-                target_coordinates = "14.871116, 121.048088",
-                temperature = 28.5,
-                humidity = 82,
-                precipitation_mm_hr = 4.2,
-                weather_code = 61,
-                condition = "Moderate Rain / Monsoon Surge",
-                wind_speed_kmh = 18.4,
-                pagasa_alert = "PAGASA Yellow Rainfall Advisory",
-                active_flood_zones_count = 4,
-                timestamp = DateTime.UtcNow
-            });
+                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2.5));
+                var url = "https://wttr.in/Manila?format=j1";
+                var res = await _httpClient.GetAsync(url, cts.Token);
+                if (res.IsSuccessStatusCode)
+                {
+                    var jsonStr = await res.Content.ReadAsStringAsync();
+                    using var doc = JsonDocument.Parse(jsonStr);
+                    var root = doc.RootElement;
+                    if (root.TryGetProperty("current_condition", out var currArr) && currArr.GetArrayLength() > 0)
+                    {
+                        var curr = currArr[0];
+                        double temp = double.TryParse(curr.GetProperty("temp_C").GetString(), out var tVal) ? tVal : 28.0;
+                        int humidity = int.TryParse(curr.GetProperty("humidity").GetString(), out var hVal) ? hVal : 80;
+                        double windSpeed = double.TryParse(curr.GetProperty("windspeedKmph").GetString(), out var wVal) ? wVal : 15.0;
+                        double rain = double.TryParse(curr.GetProperty("precipMM").GetString(), out var rVal) ? rVal : 0.0;
+                        string desc = "Live Weather Telematics";
+                        if (curr.TryGetProperty("weatherDesc", out var wDescArr) && wDescArr.GetArrayLength() > 0)
+                        {
+                            desc = wDescArr[0].GetProperty("value").GetString() ?? desc;
+                        }
+
+                        return Ok(new
+                        {
+                            provider = "wttr.in Real-Time API",
+                            location = "Rental Garage Hub (SJDM / Metro Manila)",
+                            target_coordinates = "14.871116, 121.048088",
+                            temperature = temp,
+                            humidity = humidity,
+                            precipitation_mm_hr = rain,
+                            weather_code = rain > 10 ? 95 : rain > 0 ? 61 : 1,
+                            condition = desc,
+                            wind_speed_kmh = windSpeed,
+                            pagasa_alert = rain > 10 ? "PAGASA Yellow Rainfall Advisory" : "Normal Conditions",
+                            active_flood_zones_count = 4,
+                            timestamp = DateTime.UtcNow
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"wttr.in live fallback error: {ex.Message}");
+            }
+
+            return StatusCode(503, new { message = "Weather telemetry services currently unreachable. Retrying live API connections..." });
+        }
+
+        [HttpGet("cities")]
+        public async Task<IActionResult> GetCitiesWeather()
+        {
+            var cities = new[]
+            {
+                new { name = "Manila", lat = 14.5995, lng = 120.9842 },
+                new { name = "Tuguegarao", lat = 17.6132, lng = 121.7270 },
+                new { name = "Baguio", lat = 16.4023, lng = 120.5960 },
+                new { name = "Tarlac City", lat = 15.4802, lng = 120.5979 },
+                new { name = "Naga", lat = 13.6218, lng = 123.1948 },
+                new { name = "Puerto Princesa", lat = 9.7392, lng = 118.7353 }
+            };
+
+            var results = new List<object>();
+
+            // 1. Primary: Batch Open-Meteo API
+            try
+            {
+                var lats = string.Join(",", cities.Select(c => c.lat.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+                var lngs = string.Join(",", cities.Select(c => c.lng.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+                var url = $"https://api.open-meteo.com/v1/forecast?latitude={lats}&longitude={lngs}&current=temperature_2m,wind_speed_10m";
+
+                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(3.5));
+                var res = await _httpClient.GetAsync(url, cts.Token);
+                if (res.IsSuccessStatusCode)
+                {
+                    var jsonStr = await res.Content.ReadAsStringAsync();
+                    using var doc = JsonDocument.Parse(jsonStr);
+                    var root = doc.RootElement;
+
+                    if (root.ValueKind == JsonValueKind.Array)
+                    {
+                        int idx = 0;
+                        foreach (var item in root.EnumerateArray())
+                        {
+                            if (idx < cities.Length && item.TryGetProperty("current", out var curr))
+                            {
+                                double temp = curr.GetProperty("temperature_2m").GetDouble();
+                                double wind = curr.TryGetProperty("wind_speed_10m", out var w) ? w.GetDouble() : 0.0;
+                                results.Add(new
+                                {
+                                    name = cities[idx].name,
+                                    lat = cities[idx].lat,
+                                    lng = cities[idx].lng,
+                                    temperature = Math.Round(temp, 1),
+                                    wind_speed_kmh = Math.Round(wind, 1),
+                                    provider = "Open-Meteo API"
+                                });
+                            }
+                            idx++;
+                        }
+                    }
+                    else if (root.TryGetProperty("current", out var singleCurr))
+                    {
+                        double temp = singleCurr.GetProperty("temperature_2m").GetDouble();
+                        double wind = singleCurr.TryGetProperty("wind_speed_10m", out var w) ? w.GetDouble() : 0.0;
+                        results.Add(new
+                        {
+                            name = cities[0].name,
+                            lat = cities[0].lat,
+                            lng = cities[0].lng,
+                            temperature = Math.Round(temp, 1),
+                            wind_speed_kmh = Math.Round(wind, 1),
+                            provider = "Open-Meteo API"
+                        });
+                    }
+
+                    if (results.Count > 0)
+                    {
+                        return Ok(results);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Backend cities weather batch error: {ex.Message}");
+            }
+
+            // 2. Secondary Failover: wttr.in per city
+            try
+            {
+                foreach (var c in cities)
+                {
+                    using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(1.5));
+                    var wUrl = $"https://wttr.in/{Uri.EscapeDataString(c.name)}?format=j1";
+                    var wRes = await _httpClient.GetAsync(wUrl, cts.Token);
+                    if (wRes.IsSuccessStatusCode)
+                    {
+                        var json = await wRes.Content.ReadAsStringAsync();
+                        using var doc = JsonDocument.Parse(json);
+                        if (doc.RootElement.TryGetProperty("current_condition", out var currArr) && currArr.GetArrayLength() > 0)
+                        {
+                            var curr = currArr[0];
+                            double temp = double.TryParse(curr.GetProperty("temp_C").GetString(), out var t) ? t : 28.0;
+                            double wind = double.TryParse(curr.GetProperty("windspeedKmph").GetString(), out var w) ? w : 15.0;
+                            results.Add(new
+                            {
+                                name = c.name,
+                                lat = c.lat,
+                                lng = c.lng,
+                                temperature = Math.Round(temp, 1),
+                                wind_speed_kmh = Math.Round(wind, 1),
+                                provider = "wttr.in Real-Time"
+                            });
+                        }
+                    }
+                }
+
+                if (results.Count > 0)
+                {
+                    return Ok(results);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Backend wttr.in cities error: {ex.Message}");
+            }
+
+            return StatusCode(503, new { message = "City telematics currently unreachable" });
+        }
+
+        [HttpGet("radar-frames")]
+        public async Task<IActionResult> GetRadarFrames()
+        {
+            try
+            {
+                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(3.0));
+                var res = await _httpClient.GetAsync("https://api.rainviewer.com/public/weather-maps.json", cts.Token);
+                if (res.IsSuccessStatusCode)
+                {
+                    var jsonStr = await res.Content.ReadAsStringAsync();
+                    using var doc = JsonDocument.Parse(jsonStr);
+                    return Ok(doc.RootElement);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Backend radar frames fetch error: {ex.Message}");
+            }
+
+            return StatusCode(503, new { message = "Radar frames service unavailable" });
+        }
+
+        [HttpGet("hourly")]
+        public async Task<IActionResult> GetHourlyForecast()
+        {
+            try
+            {
+                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(3.0));
+                var url = "https://api.open-meteo.com/v1/forecast?latitude=14.5995&longitude=120.9842&hourly=precipitation,temperature_2m,weather_code&forecast_days=2&timezone=Asia%2FManila";
+                var res = await _httpClient.GetAsync(url, cts.Token);
+                if (res.IsSuccessStatusCode)
+                {
+                    var jsonStr = await res.Content.ReadAsStringAsync();
+                    using var doc = JsonDocument.Parse(jsonStr);
+                    if (doc.RootElement.TryGetProperty("hourly", out var hourly))
+                    {
+                        return Ok(hourly);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Backend hourly forecast error: {ex.Message}");
+            }
+
+            return StatusCode(503, new { message = "Hourly forecast service unavailable" });
         }
 
         [HttpGet("flood-zones")]
@@ -204,22 +409,22 @@ namespace DriveAndGo_API.Controllers
                     weatherCode = current.GetProperty("weather_code").GetInt32();
                     weatherCondition = weatherCode switch
                     {
-                        0 => "Clear Sky (WMO 0)",
-                        1 => "Mainly Clear (WMO 1)",
-                        2 => "Partly Cloudy (WMO 2)",
-                        3 => "Overcast (WMO 3)",
-                        45 or 48 => "Fog / Mist (WMO 45)",
-                        51 => "Light Drizzle (WMO 51)",
-                        53 => "Moderate Drizzle (WMO 53)",
-                        55 => "Dense Drizzle (WMO 55)",
-                        61 => "Slight Rain (WMO 61)",
-                        63 => "Moderate Rain (WMO 63)",
-                        65 => "Heavy Rain (WMO 65)",
-                        80 => "Slight Rain Showers (WMO 80)",
-                        81 => "Moderate Rain Showers (WMO 81)",
-                        82 => "Violent Rain Showers (WMO 82)",
-                        95 => "Thunderstorm (WMO 95)",
-                        96 or 99 => "Severe Thunderstorm (WMO 96)",
+                        0 => "Clear Sky",
+                        1 => "Mainly Clear",
+                        2 => "Partly Cloudy",
+                        3 => "Overcast",
+                        45 or 48 => "Fog / Low Visibility",
+                        51 => "Light Drizzle",
+                        53 => "Moderate Drizzle",
+                        55 => "Dense Drizzle",
+                        61 => "Light Rain",
+                        63 => "Moderate Rain",
+                        65 => "Heavy Rain",
+                        80 => "Light Rain Showers",
+                        81 => "Moderate Rain Showers",
+                        82 => "Violent Rain Showers",
+                        95 => "Thunderstorm",
+                        96 or 99 => "Severe Thunderstorm",
                         _ => "Clear Sky"
                     };
                 }
@@ -287,7 +492,7 @@ namespace DriveAndGo_API.Controllers
                         // Torrential monsoon downpour
                         dynamicRisk = "impassable";
                         dynamicDepth = "Waist-Deep Hazard (60 - 80 cm)";
-                        riskBadge = "IMPASSABLE (BAWAL DUMAAN)";
+                        riskBadge = "IMPASSABLE (HIGH FLOOD HAZARD)";
                         isSubmergedRisk = true;
                     }
 

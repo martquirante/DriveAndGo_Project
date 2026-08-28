@@ -117,7 +117,7 @@ namespace DriveAndGo_API.Controllers
                 {
                     notifId = new Random().Next(100000, 999999),
                     userId = 1, // Admin User
-                    title = "🚨 DAMAGE CLAIM FILED",
+                    title = "DAMAGE CLAIM FILED",
                     body = $"NEW CLAIM: Incident reported for {vehicleName}. Severity: {submission.DamageSeverity}. Estimated Liability: ₱{liabilityCost:N2}.",
                     type = "damage-claim",
                     isRead = false,

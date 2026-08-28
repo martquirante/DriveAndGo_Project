@@ -80,7 +80,8 @@ function sanitizeNonTechText(text) {
     return 'Drive&Go AI is currently processing a high volume of requests. Please try asking your question again in a moment!';
   }
   return text
-    .replace(/---*\s*UI_COMPONENT\s*---*/gi, '')
+    .replace(/-*\s*UI_COMPONENT\s*-*/gi, '')
+    .replace(/\bUI_COMPONENT\b/gi, '')
     .replace(/^(?:[\s\r\n]*---+\s*)+/g, '')
     .replace(/(?:[\s\r\n]*---+\s*)+$/g, '')
     .trim();
@@ -523,9 +524,10 @@ const InfoPanel = ({
             </div>
           )}
         </div>
-      </>
-    );
-  };
+      </div>
+    </>
+  );
+};
 
 function ChatOverlay({ initialQuery = '' }) {
   const { useState, useEffect, useRef, useCallback } = React;
@@ -2810,10 +2812,15 @@ const handleGroupAvatarChange = async (e) => {
                       </div>
                       <p className={`text-[11px] truncate mt-0.5 ${
                         isUnread
-                          ? (isDark ? 'text-slate-200 font-bold' : 'text-slate-900 font-bold')
+                          ? (isDark ? 'text-slate-100 font-bold' : 'text-slate-950 font-bold')
                           : (isDark ? 'text-slate-400' : 'text-slate-600')
                       }`}>
-                        {conv.lastMessage || 'Channel active'}
+                        {(conv.lastMessage || 'Channel active')
+                          .replace(/[\u2600-\u27BF\uD83C-\uDBFF\uDC00-\uDFFF]/g, '')
+                          .replace(/\*\*(.*?)\*\*/g, '$1')
+                          .replace(/\*(.*?)\*/g, '$1')
+                          .replace(/^#+\s*/g, '')
+                          .trim() || 'Channel active'}
                       </p>
                     </div>
                   )}

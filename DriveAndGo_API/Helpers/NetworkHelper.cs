@@ -33,6 +33,13 @@ namespace DriveAndGo_API.Helpers
                 return envUrl.TrimEnd('/');
             }
 
+            // 2b. Azure App Service Auto-Detection (WEBSITE_HOSTNAME is injected automatically by Azure runtime)
+            string? azureHost = Environment.GetEnvironmentVariable("WEBSITE_HOSTNAME");
+            if (!string.IsNullOrWhiteSpace(azureHost))
+            {
+                return $"https://{azureHost.TrimEnd('/')}";
+            }
+
             // 3. Dynamic Local LAN IP Discovery via Active Routing Probe (Ethernet / Wi-Fi)
             try
             {

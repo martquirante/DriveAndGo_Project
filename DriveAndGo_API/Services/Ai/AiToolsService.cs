@@ -184,7 +184,7 @@ public class AiToolsService
             var today = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
             var startOfWeek = today.AddDays(-(int)today.DayOfWeek);
             var startOfMonth = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-            var validStatuses = new[] { "confirmed", "paid", "verified", "completed", "success", "approved", "active", "in-use", "successful", "settled" };
+            var validStatuses = new[] { "confirmed", "paid", "verified", "completed", "successful", "settled" };
 
             var recentTxns = await _dbContext.Transactions
                 .Where(t => validStatuses.Contains(t.Status.ToLower()))
@@ -565,15 +565,15 @@ public class AiToolsService
             await using var conn = await _ds.OpenConnectionAsync();
             await using var cmd = new NpgsqlCommand(@"
                 SELECT
-                    TO_CHAR(COALESCE(t.paid_at, r.created_at, NOW()), 'Mon YYYY') AS month_label,
-                    SUM(COALESCE(t.amount, r.total_amount, 0)) AS revenue,
-                    COUNT(DISTINCT COALESCE(t.transaction_id, r.rental_id)) AS txns,
-                    TO_CHAR(COALESCE(t.paid_at, r.created_at, NOW()), 'YYYY-MM') AS month_key
+                    TO_CHAR(t.paid_at, 'Mon YYYY') AS month_label,
+                    SUM(t.amount) AS revenue,
+                    COUNT(t.transaction_id) AS txns,
+                    TO_CHAR(t.paid_at, 'YYYY-MM') AS month_key
                 FROM transactions t
-                FULL OUTER JOIN rentals r ON r.rental_id = t.rental_id
-                WHERE LOWER(COALESCE(t.status, r.status)) IN ('confirmed', 'paid', 'verified', 'completed', 'success', 'approved', 'active', 'in-use', 'successful', 'settled')
-                GROUP BY TO_CHAR(COALESCE(t.paid_at, r.created_at, NOW()), 'Mon YYYY'),
-                         TO_CHAR(COALESCE(t.paid_at, r.created_at, NOW()), 'YYYY-MM')
+                WHERE LOWER(t.status) IN ('confirmed', 'paid', 'verified', 'completed', 'successful', 'settled')
+                  AND t.paid_at IS NOT NULL
+                GROUP BY TO_CHAR(t.paid_at, 'Mon YYYY'),
+                         TO_CHAR(t.paid_at, 'YYYY-MM')
                 ORDER BY month_key ASC", conn);
 
             await using var reader = await cmd.ExecuteReaderAsync();
@@ -597,10 +597,10 @@ public class AiToolsService
         if (!result.Months.Any())
         {
             var startDate = DateTime.SpecifyKind(DateTime.UtcNow.Date.AddMonths(-12), DateTimeKind.Utc);
-            var validStatuses = new[] { "confirmed", "paid", "verified", "completed", "success", "approved", "active", "in-use", "successful", "settled" };
+            var validStatuses = new[] { "confirmed", "paid", "verified", "completed", "successful", "settled" };
 
             var transactions = await _dbContext.Transactions
-                .Where(t => validStatuses.Contains(t.Status.ToLower()) && t.PaidAt >= startDate)
+                .Where(t => validStatuses.Contains(t.Status.ToLower()) && t.PaidAt != null && t.PaidAt >= startDate)
                 .ToListAsync();
 
             var monthlyGroups = transactions

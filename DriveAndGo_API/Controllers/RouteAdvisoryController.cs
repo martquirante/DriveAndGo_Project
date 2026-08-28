@@ -45,13 +45,13 @@ namespace DriveAndGo_API.Controllers
                 {
                     isHighRisk = true;
                     weatherCondition = "Heavy Rain & Low Visibility";
-                    warningMessage = "[⚠️ WEATHER RISK: Heavy Rain in Destination Route] Landslide warning active on Kennon Road.";
+                    warningMessage = "[WEATHER RISK: Heavy Rain in Destination Route] Landslide warning active on Kennon Road.";
                 }
                 else if (destination.ToLower().Contains("typhoon") || destination.ToLower().Contains("storm"))
                 {
                     isHighRisk = true;
                     weatherCondition = "Severe Storm";
-                    warningMessage = "[⚠️ WEATHER RISK: Severe Typhoon / Active Storm warning along route.]";
+                    warningMessage = "[WEATHER RISK: Severe Typhoon / Active Storm warning along route.]";
                 }
 
                 return Ok(new

@@ -39,12 +39,51 @@ function CommandPalette({ isOpen, onClose, onOpenAiCopilot, onNavigate }) {
 
   // Preset quick navigation actions
   const defaultActions = [
-    { id: 'fleet', label: 'Go to Fleet Map & Status', icon: '🚘', category: 'Navigation', action: () => { onNavigate?.('fleet'); onClose(); } },
-    { id: 'split', label: 'Go to Split Payments Portal', icon: '💳', category: 'Navigation', action: () => { onNavigate?.('split_pay'); onClose(); } },
-    { id: 'insights', label: 'View AI Business Insights Dashboard', icon: '📊', category: 'Analytics', action: () => { onNavigate?.('insights'); onClose(); } },
-    { id: 'vault', label: 'Open Document Vault & KYC', icon: '🔒', category: 'Compliance', action: () => { onNavigate?.('vault'); onClose(); } },
-    { id: 'overdue', label: 'Check Overdue Rentals & Penalties', icon: '⚠️', category: 'Operations', action: () => { onOpenAiCopilot?.('Show overdue rentals'); onClose(); } },
+    { id: 'fleet', label: 'Go to Fleet Map & Status', category: 'Navigation', action: () => { onNavigate?.('fleet'); onClose(); } },
+    { id: 'split', label: 'Go to Split Payments Portal', category: 'Navigation', action: () => { onNavigate?.('split_pay'); onClose(); } },
+    { id: 'insights', label: 'View AI Business Insights Dashboard', category: 'Analytics', action: () => { onNavigate?.('insights'); onClose(); } },
+    { id: 'vault', label: 'Open Document Vault & KYC', category: 'Compliance', action: () => { onNavigate?.('vault'); onClose(); } },
+    { id: 'overdue', label: 'Check Overdue Rentals & Penalties', category: 'Operations', action: () => { onOpenAiCopilot?.('Show overdue rentals'); onClose(); } },
   ];
+
+  const renderActionIcon = (id) => {
+    switch (id) {
+      case 'fleet':
+        return React.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: '#38bdf8', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+          React.createElement('path', { d: 'M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2' }),
+          React.createElement('circle', { cx: 7, cy: 17, r: 2 }),
+          React.createElement('path', { d: 'M9 17h6' }),
+          React.createElement('circle', { cx: 17, cy: 17, r: 2 })
+        );
+      case 'split':
+        return React.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: '#34d399', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+          React.createElement('rect', { width: 20, height: 14, x: 2, y: 5, rx: 2 }),
+          React.createElement('line', { x1: 2, x2: 22, y1: 10, y2: 10 })
+        );
+      case 'insights':
+        return React.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: '#a78bfa', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+          React.createElement('line', { x1: 18, x2: 18, y1: 20, y2: 10 }),
+          React.createElement('line', { x1: 12, x2: 12, y1: 20, y2: 4 }),
+          React.createElement('line', { x1: 6, x2: 6, y1: 20, y2: 14 })
+        );
+      case 'vault':
+        return React.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: '#fbbf24', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+          React.createElement('path', { d: 'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z' }),
+          React.createElement('path', { d: 'm9 12 2 2 4-4' })
+        );
+      case 'overdue':
+        return React.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: '#f87171', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+          React.createElement('path', { d: 'm21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z' }),
+          React.createElement('line', { x1: 12, x2: 12, y1: 9, y2: 13 }),
+          React.createElement('line', { x1: 12, x2: 12.01, y1: 17, y2: 17 })
+        );
+      default:
+        return React.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: '#f97316', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+          React.createElement('circle', { cx: 12, cy: 12, r: 10 }),
+          React.createElement('polyline', { points: '12 6 12 12 16 14' })
+        );
+    }
+  };
 
   const filteredActions = defaultActions.filter(a => 
     a.label.toLowerCase().includes(query.toLowerCase()) ||
@@ -191,7 +230,7 @@ function CommandPalette({ isOpen, onClose, onOpenAiCopilot, onNavigate }) {
               transition: 'all 0.15s'
             }
           },
-            React.createElement('span', { style: { fontSize: 16, flexShrink: 0 } }, action.icon),
+            React.createElement('span', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 6, background: 'rgba(255, 255, 255, 0.05)', flexShrink: 0 } }, renderActionIcon(action.id)),
             React.createElement('div', { style: { flex: 1, minWidth: 0 } },
               React.createElement('p', { style: { fontSize: 12, fontWeight: 600, color: isSelected ? '#ffffff' : '#e2e8f0', margin: 0 } }, action.label),
               React.createElement('p', { style: { fontSize: 9, color: '#64748b', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' } }, action.category)

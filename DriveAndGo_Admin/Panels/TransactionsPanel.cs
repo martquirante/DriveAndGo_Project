@@ -1,955 +1,186 @@
 #nullable disable
 using DriveAndGo_Admin.Helpers;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
+using System;
+using System.Drawing;
+using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
-using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Globalization;
-using System.IO;
-using System.Linq;
-using System.Text;
 using System.Windows.Forms;
-
-// iText7 PDF Libraries
-using iText.Kernel.Colors;
-using iText.Kernel.Pdf;
-using iText.Kernel.Pdf.Canvas.Draw;
-using iText.Layout;
-using iText.Layout.Borders;
-using iText.Layout.Element;
-using iText.Layout.Properties;
-using iText.Kernel.Font;
-using iText.IO.Font.Constants;
-using iText.IO.Image;
-
-using Button = System.Windows.Forms.Button;
-using ComboBox = System.Windows.Forms.ComboBox;
-using TextBox = System.Windows.Forms.TextBox;
-using WinColor = System.Drawing.Color;
 
 namespace DriveAndGo_Admin.Panels
 {
     public class TransactionsPanel : UserControl
     {
-        // ── Dynamic theme colors ──
-        private WinColor ColBg => ThemeManager.CurrentBackground;
-        private WinColor ColCard => ThemeManager.CurrentCard;
-        private WinColor ColText => ThemeManager.CurrentText;
-        private WinColor ColSub => ThemeManager.CurrentSubText;
-        private WinColor ColBorder => ThemeManager.CurrentBorder;
-
-        private readonly WinColor ColGreen = WinColor.FromArgb(34, 197, 94);
-        private readonly WinColor ColRed = WinColor.FromArgb(239, 68, 68);
-        private readonly WinColor ColBlue = WinColor.FromArgb(59, 130, 246);
-        private readonly WinColor ColYellow = WinColor.FromArgb(245, 158, 11);
-        private readonly WinColor ColAccent = WinColor.FromArgb(230, 81, 0);
-        private readonly WinColor ColPurple = WinColor.FromArgb(168, 85, 247);
-
-        private readonly string _connStr = string.Empty; // Migrated to API
-
-        // ── UI ──
-        private SplitContainer splitContainer;
-        private Panel topBar;
-        private DataGridView dgvTransactions;
-
-        // Receipt Viewer (Right Panel)
-        private Panel rightPanel;
-        private Panel pnlReceipt;
-        private Label lblReceiptContent;
-
-        private TextBox txtSearch;
-        private ComboBox cboMethod, cboStatus;
-        private Label lblStats;
-
-        private Button btnExportPDF, btnReconcile, btnConfirmPayment, btnRejectPayment;
-
-        // ── State ──
-        private DataTable _data = new DataTable();
-        private int _selectedTxId = -1;
-        private DataRow _selectedRow = null;
+        private WebView2 _webView;
+        private Panel    _loadingPanel;
+        private Label    _loadingLabel;
+        private bool     _webReady = false;
 
         public TransactionsPanel()
         {
-            this.Dock = DockStyle.Fill;
-            this.DoubleBuffered = true;
-            this.BackColor = ColBg;
-            ThemeManager.ThemeChanged += OnThemeChanged;
-
-            BuildUI();
-
-            // Load DB after UI is built
-            this.Load += (s, e) => LoadFromDB();
+            this.Dock      = DockStyle.Fill;
+            this.BackColor = ThemeManager.CurrentBackground;
+            BuildLoading();
+            _ = InitWebView();
+            ThemeManager.ThemeChanged += ThemeChanged_Handler;
+            this.Disposed += (s, e) => ThemeManager.ThemeChanged -= ThemeChanged_Handler;
         }
 
-        // ══ BUILD UI ══
-        private void BuildUI()
+        private void ThemeChanged_Handler(object sender, EventArgs e)
         {
-            splitContainer = new SplitContainer
+            this.BackColor = ThemeManager.CurrentBackground;
+            if (_webView != null) _webView.DefaultBackgroundColor = ThemeManager.CurrentBackground;
+            if (_webReady && _webView?.CoreWebView2 != null)
             {
-                Dock = DockStyle.Fill,
-                Orientation = Orientation.Vertical,
-                SplitterWidth = 5,
-                SplitterDistance = 650,
-                BackColor = ColBorder
-            };
-            splitContainer.Panel1.BackColor = ColBg;
-            splitContainer.Panel2.BackColor = ColBg;
-            splitContainer.SplitterMoved += (s, e) => { dgvTransactions?.Invalidate(); };
-
-            BuildLeftPanel();
-            BuildRightPanel();
-
-            this.Controls.Add(splitContainer);
-        }
-
-        // ── LEFT PANEL (Table & Controls) ──
-        private void BuildLeftPanel()
-        {
-            // Pinalaki natin yung height para di mag-overlap
-            topBar = new Panel { Dock = DockStyle.Top, Height = 110, BackColor = WinColor.Transparent, Padding = new Padding(16, 12, 16, 8) };
-
-            var lblTitle = new Label { Text = "Transaction History", Font = new Font("Segoe UI", 18F, FontStyle.Bold), ForeColor = ColText, AutoSize = true, Location = new Point(16, 12), BackColor = WinColor.Transparent };
-
-            // Inusog natin sa kanan ng Title ang Stats para malinis
-            lblStats = new Label { Text = "Loading...", Font = new Font("Segoe UI", 9.5F, FontStyle.Bold), ForeColor = ColSub, AutoSize = true, Location = new Point(300, 22), BackColor = WinColor.Transparent };
-
-            txtSearch = new TextBox { Size = new Size(200, 30), Location = new Point(16, 60), Font = new Font("Segoe UI", 10F), BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White, ForeColor = ColText, BorderStyle = BorderStyle.FixedSingle, PlaceholderText = "🔍 Search customer..." };
-            txtSearch.TextChanged += (s, e) => FilterGrid();
-
-            cboMethod = new ComboBox { Size = new Size(130, 30), Location = new Point(226, 60), DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 9F), BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White, ForeColor = ColText };
-            cboMethod.Items.AddRange(new object[] { "All Methods", "cash", "gcash", "maya", "bank", "card" });
-            cboMethod.SelectedIndex = 0;
-            cboMethod.SelectedIndexChanged += (s, e) => FilterGrid();
-
-            cboStatus = new ComboBox { Size = new Size(130, 30), Location = new Point(366, 60), DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 9F), BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White, ForeColor = ColText };
-            cboStatus.Items.AddRange(new object[] { "All Status", "confirmed", "paid", "verified", "pending", "rejected", "refunded" });
-            cboStatus.SelectedIndex = 0;
-            cboStatus.SelectedIndexChanged += (s, e) => FilterGrid();
-
-            var btnRefresh = CreateBtn("⟳ Reload", ColSub, 506, 58, 90);
-            btnRefresh.Click += (s, e) => LoadFromDB();
-            btnReconcile = CreateBtn("Repair Logs", ColAccent, 602, 58, 120);
-            btnReconcile.Click += (s, e) => ReconcilePaymentLogs();
-
-            topBar.Controls.Add(lblTitle);
-            topBar.Controls.Add(lblStats);
-            topBar.Controls.Add(txtSearch);
-            topBar.Controls.Add(cboMethod);
-            topBar.Controls.Add(cboStatus);
-            topBar.Controls.Add(btnRefresh);
-            topBar.Controls.Add(btnReconcile);
-
-            dgvTransactions = new DataGridView { Dock = DockStyle.Fill };
-            StyleGrid(dgvTransactions);
-            dgvTransactions.SelectionChanged += OnRowSelected;
-            dgvTransactions.CellPainting += OnCellPainting;
-
-            splitContainer.Panel1.Controls.Add(dgvTransactions);
-            splitContainer.Panel1.Controls.Add(topBar);
-        }
-
-        // ── RIGHT PANEL (Receipt Viewer) ──
-        private void BuildRightPanel()
-        {
-            rightPanel = new Panel { Dock = DockStyle.Fill, BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(12, 12, 20) : WinColor.FromArgb(240, 241, 248), Padding = new Padding(20) };
-
-            // Receipt Paper UI
-            pnlReceipt = new Panel
-            {
-                BackColor = WinColor.White,
-                Location = new Point(20, 20),
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom,
-                Height = rightPanel.Height - 100
-            };
-
-            pnlReceipt.Paint += (s, e) => {
-                var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.FillRectangle(new SolidBrush(pnlReceipt.BackColor), 0, 0, pnlReceipt.Width, pnlReceipt.Height);
-                g.DrawRectangle(new Pen(ColBorder, 1), 0, 0, pnlReceipt.Width - 1, pnlReceipt.Height - 1);
-
-                // Orange Top stripe
-                g.FillRectangle(new SolidBrush(ColAccent), 0, 0, pnlReceipt.Width, 6);
-            };
-
-            lblReceiptContent = new Label
-            {
-                Text = "\n\n\nSelect a transaction to view receipt details.",
-                Font = new Font("Consolas", 11F),
-                ForeColor = WinColor.FromArgb(40, 40, 40),
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.TopCenter,
-                BackColor = WinColor.Transparent
-            };
-            pnlReceipt.Controls.Add(lblReceiptContent);
-
-            // Action Buttons Panel
-            Panel pnlActions = new Panel { Dock = DockStyle.Bottom, Height = 60, BackColor = WinColor.Transparent };
-            
-            btnConfirmPayment = CreateBtn("✓ Confirm Payment", ColGreen, 10, 12, 160);
-            btnConfirmPayment.Enabled = false;
-            btnConfirmPayment.Click += OnConfirmPayment;
-
-            btnRejectPayment = CreateBtn("✕ Reject", ColRed, 180, 12, 100);
-            btnRejectPayment.Enabled = false;
-            btnRejectPayment.Click += OnRejectPayment;
-
-            btnExportPDF = CreateBtn("Download PDF", ColBlue, 0, 12, 140);
-            btnExportPDF.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            btnExportPDF.Location = new Point(rightPanel.Width - 160, 12);
-            btnExportPDF.Enabled = false;
-            btnExportPDF.Click += OnExportPDF;
-
-            pnlActions.Controls.Add(btnConfirmPayment);
-            pnlActions.Controls.Add(btnRejectPayment);
-            pnlActions.Controls.Add(btnExportPDF);
-
-            rightPanel.Controls.Add(pnlReceipt);
-            rightPanel.Controls.Add(pnlActions);
-
-            splitContainer.Panel2.Controls.Add(rightPanel);
-        }
-
-        private void OnThemeChanged(object s, EventArgs e)
-        {
-            this.BackColor = ColBg;
-            splitContainer.Panel1.BackColor = ColBg;
-            splitContainer.Panel2.BackColor = ColBg;
-            splitContainer.BackColor = ColBorder;
-
-            rightPanel.BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(12, 12, 20) : WinColor.FromArgb(240, 241, 248);
-
-            topBar.BackColor = ThemeManager.IsDarkMode ? ColBg : WinColor.FromArgb(250, 250, 255);
-            txtSearch.BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White;
-            txtSearch.ForeColor = ColText;
-            cboMethod.BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White;
-            cboMethod.ForeColor = ColText;
-            cboStatus.BackColor = ThemeManager.IsDarkMode ? WinColor.FromArgb(20, 20, 32) : WinColor.White;
-            cboStatus.ForeColor = ColText;
-
-            foreach (Control c in topBar.Controls) { if (c is Label l) l.ForeColor = ColText; }
-
-            StyleGrid(dgvTransactions);
-            this.Invalidate(true);
-        }
-
-        // ══ LOAD VIA API ══
-        private void LoadFromDB()
-        {
-            Task.Run(async () =>
-            {
-                try
+                bool dk = ThemeManager.IsDarkMode;
+                _webView.BeginInvoke((MethodInvoker)(async () =>
                 {
-                    var result = await ApiService.GetAsync("transactions");
-                    if (!result.Success)
+                    await _webView.CoreWebView2.ExecuteScriptAsync($"if(window.setTheme) setTheme({(dk ? "true" : "false")});");
+                }));
+            }
+        }
+
+        private void BuildLoading()
+        {
+            _loadingPanel = new Panel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = ThemeManager.CurrentBackground
+            };
+
+            _loadingLabel = new Label
+            {
+                Text = "Loading Transaction Hub…",
+                Font = new Font("Segoe UI", 14F, FontStyle.Bold),
+                ForeColor = Color.FromArgb(255, 107, 0),
+                AutoSize = true,
+                BackColor = Color.Transparent
+            };
+
+            _loadingPanel.Controls.Add(_loadingLabel);
+            _loadingPanel.Resize += (s, e) =>
+                _loadingLabel.Location = new Point(
+                    Math.Max(10, (_loadingPanel.Width  - _loadingLabel.Width)  / 2),
+                    Math.Max(10, (_loadingPanel.Height - _loadingLabel.Height) / 2));
+
+            this.Controls.Add(_loadingPanel);
+        }
+
+        private async Task InitWebView()
+        {
+            if (_webView != null) return;
+
+            try
+            {
+                string htmlPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "TransactionsWeb.html");
+                if (!File.Exists(htmlPath))
+                {
+                    htmlPath = @"C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\WebAssets\TransactionsWeb.html";
+                }
+
+                _webView = new WebView2 { Dock = DockStyle.Fill, DefaultBackgroundColor = ThemeManager.CurrentBackground };
+                this.Controls.Add(_webView);
+                _webView.BringToFront();
+
+                var env = await CoreWebView2Environment.CreateAsync(null, Path.Combine(Path.GetTempPath(), "DriveAndGo_TransactionsWV2"));
+                await _webView.EnsureCoreWebView2Async(env);
+
+                _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
+                _webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+                _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+
+                _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+
+                string apiBase = ApiService.BaseUrl.TrimEnd('/');
+                string networkBase = ApiService.ResolveNetworkBaseUrl().TrimEnd('/');
+                string currentAdmin = !string.IsNullOrWhiteSpace(SessionManager.FullName) ? SessionManager.FullName : "Admin";
+                string jwtToken = SessionManager.JwtToken ?? SessionManager.Token ?? "";
+                bool dk = ThemeManager.IsDarkMode;
+
+                await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
+                    $"window.API_BASE_URL = '{apiBase}'; " +
+                    $"window.API_NETWORK_URL = '{networkBase}'; " +
+                    $"window.AUTH_TOKEN = '{jwtToken.Replace("'", "\\'")}'; " +
+                    $"localStorage.setItem('auth_token', '{jwtToken.Replace("'", "\\'")}'); " +
+                    $"window.CURRENT_ADMIN_NAME = '{currentAdmin.Replace("'", "\\'")}'; " +
+                    $"localStorage.setItem('admin_name', '{currentAdmin.Replace("'", "\\'")}'); " +
+                    $"document.documentElement.setAttribute('data-theme', '{(dk ? "dark" : "light")}');");
+
+                _webView.NavigationCompleted += async (s, e) =>
+                {
+                    if (!e.IsSuccess) return;
+
+                    _webReady = true;
+                    if (_loadingPanel != null) _loadingPanel.Visible = false;
+
+                    await _webView.CoreWebView2.ExecuteScriptAsync(
+                        $"window.API_BASE_URL = '{apiBase}'; " +
+                        $"window.API_NETWORK_URL = '{networkBase}'; " +
+                        $"window.AUTH_TOKEN = '{jwtToken.Replace("'", "\\'")}'; " +
+                        $"if (window.setTheme) setTheme({(dk ? "true" : "false")}); " +
+                        $"if (window.fetchTransactionsData) window.fetchTransactionsData();");
+                };
+
+                _webView.CoreWebView2.Navigate("file:///" + htmlPath.Replace('\\', '/') + "?v=" + DateTime.UtcNow.Ticks);
+            }
+            catch (Exception ex)
+            {
+                if (_loadingLabel != null)
+                {
+                    _loadingLabel.Text      = $"WebView2 Error: {ex.Message}";
+                    _loadingLabel.ForeColor = Color.Red;
+                }
+            }
+        }
+
+        private void OnWebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
+        {
+            try
+            {
+                string json = e.WebMessageAsJson;
+                if (!string.IsNullOrEmpty(json))
+                {
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("action", out var act))
                     {
-                        var errMsg = result.Error ?? result.Body ?? "Unknown error";
-                        this.Invoke(new Action(() =>
+                        string action = act.GetString();
+                        if (action == "repairLogs")
                         {
-                            RefreshGrid(new DataTable());
-                            MessageBox.Show($"Could not load transactions.\n{errMsg}",
-                                "API Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                        }));
-                        return;
+                            this.BeginInvoke((MethodInvoker)(() =>
+                            {
+                                MessageBox.Show(
+                                    "Payment log reconciliation is handled automatically by the server.\nTransactions are actively synced.",
+                                    "Log Reconciliation",
+                                    MessageBoxButtons.OK,
+                                    MessageBoxIcon.Information);
+                            }));
+                        }
                     }
-
-                    // Deserialize JSON array into DataTable
-                    var dt = new DataTable();
-                    dt.Columns.Add("transaction_id", typeof(int));
-                    dt.Columns.Add("rental_id",      typeof(int));
-                    dt.Columns.Add("customer_name",  typeof(string));
-                    dt.Columns.Add("plate_no",       typeof(string));  // mapped from vehicleName
-                    dt.Columns.Add("amount",         typeof(decimal));
-                    dt.Columns.Add("type",           typeof(string));
-                    dt.Columns.Add("method",         typeof(string));
-                    dt.Columns.Add("proof_url",      typeof(string));
-                    dt.Columns.Add("status",         typeof(string));
-                    dt.Columns.Add("paid_at",        typeof(DateTime));
-                    dt.Columns.Add("payment_status", typeof(string));  // not available from API
-
-                    using var doc = JsonDocument.Parse(result.Body);
-                    foreach (var elem in doc.RootElement.EnumerateArray())
-                    {
-                        var row = dt.NewRow();
-                        row["transaction_id"] = elem.TryGetProperty("transactionId", out var txId)   ? (object)txId.GetInt32()  : DBNull.Value;
-                        row["rental_id"]      = elem.TryGetProperty("rentalId",      out var rId)    ? (object)rId.GetInt32()   : DBNull.Value;
-                        row["customer_name"]  = elem.TryGetProperty("customerName",  out var cName)  ? cName.GetString() ?? "Unknown Customer" : "Unknown Customer";
-                        row["plate_no"]       = elem.TryGetProperty("vehicleName",   out var vName)  ? vName.GetString() ?? "Unknown Vehicle"  : "Unknown Vehicle";
-                        row["amount"]         = elem.TryGetProperty("amount",        out var amt)    ? (object)amt.GetDecimal() : DBNull.Value;
-                        row["type"]           = elem.TryGetProperty("type",          out var tp)     ? tp.GetString()   : (object)DBNull.Value;
-                        row["method"]         = elem.TryGetProperty("method",        out var mth)    ? mth.GetString()  : (object)DBNull.Value;
-                        row["proof_url"]      = elem.TryGetProperty("proofUrl",      out var prf)    ? prf.GetString()  : (object)DBNull.Value;
-                        row["status"]         = elem.TryGetProperty("status",        out var st)     ? st.GetString()   : (object)DBNull.Value;
-                        row["paid_at"]        = elem.TryGetProperty("paidAt",        out var pa) && pa.ValueKind != JsonValueKind.Null
-                                                    ? (object)pa.GetDateTime() : DBNull.Value;
-                        row["payment_status"] = DBNull.Value; // not returned by API
-                        dt.Rows.Add(row);
-                    }
-
-                    _data = dt;
-
-                    this.Invoke(new Action(() =>
-                    {
-                        RefreshGrid(_data);
-                        UpdateStats();
-                    }));
                 }
-                catch (Exception ex)
+            }
+            catch { }
+        }
+
+        public void RefreshData()
+        {
+            if (_webReady && _webView?.CoreWebView2 != null)
+            {
+                _webView.BeginInvoke((MethodInvoker)(async () =>
                 {
-                    this.Invoke(new Action(() =>
-                    {
-                        RefreshGrid(new DataTable());
-                        MessageBox.Show($"Could not load transactions.\n{ex.Message}",
-                            "API Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    }));
-                }
-            });
-        }
-
-        private void RefreshGrid(DataTable dt)
-        {
-            if (dgvTransactions == null) return;
-            if (dgvTransactions.InvokeRequired) { dgvTransactions.Invoke(new Action(() => RefreshGrid(dt))); return; }
-
-            dgvTransactions.DataSource = null;
-            dgvTransactions.Columns.Clear();
-
-            var display = new DataTable();
-            display.Columns.Add("Tx ID", typeof(string));
-            display.Columns.Add("Rental ID", typeof(string));
-            display.Columns.Add("Customer Name", typeof(string));
-            display.Columns.Add("Amount", typeof(string));
-            display.Columns.Add("Method", typeof(string));
-            display.Columns.Add("Status", typeof(string));
-            display.Columns.Add("Date", typeof(string));
-
-            if (dt != null && dt.Rows.Count > 0)
-            {
-                foreach (DataRow row in dt.Rows)
-                {
-                    decimal amount = row["amount"] != DBNull.Value ? Convert.ToDecimal(row["amount"]) : 0;
-                    DateTime date = row["paid_at"] != DBNull.Value ? Convert.ToDateTime(row["paid_at"]) : DateTime.Now;
-
-                    display.Rows.Add(
-                        $"TX-{row["transaction_id"]:D5}",
-                        $"DG-{row["rental_id"]:D5}",
-                        row["customer_name"]?.ToString() ?? "Unknown",
-                        $"₱{amount:N2}",
-                        ExportBrandingHelper.GetDisplayMethod(row["method"]?.ToString()),
-                        GetDisplayStatus(row),
-                        date.ToString("MMM dd, yyyy HH:mm")
-                    );
-                }
+                    await _webView.CoreWebView2.ExecuteScriptAsync("if(window.fetchTransactionsData) window.fetchTransactionsData();");
+                }));
             }
-
-            dgvTransactions.DataSource = display;
-
-            if (dgvTransactions.Columns.Count >= 7)
-            {
-                dgvTransactions.Columns[0].Width = 80;
-                dgvTransactions.Columns[1].Width = 80;
-                dgvTransactions.Columns[2].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
-                dgvTransactions.Columns[3].Width = 100;
-                dgvTransactions.Columns[4].Width = 100;
-                dgvTransactions.Columns[5].Width = 120;
-                dgvTransactions.Columns[6].Width = 130;
-            }
-        }
-
-        private void FilterGrid()
-        {
-            if (_data == null || cboMethod == null || cboStatus == null || txtSearch == null) return;
-
-            string method = cboMethod.SelectedItem?.ToString().ToLower() ?? "all methods";
-            string status = cboStatus.SelectedItem?.ToString().ToLower() ?? "all status";
-            string search = txtSearch.Text?.Trim().ToLower() ?? "";
-
-            var filtered = _data.Clone();
-            foreach (DataRow row in _data.Rows)
-            {
-                bool ok = true;
-                string rowMethod = row["method"] != DBNull.Value ? row["method"].ToString().ToLower() : "";
-                string rowStatus = row["status"] != DBNull.Value ? row["status"].ToString().ToLower() : "";
-
-                if (method != "all methods" && rowMethod != method) ok = false;
-                if (status != "all status" && rowStatus != status) ok = false;
-
-                if (!string.IsNullOrEmpty(search))
-                {
-                    string cName = row["customer_name"] != DBNull.Value ? row["customer_name"].ToString().ToLower() : "";
-                    string txId = row["transaction_id"].ToString();
-
-                    if (!cName.Contains(search) && !txId.Contains(search)) ok = false;
-                }
-
-                if (ok) filtered.ImportRow(row);
-            }
-            RefreshGrid(filtered);
-        }
-
-        private void UpdateStats()
-        {
-            if (_data == null) return;
-
-            decimal totalRevenue = 0;
-            int totalTxs = _data.Rows.Count;
-            int pendingCount = 0;
-            int repairedNeeded = 0;
-
-            foreach (DataRow row in _data.Rows)
-            {
-                string st = row["status"]?.ToString().ToLower() ?? "";
-                if (st == "confirmed" || st == "paid" || st == "verified")
-                {
-                    totalRevenue += row["amount"] != DBNull.Value ? Convert.ToDecimal(row["amount"]) : 0;
-                }
-                if (st == "pending") pendingCount++;
-            }
-
-            // Reconciliation handled server-side — not available from API
-
-            if (lblStats.InvokeRequired)
-            {
-                lblStats.Invoke(new Action(() => lblStats.Text = $"{totalTxs} transactions  ·  ₱{totalRevenue:N2} revenue  ·  {pendingCount} pending  ·  {repairedNeeded} payment logs need repair"));
-            }
-            else
-            {
-                lblStats.Text = $"{totalTxs} transactions  ·  ₱{totalRevenue:N2} revenue  ·  {pendingCount} pending  ·  {repairedNeeded} payment logs need repair";
-            }
-        }
-
-        private void ReconcilePaymentLogs()
-        {
-            // Reconciliation handled server-side
-            MessageBox.Show(
-                "Payment log reconciliation is now handled server-side.\nRefreshing transactions...",
-                "Reconciliation",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-            LoadFromDB();
-        }
-
-        // ══ ROW SELECTED → Generate Receipt ══
-        private void OnRowSelected(object sender, EventArgs e)
-        {
-            if (dgvTransactions == null || dgvTransactions.SelectedRows.Count == 0) return;
-
-            var cellVal = dgvTransactions.SelectedRows[0].Cells[0].Value;
-            if (cellVal == null || cellVal == DBNull.Value) return;
-
-            string txIdString = cellVal.ToString();
-            if (string.IsNullOrEmpty(txIdString)) return;
-
-            // Safe parsing ng string na may kasamang "TX-"
-            if (!int.TryParse(txIdString.Replace("TX-", ""), out int id)) return;
-
-            _selectedTxId = id;
-
-            var rows = _data.Select($"transaction_id = {id}");
-            if (rows.Length == 0) return;
-
-            _selectedRow = rows[0];
-
-            string customer = _selectedRow["customer_name"]?.ToString();
-            string rentalId = _selectedRow["rental_id"] != DBNull.Value ? $"DG-{Convert.ToInt32(_selectedRow["rental_id"]):D5}" : "N/A";
-            string vehicle = _selectedRow["plate_no"]?.ToString();
-            decimal amount = _selectedRow["amount"] != DBNull.Value ? Convert.ToDecimal(_selectedRow["amount"]) : 0;
-            string method = ExportBrandingHelper.GetDisplayMethod(_selectedRow["method"]?.ToString()).ToUpperInvariant();
-            string status = GetDisplayStatus(_selectedRow).ToUpperInvariant();
-            DateTime date = _selectedRow["paid_at"] != DBNull.Value ? Convert.ToDateTime(_selectedRow["paid_at"]) : DateTime.Now;
-
-            lblReceiptContent.Text = $@"
-DRIVE & GO VEHICLE RENTALS
-San Jose del Monte, Bulacan
-----------------------------------------
-OFFICIAL RECEIPT
-----------------------------------------
-
-Receipt No.    : TX-{id:D5}
-Issued On      : {date:MMM dd, yyyy hh:mm tt}
-Rental Ref     : {rentalId}
-Branch         : San Jose del Monte, Bulacan
-
-Customer       : {customer}
-Vehicle Plate  : {vehicle}
-
-Payment Method : {method}
-Payment Status : {status}
-Remarks        : Auto-generated payment receipt
-
-----------------------------------------
-TOTAL PAID     : ₱ {amount:N2}
-----------------------------------------
-
-Please keep this receipt for your records.
-Thank you for choosing Drive & Go.
-";
-            btnExportPDF.Enabled = true;
-
-            string rawStatus = _selectedRow["status"]?.ToString()?.ToLowerInvariant() ?? "";
-            bool isPending = rawStatus == "pending" || rawStatus == "unpaid";
-            btnConfirmPayment.Enabled = isPending;
-            btnRejectPayment.Enabled = isPending;
-        }
-
-        private async void OnConfirmPayment(object s, EventArgs e)
-        {
-            if (_selectedTxId <= 0 || _selectedRow == null) return;
-
-            string txCode = $"TX-{_selectedTxId:D5}";
-            string cust = _selectedRow["customer_name"]?.ToString() ?? "Customer";
-            decimal amt = _selectedRow["amount"] != DBNull.Value ? Convert.ToDecimal(_selectedRow["amount"]) : 0;
-
-            var confirm = MessageBox.Show(
-                $"Confirm payment of ₱{amt:N2} for {cust} ({txCode})?\nThis will mark the rental record as PAID.",
-                "Confirm Payment",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
-
-            if (confirm != DialogResult.Yes) return;
-
-            try
-            {
-                var res = await ApiService.PatchAsync($"transactions/{_selectedTxId}/confirm", null);
-                if (res.Success)
-                {
-                    MessageBox.Show("Payment confirmed successfully! Rental status updated to PAID.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    LoadFromDB();
-                }
-                else
-                {
-                    MessageBox.Show("Failed to confirm payment: " + (res.Error ?? res.Body), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Error confirming payment: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
-        private async void OnRejectPayment(object s, EventArgs e)
-        {
-            if (_selectedTxId <= 0 || _selectedRow == null) return;
-
-            string txCode = $"TX-{_selectedTxId:D5}";
-            var confirm = MessageBox.Show(
-                $"Are you sure you want to reject transaction {txCode}?",
-                "Reject Payment",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
-
-            if (confirm != DialogResult.Yes) return;
-
-            try
-            {
-                var res = await ApiService.PatchAsync($"transactions/{_selectedTxId}/reject", null);
-                if (res.Success)
-                {
-                    MessageBox.Show("Payment has been rejected.", "Rejected", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    LoadFromDB();
-                }
-                else
-                {
-                    MessageBox.Show("Failed to reject payment: " + (res.Error ?? res.Body), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Error rejecting payment: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
-        // ══ PDF EXPORT via iText7 ══
-        private void OnExportPDF(object s, EventArgs e)
-        {
-            if (_selectedTxId < 0 || _selectedRow == null) return;
-
-            using var dlg = new SaveFileDialog
-            {
-                Title = "Save Receipt",
-                Filter = "PDF Files (*.pdf)|*.pdf",
-                FileName = $"DriveAndGo_Receipt_TX-{_selectedTxId:D5}.pdf"
-            };
-
-            if (dlg.ShowDialog() != DialogResult.OK) return;
-
-            try
-            {
-                string path = dlg.FileName;
-                var writerProps = new WriterProperties();
-                writerProps.SetCompressionLevel(9);
-
-                using var writer = new PdfWriter(path, writerProps);
-                using var pdf = new PdfDocument(writer);
-                using var doc = new Document(pdf);
-                doc.SetMargins(28, 28, 24, 28);
-
-                PdfFont fontBold = PdfFontFactory.CreateFont(StandardFonts.HELVETICA_BOLD);
-                PdfFont fontNormal = PdfFontFactory.CreateFont(StandardFonts.HELVETICA);
-
-                var orange = new DeviceRgb(230, 81, 0);
-                var dark = new DeviceRgb(20, 20, 40);
-                var gray = new DeviceRgb(100, 100, 130);
-                var softGray = new DeviceRgb(244, 245, 249);
-                var softOrange = new DeviceRgb(255, 241, 232);
-                var white = ColorConstants.WHITE;
-
-                string customer = _selectedRow["customer_name"]?.ToString();
-                string rentalId = _selectedRow["rental_id"] != DBNull.Value ? $"DG-{Convert.ToInt32(_selectedRow["rental_id"]):D5}" : "N/A";
-                string plate = _selectedRow["plate_no"]?.ToString();
-                decimal amount = _selectedRow["amount"] != DBNull.Value ? Convert.ToDecimal(_selectedRow["amount"]) : 0;
-                string method = ExportBrandingHelper.GetDisplayMethod(_selectedRow["method"]?.ToString());
-                string status = GetDisplayStatus(_selectedRow);
-                DateTime date = _selectedRow["paid_at"] != DBNull.Value ? Convert.ToDateTime(_selectedRow["paid_at"]) : DateTime.Now;
-                string logoPath = ExportBrandingHelper.ResolveLogoPath();
-
-                var headerTable = new Table(new float[] { 1.1f, 3.4f }).UseAllAvailableWidth();
-
-                Cell logoCell = new Cell()
-                    .SetBorder(Border.NO_BORDER)
-                    .SetBackgroundColor(softOrange)
-                    .SetPadding(12)
-                    .SetTextAlignment(TextAlignment.LEFT)
-                    .SetVerticalAlignment(VerticalAlignment.MIDDLE);
-
-                if (!string.IsNullOrWhiteSpace(logoPath) && File.Exists(logoPath))
-                {
-                    var imgData = ImageDataFactory.Create(logoPath);
-                    logoCell.Add(new iText.Layout.Element.Image(imgData).SetHeight(42).SetAutoScale(true));
-                }
-                else
-                {
-                    logoCell.Add(new Paragraph("DG")
-                        .SetFont(fontBold)
-                        .SetFontSize(22)
-                        .SetFontColor(orange));
-                }
-
-                Cell textCell = new Cell()
-                    .SetBorder(Border.NO_BORDER)
-                    .SetPadding(12)
-                    .SetBackgroundColor(orange)
-                    .SetTextAlignment(TextAlignment.RIGHT);
-
-                textCell.Add(new Paragraph("OFFICIAL RECEIPT")
-                    .SetFont(fontBold)
-                    .SetFontSize(18)
-                    .SetFontColor(white));
-                textCell.Add(new Paragraph("Drive & Go Vehicle Rentals")
-                    .SetFont(fontNormal)
-                    .SetFontSize(11)
-                    .SetFontColor(new DeviceRgb(255, 220, 196)));
-                textCell.Add(new Paragraph("San Jose del Monte, Bulacan")
-                    .SetFont(fontNormal)
-                    .SetFontSize(9)
-                    .SetFontColor(new DeviceRgb(255, 220, 196)));
-
-                headerTable.AddCell(logoCell);
-                headerTable.AddCell(textCell);
-                doc.Add(headerTable);
-                doc.Add(new Paragraph(" "));
-
-                var metaTable = new Table(new float[] { 1f, 1f }).UseAllAvailableWidth();
-                metaTable.AddCell(CreateReceiptMetaCell("Receipt No.", $"TX-{_selectedTxId:D5}", fontBold, fontNormal, softGray, dark, gray));
-                metaTable.AddCell(CreateReceiptMetaCell("Issued On", date.ToString("MMMM dd, yyyy hh:mm tt"), fontBold, fontNormal, softGray, dark, gray));
-                metaTable.AddCell(CreateReceiptMetaCell("Rental Ref", rentalId, fontBold, fontNormal, softGray, dark, gray));
-                metaTable.AddCell(CreateReceiptMetaCell("Payment Status", status, fontBold, fontNormal, softGray, dark, gray));
-                doc.Add(metaTable);
-                doc.Add(new Paragraph(" "));
-
-                var detailsTable = new Table(new float[] { 1.2f, 2.4f }).UseAllAvailableWidth();
-                AddReceiptDetail(detailsTable, "Customer", customer ?? "Unknown Customer", fontBold, fontNormal, softGray, dark, gray);
-                AddReceiptDetail(detailsTable, "Vehicle Plate", plate ?? "Unknown Vehicle", fontBold, fontNormal, softGray, dark, gray);
-                AddReceiptDetail(detailsTable, "Payment Method", method, fontBold, fontNormal, softGray, dark, gray);
-                AddReceiptDetail(detailsTable, "Remarks", "Auto-generated payment receipt from the Drive & Go admin portal.", fontBold, fontNormal, softGray, dark, gray);
-                doc.Add(detailsTable);
-                doc.Add(new Paragraph(" "));
-
-                var totalBox = new Table(1).UseAllAvailableWidth();
-                totalBox.AddCell(new Cell()
-                    .SetBorder(Border.NO_BORDER)
-                    .SetBackgroundColor(softOrange)
-                    .SetPadding(14)
-                    .Add(new Paragraph("TOTAL PAID")
-                        .SetFont(fontBold)
-                        .SetFontSize(10)
-                        .SetFontColor(gray))
-                    .Add(new Paragraph($"PHP {amount:N2}")
-                        .SetFont(fontBold)
-                        .SetFontSize(22)
-                        .SetFontColor(dark)));
-                doc.Add(totalBox);
-                doc.Add(new Paragraph(" "));
-
-                doc.Add(new LineSeparator(new SolidLine(1f)).SetStrokeColor(new DeviceRgb(220, 223, 232)));
-                doc.Add(new Paragraph("Please keep this receipt for your records. This document serves as proof of payment captured by the system.")
-                    .SetFont(fontNormal)
-                    .SetFontSize(9)
-                    .SetFontColor(gray)
-                    .SetMarginTop(10)
-                    .SetMarginBottom(2));
-                doc.Add(new Paragraph("Thank you for choosing Drive & Go. Drive safely.")
-                    .SetFont(fontBold)
-                    .SetFontSize(9)
-                    .SetFontColor(dark));
-
-                MessageBox.Show("Receipt saved successfully!\n" + path, "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = path, UseShellExecute = true });
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("PDF Error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
-        private DataTable DeduplicateTransactions(DataTable source)
-        {
-            if (source == null || source.Rows.Count == 0)
-                return source;
-
-            var deduped = source.Clone();
-            foreach (var group in source.AsEnumerable().GroupBy(BuildTransactionKey, StringComparer.OrdinalIgnoreCase))
-            {
-                DataRow keeper = group
-                    .OrderBy(row => GetStatusRank(NormalizeStatus(row["status"]?.ToString())))
-                    .ThenBy(row => string.IsNullOrWhiteSpace(row["type"]?.ToString()) ? 1 : 0)
-                    .ThenByDescending(row => row["paid_at"] == DBNull.Value ? DateTime.MinValue : Convert.ToDateTime(row["paid_at"], CultureInfo.InvariantCulture))
-                    .ThenByDescending(row => Convert.ToInt32(row["transaction_id"], CultureInfo.InvariantCulture))
-                    .First();
-
-                deduped.ImportRow(keeper);
-            }
-
-            return deduped;
-        }
-
-        private string BuildTransactionKey(DataRow row)
-        {
-            decimal amount = row["amount"] != DBNull.Value ? Convert.ToDecimal(row["amount"], CultureInfo.InvariantCulture) : 0;
-            return string.Join("|",
-                row["rental_id"] == DBNull.Value ? "0" : Convert.ToInt32(row["rental_id"], CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture),
-                NormalizeTransactionType(row["type"]?.ToString()),
-                amount.ToString("0.##", CultureInfo.InvariantCulture),
-                NormalizeMethod(row["method"]?.ToString()),
-                NormalizeProof(row["proof_url"]?.ToString()));
-        }
-
-        private string GetDisplayStatus(DataRow row)
-        {
-            string fallback = GetFallbackStatus(row);
-            return ExportBrandingHelper.GetDisplayStatus(row["status"]?.ToString(), fallback);
-        }
-
-        private static string GetFallbackStatus(DataRow row)
-        {
-            string paymentStatus = row.Table.Columns.Contains("payment_status")
-                ? NormalizeStatus(row["payment_status"]?.ToString())
-                : string.Empty;
-
-            return paymentStatus == "paid" ? "Confirmed" : "Pending Review";
-        }
-
-        private static string NormalizeTransactionType(string type)
-        {
-            string normalized = type?.Trim().ToLowerInvariant() ?? "payment";
-            return normalized switch
-            {
-                "" => "payment",
-                "rental" => "payment",
-                _ => normalized
-            };
-        }
-
-        private static string NormalizeMethod(string method) =>
-            string.IsNullOrWhiteSpace(method) ? "cash" : method.Trim().ToLowerInvariant();
-
-        private static string NormalizeProof(string proofUrl) =>
-            string.IsNullOrWhiteSpace(proofUrl) ? string.Empty : proofUrl.Trim();
-
-        private static string NormalizeStatus(string status) =>
-            string.IsNullOrWhiteSpace(status) ? string.Empty : status.Trim().ToLowerInvariant();
-
-        private static int GetStatusRank(string status) => status switch
-        {
-            "paid" => 0,
-            "confirmed" => 1,
-            "verified" => 2,
-            "pending" => 3,
-            "" => 4,
-            _ => 5
-        };
-
-        private static Cell CreateReceiptMetaCell(
-            string label,
-            string value,
-            PdfFont fontBold,
-            PdfFont fontNormal,
-            DeviceRgb background,
-            DeviceRgb dark,
-            DeviceRgb gray)
-        {
-            return new Cell()
-                .SetBorder(Border.NO_BORDER)
-                .SetBackgroundColor(background)
-                .SetPadding(10)
-                .Add(new Paragraph(label)
-                    .SetFont(fontNormal)
-                    .SetFontSize(8)
-                    .SetFontColor(gray)
-                    .SetMarginBottom(2))
-                .Add(new Paragraph(value)
-                    .SetFont(fontBold)
-                    .SetFontSize(11)
-                    .SetFontColor(dark)
-                    .SetMarginTop(0));
-        }
-
-        private static void AddReceiptDetail(
-            Table table,
-            string label,
-            string value,
-            PdfFont fontBold,
-            PdfFont fontNormal,
-            DeviceRgb softGray,
-            DeviceRgb dark,
-            DeviceRgb gray)
-        {
-            table.AddCell(new Cell()
-                .SetBorder(Border.NO_BORDER)
-                .SetBackgroundColor(softGray)
-                .SetPadding(10)
-                .Add(new Paragraph(label)
-                    .SetFont(fontNormal)
-                    .SetFontSize(8)
-                    .SetFontColor(gray)));
-
-            table.AddCell(new Cell()
-                .SetBorder(Border.NO_BORDER)
-                .SetPadding(10)
-                .Add(new Paragraph(value)
-                    .SetFont(fontBold)
-                    .SetFontSize(10)
-                    .SetFontColor(dark)));
-        }
-
-        // ══ GRID DESIGN ══
-        private void OnCellPainting(object sender, DataGridViewCellPaintingEventArgs e)
-        {
-            if (e.RowIndex < 0 || e.Value == null || e.Value == DBNull.Value) return;
-
-            // Status column is 5
-            if (e.ColumnIndex == 5)
-            {
-                e.Handled = true;
-                e.PaintBackground(e.ClipBounds, true);
-
-                string val = e.Value.ToString();
-                string normalized = val.ToLowerInvariant();
-                WinColor c = normalized is "confirmed" or "paid" or "verified"
-                    ? ColGreen
-                    : normalized is "refunded" or "rejected"
-                        ? ColRed
-                        : ColYellow;
-
-                var rect = new Rectangle(e.CellBounds.X + 6, e.CellBounds.Y + 9, e.CellBounds.Width - 12, e.CellBounds.Height - 18);
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                using var path = RoundRect(rect, 8);
-                e.Graphics.FillPath(new SolidBrush(WinColor.FromArgb(30, c)), path);
-                e.Graphics.DrawPath(new Pen(c, 1), path);
-                TextRenderer.DrawText(e.Graphics, val.ToUpper(), new Font("Segoe UI", 8F, FontStyle.Bold), rect, c, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-            }
-
-            // Method column is 4
-            if (e.ColumnIndex == 4)
-            {
-                e.Handled = true;
-                e.PaintBackground(e.ClipBounds, true);
-                string val = e.Value.ToString();
-                WinColor c = val.ToLower() == "gcash" ? ColBlue : val.ToLower() == "card" ? ColPurple : ColGreen;
-
-                var rect = new Rectangle(e.CellBounds.X + 6, e.CellBounds.Y + 9, e.CellBounds.Width - 12, e.CellBounds.Height - 18);
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                using var path = RoundRect(rect, 8);
-                e.Graphics.FillPath(new SolidBrush(WinColor.FromArgb(30, c)), path);
-                e.Graphics.DrawPath(new Pen(c, 1), path);
-                TextRenderer.DrawText(e.Graphics, val.ToUpper(), new Font("Segoe UI", 8F, FontStyle.Bold), rect, c, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-            }
-        }
-
-        private void StyleGrid(DataGridView dgv)
-        {
-            bool dk = ThemeManager.IsDarkMode;
-            dgv.BackgroundColor = ColBg;
-            dgv.BorderStyle = BorderStyle.None;
-            dgv.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
-            dgv.GridColor = ColBorder;
-            dgv.RowHeadersVisible = false;
-            dgv.AllowUserToAddRows = false;
-            dgv.AllowUserToDeleteRows = false;
-            dgv.ReadOnly = true;
-            dgv.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-            dgv.Font = new Font("Segoe UI", 9.5F);
-            dgv.RowTemplate.Height = 42;
-            dgv.EnableHeadersVisualStyles = false;
-            dgv.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-
-            dgv.DefaultCellStyle.BackColor = dk ? ColBg : WinColor.White;
-            dgv.DefaultCellStyle.ForeColor = ColText;
-            dgv.DefaultCellStyle.SelectionBackColor = dk ? WinColor.FromArgb(32, 255, 90, 31) : WinColor.FromArgb(255, 240, 230);
-            dgv.DefaultCellStyle.SelectionForeColor = ColAccent;
-            dgv.DefaultCellStyle.Padding = new Padding(8, 0, 8, 0);
-
-            dgv.ColumnHeadersDefaultCellStyle.BackColor = dk ? WinColor.FromArgb(8, 8, 16) : WinColor.FromArgb(235, 236, 245);
-            dgv.ColumnHeadersDefaultCellStyle.ForeColor = ColSub;
-            dgv.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            dgv.ColumnHeadersHeight = 38;
-
-            dgv.AlternatingRowsDefaultCellStyle.BackColor = dk
-                ? WinColor.FromArgb(20, 20, 34)
-                : WinColor.FromArgb(250, 250, 255);
-        }
-
-        // ══ UTILS ══
-        private Button CreateBtn(string text, WinColor color, int x, int y, int w)
-        {
-            var btn = new Button
-            {
-                Text = text,
-                Size = new Size(w, 36),
-                Location = new Point(x, y),
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
-                Cursor = Cursors.Hand,
-                BackColor = WinColor.FromArgb(15, color),
-                ForeColor = color
-            };
-            btn.FlatAppearance.BorderColor = color;
-            btn.FlatAppearance.BorderSize = 1;
-            btn.FlatAppearance.MouseOverBackColor = WinColor.FromArgb(35, color);
-
-            // Added premium rounded corners
-            btn.HandleCreated += (s, e) =>
-            {
-                if (btn.IsDisposed) return;
-                var r = new Rectangle(0, 0, btn.Width, btn.Height);
-                using var p = RoundRect(r, 6);
-                btn.Region = new Region(p);
-            };
-            return btn;
-        }
-
-        private GraphicsPath RoundRect(Rectangle b, int r)
-        {
-            int d = r * 2; var arc = new Rectangle(b.Location, new Size(d, d)); var path = new GraphicsPath();
-            path.AddArc(arc, 180, 90); arc.X = b.Right - d; path.AddArc(arc, 270, 90); arc.Y = b.Bottom - d;
-            path.AddArc(arc, 0, 90); arc.X = b.Left; path.AddArc(arc, 90, 90); path.CloseFigure(); return path;
         }
 
         protected override void Dispose(bool disposing)
         {
-            ThemeManager.ThemeChanged -= OnThemeChanged;
+            if (disposing)
+            {
+                ThemeManager.ThemeChanged -= ThemeChanged_Handler;
+                _webView?.Dispose();
+            }
             base.Dispose(disposing);
         }
     }

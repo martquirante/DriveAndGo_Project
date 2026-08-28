@@ -60,18 +60,21 @@
             --shadow-glow-orange: 0 0 20px rgba(249, 115, 22, 0.25);
         }
 
-        /* Automotive Brand Emblem Contrast Engine */
+        /* Automotive Brand Emblem HD Crystal Clear Engine */
         .brand-emblem-adaptive {
-            filter: brightness(0) !important;
-            opacity: 0.85 !important;
-            transition: filter 0.2s ease, opacity 0.2s ease;
+            transition: filter 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
+        }
+        .light .brand-emblem-adaptive,
+        [data-theme="light"] .brand-emblem-adaptive {
+            filter: none;
+            opacity: 0.9;
         }
         [data-theme="dark"] .brand-emblem-adaptive,
         .dark .brand-emblem-adaptive,
         html[data-theme="dark"] .brand-emblem-adaptive,
         body[data-theme="dark"] .brand-emblem-adaptive {
-            filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgba(255, 255, 255, 0.4)) !important;
-            opacity: 1 !important;
+            filter: invert(1) brightness(1.18) !important;
+            opacity: 0.95 !important;
         }
 
         * {
@@ -89,8 +92,8 @@
         }
 
         ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
+            width: 4px;
+            height: 4px;
         }
 
         ::-webkit-scrollbar-track {
@@ -98,13 +101,62 @@
         }
 
         ::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 3px;
+            background: rgba(249, 115, 22, 0.28); /* Low opacity sleek orange scrollbar */
+            border-radius: 9999px;
+            transition: background 0.2s ease;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(249, 115, 22, 0.65);
+        }
+
+        .orange-scrollbar::-webkit-scrollbar {
+            width: 3.5px;
+            height: 3.5px;
+        }
+
+        .orange-scrollbar::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 9999px;
+        }
+
+        .orange-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(249, 115, 22, 0.32);
+            border-radius: 9999px;
+            transition: background 0.2s ease;
+        }
+
+        .orange-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(249, 115, 22, 0.7);
         }
 
         .rain-radar-tile {
             filter: contrast(180%) saturate(220%) brightness(1.05);
-            transition: opacity 0.3s ease;
+            transition: opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .weather-clouds-tile {
+            transition: opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* ── Google Maps Dark Mode Theme (Authentic Google Maps Dark Palette) ── */
+        [data-theme="dark"] .google-street-tile {
+            filter: invert(100%) hue-rotate(180deg) contrast(95%) grayscale(85%) brightness(88%) !important;
+            transition: filter 0.3s ease;
+        }
+
+        [data-theme="dark"] .google-terrain-tile {
+            filter: invert(95%) hue-rotate(180deg) brightness(82%) contrast(105%) grayscale(45%) !important;
+            transition: filter 0.3s ease;
+        }
+
+        /* Satellite tile retains original photographic colors */
+        .google-sat-tile {
+            filter: brightness(0.96) contrast(1.04);
+        }
+
+        [data-theme="dark"] .google-traffic-tile {
+            filter: brightness(1.25) contrast(1.15);
         }
 
         ::-webkit-scrollbar-thumb:hover {
@@ -782,46 +834,56 @@
         const getBrandLogoUrl = (brandName) => {
             const slug = getBrandSlug(brandName);
             if (!slug) return '';
-            // High-Definition Authentic Master Brand Emblem Image (Real 3D Chrome / Full Color PNG)
-            return `https://cdn.jsdelivr.net/gh/filippofilip95/car-logos-dataset@master/logos/original/${slug}.png`;
+            return `${API}/api/vehicles/brand-logo/${encodeURIComponent(slug)}`;
         };
 
         const ADAPTIVE_BRAND_SLUGS = new Set([
             'toyota', 'nissan', 'mazda', 'lexus', 'jeep', 'kia', 'suzuki', 
             'isuzu', 'honda', 'volkswagen', 'volvo', 'subaru', 'mercedes-benz', 
-            'mercedes', 'audi', 'infiniti', 'jaguar', 'chery', 'geely', 'byd', 'haval', 'peugeot', 'renault', 'dodge', 'ram', 'tesla'
+            'mercedes', 'audi', 'infiniti', 'jaguar', 'chery', 'geely', 'byd', 'haval', 'peugeot', 'renault', 'dodge', 'ram', 'tesla',
+            'hyundai', 'mitsubishi', 'chevrolet'
         ]);
 
-        const BrandLogo = ({ brand, className = "h-6 w-auto max-w-[42px]", imgClass = "h-full w-auto max-h-6 max-w-[42px]" }) => {
+        const BrandLogo = ({ brand, className = "w-7 h-7", imgClass = "w-full h-full" }) => {
             const [hasError, setHasError] = useState(false);
+            const [fallbackToCdn, setFallbackToCdn] = useState(false);
             const b = (brand || 'Car').trim();
             const slug = getBrandSlug(b);
-            const url = getBrandLogoUrl(b);
             const initials = b.length >= 2 ? b.substring(0, 2).toUpperCase() : b.toUpperCase();
-            const isAdaptive = ADAPTIVE_BRAND_SLUGS.has(slug);
 
             useEffect(() => {
                 setHasError(false);
+                setFallbackToCdn(false);
             }, [brand]);
 
-            if (hasError || !url) {
+            if (hasError || !slug) {
                 return (
-                    <span className="font-black text-orange-500 text-[11px] uppercase tracking-wider shrink-0 select-none" title={b}>
-                        {initials}
-                    </span>
+                    <div className={`inline-flex items-center justify-center shrink-0 select-none rounded-md bg-white p-0.5 shadow-xs border border-slate-200/90 overflow-hidden ${className}`}>
+                        <span className="font-black text-slate-800 text-[10px] uppercase tracking-wider select-none" title={b}>
+                            {initials}
+                        </span>
+                    </div>
                 );
             }
 
-            const emblemClass = isAdaptive ? "brand-emblem-adaptive" : "";
+            const srcUrl = fallbackToCdn 
+                ? `https://cdn.jsdelivr.net/gh/filippofilip95/car-logos-dataset@master/logos/original/${slug}.png`
+                : `${API}/api/vehicles/brand-logo/${encodeURIComponent(slug)}`;
 
             return (
-                <div className="inline-flex items-center justify-center shrink-0 select-none" title={b}>
+                <div className={`inline-flex items-center justify-center shrink-0 select-none rounded-md bg-white p-0.5 shadow-xs border border-slate-200/90 overflow-hidden ${className}`}>
                     <img 
-                        src={url} 
+                        src={srcUrl}
                         alt={b} 
-                        className={`${imgClass} ${emblemClass} object-contain transition-transform duration-200`} 
-                        style={{ imageRendering: '-webkit-optimize-contrast' }}
-                        onError={() => setHasError(true)} 
+                        className={`w-full h-full object-contain ${imgClass}`}
+                        loading="lazy"
+                        onError={() => {
+                            if (!fallbackToCdn) {
+                                setFallbackToCdn(true);
+                            } else {
+                                setHasError(true);
+                            }
+                        }} 
                     />
                 </div>
             );
@@ -1186,7 +1248,7 @@
                             {/* Row 1: Brand & Model + Plate Number & Price */}
                             <div className="flex flex-col gap-2">
                                 <div className="flex items-center gap-2">
-                                    <BrandLogo brand={v.brand} className="h-5 w-auto max-w-[32px]" imgClass="h-5 w-auto max-h-5 max-w-[32px]" />
+                                    <BrandLogo brand={v.brand} className="w-7 h-7" />
                                     <div className="text-xs font-extrabold text-orange-400 uppercase tracking-widest truncate">
                                         {v.brand} {v.model}
                                     </div>
@@ -1652,8 +1714,8 @@
                                         </div>
                                         <div>
                                             <div className="font-bold text-[var(--text-primary)]">{v.plateNumber}</div>
-                                            <div className="text-xs text-[var(--text-muted)] flex items-center gap-1.5 mt-0.5">
-                                                <BrandLogo brand={v.brand} className="w-5 h-5" imgClass="max-h-4 max-w-4" />
+                                            <div className="text-xs text-[var(--text-muted)] flex items-center gap-2 mt-1">
+                                                <BrandLogo brand={v.brand} className="w-6 h-6 rounded-lg shadow-sm" imgClass="p-0.5" />
                                                 <span>{v.brand} {v.model}</span>
                                             </div>
                                         </div>
@@ -1833,9 +1895,11 @@
             const garageMarkerRef = useRef(null);
             const cityTempMarkersRef = useRef([]);
             const mapTypeDropdownRef = useRef(null);
+            const weatherDropdownRef = useRef(null);
 
             const [mapType, setMapType] = useState('street');
             const [mapTypeDropdownOpen, setMapTypeDropdownOpen] = useState(false);
+            const [weatherDropdownOpen, setWeatherDropdownOpen] = useState(false);
             const [showRoutes, setShowRoutes] = useState(true);
             const [trafficOn, setTrafficOn] = useState(false);
             const [radarOn, setRadarOn] = useState(true);
@@ -1854,6 +1918,9 @@
                 const handleClickOutside = (e) => {
                     if (mapTypeDropdownRef.current && !mapTypeDropdownRef.current.contains(e.target)) {
                         setMapTypeDropdownOpen(false);
+                    }
+                    if (weatherDropdownRef.current && !weatherDropdownRef.current.contains(e.target)) {
+                        setWeatherDropdownOpen(false);
                     }
                 };
                 document.addEventListener('mousedown', handleClickOutside);
@@ -1877,6 +1944,18 @@
                 { name: 'Zamboanga City', lat: 6.9214, lng: 122.0790 },
                 { name: 'General Santos', lat: 6.1164, lng: 125.1716 }
             ];
+
+            // Calculate dynamic weather layer opacity based on map zoom level
+            // Zoom out (<=8): bold/saturated (0.85-0.90) so weather storm bands are vivid
+            // Zoom in (>=13): subtle/translucent (0.15-0.35) so streets, roads & vehicles are 100% visible
+            const calculateWeatherOpacity = (z) => {
+                if (z <= 7) return { radar: 0.88, clouds: 0.80, flood: 0.65 };
+                if (z <= 9) return { radar: 0.72, clouds: 0.60, flood: 0.55 };
+                if (z <= 11) return { radar: 0.52, clouds: 0.42, flood: 0.45 };
+                if (z <= 13) return { radar: 0.32, clouds: 0.25, flood: 0.35 };
+                if (z <= 15) return { radar: 0.20, clouds: 0.15, flood: 0.25 };
+                return { radar: 0.12, clouds: 0.08, flood: 0.18 };
+            };
 
             useEffect(() => {
                 if (!mapRef.current || mapInst.current) return;
@@ -1913,21 +1992,40 @@
                     map.getPane('routeLabelsPane').style.zIndex = 460;
                 }
 
-                // Init Layers with real-time OpenWeatherMap clouds & wind tiles (secured via API backend proxy) + RainViewer radar
-                layersRef.current = {
-                    dark: L.tileLayer('https://mt1.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}', { minZoom: 3, maxZoom: 22 }),
-                    light: L.tileLayer('https://mt1.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}', { minZoom: 3, maxZoom: 22 }),
-                    sat: L.tileLayer('https://mt1.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}', { minZoom: 3, maxZoom: 22 }),
-                    terrain: L.tileLayer('https://mt1.google.com/vt/lyrs=p&hl=en&x={x}&y={y}&z={z}', { minZoom: 3, maxZoom: 22 }),
-                    traffic: L.tileLayer('https://mt1.google.com/vt/lyrs=h,traffic&x={x}&y={y}&z={z}', { minZoom: 3, maxZoom: 22 }),
-                    radar: L.tileLayer('https://tilecache.rainviewer.com/v2/radar/nowcast_5/512/{z}/{x}/{y}/2/1_1.png', { opacity: 0.95, minZoom: 3, maxNativeZoom: 6, maxZoom: 22, className: 'rain-radar-tile' }),
-                    clouds: L.tileLayer(`${API}/weather/tile/clouds/{z}/{x}/{y}.png`, { opacity: 0.95, minZoom: 3, maxZoom: 22, zIndex: 310 }),
-                    wind: L.tileLayer(`${API}/weather/tile/wind/{z}/{x}/{y}.png`, { opacity: 0.95, minZoom: 3, maxZoom: 22, zIndex: 320 })
+                const updateDynamicWeatherOpacity = () => {
+                    if (!mapInst.current || !layersRef.current) return;
+                    const z = mapInst.current.getZoom();
+                    const op = calculateWeatherOpacity(z);
+
+                    if (layersRef.current.radar && typeof layersRef.current.radar.setOpacity === 'function') {
+                        layersRef.current.radar.setOpacity(op.radar);
+                    }
+                    if (layersRef.current.clouds && typeof layersRef.current.clouds.setOpacity === 'function') {
+                        layersRef.current.clouds.setOpacity(op.clouds);
+                    }
+                    if (floodPolygonsRef.current && Array.isArray(floodPolygonsRef.current)) {
+                        floodPolygonsRef.current.forEach(poly => {
+                            if (poly && typeof poly.setStyle === 'function') {
+                                poly.setStyle({ fillOpacity: op.flood });
+                            }
+                        });
+                    }
                 };
 
-                layersRef.current.light.addTo(map); // default Google Maps Street View
+                const initialOp = calculateWeatherOpacity(13);
 
-                // Add 3D Garage Hub Marker (using garage_3D.png from WebAssets)
+                layersRef.current = {
+                    dark: L.tileLayer('https://mt1.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}', { minZoom: 3, maxZoom: 22, className: 'google-street-tile' }),
+                    light: L.tileLayer('https://mt1.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}', { minZoom: 3, maxZoom: 22, className: 'google-street-tile' }),
+                    sat: L.tileLayer('https://mt1.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}', { minZoom: 3, maxZoom: 22, className: 'google-sat-tile' }),
+                    terrain: L.tileLayer('https://mt1.google.com/vt/lyrs=p&hl=en&x={x}&y={y}&z={z}', { minZoom: 3, maxZoom: 22, className: 'google-terrain-tile' }),
+                    traffic: L.tileLayer('https://mt1.google.com/vt/lyrs=h,traffic&x={x}&y={y}&z={z}', { minZoom: 3, maxZoom: 22, zIndex: 250, className: 'google-traffic-tile' }),
+                    radar: L.tileLayer('https://tilecache.rainviewer.com/v2/radar/nowcast_5/256/{z}/{x}/{y}/2/1_1.png', { opacity: initialOp.radar, minZoom: 3, maxNativeZoom: 7, maxZoom: 22, className: 'rain-radar-tile', zIndex: 300 }),
+                    clouds: L.tileLayer(`https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${new Date(Date.now() - 86400000).toISOString().split('T')[0]}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`, { opacity: initialOp.clouds || 0.7, minZoom: 3, maxNativeZoom: 9, maxZoom: 22, zIndex: 280, className: 'weather-clouds-tile' })
+                };
+
+                layersRef.current.light.addTo(map);
+
                 const garageIcon = L.divIcon({
                     className: '',
                     html: `<div id='garage-hub-container' class='flex flex-col items-center group cursor-pointer drop-shadow-[0_12px_24px_rgba(249,115,22,0.7)] hover:scale-105 transition-all duration-300 origin-bottom'>
@@ -1945,7 +2043,6 @@
                 const hqMarker = L.marker([14.871116, 121.048088], { icon: garageIcon, zIndexOffset: 1000 }).addTo(map);
                 garageMarkerRef.current = hqMarker;
 
-                // Dynamic zoom scaling handler to keep Garage Hub icon proportional when zooming out
                 const updateGarageScale = () => {
                     const z = map.getZoom();
                     const el = document.getElementById('garage-hub-container');
@@ -1963,14 +2060,18 @@
                     }
                 };
 
-                map.on('zoom', updateGarageScale);
-                map.on('zoomend', updateGarageScale);
-                setTimeout(updateGarageScale, 100);
+                const handleMapZoomEvents = () => {
+                    updateGarageScale();
+                    updateDynamicWeatherOpacity();
+                };
+
+                map.on('zoom', handleMapZoomEvents);
+                map.on('zoomend', handleMapZoomEvents);
+                setTimeout(handleMapZoomEvents, 100);
 
                 return () => { map.remove(); mapInst.current = null; };
             }, []);
 
-            // Render Weather Station Markers & Interactive Hover Inspection ONLY if any weather layer is active
             useEffect(() => {
                 if (!mapInst.current) return;
                 const map = mapInst.current;
@@ -1982,59 +2083,91 @@
                 if (!isAnyWeatherActive) return;
 
                 async function fetchCityTemps() {
-                    const lats = cities.map(c => c.lat).join(',');
-                    const lngs = cities.map(c => c.lng).join(',');
-                    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&current=temperature_2m,wind_speed_10m`;
-
+                    let cityDataMap = {};
                     try {
-                        const res = await fetch(url);
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 4000);
+                        const res = await fetch(`${API}/api/weather/cities`, { signal: controller.signal });
+                        clearTimeout(timeoutId);
                         if (res.ok) {
                             const data = await res.json();
-                            const results = Array.isArray(data) ? data : [data];
-
-                            results.forEach((item, idx) => {
-                                const c = cities[idx];
-                                const temp = item.current ? Math.round(item.current.temperature_2m) : 27;
-                                const windSpeed = item.current ? Math.round(item.current.wind_speed_10m || 14) : 14;
-
-                                const cityIcon = L.divIcon({
-                                    className: 'city-weather-beacon',
-                                    html: `<div class="relative flex items-center justify-center w-8 h-8 cursor-pointer group">
-                                             <div class="absolute w-6 h-6 rounded-full bg-orange-500/25 animate-ping pointer-events-none"></div>
-                                             <div class="relative w-3.5 h-3.5 rounded-full bg-gradient-to-tr from-amber-500 to-orange-500 border-2 border-white/90 shadow-[0_0_12px_rgba(249,115,22,0.9)] transition-transform duration-200 group-hover:scale-150"></div>
-                                           </div>`,
-                                    iconSize: [32, 32],
-                                    iconAnchor: [16, 16]
+                            if (Array.isArray(data)) {
+                                data.forEach(item => {
+                                    if (item.name) {
+                                        cityDataMap[item.name] = {
+                                            temp: Math.round(item.temperature),
+                                            wind: Math.round(item.wind_speed_kmh || 0)
+                                        };
+                                    }
                                 });
-
-                                const marker = L.marker([c.lat, c.lng], { icon: cityIcon, zIndexOffset: 200 }).addTo(map);
-
-                                marker.on('mouseover', (e) => {
-                                    setHoverInfo({
-                                        location: c.name,
-                                        temp: temp,
-                                        windSpeed: windSpeed,
-                                        x: e.containerPoint.x + 14,
-                                        y: e.containerPoint.y + 14
-                                    });
-                                });
-                                marker.on('mousemove', (e) => {
-                                    setHoverInfo(prev => prev ? {
-                                        ...prev,
-                                        x: e.containerPoint.x + 14,
-                                        y: e.containerPoint.y + 14
-                                    } : null);
-                                });
-                                marker.on('mouseout', () => {
-                                    setHoverInfo(null);
-                                });
-
-                                cityTempMarkersRef.current.push(marker);
-                            });
+                            }
                         }
                     } catch (err) {
-                        console.warn("City temp fetch error:", err);
+                        console.warn("Backend cities weather fetch error, attempting direct failover:", err);
                     }
+
+                    if (Object.keys(cityDataMap).length === 0) {
+                        try {
+                            const lats = cities.map(c => c.lat).join(',');
+                            const lngs = cities.map(c => c.lng).join(',');
+                            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}&current=temperature_2m,wind_speed_10m`;
+                            const res = await fetch(url);
+                            if (res.ok) {
+                                const data = await res.json();
+                                const results = Array.isArray(data) ? data : [data];
+                                results.forEach((item, idx) => {
+                                    const c = cities[idx];
+                                    if (c && item.current) {
+                                        cityDataMap[c.name] = {
+                                            temp: Math.round(item.current.temperature_2m),
+                                            wind: Math.round(item.current.wind_speed_10m || 0)
+                                        };
+                                    }
+                                });
+                            }
+                        } catch (e) {
+                            console.warn("Direct Open-Meteo batch failover error:", e);
+                        }
+                    }
+
+                    cities.forEach(c => {
+                        const info = cityDataMap[c.name];
+                        if (!info) return;
+
+                        const cityIcon = L.divIcon({
+                            className: 'city-weather-beacon',
+                            html: `<div class="relative flex items-center justify-center w-8 h-8 cursor-pointer group">
+                                     <div class="absolute w-6 h-6 rounded-full bg-orange-500/25 animate-ping pointer-events-none"></div>
+                                     <div class="relative w-3.5 h-3.5 rounded-full bg-gradient-to-tr from-amber-500 to-orange-500 border-2 border-white/90 shadow-[0_0_12px_rgba(249,115,22,0.9)] transition-transform duration-200 group-hover:scale-150"></div>
+                                   </div>`,
+                            iconSize: [32, 32],
+                            iconAnchor: [16, 16]
+                        });
+
+                        const marker = L.marker([c.lat, c.lng], { icon: cityIcon, zIndexOffset: 200 }).addTo(map);
+
+                        marker.on('mouseover', (e) => {
+                            setHoverInfo({
+                                location: c.name,
+                                temp: info.temp,
+                                windSpeed: info.wind,
+                                x: e.containerPoint.x + 14,
+                                y: e.containerPoint.y + 14
+                            });
+                        });
+                        marker.on('mousemove', (e) => {
+                            setHoverInfo(prev => prev ? {
+                                ...prev,
+                                x: e.containerPoint.x + 14,
+                                y: e.containerPoint.y + 14
+                            } : null);
+                        });
+                        marker.on('mouseout', () => {
+                            setHoverInfo(null);
+                        });
+
+                        cityTempMarkersRef.current.push(marker);
+                    });
                 }
                 fetchCityTemps();
 
@@ -2045,16 +2178,15 @@
                 };
             }, [radarOn, cloudsOn, windOn, floodZonesOn, isAnyWeatherActive]);
 
-            // Handle Theme & Layer switching
             useEffect(() => {
-                if (!mapInst.current) return;
+                if (!mapInst.current || !layersRef.current) return;
                 const m = mapInst.current;
                 const l = layersRef.current;
 
-                if (l.dark) m.removeLayer(l.dark);
-                if (l.light) m.removeLayer(l.light);
-                if (l.sat) m.removeLayer(l.sat);
-                if (l.terrain) m.removeLayer(l.terrain);
+                if (l.dark && m.hasLayer(l.dark)) m.removeLayer(l.dark);
+                if (l.light && m.hasLayer(l.light)) m.removeLayer(l.light);
+                if (l.sat && m.hasLayer(l.sat)) m.removeLayer(l.sat);
+                if (l.terrain && m.hasLayer(l.terrain)) m.removeLayer(l.terrain);
 
                 if (mapType === 'sat' && l.sat) {
                     l.sat.addTo(m);
@@ -2065,44 +2197,83 @@
                 }
 
                 if (trafficOn && l.traffic) {
-                    l.traffic.addTo(m);
+                    if (!m.hasLayer(l.traffic)) l.traffic.addTo(m);
                     l.traffic.bringToFront();
-                } else if (l.traffic) {
+                } else if (l.traffic && m.hasLayer(l.traffic)) {
                     m.removeLayer(l.traffic);
                 }
 
+                if (radarOn && l.radar) {
+                    if (!m.hasLayer(l.radar)) l.radar.addTo(m);
+                    l.radar.bringToFront();
+                } else if (l.radar && m.hasLayer(l.radar)) {
+                    m.removeLayer(l.radar);
+                }
+
                 if (cloudsOn && l.clouds) {
-                    l.clouds.addTo(m);
+                    if (!m.hasLayer(l.clouds)) l.clouds.addTo(m);
                     l.clouds.bringToFront();
-                } else if (l.clouds) {
+                } else if (l.clouds && m.hasLayer(l.clouds)) {
                     m.removeLayer(l.clouds);
                 }
 
-                if (windOn && l.wind) {
-                    l.wind.addTo(m);
-                    l.wind.bringToFront();
-                } else if (l.wind) {
-                    m.removeLayer(l.wind);
-                }
-            }, [mapType, trafficOn, cloudsOn, windOn, isDark]);
+            }, [mapType, trafficOn, radarOn, cloudsOn, windOn, isDark]);
 
-            // Fetch live RainViewer radar timestamp dynamically to eliminate "Zoom Level Not Supported" errors
             useEffect(() => {
                 let isMounted = true;
                 async function fetchLatestRadarTile() {
                     try {
-                        const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+                        let res = await fetch(`${API}/api/weather/radar-frames`);
+                        if (!res.ok) {
+                            res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+                        }
                         if (res.ok) {
                             const data = await res.json();
                             if (data && data.radar && data.radar.past && data.radar.past.length > 0) {
                                 const latestFrame = data.radar.past[data.radar.past.length - 1];
-                                const tileUrl = `${data.host}${latestFrame.path}/512/{z}/{x}/{y}/2/1_1.png`;
+                                const tileUrl = `${data.host}${latestFrame.path}/256/{z}/{x}/{y}/2/1_1.png`;
 
                                 if (isMounted && mapInst.current && layersRef.current) {
-                                    if (layersRef.current.radar) mapInst.current.removeLayer(layersRef.current.radar);
-                                    layersRef.current.radar = L.tileLayer(tileUrl, { opacity: 0.95, maxNativeZoom: 6, maxZoom: 20, zIndex: 300, className: 'rain-radar-tile' });
+                                    const currentOp = calculateWeatherOpacity(mapInst.current.getZoom()).radar;
+                                    if (layersRef.current.radar && mapInst.current.hasLayer(layersRef.current.radar)) {
+                                        mapInst.current.removeLayer(layersRef.current.radar);
+                                    }
+                                    layersRef.current.radar = L.tileLayer(tileUrl, { 
+                                        opacity: currentOp, 
+                                        minZoom: 3, 
+                                        maxNativeZoom: 7, 
+                                        maxZoom: 22, 
+                                        zIndex: 300, 
+                                        className: 'rain-radar-tile' 
+                                    });
                                     if (radarOn) {
                                         layersRef.current.radar.addTo(mapInst.current);
+                                        layersRef.current.radar.bringToFront();
+                                    }
+                                }
+                            }
+
+                            // Dynamic Satellite Clouds Loader (NASA GIBS VIIRS TrueColor / Clouds with auto-date resolution)
+                            const satDate = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+                            const nasaUrl = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${satDate}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
+
+                            if (isMounted && mapInst.current && layersRef.current) {
+                                const cloudOp = calculateWeatherOpacity(mapInst.current.getZoom()).clouds;
+                                if (layersRef.current.clouds && mapInst.current.hasLayer(layersRef.current.clouds)) {
+                                    mapInst.current.removeLayer(layersRef.current.clouds);
+                                }
+                                layersRef.current.clouds = L.tileLayer(nasaUrl, {
+                                    opacity: cloudOp,
+                                    minZoom: 3,
+                                    maxNativeZoom: 9,
+                                    maxZoom: 22,
+                                    zIndex: 280,
+                                    className: 'weather-clouds-tile'
+                                });
+                                if (cloudsOn) {
+                                    layersRef.current.clouds.addTo(mapInst.current);
+                                    layersRef.current.clouds.bringToFront();
+                                    if (radarOn && layersRef.current.radar && mapInst.current.hasLayer(layersRef.current.radar)) {
                                         layersRef.current.radar.bringToFront();
                                     }
                                 }
@@ -2115,7 +2286,7 @@
                 fetchLatestRadarTile();
                 const intervalId = setInterval(fetchLatestRadarTile, 180000); // Auto-refresh radar tiles every 3 mins
                 return () => { isMounted = false; clearInterval(intervalId); };
-            }, [radarOn]);
+            }, [radarOn, cloudsOn]);
 
             // Render Live Animated Wind Particle Streamlines ("guhit-guhit na may circulation")
             const windParticleCanvasRef = useRef(null);
@@ -2750,12 +2921,12 @@
             return (
                 <div className="relative w-full h-full rounded-2xl overflow-hidden border border-[var(--border-color)] shadow-[var(--shadow-card)]">
                     {/* TOP LEFT MAP CONTROLS BAR (MODERN UNIFIED GLASS PILL BAR) */}
-                    <div className={`absolute ${hasWeatherBanner ? 'top-16' : 'top-3'} left-3 z-[600] flex items-center flex-nowrap whitespace-nowrap gap-1.5 p-1.5 rounded-2xl bg-slate-950/80 backdrop-blur-xl border border-white/15 shadow-[0_8px_32px_rgba(0,0,0,0.4)] pointer-events-auto max-w-[calc(100%-24px)] overflow-x-auto hide-scrollbar transition-all duration-300`}>
-                        {/* Map View Mode Dropdown Combo Box */}
+                    <div className={`absolute ${hasWeatherBanner ? 'top-16' : 'top-3'} left-3 z-[600] flex items-center flex-nowrap whitespace-nowrap gap-1.5 p-1.5 px-2 rounded-2xl bg-slate-950/85 backdrop-blur-xl border border-white/15 shadow-[0_8px_32px_rgba(0,0,0,0.4)] pointer-events-auto max-w-[calc(100%-24px)] overflow-visible transition-all duration-300`}>
+                        {/* 1. Map View Mode Dropdown Combo Box */}
                         <div className="relative shrink-0" ref={mapTypeDropdownRef}>
                             <button
                                 type="button"
-                                onClick={() => setMapTypeDropdownOpen(!mapTypeDropdownOpen)}
+                                onClick={(e) => { e.stopPropagation(); setMapTypeDropdownOpen(prev => !prev); setWeatherDropdownOpen(false); }}
                                 className="h-7 px-3 rounded-xl text-xs font-black bg-white/10 hover:bg-white/15 text-white border border-white/15 hover:border-orange-500/60 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 whitespace-nowrap"
                             >
                                 <IconLayers sz={13} className="text-orange-400 shrink-0" />
@@ -2775,7 +2946,7 @@
                                             <button
                                                 key={opt.id}
                                                 type="button"
-                                                onClick={() => { setMapType(opt.id); setMapTypeDropdownOpen(false); }}
+                                                onClick={(e) => { e.stopPropagation(); setMapType(opt.id); setMapTypeDropdownOpen(false); }}
                                                 className={`px-2.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer ${isSelected ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/30' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`}
                                             >
                                                 <span className="flex items-center gap-2.5">
@@ -2792,7 +2963,7 @@
 
                         <div className="w-px h-4 bg-white/20 mx-0.5 shrink-0"></div>
 
-                        {/* Live Road Routes Toggle */}
+                        {/* 2. Live Road Routes Toggle */}
                         <button
                             type="button"
                             onClick={() => setShowRoutes(!showRoutes)}
@@ -2804,7 +2975,7 @@
 
                         <div className="w-px h-4 bg-white/20 mx-0.5 shrink-0"></div>
 
-                        {/* Traffic Overlay Toggle */}
+                        {/* 3. Traffic Overlay Toggle */}
                         <button
                             type="button"
                             onClick={() => setTrafficOn(!trafficOn)}
@@ -2814,64 +2985,156 @@
                             <span>Traffic</span>
                         </button>
 
-                        {/* Rain Radar Overlay Toggle */}
-                        <button
-                            type="button"
-                            onClick={() => setRadarOn(!radarOn)}
-                            className={`h-7 px-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0 whitespace-nowrap ${radarOn ? 'bg-blue-600 text-white shadow-md shadow-blue-600/40 border border-blue-400/60' : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/5'}`}
-                        >
-                            <IconCloudRain sz={13} className={radarOn ? 'text-white' : 'text-blue-400'} />
-                            <span>Radar</span>
-                        </button>
-
-                        {/* Clouds Overlay Toggle */}
-                        <button
-                            type="button"
-                            onClick={() => setCloudsOn(!cloudsOn)}
-                            className={`h-7 px-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0 whitespace-nowrap ${cloudsOn ? 'bg-sky-500 text-white shadow-md shadow-sky-500/40 border border-sky-300/60' : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/5'}`}
-                        >
-                            <IconCloud sz={13} className={cloudsOn ? 'text-white' : 'text-sky-400'} />
-                            <span>Clouds</span>
-                        </button>
-
-                        {/* Wind Overlay Toggle */}
-                        <button
-                            type="button"
-                            onClick={() => setWindOn(!windOn)}
-                            className={`h-7 px-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0 whitespace-nowrap ${windOn ? 'bg-teal-500 text-white shadow-md shadow-teal-500/40 border border-teal-300/60' : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/5'}`}
-                        >
-                            <IconWind sz={13} className={windOn ? 'text-white' : 'text-teal-400'} />
-                            <span>Wind</span>
-                        </button>
-
-                        {/* Flood Zones Hazard Toggle */}
-                        <button
-                            type="button"
-                            onClick={() => setFloodZonesOn(!floodZonesOn)}
-                            className={`h-7 px-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0 whitespace-nowrap ${floodZonesOn ? 'bg-amber-500 text-white shadow-md shadow-amber-500/40 border border-amber-300/60' : 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/5'}`}
-                        >
-                            <IconAlertTriangle sz={13} className={floodZonesOn ? 'text-white' : 'text-amber-400'} />
-                            <span>Floods</span>
-                        </button>
-
-                        <div className="w-px h-4 bg-white/20 mx-0.5 shrink-0"></div>
-
-                        {/* Fit All Zoom */}
+                        {/* 4. Fit All Zoom (Positioned right after Traffic) */}
                         <button
                             type="button"
                             onClick={() => { if (mapInst.current && Object.keys(markersRef.current).length) mapInst.current.fitBounds(L.featureGroup(Object.values(markersRef.current)).getBounds().pad(0.2)); }}
-                            className="h-7 px-2.5 rounded-xl text-xs font-black text-slate-300 hover:text-white bg-white/5 hover:bg-white/15 border border-white/5 transition-all flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
+                            className="h-7 px-2.5 rounded-xl text-xs font-black text-slate-300 hover:text-white bg-white/5 hover:bg-white/15 border border-white/5 transition-all flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
                             title="Fit map to all vehicle locations"
                         >
                             <IconMaximize sz={12} className="text-slate-400" />
                             <span>Fit All</span>
                         </button>
+
+                        <div className="w-px h-4 bg-white/20 mx-0.5 shrink-0"></div>
+
+                        {/* 5. WEATHER OVERLAYS MULTI-SELECT COMBO BOX DROPDOWN */}
+                        <div className="relative shrink-0" ref={weatherDropdownRef}>
+                            <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setWeatherDropdownOpen(prev => !prev); setMapTypeDropdownOpen(false); }}
+                                className={`h-7 px-3 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer shadow-sm active:scale-95 whitespace-nowrap ${
+                                    (radarOn || cloudsOn || windOn || floodZonesOn) 
+                                        ? 'bg-gradient-to-r from-blue-600/40 via-teal-600/30 to-amber-600/30 text-white border border-blue-400/50 shadow-md shadow-blue-500/20' 
+                                        : 'bg-white/10 hover:bg-white/15 text-white border border-white/15 hover:border-blue-400/60'
+                                }`}
+                            >
+                                <div className="flex items-center gap-1.5">
+                                    <IconCloudRain sz={13} className={(radarOn || cloudsOn || windOn || floodZonesOn) ? 'text-blue-400' : 'text-slate-400'} />
+                                    <span>Weather</span>
+                                </div>
+                                {(radarOn || cloudsOn || windOn || floodZonesOn) && (
+                                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-blue-500 text-white shadow-sm">
+                                        {(radarOn ? 1 : 0) + (cloudsOn ? 1 : 0) + (windOn ? 1 : 0) + (floodZonesOn ? 1 : 0)}
+                                    </span>
+                                )}
+                                <IconChevronDown sz={11} className={`text-white/60 transition-transform duration-200 ${weatherDropdownOpen ? 'rotate-180 text-blue-400' : ''}`} />
+                            </button>
+
+                            {weatherDropdownOpen && (
+                                <div 
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="absolute right-0 top-full mt-2 w-64 sm:w-72 rounded-2xl bg-slate-950/95 backdrop-blur-2xl border border-white/15 shadow-[0_24px_70px_rgba(0,0,0,0.9)] p-2 z-[9999] flex flex-col gap-1.5 animate-scale-up ring-1 ring-white/10"
+                                >
+                                    <div className="px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-slate-400 border-b border-white/10 flex items-center justify-between">
+                                        <span>Weather Overlays</span>
+                                        <span className="text-[8px] font-bold text-blue-400/90">Multi-select Active</span>
+                                    </div>
+
+                                    {/* Radar Toggle Item */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setRadarOn(prev => !prev)}
+                                        className={`w-full px-2.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer border ${
+                                            radarOn 
+                                                ? 'bg-blue-600/25 border-blue-500/60 text-white shadow-sm shadow-blue-500/30' 
+                                                : 'bg-white/5 border-transparent text-slate-300 hover:bg-white/10 hover:text-white'
+                                        }`}
+                                    >
+                                        <span className="flex items-center gap-2.5 min-w-0">
+                                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${radarOn ? 'bg-blue-600 text-white shadow-md shadow-blue-600/40' : 'bg-white/10 text-blue-400'}`}>
+                                                <IconCloudRain sz={14} />
+                                            </div>
+                                            <div className="flex flex-col text-left truncate">
+                                                <span className="font-extrabold text-xs leading-tight">Rain Radar</span>
+                                                <span className="text-[9px] text-slate-400 leading-tight">Doppler precipitation</span>
+                                            </div>
+                                        </span>
+                                        <div className={`w-4 h-4 rounded-md flex items-center justify-center border shrink-0 transition-all ${radarOn ? 'bg-blue-600 border-blue-400 text-white' : 'border-white/20 bg-black/20'}`}>
+                                            {radarOn && <IconCheck sz={11} className="text-white" />}
+                                        </div>
+                                    </button>
+
+                                    {/* Clouds Toggle Item */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setCloudsOn(prev => !prev)}
+                                        className={`w-full px-2.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer border ${
+                                            cloudsOn 
+                                                ? 'bg-sky-500/25 border-sky-400/60 text-white shadow-sm shadow-sky-500/30' 
+                                                : 'bg-white/5 border-transparent text-slate-300 hover:bg-white/10 hover:text-white'
+                                        }`}
+                                    >
+                                        <span className="flex items-center gap-2.5 min-w-0">
+                                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${cloudsOn ? 'bg-sky-500 text-white shadow-md shadow-sky-500/40' : 'bg-white/10 text-sky-400'}`}>
+                                                <IconCloud sz={14} />
+                                            </div>
+                                            <div className="flex flex-col text-left truncate">
+                                                <span className="font-extrabold text-xs leading-tight">Satellite Clouds</span>
+                                                <span className="text-[9px] text-slate-400 leading-tight">NASA VIIRS Satellite</span>
+                                            </div>
+                                        </span>
+                                        <div className={`w-4 h-4 rounded-md flex items-center justify-center border shrink-0 transition-all ${cloudsOn ? 'bg-sky-500 border-sky-300 text-white' : 'border-white/20 bg-black/20'}`}>
+                                            {cloudsOn && <IconCheck sz={11} className="text-white" />}
+                                        </div>
+                                    </button>
+
+                                    {/* Wind Streamlines Toggle Item */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setWindOn(prev => !prev)}
+                                        className={`w-full px-2.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer border ${
+                                            windOn 
+                                                ? 'bg-teal-500/25 border-teal-400/60 text-white shadow-sm shadow-teal-500/30' 
+                                                : 'bg-white/5 border-transparent text-slate-300 hover:bg-white/10 hover:text-white'
+                                        }`}
+                                    >
+                                        <span className="flex items-center gap-2.5 min-w-0">
+                                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${windOn ? 'bg-teal-500 text-white shadow-md shadow-teal-500/40' : 'bg-white/10 text-teal-400'}`}>
+                                                <IconWind sz={14} />
+                                            </div>
+                                            <div className="flex flex-col text-left truncate">
+                                                <span className="font-extrabold text-xs leading-tight">Wind Streamlines</span>
+                                                <span className="text-[9px] text-slate-400 leading-tight">Live circulation flow</span>
+                                            </div>
+                                        </span>
+                                        <div className={`w-4 h-4 rounded-md flex items-center justify-center border shrink-0 transition-all ${windOn ? 'bg-teal-500 border-teal-300 text-white' : 'border-white/20 bg-black/20'}`}>
+                                            {windOn && <IconCheck sz={11} className="text-white" />}
+                                        </div>
+                                    </button>
+
+                                    {/* Flood Zones Hazard Toggle Item */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setFloodZonesOn(prev => !prev)}
+                                        className={`w-full px-2.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between cursor-pointer border ${
+                                            floodZonesOn 
+                                                ? 'bg-amber-500/25 border-amber-400/60 text-white shadow-sm shadow-amber-500/30' 
+                                                : 'bg-white/5 border-transparent text-slate-300 hover:bg-white/10 hover:text-white'
+                                        }`}
+                                    >
+                                        <span className="flex items-center gap-2.5 min-w-0">
+                                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${floodZonesOn ? 'bg-amber-500 text-white shadow-md shadow-amber-500/40' : 'bg-white/10 text-amber-400'}`}>
+                                                <IconAlertTriangle sz={14} />
+                                            </div>
+                                            <div className="flex flex-col text-left truncate">
+                                                <span className="font-extrabold text-xs leading-tight">Flood Hazard Zones</span>
+                                                <span className="text-[9px] text-slate-400 leading-tight">Submersion risk alerts</span>
+                                            </div>
+                                        </span>
+                                        <div className={`w-4 h-4 rounded-md flex items-center justify-center border shrink-0 transition-all ${floodZonesOn ? 'bg-amber-500 border-amber-300 text-white' : 'border-white/20 bg-black/20'}`}>
+                                            {floodZonesOn && <IconCheck sz={11} className="text-white" />}
+                                        </div>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
-                    {/* TOP RIGHT WEATHER PILL WIDGET (POSITIONED IN TOP-RIGHT, LOWER LEVEL) */}
+                    {/* TOP RIGHT WEATHER PILL WIDGET (POSITIONED WITH CLEAN SPACING BELOW CONTROLS) */}
                     <div
                         onClick={onOpenWeatherModal}
-                        className={`absolute ${hasWeatherBanner ? 'top-28' : 'top-14'} right-3 z-[500] bg-[var(--bg-card)] backdrop-blur-xl border border-[var(--glass-border)] p-1.5 px-3 rounded-2xl shadow-2xl flex items-center gap-2.5 cursor-pointer hover:border-orange-500/60 hover:scale-105 transition-all pointer-events-auto group shrink-0`}
+                        className={`absolute ${hasWeatherBanner ? 'top-32' : 'top-[68px]'} right-3 z-[500] bg-[var(--bg-card)] backdrop-blur-xl border border-[var(--glass-border)] p-1.5 px-3 rounded-2xl shadow-2xl flex items-center gap-2.5 cursor-pointer hover:border-orange-500/60 hover:scale-105 transition-all pointer-events-auto group shrink-0`}
                     >
                             <div className="w-7 h-7 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-500 dark:text-amber-400 shrink-0 group-hover:bg-orange-500 group-hover:text-white transition-colors">
                                 <IconCloudRain sz={15} />
@@ -2981,28 +3244,28 @@
             return { label: str.toUpperCase(), bg: 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30' };
         };
 
-        // Official WMO Standard Weather Code Interpretation
+        // Professional Weather Condition & Road Safety Advisory Interpretation
         const getWmoWeatherInfo = (code) => {
             switch (Number(code)) {
-                case 0: return { label: 'Clear Sky', sub: 'Maaliwalas na Panahon', codeStr: 'WMO 0', color: 'text-emerald-500', badge: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30' };
-                case 1: return { label: 'Mainly Clear', sub: 'Bahagyang Maulap', codeStr: 'WMO 1', color: 'text-emerald-500', badge: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30' };
-                case 2: return { label: 'Partly Cloudy', sub: 'Pana-panahong Maulap', codeStr: 'WMO 2', color: 'text-blue-500', badge: 'bg-blue-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30' };
-                case 3: return { label: 'Overcast', sub: 'Makulimlim na Kalangitan', codeStr: 'WMO 3', color: 'text-slate-400', badge: 'bg-slate-500/15 text-slate-400 border-slate-500/30' };
+                case 0: return { label: 'Clear Sky', sub: 'Sunny & Fair Weather', codeStr: 'Optimal Driving Conditions', color: 'text-emerald-500', badge: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30' };
+                case 1: return { label: 'Mainly Clear', sub: 'Mostly Clear Skies', codeStr: 'Good Driving Conditions', color: 'text-emerald-500', badge: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30' };
+                case 2: return { label: 'Partly Cloudy', sub: 'Scattered Clouds', codeStr: 'Normal Conditions', color: 'text-blue-500', badge: 'bg-blue-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30' };
+                case 3: return { label: 'Overcast', sub: 'Overcast Skies', codeStr: 'Cloudy Conditions', color: 'text-slate-400', badge: 'bg-slate-500/15 text-slate-400 border-slate-500/30' };
                 case 45:
-                case 48: return { label: 'Fog / Mist', sub: 'Makapal na Hamog', codeStr: 'WMO 45', color: 'text-amber-500', badge: 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30' };
-                case 51: return { label: 'Light Drizzle', sub: 'Bahagyang Ambon', codeStr: 'WMO 51', color: 'text-blue-400', badge: 'bg-blue-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30' };
-                case 53: return { label: 'Moderate Drizzle', sub: 'Katamtamang Ambon', codeStr: 'WMO 53', color: 'text-blue-400', badge: 'bg-blue-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30' };
-                case 55: return { label: 'Dense Drizzle', sub: 'Masinsing Pag-ambon', codeStr: 'WMO 55', color: 'text-amber-500', badge: 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30' };
-                case 61: return { label: 'Slight Rain', sub: 'Mahinang Pag-ulan', codeStr: 'WMO 61', color: 'text-blue-400', badge: 'bg-blue-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30' };
-                case 63: return { label: 'Moderate Rain', sub: 'Katamtamang Ulan', codeStr: 'WMO 63', color: 'text-amber-500', badge: 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30' };
-                case 65: return { label: 'Heavy Rain', sub: 'Malakas na Buhos ng Ulan', codeStr: 'WMO 65', color: 'text-orange-500', badge: 'bg-orange-500/15 text-orange-600 dark:text-orange-300 border-orange-500/30' };
-                case 80: return { label: 'Slight Showers', sub: 'Panandaliang Pag-ulan', codeStr: 'WMO 80', color: 'text-blue-400', badge: 'bg-blue-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30' };
-                case 81: return { label: 'Moderate Showers', sub: 'Katamtamang Buhos', codeStr: 'WMO 81', color: 'text-amber-500', badge: 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30' };
-                case 82: return { label: 'Violent Showers', sub: 'Matinding Buhos', codeStr: 'WMO 82', color: 'text-red-500', badge: 'bg-red-500/15 text-red-600 dark:text-red-300 border-red-500/30' };
-                case 95: return { label: 'Thunderstorm', sub: 'Kidlat at Pagkulog', codeStr: 'WMO 95', color: 'text-red-500', badge: 'bg-red-500/15 text-red-600 dark:text-red-300 border-red-500/30' };
+                case 48: return { label: 'Fog & Mist', sub: 'Dense Fog / Reduced Visibility', codeStr: 'Caution: Low Visibility', color: 'text-amber-500', badge: 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30' };
+                case 51: return { label: 'Light Drizzle', sub: 'Occasional Light Drizzle', codeStr: 'Caution: Wet Roads', color: 'text-blue-400', badge: 'bg-blue-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30' };
+                case 53: return { label: 'Moderate Drizzle', sub: 'Steady Light Drizzle', codeStr: 'Caution: Wet Roads', color: 'text-blue-400', badge: 'bg-blue-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30' };
+                case 55: return { label: 'Dense Drizzle', sub: 'Dense Continuous Drizzle', codeStr: 'Caution: Slippery Roads', color: 'text-amber-500', badge: 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30' };
+                case 61: return { label: 'Light Rain', sub: 'Passing Rain Showers', codeStr: 'Caution: Wet Roads', color: 'text-blue-400', badge: 'bg-blue-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30' };
+                case 63: return { label: 'Moderate Rain', sub: 'Moderate Rainfall', codeStr: 'Caution: Wet Roads', color: 'text-amber-500', badge: 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30' };
+                case 65: return { label: 'Heavy Rain', sub: 'Heavy Rainfall & Downpour', codeStr: 'Hazard: Water Accumulation', color: 'text-orange-500', badge: 'bg-orange-500/15 text-orange-600 dark:text-orange-300 border-orange-500/30' };
+                case 80: return { label: 'Slight Showers', sub: 'Scattered Rain Showers', codeStr: 'Caution: Wet Roads', color: 'text-blue-400', badge: 'bg-blue-500/15 text-blue-600 dark:text-blue-300 border-blue-500/30' };
+                case 81: return { label: 'Moderate Showers', sub: 'Moderate Rain Showers', codeStr: 'Caution: Wet Roads', color: 'text-amber-500', badge: 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30' };
+                case 82: return { label: 'Violent Showers', sub: 'Severe Sudden Downpours', codeStr: 'Hazard: High Flood Risk', color: 'text-red-500', badge: 'bg-red-500/15 text-red-600 dark:text-red-300 border-red-500/30' };
+                case 95: return { label: 'Thunderstorm', sub: 'Thunder & Lightning Storm', codeStr: 'Warning: Severe Weather', color: 'text-red-500', badge: 'bg-red-500/15 text-red-600 dark:text-red-300 border-red-500/30' };
                 case 96:
-                case 99: return { label: 'Severe Thunderstorm', sub: 'Matinding Bagyo at Kidlat', codeStr: 'WMO 96', color: 'text-red-500', badge: 'bg-red-500/15 text-red-600 dark:text-red-300 border-red-500/30' };
-                default: return { label: 'Clear Sky', sub: 'Maaliwalas na Panahon', codeStr: 'WMO 0', color: 'text-emerald-500', badge: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30' };
+                case 99: return { label: 'Severe Thunderstorm', sub: 'Severe Storm & Strong Gusts', codeStr: 'Hazard: Extreme Weather Alert', color: 'text-red-500', badge: 'bg-red-500/15 text-red-600 dark:text-red-300 border-red-500/30' };
+                default: return { label: 'Clear Sky', sub: 'Sunny & Fair Weather', codeStr: 'Optimal Driving Conditions', color: 'text-emerald-500', badge: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30' };
             }
         };
 
@@ -5550,16 +5813,28 @@
             useEffect(() => {
                 let isMounted = true;
                 async function fetchLiveWeather() {
+                    let weatherLoaded = false;
+
+                    // Primary: Backend Centralized Weather API
                     try {
-                        const res = await fetch('https://api.open-meteo.com/v1/forecast?latitude=14.5995&longitude=120.9842&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m&hourly=precipitation,temperature_2m,weather_code&forecast_days=2&timezone=Asia%2FManila');
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 4000);
+                        const res = await fetch(`${API}/api/weather/current`, { signal: controller.signal });
+                        clearTimeout(timeoutId);
                         if (res.ok) {
-                            const data = await res.json();
-                            if (isMounted) {
-                                setWeatherData(data.current);
-                                if (data.hourly) setHourlyWeather(data.hourly);
-                                const temp = Math.round(data.current.temperature_2m || 28);
-                                const rain = data.current.precipitation || 0;
-                                const wmo = getWmoWeatherInfo(data.current.weather_code || 0);
+                            const bData = await res.json();
+                            if (isMounted && bData && bData.temperature !== undefined) {
+                                setWeatherData({
+                                    temperature_2m: bData.temperature,
+                                    relative_humidity_2m: bData.humidity,
+                                    precipitation: bData.precipitation_mm_hr || 0,
+                                    weather_code: bData.weather_code || 0,
+                                    wind_speed_10m: bData.wind_speed_kmh || 0
+                                });
+                                weatherLoaded = true;
+                                const temp = Math.round(bData.temperature);
+                                const rain = bData.precipitation_mm_hr || 0;
+                                const wmo = getWmoWeatherInfo(bData.weather_code || 0);
                                 if (rain > 15) {
                                     window.pushAdminNotification("CRITICAL WEATHER & FLOOD HAZARD", `Severe Weather Warning (${temp}°C, ${wmo.label}, ${rain}mm/h Rain). Flood corridors active!`);
                                 } else if (rain > 5) {
@@ -5568,19 +5843,50 @@
                             }
                         }
                     } catch (err) {
-                        console.warn("Weather API fetch error:", err);
+                        console.warn("Backend weather API fetch error, attempting direct failover:", err);
                     }
 
+                    // Hourly Forecast from Backend
                     try {
-                        const fRes = await fetch('https://flood-api.open-meteo.com/v1/flood?latitude=14.63&longitude=121.09&daily=river_discharge&timezone=Asia%2FManila');
+                        const hRes = await fetch(`${API}/api/weather/hourly`);
+                        if (hRes.ok) {
+                            const hData = await hRes.json();
+                            if (isMounted && hData) setHourlyWeather(hData);
+                        }
+                    } catch (hErr) {
+                        console.warn("Backend hourly forecast error:", hErr);
+                    }
+
+                    // Failover to direct Open-Meteo if backend was unreachable
+                    if (!weatherLoaded) {
+                        try {
+                            const res = await fetch('https://api.open-meteo.com/v1/forecast?latitude=14.5995&longitude=120.9842&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m&hourly=precipitation,temperature_2m,weather_code&forecast_days=2&timezone=Asia%2FManila');
+                            if (res.ok) {
+                                const data = await res.json();
+                                if (isMounted && data.current) {
+                                    setWeatherData(data.current);
+                                    if (data.hourly) setHourlyWeather(data.hourly);
+                                    weatherLoaded = true;
+                                }
+                            }
+                        } catch (e) {
+                            console.warn("Direct Open-Meteo failover error:", e);
+                        }
+                    }
+
+                    // River Discharge / Flood Telematics from Backend
+                    try {
+                        const fRes = await fetch(`${API}/api/weather/river-flood`);
                         if (fRes.ok) {
                             const fData = await fRes.json();
-                            if (isMounted && fData.daily && Array.isArray(fData.daily.river_discharge) && fData.daily.river_discharge.length > 0) {
-                                setRiverDischarge(fData.daily.river_discharge[0]);
+                            if (isMounted && fData.data && fData.data.daily && Array.isArray(fData.data.daily.river_discharge)) {
+                                setRiverDischarge(fData.data.daily.river_discharge[0]);
+                            } else if (isMounted && fData.discharge_m3_s) {
+                                setRiverDischarge(fData.discharge_m3_s);
                             }
                         }
                     } catch (err) {
-                        console.warn("GloFAS flood fetch error:", err);
+                        console.warn("Backend river flood fetch error:", err);
                     }
                 }
                 fetchLiveWeather();

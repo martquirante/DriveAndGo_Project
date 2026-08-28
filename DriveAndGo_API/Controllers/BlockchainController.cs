@@ -116,7 +116,7 @@ public class BlockchainController : ControllerBase
                 blockCount = blocks.Count,
                 isValid,
                 tamperedAt = isValid ? null : tamperedAt,
-                message    = isValid ? "✅ Blockchain integrity verified." : $"❌ Tamper detected at {tamperedAt}."
+                message    = isValid ? "Blockchain ledger integrity verified." : $"Tamper detected at {tamperedAt}."
             });
         } catch (Exception ex) { return StatusCode(500, new { message = ex.Message }); }
     }

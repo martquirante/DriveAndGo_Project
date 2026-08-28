@@ -79,6 +79,8 @@ namespace DriveAndGo_Admin
 
         private void ThemeChanged_Handler(object sender, EventArgs e)
         {
+            this.BackColor = ThemeManager.CurrentBackground;
+            if (_webView != null) _webView.DefaultBackgroundColor = ThemeManager.CurrentBackground;
             if (this.IsHandleCreated && !this.IsDisposed)
             {
                 ApplyTheme();
@@ -124,7 +126,7 @@ namespace DriveAndGo_Admin
                     return;
                 }
 
-                _webView = new WebView2 { Dock = DockStyle.Fill };
+                _webView = new WebView2 { Dock = DockStyle.Fill, DefaultBackgroundColor = ThemeManager.CurrentBackground };
                 this.Controls.Add(_webView);
                 _webView.BringToFront();
 

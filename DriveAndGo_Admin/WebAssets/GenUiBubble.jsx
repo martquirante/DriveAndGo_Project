@@ -1099,7 +1099,7 @@ function MetricCardGrid({ data, isLarge }) {
 }
 
 function DataGrid({ data, isLarge }) {
-  if (!data || !data.length) return React.createElement('div',{style:{padding:'8px 12px',fontSize:11,color:'#94a3b8',fontStyle:'italic',display:'flex',alignItems:'center',gap:6}},'✅ Wala pong pending records sa kasalukuyan (0 items).');
+  if (!data || !data.length) return React.createElement('div',{style:{padding:'8px 12px',fontSize:11,color:'#94a3b8',fontStyle:'italic',display:'flex',alignItems:'center',gap:6}},'No records available at this time (0 items).');
   const cols=Object.keys(data[0]).filter(k=>k!=='id');
   const rowsToDisplay = isLarge ? data : data.slice(0, 8);
   return React.createElement('div',{style:{overflowX:'auto',borderRadius:10,border:'1px solid var(--border)',marginTop:4}},
@@ -1801,7 +1801,8 @@ function GenUiBubble({ message, groupPosition = 'single', showSenderHeader = tru
 
   if (displayText && typeof displayText === 'string') {
     displayText = displayText
-      .replace(/---*\s*UI_COMPONENT\s*---*/gi, '')
+      .replace(/-*\s*UI_COMPONENT\s*-*/gi, '')
+      .replace(/\bUI_COMPONENT\b/gi, '')
       .replace(/^(?:[\s\r\n]*---+\s*)+/g, '')
       .replace(/(?:[\s\r\n]*---+\s*)+$/g, '')
       .trim();

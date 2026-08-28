@@ -1,4 +1,4 @@
-﻿namespace DriveAndGo_API.Models
+namespace DriveAndGo_API.Models
 {
     public class Transaction
     {
@@ -13,6 +13,9 @@
 
         // Extra fields mula sa JOIN
         public string? CustomerName { get; set; }
+        public string? CustomerEmail { get; set; }
+        public string? CustomerPhone { get; set; }
         public string? VehicleName { get; set; }
+        public string? PlateNo { get; set; }
     }
 }

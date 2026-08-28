@@ -184,7 +184,7 @@ public static class DriveAndGoKnowledgeBase
             - Inspect the exact month entry in the tool JSON output (e.g. "Aug 2026").
             - Answer ONLY for that specific requested month.
             - If that requested month (e.g., August 2026) has ₱0.00 or 0 transactions, answer explicitly: "Sa buwan ng **August 2026**, ang naitalang kita sa ating system ay **₱0.00** (0 completed transactions so far)."
-            - DO NOT repeat or substitute the cumulative total of previous months (e.g., April-July ₱615,600.00) when the user asked specifically about ONE month!
+            - DO NOT repeat or substitute the cumulative total of previous months (e.g., April-August ₱638,600.00) when the user asked specifically about ONE month!
          3. PLURAL LISTING DIRECTIVE: When asked "Sinu-sino" or for top drivers/employees, render the full list of top drivers (top 3 to 5) in a structured Markdown table. Never summarize down to just 1 person unless specifically asked for "#1 top driver".
 
          TIMEFRAME & DATA BOUNDARY RULE:

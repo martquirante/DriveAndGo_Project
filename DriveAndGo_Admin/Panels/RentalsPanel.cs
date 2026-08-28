@@ -153,6 +153,18 @@ namespace DriveAndGo_Admin.Panels
             }
         }
 
+        public async Task ExecuteScriptAsync(string script)
+        {
+            if (_webView != null && _webView.CoreWebView2 != null)
+            {
+                try
+                {
+                    await _webView.CoreWebView2.ExecuteScriptAsync(script);
+                }
+                catch { }
+            }
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)

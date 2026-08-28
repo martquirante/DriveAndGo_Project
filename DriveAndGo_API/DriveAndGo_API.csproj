@@ -43,6 +43,11 @@
 		<PackageReference Include="DotNetEnv" Version="3.1.1" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<Content Update="EmailTemplates\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+		<Content Update="Resources\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+	</ItemGroup>
+
 	<!-- ═══════════════════════════════════════════════════════════════════════
 	     AUTO-UNBLOCK & AUTHENTICODE DEV SIGNING:
 	     Executes Sign-Dev.ps1 to create/trust DriveAndGoDevCert, strip Mark-of-the-Web,

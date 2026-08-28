@@ -38,13 +38,13 @@ namespace DriveAndGo_API.Controllers
                 }
 
                 // 2. Monthly Revenue
-                await using (var cmd = new NpgsqlCommand("SELECT COALESCE(SUM(total_amount), 0) FROM rentals WHERE LOWER(status) = 'completed' AND start_date >= DATE_TRUNC('month', CURRENT_DATE)", conn))
+                await using (var cmd = new NpgsqlCommand("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE LOWER(status) IN ('confirmed', 'paid', 'verified') AND paid_at >= DATE_TRUNC('month', CURRENT_DATE)", conn))
                 {
                     monthlyRevenue = Convert.ToDecimal(await cmd.ExecuteScalarAsync());
                 }
 
                 // 3. All-time Revenue
-                await using (var cmd = new NpgsqlCommand("SELECT COALESCE(SUM(total_amount), 0) FROM rentals WHERE LOWER(status) = 'completed'", conn))
+                await using (var cmd = new NpgsqlCommand("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE LOWER(status) IN ('confirmed', 'paid', 'verified')", conn))
                 {
                     allTimeRevenue = Convert.ToDecimal(await cmd.ExecuteScalarAsync());
                 }
@@ -118,15 +118,15 @@ namespace DriveAndGo_API.Controllers
                 }
 
                 // Rule-Based Fallback Summary
-                string fallbackMarkdown = $"### 💡 Operational Intelligence Summary (Rule-Based Fallback)\n\n" +
-                                          $"*Note: Groq LLM API is currently unresponsive. Reverting to localized business analytics rules.*\n\n" +
-                                          $"#### 📈 Fleet Utilization\n" +
+                string fallbackMarkdown = $"### Operational Intelligence Summary (Local Analytical Engine)\n\n" +
+                                          $"*Note: Generating summary based on live operational metrics.*\n\n" +
+                                          $"#### Fleet Utilization\n" +
                                           $"* Active fleet utilization is at **{utilizationRate}%** with **{totalActiveRentals}** units on active trips.\n" +
                                           $"* Suggestion: {(utilizationRate < 50 ? "Low demand. Launch marketing campaigns." : "Healthy utilization. Maintain present rates.")}\n\n" +
-                                          $"#### 💰 Financial Performance\n" +
+                                          $"#### Financial Performance\n" +
                                           $"* Monthly (Mtd) Revenue: **₱{monthlyRevenue:N2}**\n" +
                                           $"* All-Time Total Revenue: **₱{allTimeRevenue:N2}**\n\n" +
-                                          $"#### ⚠️ Urgent Priorities\n" +
+                                          $"#### Urgent Priorities\n" +
                                           $"1. Resolve the **{openIssues} unread system notifications** to maintain standard operational SLA response times.";
 
                 return Ok(new { source = "Local Fallback Engine", content = fallbackMarkdown });
@@ -146,12 +146,13 @@ namespace DriveAndGo_API.Controllers
                 var history = new List<dynamic>();
                 await using var conn = await _ds.OpenConnectionAsync();
 
-                // Aggregate historical completed rental revenue grouped by month
+                // Aggregate historical confirmed transaction revenue grouped by month
                 string query = @"
-                    SELECT TO_CHAR(start_date, 'YYYY-MM') AS month_label, COALESCE(SUM(total_amount), 0) AS monthly_sum
-                    FROM rentals
-                    WHERE LOWER(status) = 'completed'
-                    GROUP BY TO_CHAR(start_date, 'YYYY-MM')
+                    SELECT TO_CHAR(paid_at, 'YYYY-MM') AS month_label, COALESCE(SUM(amount), 0) AS monthly_sum
+                    FROM transactions
+                    WHERE LOWER(status) IN ('confirmed', 'paid', 'verified')
+                      AND paid_at IS NOT NULL
+                    GROUP BY TO_CHAR(paid_at, 'YYYY-MM')
                     ORDER BY month_label ASC";
 
                 await using (var cmd = new NpgsqlCommand(query, conn))

@@ -979,7 +979,7 @@ public class RentalsController : ControllerBase
                 _notificationWriter.Create(
                     connection,
                     1, // Admin User Id
-                    "🔧 MAINTENANCE DUE",
+                    "MAINTENANCE DUE",
                     $"Oil change / service check required for {vehicleInfo} (Odometer: {newOdometer:F0} km).",
                     "maintenance-due",
                     transaction);

@@ -1388,6 +1388,79 @@ public class VehiclesController : ControllerBase
         </html>";
     }
 
+    [HttpGet("brand-logo/{brand}")]
+    [ResponseCache(Duration = 86400, Location = ResponseCacheLocation.Any)]
+    public async Task<IActionResult> GetBrandLogo(string brand)
+    {
+        if (string.IsNullOrWhiteSpace(brand)) return NotFound();
+
+        string slug = brand.Trim().ToLowerInvariant().Replace(" ", "-").Replace("_", "-");
+
+        // Canonical Brand Mapping
+        slug = slug switch
+        {
+            "merc" or "mercedes" or "benz" => "mercedes-benz",
+            "chevy" => "chevrolet",
+            "vw" => "volkswagen",
+            "landrover" or "land rover" => "land-rover",
+            "alfa" => "alfa-romeo",
+            "aston" => "aston-martin",
+            _ => slug
+        };
+
+        // 1. Check local wwwroot/brands/
+        try
+        {
+            string wwwPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "brands", $"{slug}.png");
+            if (System.IO.File.Exists(wwwPath))
+            {
+                var bytes = await System.IO.File.ReadAllBytesAsync(wwwPath);
+                return File(bytes, "image/png");
+            }
+        }
+        catch { }
+
+        // 2. Fetch from Master High-Res Car Logos Repository CDN
+        try
+        {
+            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+            var url = $"https://cdn.jsdelivr.net/gh/filippofilip95/car-logos-dataset@master/logos/original/{slug}.png";
+            var response = await httpClient.GetAsync(url);
+            if (response.IsSuccessStatusCode)
+            {
+                var bytes = await response.Content.ReadAsByteArrayAsync();
+                Response.Headers["Cache-Control"] = "public, max-age=604800"; // 7-day browser & proxy cache
+                return File(bytes, "image/png");
+            }
+        }
+        catch { }
+
+        // 3. Fallback to vector brand repository
+        try
+        {
+            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+            var url = $"https://raw.githubusercontent.com/filippofilip95/car-logos-dataset/master/logos/optimized/{slug}.svg";
+            var response = await httpClient.GetAsync(url);
+            if (response.IsSuccessStatusCode)
+            {
+                var bytes = await response.Content.ReadAsByteArrayAsync();
+                Response.Headers["Cache-Control"] = "public, max-age=604800";
+                return File(bytes, "image/svg+xml");
+            }
+        }
+        catch { }
+
+        // 4. Dynamic Fail-Safe: Return high-contrast vector monogram SVG so image never breaks
+        string initials = brand.Trim().Length >= 2 ? brand.Trim()[..2].ToUpperInvariant() : brand.Trim().ToUpperInvariant();
+        string svg = $@"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' width='100' height='100'>
+          <rect width='100' height='100' rx='22' fill='#ffffff'/>
+          <text x='50%' y='55%' dominant-baseline='middle' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-weight='900' font-size='42' fill='#0F172A'>{initials}</text>
+        </svg>";
+        var svgBytes = System.Text.Encoding.UTF8.GetBytes(svg);
+        Response.Headers["Cache-Control"] = "public, max-age=86400";
+        return File(svgBytes, "image/svg+xml");
+    }
+
     private static List<string> ParsePhotoUrls(object? dbVal, string singlePhoto)
     {
         var list = new List<string>();

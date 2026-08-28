@@ -155,7 +155,7 @@ namespace DriveAndGo_API.Controllers
                     {
                         notifId = new Random().Next(10000, 99999),
                         userId = 1, // Admin User
-                        title = "🚨 GEOFENCE BREACH ALERT",
+                        title = "GEOFENCE BREACH ALERT",
                         body = $"CRITICAL: {vehicleName} has exited the safe boundary [{breachedFenceName}].",
                         type = "geofence-breach",
                         isRead = false,

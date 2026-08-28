@@ -2102,12 +2102,12 @@
         <label class="block font-bold text-[#94A3B8] text-[10px] mb-1.5 uppercase tracking-wider">Driver Status (Combobox)</label>
         <div class="relative">
           <select id="status-select" onchange="previewStatusChange()" class="w-full bg-[#0F172A] border border-[#2D3B4F] rounded-xl px-3.5 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-orange-500/60 cursor-pointer appearance-none">
-            <option value="available">🟢 Available — Ready for Booking</option>
-            <option value="on-trip">🔵 On-Trip — Currently in Transit</option>
-            <option value="off-duty">🟡 Off-Duty — Resting / Shift Ended</option>
-            <option value="break">🟠 On Break — Temporary Rest</option>
-            <option value="suspended">🔴 Suspended — Compliance Hold</option>
-            <option value="inactive">⚪ Inactive — Account Deactivated</option>
+            <option value="available">Available — Ready for Booking</option>
+            <option value="on-trip">On-Trip — Currently in Transit</option>
+            <option value="off-duty">Off-Duty — Resting / Shift Ended</option>
+            <option value="break">On Break — Temporary Rest</option>
+            <option value="suspended">Suspended — Compliance Hold</option>
+            <option value="inactive">Inactive — Account Deactivated</option>
           </select>
           <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-[#64748B]">
             <i data-lucide="chevron-down" class="w-4 h-4"></i>
@@ -5339,11 +5339,54 @@ async function exportDriversCSV() {
     // Row 1: Header Banner Title
     const r1 = worksheet.addRow(['DRIVE & GO RENTAL SYSTEM — FLEET DRIVER OPERATIONS & ROSTER LEDGER']);
     worksheet.mergeCells('A1:N1');
-    r1.height = 32;
+    r1.height = 42;
     const cA1 = worksheet.getCell('A1');
     cA1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
     cA1.font = { name: 'Segoe UI', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
     cA1.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // Embed Official System Logo into Excel Header Banner
+    try {
+      let logoBase64 = null;
+      try {
+        const lRes = await fetch('logo.png');
+        const blob = await lRes.blob();
+        logoBase64 = await new Promise((res) => {
+          const fr = new FileReader();
+          fr.onloadend = () => {
+            const s = fr.result;
+            res(typeof s === 'string' && s.includes('base64,') ? s.split('base64,')[1] : null);
+          };
+          fr.onerror = () => res(null);
+          fr.readAsDataURL(blob);
+        });
+      } catch {
+        const lRes = await fetch('https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png');
+        const blob = await lRes.blob();
+        logoBase64 = await new Promise((res) => {
+          const fr = new FileReader();
+          fr.onloadend = () => {
+            const s = fr.result;
+            res(typeof s === 'string' && s.includes('base64,') ? s.split('base64,')[1] : null);
+          };
+          fr.onerror = () => res(null);
+          fr.readAsDataURL(blob);
+        });
+      }
+
+      if (logoBase64) {
+        const imageId = workbook.addImage({
+          base64: logoBase64,
+          extension: 'png',
+        });
+        worksheet.addImage(imageId, {
+          tl: { col: 0.15, row: 0.08 },
+          ext: { width: 48, height: 48 }
+        });
+      }
+    } catch (logoErr) {
+      console.warn('Could not embed logo image in Drivers Excel', logoErr);
+    }
 
     // Row 2: Subtitle
     const r2 = worksheet.addRow(['Official Fleet Driver Operations & Roster Export • 24/7 Dispatch Hotline: +63 935 966 7178 • support@driveandgo.com']);

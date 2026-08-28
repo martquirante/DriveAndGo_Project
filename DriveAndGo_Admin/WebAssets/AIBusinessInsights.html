@@ -342,7 +342,17 @@
             return data;
         }
 
-        window.updateInsights = function(text, isLoading, occupancy, monthlyRevenue, totalRevenue, source) {
+        function cleanMarkdownText(str) {
+            if (!str) return '';
+            return str
+                .replace(/\*\*(.*?)\*\*/g, '$1')
+                .replace(/\*(.*?)\*/g, '$1')
+                .replace(/^[\s*\-•✔✓\d.]+/g, '')
+                .replace(/###|##|#/g, '')
+                .trim();
+        }
+
+        window.updateInsights = function(text, isLoading, occupancy, monthlyRevenue, totalRevenue, source, customActions) {
             const loader = document.getElementById('loader');
             const content = document.getElementById('content');
             const loaderText = document.getElementById('loader-text');
@@ -374,7 +384,8 @@
             if (source) {
                 const modelLabel = document.getElementById('ai-model-label');
                 if (modelLabel) {
-                    modelLabel.innerText = source.toUpperCase();
+                    let cleanSource = source.replace(/\(Local Fallback\)/i, '').replace(/\(|\)/g, '').trim();
+                    modelLabel.innerText = cleanSource.toUpperCase();
                 }
             }
 
@@ -386,22 +397,28 @@
             const listContainer = document.getElementById('actions-list');
             listContainer.innerHTML = '';
             
-            if (parsed.actions.length > 0) {
-                parsed.actions.forEach(act => {
+            const actionsToRender = (customActions && Array.isArray(customActions) && customActions.length > 0)
+                ? customActions
+                : parsed.actions;
+
+            if (actionsToRender && actionsToRender.length > 0) {
+                actionsToRender.forEach(act => {
+                    const cleanAct = cleanMarkdownText(act);
+                    if (!cleanAct) return;
                     const item = document.createElement('div');
                     item.className = "flex items-start gap-3 theme-card-inner border p-3.5 rounded-xl transition-all duration-200 hover:border-orange-500/30";
                     item.innerHTML = `
-                        <i class="fa-solid fa-check-double text-orange-500 mt-1 flex-shrink-0"></i>
-                        <span class="text-sm theme-text-main leading-relaxed font-medium">${act}</span>
+                        <i class="fa-solid fa-circle-check text-orange-500 mt-1 flex-shrink-0 text-sm"></i>
+                        <span class="text-sm theme-text-main leading-relaxed font-medium">${cleanAct}</span>
                     `;
                     listContainer.appendChild(item);
                 });
             } else {
-                listContainer.innerHTML = `<p class="text-sm theme-text-sub italic">No critical operation actions detected.</p>`;
+                listContainer.innerHTML = `<p class="text-sm theme-text-sub italic">All fleet booking requests and operations are currently up to date.</p>`;
             }
         };
 
-        window.updateInsightsFromBase64 = function(base64Text, isLoading, occupancy, monthlyRevenue, totalRevenue, source) {
+        window.updateInsightsWithPayload = function(base64Text, isLoading, occupancy, monthlyRevenue, totalRevenue, source, payloadJson) {
             try {
                 const rawString = window.atob(base64Text);
                 const bytes = new Uint8Array(rawString.length);
@@ -409,13 +426,28 @@
                     bytes[i] = rawString.charCodeAt(i);
                 }
                 const decodedText = new TextDecoder("utf-8").decode(bytes);
-                window.updateInsights(decodedText, isLoading, occupancy, monthlyRevenue, totalRevenue, source);
+
+                let actions = null;
+                if (payloadJson) {
+                    try {
+                        const parsedPayload = JSON.parse(payloadJson);
+                        if (parsedPayload.actions && Array.isArray(parsedPayload.actions)) {
+                            actions = parsedPayload.actions;
+                        }
+                    } catch (e) { }
+                }
+
+                window.updateInsights(decodedText, isLoading, occupancy, monthlyRevenue, totalRevenue, source, actions);
             } catch (ex) {
                 window.updateInsights("Error decoding payload: " + ex.message, false);
             }
         };
 
-        window.updateInsights("Contacting Groq Llama-3 AI Engine...", true);
+        window.updateInsightsFromBase64 = function(base64Text, isLoading, occupancy, monthlyRevenue, totalRevenue, source) {
+            window.updateInsightsWithPayload(base64Text, isLoading, occupancy, monthlyRevenue, totalRevenue, source, null);
+        };
+
+        window.updateInsights("Analyzing live dashboard telemetry...", true);
     </script>
 </body>
 </html>

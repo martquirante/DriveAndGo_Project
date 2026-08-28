@@ -1051,7 +1051,7 @@ namespace DriveAndGo_Admin
 
             _lblOfflineWarningText = new Label
             {
-                Text = "⚠️ No Internet Connection. Working offline — Live features are paused.",
+                Text = "No Internet Connection. Working offline — Live features are paused.",
                 ForeColor = Color.White,
                 Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
                 Dock = DockStyle.Fill,
@@ -1086,19 +1086,19 @@ namespace DriveAndGo_Admin
 
                     if (!isOnline)
                     {
-                        // 🔴 State: OFFLINE (Spotify Red Banner)
+                        // State: OFFLINE (Spotify Red Banner)
                         _wasOffline = true;
                         _restoreBannerTimer.Stop();
                         _pnlOfflineWarning.BackColor = Color.FromArgb(220, 38, 38);
-                        _lblOfflineWarningText.Text = "⚠️ No Internet Connection. Working offline — Live features are paused.";
+                        _lblOfflineWarningText.Text = "No Internet Connection. Working offline — Live features are paused.";
                         _pnlOfflineWarning.Visible = true;
                     }
                     else if (_wasOffline)
                     {
-                        // 🟢 State: JUST RESTORED (Spotify Emerald Green Banner - Displays for 3s then auto-hides)
+                        // State: JUST RESTORED (Spotify Emerald Green Banner - Displays for 3s then auto-hides)
                         _wasOffline = false;
                         _pnlOfflineWarning.BackColor = Color.FromArgb(16, 185, 129);
-                        _lblOfflineWarningText.Text = "📶 Internet Connection Restored! You are back online.";
+                        _lblOfflineWarningText.Text = "Internet Connection Restored! You are back online.";
                         _pnlOfflineWarning.Visible = true;
                         _restoreBannerTimer.Stop();
                         _restoreBannerTimer.Start();

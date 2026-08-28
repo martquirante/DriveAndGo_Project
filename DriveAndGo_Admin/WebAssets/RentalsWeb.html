@@ -87,18 +87,21 @@
       border: 1px solid #E2E8F0;
     }
 
-    /* Automotive Brand Emblem Contrast Engine */
+    /* Automotive Brand Emblem HD Crystal Clear Engine */
     .brand-emblem-adaptive {
-      filter: brightness(0) !important;
-      opacity: 0.85 !important;
-      transition: filter 0.2s ease, opacity 0.2s ease;
+      transition: filter 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
+    }
+    .light .brand-emblem-adaptive,
+    [data-theme="light"] .brand-emblem-adaptive {
+      filter: none;
+      opacity: 0.9;
     }
     [data-theme="dark"] .brand-emblem-adaptive,
     .dark .brand-emblem-adaptive,
     html[data-theme="dark"] .brand-emblem-adaptive,
     body[data-theme="dark"] .brand-emblem-adaptive {
-      filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgba(255, 255, 255, 0.4)) !important;
-      opacity: 1 !important;
+      filter: invert(1) brightness(1.18) !important;
+      opacity: 0.95 !important;
     }
 
     .status-pill {
@@ -666,7 +669,7 @@
               <div id="doc-qrcode-container" class="w-12 h-12 bg-white border border-slate-300 rounded p-0.5 flex items-center justify-center mx-auto overflow-hidden">
                 <!-- Dynamically generated QR Code -->
               </div>
-              <div class="text-[6px] font-bold text-emerald-600 mt-1 uppercase">✓ SCAN TO VERIFY</div>
+              <div class="text-[6px] font-bold text-emerald-600 mt-1 uppercase tracking-wider">SCAN TO VERIFY</div>
             </div>
           </div>
 
@@ -2591,9 +2594,9 @@
             <td class="py-3.5 px-4 text-center">
               <div class="flex items-center justify-center gap-1.5">
                 ${status === 'pending' ? `
-                  <button onclick="openConformeModalById(${r.rentalId})" class="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-black text-[11px] shadow-md shadow-emerald-500/20 transition-all hover:scale-105" title="Conforme &amp; Approve Booking">
+                  <button onclick="openConformeModalById(${r.rentalId})" class="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-black text-[11px] shadow-md shadow-emerald-500/20 transition-all hover:scale-105" title="Approve &amp; Confirm Booking">
                     <i data-lucide="check" class="w-3.5 h-3.5"></i>
-                    <span>Conforme</span>
+                    <span>Approve</span>
                   </button>
                   <button onclick="openDeclineModalById(${r.rentalId})" class="p-1.5 rounded-lg hover:bg-red-500/15 hover:text-red-500 text-slate-400 transition-colors" title="Decline Booking">
                     <i data-lucide="x" class="w-4 h-4"></i>
@@ -3884,14 +3887,14 @@
     const ADAPTIVE_BRAND_SLUGS = new Set([
       'toyota', 'nissan', 'mazda', 'lexus', 'jeep', 'kia', 'suzuki', 
       'isuzu', 'honda', 'volkswagen', 'volvo', 'subaru', 'mercedes-benz', 
-      'mercedes', 'audi', 'infiniti', 'jaguar', 'chery', 'geely', 'byd', 'haval', 'peugeot', 'renault', 'dodge', 'ram', 'tesla'
+      'mercedes', 'audi', 'infiniti', 'jaguar', 'chery', 'geely', 'byd', 'haval', 'peugeot', 'renault', 'dodge', 'ram', 'tesla',
+      'hyundai', 'mitsubishi', 'chevrolet'
     ]);
 
     function getBrandLogoUrl(brandName) {
       const slug = getBrandSlug(brandName);
       if (!slug) return '';
-      // High-Definition Authentic Master Brand Emblem Image (Real 3D Chrome / Full Color PNG)
-      return `https://cdn.jsdelivr.net/gh/filippofilip95/car-logos-dataset@master/logos/original/${slug}.png`;
+      return `${getApiBase()}/vehicles/brand-logo/${encodeURIComponent(slug)}`;
     }
 
     function getBrandMonogramHtml(brandName, textSize = 'text-[10px]') {
@@ -3900,16 +3903,15 @@
       return `<span class="font-black text-orange-500 ${textSize} uppercase tracking-wider shrink-0 select-none" title="${b}">${initials}</span>`;
     }
 
-    function renderBrandLogoHtml(brandName, sizeClass = 'h-6 w-auto max-w-[42px]', imgSize = 'h-full w-auto max-h-6 max-w-[42px]') {
+    function renderBrandLogoHtml(brandName, sizeClass = 'h-5 w-7', imgSize = 'w-full h-full') {
       if (!brandName) return getBrandMonogramHtml('Car');
       const b = String(brandName).trim();
       const slug = getBrandSlug(b);
       const url = getBrandLogoUrl(b);
-      const isAdaptive = ADAPTIVE_BRAND_SLUGS.has(slug);
-      const emblemClass = isAdaptive ? "brand-emblem-adaptive" : "";
+      const cdnUrl = `https://cdn.jsdelivr.net/gh/filippofilip95/car-logos-dataset@master/logos/original/${slug}.png`;
       const monoHtml = getBrandMonogramHtml(b).replace(/"/g, '&quot;');
-      return `<div class="inline-flex items-center justify-center shrink-0 select-none" title="${b}">
-        <img src="${url}" alt="${b}" class="${imgSize} ${emblemClass} object-contain transition-transform duration-200" style="image-rendering: -webkit-optimize-contrast;" onerror="this.parentElement.outerHTML='${monoHtml}'" />
+      return `<div class="inline-flex items-center justify-center shrink-0 select-none ${sizeClass} rounded-md bg-white p-0.5 shadow-xs border border-slate-200/90 overflow-hidden" title="${b}">
+        <img src="${url}" alt="${b}" class="w-full h-full object-contain" onerror="if(!this.dataset.failed){this.dataset.failed=1;this.src='${cdnUrl}';}else{this.parentElement.outerHTML='${monoHtml}';}" />
       </div>`;
     }
 
@@ -4933,11 +4935,54 @@
           // Row 1: Header Banner Title
           const r1 = worksheet.addRow(['DRIVE & GO RENTAL SYSTEM — BOOKINGS & RENTAL AGREEMENTS MASTER LEDGER']);
           worksheet.mergeCells('A1:O1');
-          r1.height = 32;
+          r1.height = 42;
           const cA1 = worksheet.getCell('A1');
           cA1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
           cA1.font = { name: 'Segoe UI', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
           cA1.alignment = { vertical: 'middle', horizontal: 'center' };
+
+          // Embed Official System Logo into Excel Header Banner
+          try {
+            let logoBase64 = null;
+            try {
+              const lRes = await fetch('logo.png');
+              const blob = await lRes.blob();
+              logoBase64 = await new Promise((res) => {
+                const fr = new FileReader();
+                fr.onloadend = () => {
+                  const s = fr.result;
+                  res(typeof s === 'string' && s.includes('base64,') ? s.split('base64,')[1] : null);
+                };
+                fr.onerror = () => res(null);
+                fr.readAsDataURL(blob);
+              });
+            } catch {
+              const lRes = await fetch('https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png');
+              const blob = await lRes.blob();
+              logoBase64 = await new Promise((res) => {
+                const fr = new FileReader();
+                fr.onloadend = () => {
+                  const s = fr.result;
+                  res(typeof s === 'string' && s.includes('base64,') ? s.split('base64,')[1] : null);
+                };
+                fr.onerror = () => res(null);
+                fr.readAsDataURL(blob);
+              });
+            }
+
+            if (logoBase64) {
+              const imageId = workbook.addImage({
+                base64: logoBase64,
+                extension: 'png',
+              });
+              worksheet.addImage(imageId, {
+                tl: { col: 0.15, row: 0.08 },
+                ext: { width: 48, height: 48 }
+              });
+            }
+          } catch (logoErr) {
+            console.warn('Could not embed logo image in Rentals Excel', logoErr);
+          }
 
           // Row 2: Subtitle
           const r2 = worksheet.addRow(['Official Bookings & Rental Agreements Ledger Export • 24/7 Operations Hotline: +63 935 966 7178 • support@driveandgo.com']);

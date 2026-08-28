@@ -1707,8 +1707,8 @@ public class AiOrchestrationService : IAiOrchestrationService
         string textPart = rawText;
         string jsonPart = "{}";
         
-        // Regex split on delimiter variations like ---UI_COMPONENT---, --- UI_COMPONENT ---, UI_COMPONENT---, etc.
-        var splitRegex = new System.Text.RegularExpressions.Regex(@"\r?\n?---*\s*UI_COMPONENT\s*---*\r?\n?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        // Regex split on delimiter variations like ---UI_COMPONENT---, UI_COMPONENT, --- UI_COMPONENT, etc.
+        var splitRegex = new System.Text.RegularExpressions.Regex(@"\r?\n?-{0,5}\s*UI_COMPONENT\s*-{0,5}\r?\n?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         var parts = splitRegex.Split(rawText);
         if (parts.Length >= 2)
         {
@@ -1729,7 +1729,8 @@ public class AiOrchestrationService : IAiOrchestrationService
         }
 
         // Clean out any leftover delimiter text or artifacts that might remain in textPart
-        textPart = System.Text.RegularExpressions.Regex.Replace(textPart, @"---*\s*UI_COMPONENT\s*---*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
+        textPart = System.Text.RegularExpressions.Regex.Replace(textPart, @"-{0,5}\s*UI_COMPONENT\s*-{0,5}", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
+        textPart = System.Text.RegularExpressions.Regex.Replace(textPart, @"\bUI_COMPONENT\b", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
 
         // Clean thinking narration
         textPart = CleanThinkingNarration(textPart);
@@ -2166,7 +2167,7 @@ public class AiOrchestrationService : IAiOrchestrationService
                 int rentals = GetInt(root, "WeekRentals", "weekRentals");
 
                 var sb = new System.Text.StringBuilder();
-                sb.AppendLine("📊 **Weekly Revenue Analytics**\n");
+                sb.AppendLine("### Weekly Revenue Analytics\n");
                 sb.AppendLine($"• **Total Revenue (Last 7 Days):** **₱{total:N2}**");
                 sb.AppendLine($"• **Total Completed Rentals:** **{rentals}**\n");
 
@@ -2194,7 +2195,7 @@ public class AiOrchestrationService : IAiOrchestrationService
                 decimal monthRev = GetDec(root, "MonthRevenue", "monthRevenue");
 
                 var sb = new System.Text.StringBuilder();
-                sb.AppendLine("💰 **Today's Revenue Summary**\n");
+                sb.AppendLine("### Today's Revenue Summary\n");
                 sb.AppendLine($"• **Today's Revenue:** **₱{todayRev:N2}** ({todayTxns} transaction(s))");
                 sb.AppendLine($"• **This Week's Total:** **₱{weekRev:N2}**");
                 sb.AppendLine($"• **This Month's Total:** **₱{monthRev:N2}**");
@@ -2208,7 +2209,7 @@ public class AiOrchestrationService : IAiOrchestrationService
                 var monthsProp = GetProp(root, "Months", "months");
 
                 var sb = new System.Text.StringBuilder();
-                sb.AppendLine("📈 **Monthly Revenue Breakdown**\n");
+                sb.AppendLine("### Monthly Revenue Breakdown\n");
                 sb.AppendLine($"• **Cumulative Revenue:** **₱{grandTotal:N2}**\n");
 
                 if (monthsProp.HasValue && monthsProp.Value.ValueKind == JsonValueKind.Array && monthsProp.Value.GetArrayLength() > 0)
@@ -2233,52 +2234,42 @@ public class AiOrchestrationService : IAiOrchestrationService
                 var monthsProp = GetProp(root, "Months", "months", "predictions", "Items");
 
                 var sb = new System.Text.StringBuilder();
-                sb.AppendLine("🔮 **12-Month Sales Prediction & Revenue Forecast**\n");
+                sb.AppendLine("### 12-Month Sales Prediction & Revenue Forecast\n");
                 if (grandTotal > 0)
                 {
                     sb.AppendLine($"• **Total Projected Sales (Next 12 Months):** **₱{grandTotal:N2}**\n");
                 }
+                else
+                {
+                    sb.AppendLine($"• **Projected Revenue Growth:** Stable based on historical seasonal trends.\n");
+                }
 
                 if (monthsProp.HasValue && monthsProp.Value.ValueKind == JsonValueKind.Array && monthsProp.Value.GetArrayLength() > 0)
                 {
-                    sb.AppendLine("| Forecast Period | Projected Sales | Estimated Growth |");
+                    sb.AppendLine("| Forecast Month | Projected Revenue | Demand Index |");
                     sb.AppendLine("| :--- | :---: | :---: |");
                     foreach (var m in monthsProp.Value.EnumerateArray())
                     {
-                        string label = GetStr(m, "MonthLabel", "monthLabel", "label", "Month");
-                        decimal rev = GetDec(m, "Revenue", "revenue", "value");
-                        double growth = m.TryGetProperty("GrowthPct", out var g) ? g.GetDouble() : (m.TryGetProperty("growthPct", out var g2) ? g2.GetDouble() : 0.0);
-                        string growthText = growth != 0.0 ? $"{(growth >= 0 ? "+" : "")}{growth:F1}%" : "Baseline";
-                        sb.AppendLine($"| **{label}** | **₱{rev:N2}** | `{growthText}` |");
+                        string label = GetStr(m, "MonthLabel", "monthLabel", "Month");
+                        decimal rev = GetDec(m, "PredictedRevenue", "predictedRevenue", "Revenue");
+                        string index = GetStr(m, "DemandIndex", "demandIndex", "Normal");
+                        sb.AppendLine($"| **{label}** | ₱{rev:N2} | `{index}` |");
                     }
-                    return sb.ToString();
-                }
-                else if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
-                {
-                    sb.AppendLine("| Forecast Period | Projected Sales |");
-                    sb.AppendLine("| :--- | :---: |");
-                    foreach (var m in root.EnumerateArray())
-                    {
-                        string label = GetStr(m, "MonthLabel", "monthLabel", "label", "Month");
-                        decimal rev = GetDec(m, "Revenue", "revenue", "value");
-                        sb.AppendLine($"| **{label}** | **₱{rev:N2}** |");
-                    }
-                    return sb.ToString();
                 }
                 return sb.ToString();
             }
 
-            // 4. FLEET COUNT / STATUS
-            if (lowerTool.Contains("fleet"))
+            // 4. FLEET STATUS
+            if (lowerTool.Contains("fleet_status") || lowerTool.Contains("fleetstatus"))
             {
-                int total = GetInt(root, "TotalVehicles", "totalVehicles");
+                int total = GetInt(root, "TotalFleet", "totalFleet");
                 int available = GetInt(root, "Available", "available");
                 int onRent = GetInt(root, "OnRent", "onRent");
                 int maintenance = GetInt(root, "Maintenance", "maintenance");
-                double util = root.TryGetProperty("UtilizationPct", out var u) ? u.GetDouble() : (root.TryGetProperty("utilizationPct", out var u2) ? u2.GetDouble() : 0.0);
+                decimal util = GetDec(root, "UtilizationRate", "utilizationRate");
 
                 var sb = new System.Text.StringBuilder();
-                sb.AppendLine("🚗 **Drive&Go Fleet Status Summary**\n");
+                sb.AppendLine("### Drive&Go Fleet Status Summary\n");
                 sb.AppendLine($"• **Total Fleet Count:** **{total} vehicles**");
                 sb.AppendLine($"• **Available for Rent:** **{available}**");
                 sb.AppendLine($"• **Currently On Rent:** **{onRent}**");
@@ -2294,7 +2285,7 @@ public class AiOrchestrationService : IAiOrchestrationService
                 var itemsProp = GetProp(root, "Items", "items");
 
                 var sb = new System.Text.StringBuilder();
-                sb.AppendLine("⌛ **Pending Booking Requests**\n");
+                sb.AppendLine("### Pending Booking Requests\n");
                 sb.AppendLine($"• **Total Pending Bookings:** **{count}**\n");
 
                 if (itemsProp.HasValue && itemsProp.Value.ValueKind == JsonValueKind.Array && itemsProp.Value.GetArrayLength() > 0)
@@ -2335,7 +2326,7 @@ public class AiOrchestrationService : IAiOrchestrationService
                 if (arrayEl.HasValue && arrayEl.Value.GetArrayLength() > 0)
                 {
                     var sb = new System.Text.StringBuilder();
-                    sb.AppendLine($"🏆 **Top Employees & Drivers Performance Report** ({periodLabel})\n");
+                    sb.AppendLine($"### Top Employees & Drivers Performance Report ({periodLabel})\n");
                     sb.AppendLine("| Employee / Driver | Rating | Completed Trips | Revenue Generated |");
                     sb.AppendLine("| :--- | :---: | :---: | :---: |");
                     foreach (var d in arrayEl.Value.EnumerateArray())
@@ -2354,7 +2345,7 @@ public class AiOrchestrationService : IAiOrchestrationService
                     }
                     return sb.ToString();
                 }
-                return $"🏆 **Top Employees & Drivers Performance Report** ({periodLabel})\n\nSa kasalukuyan, wala pang recorded driver ratings o completed trips sa ating database system.";
+                return $"### Top Employees & Drivers Performance Report ({periodLabel})\n\nCurrently, there are no recorded driver ratings or completed trips in the database system.";
             }
 
             // 6B. RATINGS & RECENT FEEDBACK
@@ -2370,7 +2361,7 @@ public class AiOrchestrationService : IAiOrchestrationService
                 int totalR = GetInt(root, "total_ratings", "totalRatings");
 
                 var sb = new System.Text.StringBuilder();
-                sb.AppendLine("⭐ **Driver & Vehicle Performance Ratings Report**\n");
+                sb.AppendLine("### Driver & Vehicle Performance Ratings Report\n");
                 if (totalR > 0 || avgV > 0 || avgD > 0)
                 {
                     sb.AppendLine($"• **Overall Driver Rating Avg:** ⭐ **{avgD:F1}** / 5.0");
@@ -2380,7 +2371,7 @@ public class AiOrchestrationService : IAiOrchestrationService
 
                 if (arrayEl.HasValue && arrayEl.Value.GetArrayLength() > 0)
                 {
-                    sb.AppendLine("| Customer | Vehicle / Driver | Driver ⭐ | Vehicle ⭐ | Customer Feedback |");
+                    sb.AppendLine("| Customer | Vehicle / Driver | Driver Rating | Vehicle Condition | Customer Feedback |");
                     sb.AppendLine("| :--- | :--- | :---: | :---: | :--- |");
                     foreach (var r in arrayEl.Value.EnumerateArray())
                     {
@@ -2399,7 +2390,7 @@ public class AiOrchestrationService : IAiOrchestrationService
                     }
                     return sb.ToString();
                 }
-                return "⭐ **Ratings & Feedback Report**\n\nNo recent customer reviews recorded yet.";
+                return "### Ratings & Feedback Report\n\nNo recent customer reviews recorded yet.";
             }
 
             // 7. OVERDUE RENTALS
@@ -2411,7 +2402,7 @@ public class AiOrchestrationService : IAiOrchestrationService
                 if (arrayEl.HasValue && arrayEl.Value.GetArrayLength() > 0)
                 {
                     var sb = new System.Text.StringBuilder();
-                    sb.AppendLine("📋 **Overdue Rentals Report**\n");
+                    sb.AppendLine("### Overdue Rentals Report\n");
                     sb.AppendLine("| Customer | Vehicle | Days Overdue | Estimated Penalty |");
                     sb.AppendLine("| :--- | :--- | :---: | :---: |");
 
@@ -2425,10 +2416,10 @@ public class AiOrchestrationService : IAiOrchestrationService
                         sb.AppendLine($"| **{name}** | {vehicle} | {days} day(s) | **₱{fee:N2}** |");
                     }
 
-                    sb.AppendLine("\n⚠️ *Note: Penalty amounts are estimates based on standard daily late fees.*");
+                    sb.AppendLine("\n*Note: Penalty amounts are estimates based on standard daily late fees.*");
                     return sb.ToString();
                 }
-                return "📋 **Overdue Rentals Report**\n\nGreat news! There are currently **no overdue rentals** in the system.";
+                return "### Overdue Rentals Report\n\nGreat news! There are currently **no overdue rentals** in the system.";
             }
 
             // 8. CUSTOMER INSIGHTS

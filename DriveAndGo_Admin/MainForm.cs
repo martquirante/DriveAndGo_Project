@@ -247,7 +247,7 @@ namespace DriveAndGo_Admin
 
             _lblOfflineWarningText = new Label
             {
-                Text = "⚠️ No Internet Connection. Working offline — Live features & AI Copilot are paused.",
+                Text = "No Internet Connection. Working offline — Live features & AI Copilot are paused.",
                 ForeColor = Color.White,
                 Font = new Font("Segoe UI", 9.5F, FontStyle.Bold),
                 Dock = DockStyle.Fill,
@@ -282,19 +282,19 @@ namespace DriveAndGo_Admin
 
                     if (!isOnline)
                     {
-                        // 🔴 State: OFFLINE (Spotify Red Banner)
+                        // State: OFFLINE (Spotify Red Banner)
                         _wasOffline = true;
                         _restoreBannerTimer.Stop();
                         _pnlOfflineWarning.BackColor = Color.FromArgb(220, 38, 38); // Rich Crimson Red
-                        _lblOfflineWarningText.Text = "⚠️ No Internet Connection. Working offline — Live features & AI Copilot are paused.";
+                        _lblOfflineWarningText.Text = "No Internet Connection. Working offline — Live features & AI Copilot are paused.";
                         _pnlOfflineWarning.Visible = true;
                     }
                     else if (_wasOffline)
                     {
-                        // 🟢 State: JUST RESTORED (Spotify Emerald Green Banner)
+                        // State: JUST RESTORED (Spotify Emerald Green Banner)
                         _wasOffline = false;
                         _pnlOfflineWarning.BackColor = Color.FromArgb(16, 185, 129); // Vibrant Spotify Emerald Green
-                        _lblOfflineWarningText.Text = "📶 Internet Connection Restored! You are back online.";
+                        _lblOfflineWarningText.Text = "Internet Connection Restored! You are back online.";
                         _pnlOfflineWarning.Visible = true;
                         _restoreBannerTimer.Stop();
                         _restoreBannerTimer.Start(); // Display green banner for 3.5s then auto-hide
@@ -746,6 +746,63 @@ namespace DriveAndGo_Admin
             this.Controls.Add(sidebarPanel);
         }
 
+        private Image? _cachedSystemLogo;
+        private Image? GetLogoImage()
+        {
+            if (_cachedSystemLogo != null) return _cachedSystemLogo;
+
+            try
+            {
+                if (Properties.Resources.logo != null)
+                {
+                    _cachedSystemLogo = (Image)Properties.Resources.logo.Clone();
+                    return _cachedSystemLogo;
+                }
+            }
+            catch { }
+
+            try
+            {
+                if (Properties.Resources.DriveAndGo_Logo != null)
+                {
+                    _cachedSystemLogo = (Image)Properties.Resources.DriveAndGo_Logo.Clone();
+                    return _cachedSystemLogo;
+                }
+            }
+            catch { }
+
+            try
+            {
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                string projectDir = Path.GetFullPath(Path.Combine(baseDir, "..", "..", ".."));
+                string[] candidates = new string[]
+                {
+                    Path.Combine(baseDir, "Resources", "logo.png"),
+                    Path.Combine(baseDir, "Resources", "DriveAndGo_Logo.png"),
+                    Path.Combine(baseDir, "WebAssets", "logo.png"),
+                    Path.Combine(projectDir, "Resources", "logo.png"),
+                    Path.Combine(projectDir, "Resources", "DriveAndGo_Logo.png"),
+                    Path.Combine(projectDir, "WebAssets", "logo.png"),
+                    Path.Combine(Application.StartupPath, "Resources", "logo.png"),
+                    Path.Combine(Application.StartupPath, "Resources", "DriveAndGo_Logo.png")
+                };
+
+                foreach (var path in candidates)
+                {
+                    if (File.Exists(path))
+                    {
+                        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                        using var img = Image.FromStream(stream);
+                        _cachedSystemLogo = new Bitmap(img);
+                        return _cachedSystemLogo;
+                    }
+                }
+            }
+            catch { }
+
+            return null;
+        }
+
         // ── Full-mode layer (240 px): logo, labels, full text nav buttons ──────────
         private void BuildSidebarFullLayer()
         {
@@ -760,18 +817,18 @@ namespace DriveAndGo_Admin
             picLogo = new PictureBox
             {
                 Size     = new Size(38, 38),
-                Location = new Point(13, 28),
+                Location = new Point(13, 24),
                 SizeMode = PictureBoxSizeMode.Zoom,
-                BackColor = Color.Transparent
+                BackColor = Color.Transparent,
+                Image    = GetLogoImage()
             };
-            try { picLogo.Image = Properties.Resources.DriveAndGo_Logo; } catch { }
 
             lblLogo = new Label
             {
                 Text        = "Drive&Go",
                 UseMnemonic = false,
                 Font        = new Font("Segoe UI", 14F, FontStyle.Bold),
-                Location    = new Point(56, 24),
+                Location    = new Point(56, 20),
                 AutoSize    = true,
                 BackColor   = Color.Transparent
             };
@@ -780,7 +837,7 @@ namespace DriveAndGo_Admin
             {
                 Text      = "Admin Portal",
                 Font      = new Font("Segoe UI", 8F),
-                Location  = new Point(58, 48),
+                Location  = new Point(58, 44),
                 AutoSize  = true,
                 BackColor = Color.Transparent
             };
@@ -1108,11 +1165,11 @@ namespace DriveAndGo_Admin
             var picLogoIcon = new PictureBox
             {
                 Size      = new Size(36, 36),
-                Location  = new Point((SidebarCollapsedWidth - 36) / 2, 28),
+                Location  = new Point((SidebarCollapsedWidth - 36) / 2, 24),
                 SizeMode  = PictureBoxSizeMode.Zoom,
-                BackColor = Color.Transparent
+                BackColor = Color.Transparent,
+                Image     = GetLogoImage()
             };
-            try { picLogoIcon.Image = Properties.Resources.DriveAndGo_Logo; } catch { }
             _sidebarIconLayer.Controls.Add(picLogoIcon);
 
             // ── Centred nav icon buttons ──
@@ -1750,31 +1807,26 @@ namespace DriveAndGo_Admin
         // ══════════════════════════════════════════════════════════════════════════
         //  FLOATING CHAT PANEL  (560 × 700, slides up from bottom-right)
         // ══════════════════════════════════════════════════════════════════════════
-        private void ToggleChatFloat()
+        private void EnsureChatOverlayInitialized()
         {
-            if (!_chatVisible)
-            {
-                // ── Show ──
-                _chatVisible = true;
-                _unreadChatCount = 0;
-                _fabPanel?.Invalidate();
+            if (_chatOverlay != null && !_chatOverlay.IsDisposed && _chatFloatHost != null && !_chatFloatHost.IsDisposed)
+                return;
 
-                if (_chatOverlay == null || _chatOverlay.IsDisposed)
+            if (_chatOverlay == null || _chatOverlay.IsDisposed)
+            {
+                _chatOverlay = new ChatOverlayPanel();
+                _chatOverlay.OnUnreadCountChanged = (count) =>
                 {
-                    _chatOverlay = new ChatOverlayPanel();
-                    _chatOverlay.OnUnreadCountChanged = (count) =>
+                    if (this.IsDisposed || !this.IsHandleCreated) return;
+                    this.BeginInvoke((System.Windows.Forms.MethodInvoker)(() =>
                     {
-                        if (this.IsDisposed || !this.IsHandleCreated) return;
-                        this.BeginInvoke((System.Windows.Forms.MethodInvoker)(() =>
+                        if (!_chatVisible)
                         {
-                            if (!_chatVisible)
-                            {
-                                _unreadChatCount = count;
-                                _fabPanel?.Invalidate();
-                            }
-                        }));
-                    };
-                }
+                            _unreadChatCount = count;
+                            _fabPanel?.Invalidate();
+                        }
+                    }));
+                };
 
                 _chatOverlay.OnToggleFullscreenRequested = (isFullscreen) =>
                 {
@@ -1834,39 +1886,52 @@ namespace DriveAndGo_Admin
                         }
                     }));
                 };
+            }
 
-                if (_chatFloatHost == null || _chatFloatHost.IsDisposed)
+            if (_chatFloatHost == null || _chatFloatHost.IsDisposed)
+            {
+                _chatFloatHost = new Panel
                 {
-                    _chatFloatHost = new Panel
-                    {
-                        Size      = new Size(560, 700),
-                        BackColor = Color.Transparent
-                    };
-                    SetDoubleBuffer(_chatFloatHost);
+                    Size      = new Size(560, 700),
+                    BackColor = ThemeManager.CurrentBackground,
+                    Visible   = false
+                };
+                SetDoubleBuffer(_chatFloatHost);
 
-                    // Paint a subtle rounded shadow border around the host
-                    _chatFloatHost.Paint += (s, e) =>
-                    {
-                        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                        using var pen = new Pen(Color.FromArgb(30, 255, 255, 255), 1f);
-                        using var path = GetRoundedRect(new Rectangle(0, 0, _chatFloatHost.Width - 1, _chatFloatHost.Height - 1), 16);
-                        e.Graphics.DrawPath(pen, path);
-                    };
+                _chatFloatHost.Paint += (s, e) =>
+                {
+                    e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                    using var pen = new Pen(Color.FromArgb(30, 255, 255, 255), 1f);
+                    using var path = GetRoundedRect(new Rectangle(0, 0, _chatFloatHost.Width - 1, _chatFloatHost.Height - 1), 16);
+                    e.Graphics.DrawPath(pen, path);
+                };
 
-                    _chatOverlay.Dock = DockStyle.Fill;
-                    _chatFloatHost.Controls.Add(_chatOverlay);
-                }
+                _chatOverlay.Dock = DockStyle.Fill;
+                _chatFloatHost.Controls.Add(_chatOverlay);
+            }
+
+            if (!this.Controls.Contains(_chatFloatHost))
+            {
+                int initialX = this.ClientSize.Width - 560 - FabMargin;
+                int initialY = this.ClientSize.Height; // start below viewport
+                _chatFloatHost.Location = new Point(initialX, initialY);
+                this.Controls.Add(_chatFloatHost);
+            }
+        }
+
+        private void ToggleChatFloat()
+        {
+            if (!_chatVisible)
+            {
+                // ── Show ──
+                _chatVisible = true;
+                _unreadChatCount = 0;
+                _fabPanel?.Invalidate();
+
+                EnsureChatOverlayInitialized();
 
                 _chatFloatHost.Visible = true;
                 _chatOverlay.Visible   = true;
-
-                if (!this.Controls.Contains(_chatFloatHost))
-                {
-                    int initialX = this.ClientSize.Width - 560 - FabMargin;
-                    int initialY = this.ClientSize.Height; // start below viewport
-                    _chatFloatHost.Location = new Point(initialX, initialY);
-                    this.Controls.Add(_chatFloatHost);
-                }
 
                 _chatFloatHost.BringToFront();
                 _fabPanel?.BringToFront();
@@ -2819,6 +2884,21 @@ namespace DriveAndGo_Admin
 
                             if (isUnread) unread++;
 
+                            int? rentalId = item.TryGetProperty("rentalId", out var rId) && rId.ValueKind == JsonValueKind.Number ? rId.GetInt32() : (int?)null;
+                            string? rentalCode = item.TryGetProperty("rentalCode", out var rc) ? rc.GetString() : null;
+                            string? customerName = item.TryGetProperty("customerName", out var cn) ? cn.GetString() : null;
+                            string? customerPhone = item.TryGetProperty("customerPhone", out var cp) ? cp.GetString() : null;
+                            string? customerEmail = item.TryGetProperty("customerEmail", out var ce) ? ce.GetString() : null;
+                            string? customerAvatar = item.TryGetProperty("customerAvatar", out var ca) ? ca.GetString() : null;
+                            string? vehicleName = item.TryGetProperty("vehicleName", out var vn) ? vn.GetString() : null;
+                            string? vehiclePlate = item.TryGetProperty("vehiclePlate", out var vp) ? vp.GetString() : null;
+                            string? bookingStatus = item.TryGetProperty("bookingStatus", out var bs) ? bs.GetString() : null;
+                            string? destination = item.TryGetProperty("destination", out var dst) ? dst.GetString() : null;
+                            string? startDate = item.TryGetProperty("startDate", out var sd) ? sd.GetString() : null;
+                            string? endDate = item.TryGetProperty("endDate", out var ed) ? ed.GetString() : null;
+                            decimal? totalAmount = item.TryGetProperty("totalAmount", out var ta) && ta.ValueKind == JsonValueKind.Number ? ta.GetDecimal() : (decimal?)null;
+                            string? eventType = item.TryGetProperty("eventType", out var et) ? et.GetString() : null;
+
                             _notifications.Add(new NotificationItemModel
                             {
                                 id = id,
@@ -2826,7 +2906,21 @@ namespace DriveAndGo_Admin
                                 body = body,
                                 type = type,
                                 unread = isUnread,
-                                time = time
+                                time = time,
+                                rentalId = rentalId,
+                                rentalCode = rentalCode,
+                                customerName = customerName,
+                                customerPhone = customerPhone,
+                                customerEmail = customerEmail,
+                                customerAvatar = customerAvatar,
+                                vehicleName = vehicleName,
+                                vehiclePlate = vehiclePlate,
+                                bookingStatus = bookingStatus,
+                                destination = destination,
+                                startDate = startDate,
+                                endDate = endDate,
+                                totalAmount = totalAmount,
+                                eventType = eventType
                             });
                         }
 
@@ -2969,6 +3063,10 @@ namespace DriveAndGo_Admin
 
                             _unreadNotifCount = _notifications.FindAll(n => n.unread).Count;
 
+                            int? rentalId = root.TryGetProperty("rentalId", out var rIdProp) && rIdProp.ValueKind == JsonValueKind.Number ? rIdProp.GetInt32() : (int?)null;
+                            string? bookingStatus = root.TryGetProperty("bookingStatus", out var bsProp) ? bsProp.GetString() : null;
+                            string? eventType = root.TryGetProperty("eventType", out var etProp) ? etProp.GetString() : null;
+
                             this.BeginInvoke((Action)(() =>
                             {
                                 btnNotifications?.Invalidate();
@@ -2977,7 +3075,7 @@ namespace DriveAndGo_Admin
                                     _globalNotifHostPanel.Hide();
                                     _isNotifFlyoutVisible = false;
                                 }
-                                HandleNotificationClick(title, body);
+                                HandleNotificationClick(title, body, rentalId, bookingStatus, eventType);
                             }));
                         }
                         else if (msg.StartsWith("mark_as_read:"))
@@ -3101,6 +3199,8 @@ namespace DriveAndGo_Admin
                 typeof(FleetPanel),
                 typeof(RentalsPanel),
                 typeof(DriversPanel),
+                typeof(TransactionsPanel),
+                typeof(ReportsPanel),
                 typeof(AccountsPanel),
                 typeof(CalendarPanel),
                 typeof(WeatherPanel),
@@ -3142,7 +3242,17 @@ namespace DriveAndGo_Admin
                 }
 
                 // Stagger loading so main UI thread stays 100% silky smooth
-                await Task.Delay(150);
+                await Task.Delay(120);
+            }
+
+            // Proactively warm up and initialize the ChatOverlayPanel in the background
+            try
+            {
+                EnsureChatOverlayInitialized();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Preloader] ChatOverlay preload error: {ex.Message}");
             }
         }
 
@@ -3276,8 +3386,7 @@ namespace DriveAndGo_Admin
             btnRentals?.PerformClick();
         }
 
-        public void HandleNotificationClick(string title, string body)
-
+        public void HandleNotificationClick(string title, string body, int? rentalId = null, string? bookingStatus = null, string? eventType = null)
         {
             // Close notifications panel flyout
             if (_globalNotifHostPanel != null && !_globalNotifHostPanel.IsDisposed)
@@ -3286,7 +3395,23 @@ namespace DriveAndGo_Admin
                 _isNotifFlyoutVisible = false;
             }
 
-            string combined = $"{title} {body}".ToLowerInvariant();
+            string combined = $"{title} {body} {eventType}".ToLowerInvariant();
+
+            if (rentalId.HasValue && rentalId.Value > 0)
+            {
+                // Direct navigation to Rentals panel and open the specific agreement/conforme drawer
+                btnRentals?.PerformClick();
+                var rp = contentPanel.Controls.OfType<RentalsPanel>().FirstOrDefault();
+                if (rp != null)
+                {
+                    string statusLower = (bookingStatus ?? "").ToLowerInvariant();
+                    string script = statusLower == "pending"
+                        ? $"setTimeout(function() {{ if(window.openConformeModalById) window.openConformeModalById({rentalId.Value}); else if(window.openAgreementDrawerById) window.openAgreementDrawerById({rentalId.Value}); }}, 350);"
+                        : $"setTimeout(function() {{ if(window.openAgreementDrawerById) window.openAgreementDrawerById({rentalId.Value}); }}, 350);";
+                    _ = rp.ExecuteScriptAsync(script);
+                }
+                return;
+            }
 
             if (combined.Contains("driver"))
             {
