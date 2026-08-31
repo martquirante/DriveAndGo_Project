@@ -19,10 +19,13 @@ namespace DriveAndGo_API.Controllers
 
         // POST /api/documents/verify-license
         [HttpPost("verify-license")]
-        public async Task<IActionResult> VerifyLicense([FromForm] IFormFile? documentFile, [FromForm] int? driverId)
+        public async Task<IActionResult> VerifyLicense([FromForm] VerifyLicenseRequest request)
         {
             try
             {
+                var documentFile = request?.DocumentFile;
+                var driverId = request?.DriverId;
+
                 if (documentFile == null)
                 {
                     return BadRequest(new { Message = "No driver license file uploaded." });
@@ -87,5 +90,11 @@ namespace DriveAndGo_API.Controllers
                 return StatusCode(500, new { Message = "OCR Verification Process Failed: " + ex.Message });
             }
         }
+    }
+
+    public class VerifyLicenseRequest
+    {
+        public IFormFile? DocumentFile { get; set; }
+        public int? DriverId { get; set; }
     }
 }

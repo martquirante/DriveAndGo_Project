@@ -74,11 +74,7 @@ namespace DriveAndGo_Admin.Panels
 
             try
             {
-                string htmlPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "TransactionsWeb.html");
-                if (!File.Exists(htmlPath))
-                {
-                    htmlPath = @"C:\Users\martq\source\repos\DriveAndGo_Project\DriveAndGo_Admin\WebAssets\TransactionsWeb.html";
-                }
+                string htmlPath = WebAssetHelper.GetWebAssetPath("TransactionsWeb.html", "transactions");
 
                 _webView = new WebView2 { Dock = DockStyle.Fill, DefaultBackgroundColor = ThemeManager.CurrentBackground };
                 this.Controls.Add(_webView);

@@ -94,6 +94,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("login")]
+    [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("AuthPolicy")]
     public IActionResult Login([FromBody] LoginRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Email) ||
@@ -156,7 +157,7 @@ public class AuthController : ControllerBase
                 isValid = string.Equals(request.Password, storedHash, StringComparison.Ordinal);
             }
 
-            if (!isValid && !string.Equals(request.Password, storedHash, StringComparison.Ordinal))
+            if (!isValid)
             {
                 reader.Close();
                 failedAttempts++;

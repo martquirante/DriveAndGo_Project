@@ -1,3 +1,4 @@
+using DriveAndGo_API.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DriveAndGo_API.Controllers;
@@ -6,17 +7,17 @@ namespace DriveAndGo_API.Controllers;
 [Route("api/[controller]")]
 public class UploadController : ControllerBase
 {
-    private readonly IWebHostEnvironment _environment;
+    private readonly IStorageService _storageService;
 
-    public UploadController(IWebHostEnvironment environment)
+    public UploadController(IStorageService storageService)
     {
-        _environment = environment;
+        _storageService = storageService;
     }
 
     [HttpPost("vehicle-image")]
     public Task<IActionResult> UploadVehicleImage(IFormFile file)
     {
-        return Upload(file, "vehicles", allowVideo: true);
+        return Upload(file, "vehicles");
     }
 
     [HttpPost("map-icon")]
@@ -40,39 +41,28 @@ public class UploadController : ControllerBase
     [HttpPost("message-attachment")]
     public Task<IActionResult> UploadMessageAttachment(IFormFile file)
     {
-        return Upload(file, "messages", allowVideo: true);
+        return Upload(file, "messages");
     }
 
-    private async Task<IActionResult> Upload(IFormFile file, string folderName, bool allowVideo = false)
+    private async Task<IActionResult> Upload(IFormFile file, string folderName)
     {
-        if (file == null || file.Length == 0)
+        try
         {
-            return BadRequest(new { Message = "No file uploaded." });
+            if (file == null || file.Length == 0)
+            {
+                return BadRequest(new { Message = "No file uploaded." });
+            }
+
+            var url = await _storageService.UploadFileAsync(file, folderName);
+            return Ok(new { Url = url });
         }
-
-        var allowedExtensions = allowVideo
-            ? new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".jfif", ".mp4", ".webm", ".mov", ".m4v" }
-            : new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".jfif" };
-
-        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (!allowedExtensions.Contains(extension))
+        catch (ArgumentException ex)
         {
-            return BadRequest(new { Message = "Invalid file type." });
+            return BadRequest(new { Message = ex.Message });
         }
-
-        var folder = Path.Combine(_environment.ContentRootPath, "wwwroot", "uploads", folderName);
-        if (!Directory.Exists(folder))
+        catch (Exception ex)
         {
-            Directory.CreateDirectory(folder);
+            return StatusCode(500, new { Message = "Upload error: " + ex.Message });
         }
-
-        var fileName = $"{Guid.NewGuid():N}{extension}";
-        var filePath = Path.Combine(folder, fileName);
-
-        await using var stream = new FileStream(filePath, FileMode.Create);
-        await file.CopyToAsync(stream);
-
-        var url = $"{Request.Scheme}://{Request.Host}/uploads/{folderName}/{fileName}";
-        return Ok(new { Url = url });
     }
 }

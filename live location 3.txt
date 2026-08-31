@@ -1,0 +1,12 @@
+┌─────────────────┐       GPS Coordinates       ┌────────────────────────┐
+│ DriveAndGo_App  │ ──────────────────────────> │   ASP.NET Core API     │
+│ (Driver/Client) │   POST /api/locations/update │ (LocationsController)  │
+└─────────────────┘                             └───────────┬────────────┘
+                                                            │
+                                             Saves to DB:   │ Updates current lat/lng
+                                             `location_logs`│ on `vehicles` table
+                                                            ▼
+┌──────────────────┐       Live Vehicle Polling ┌────────────────────────┐
+│ Admin Dashboard  │ <───────────────────────── │ PostgreSQL Database    │
+│ (Fleet Overview) │    GET /api/vehicles/fleet │ (vehicles & rentals)   │
+└──────────────────┘                            └────────────────────────┘

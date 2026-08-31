@@ -95,8 +95,29 @@ public class AppDbContext : DbContext
             e.Property(v => v.Latitude).HasColumnName("latitude");
             e.Property(v => v.Longitude).HasColumnName("longitude");
             e.Property(v => v.CurrentSpeed).HasColumnName("current_speed");
-            e.Property(v => v.LastUpdate).HasColumnName("last_update");
             e.Property(v => v.InGarage).HasColumnName("in_garage").HasDefaultValue(true);
+            e.Property(v => v.Color).HasColumnName("color").HasMaxLength(50).HasDefaultValue("Pearl White");
+            e.Property(v => v.FloodRiskStatus).HasColumnName("flood_risk_status").HasMaxLength(50).HasDefaultValue("safe");
+            e.Property(v => v.EngineWaterIngressAlert).HasColumnName("engine_water_ingress_alert").HasDefaultValue(false);
+            e.Property(v => v.LastWeatherTemp).HasColumnName("last_weather_temp").HasPrecision(5, 2).HasDefaultValue(28.5m);
+            e.Property(v => v.OrCrUrl).HasColumnName("or_cr_url").HasDefaultValue("");
+            e.Property(v => v.InsuranceUrl).HasColumnName("insurance_url").HasDefaultValue("");
+            e.Property(v => v.LtoExpiryDate).HasColumnName("lto_expiry_date");
+            e.Property(v => v.InsuranceExpiryDate).HasColumnName("insurance_expiry_date");
+
+            // Ignore JSON computed aliases and non-mapped properties
+            e.Ignore(v => v.VehicleIdAlias);
+            e.Ignore(v => v.PlateNoAlias);
+            e.Ignore(v => v.RatePerDayAlias);
+            e.Ignore(v => v.RateWithDriverAlias);
+            e.Ignore(v => v.PhotoUrlAlias);
+            e.Ignore(v => v.PhotoUrls);
+            e.Ignore(v => v.PhotoUrlsCamel);
+            e.Ignore(v => v.SeatCapacityAlias);
+            e.Ignore(v => v.Model3dUrlAlias);
+            e.Ignore(v => v.OrCrUrlAlias);
+            e.Ignore(v => v.InsuranceUrlAlias);
+
             e.HasIndex(v => v.PlateNo).IsUnique();
         });
 
@@ -117,15 +138,23 @@ public class AppDbContext : DbContext
             e.Property(r => r.PaymentMethod).HasColumnName("payment_method").HasMaxLength(20).HasDefaultValue("cash");
             e.Property(r => r.PaymentStatus).HasColumnName("payment_status").HasMaxLength(20).HasDefaultValue("unpaid");
             e.Property(r => r.QrCode).HasColumnName("qr_code");
+            e.Property(r => r.StartOdometer).HasColumnName("start_odometer");
             e.Property(r => r.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
             // Ignore JOIN-populated display fields
             e.Ignore(r => r.CustomerName);
             e.Ignore(r => r.CustomerPhone);
             e.Ignore(r => r.CustomerEmail);
+            e.Ignore(r => r.CustomerAvatar);
+            e.Ignore(r => r.CustomerSignatureBase64);
             e.Ignore(r => r.VehicleName);
             e.Ignore(r => r.VehiclePlateNo);
+            e.Ignore(r => r.VehicleRate);
+            e.Ignore(r => r.VehicleOdometer);
+            e.Ignore(r => r.VehicleFuelLevelPct);
             e.Ignore(r => r.DriverName);
             e.Ignore(r => r.DriverPhone);
+            e.Ignore(r => r.DriverAvatar);
+            e.Ignore(r => r.DriverSignatureBase64);
         });
 
         // ── TRANSACTIONS ─────────────────────────────────────

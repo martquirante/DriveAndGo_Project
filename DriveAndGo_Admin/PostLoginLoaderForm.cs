@@ -116,9 +116,7 @@ namespace DriveAndGo_Admin
                 await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
                     $"document.documentElement.setAttribute('data-theme', '{theme}');");
 
-                string htmlPath = Path.Combine(
-                    AppDomain.CurrentDomain.BaseDirectory,
-                    "WebAssets", "loading_video.html");
+                string htmlPath = Helpers.WebAssetHelper.GetWebAssetPath("loading_video.html", "loaders");
 
                 if (File.Exists(htmlPath))
                 {

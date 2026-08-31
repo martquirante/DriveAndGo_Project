@@ -1817,9 +1817,9 @@ namespace DriveAndGo_Admin.Panels
                             </div>
                         )}
 
-                        {/* Toast notifications */}
+                        {/* Toast notifications (Top-Right) */}
                         {toast && (
-                            <div className={`fixed bottom-8 right-8 z-[9999] px-6 py-4 rounded-xl shadow-2xl border flex items-center gap-3 transition-all duration-300 scale-100 ${
+                            <div className={`fixed top-8 right-8 z-[99999] px-6 py-4 rounded-xl shadow-2xl border flex items-center gap-3 transition-all duration-300 scale-100 ${
                                 toast.type === 'error' 
                                     ? 'bg-red-500/20 text-red-400 border-red-500/30' 
                                     : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'

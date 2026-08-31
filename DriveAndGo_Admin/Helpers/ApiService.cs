@@ -82,15 +82,36 @@ namespace DriveAndGo_Admin.Helpers
             }
             catch { }
 
-            // Computer Hostname adaptive fallback (permanent on LAN)
+            // Physical Network Interface Scan (Prioritizes Active Ethernet & Wi-Fi, filters out virtual adapters)
             try
             {
-                var hostName = Environment.MachineName?.ToLowerInvariant() ?? "martquirante";
-                return $"http://{hostName}:5233/api";
+                var activePhysical = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+                    .Where(ni => ni.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up &&
+                                 ni.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback &&
+                                 ni.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Tunnel &&
+                                 !ni.Description.Contains("Virtual", StringComparison.OrdinalIgnoreCase) &&
+                                 !ni.Description.Contains("Hyper-V", StringComparison.OrdinalIgnoreCase) &&
+                                 !ni.Description.Contains("WSL", StringComparison.OrdinalIgnoreCase) &&
+                                 !ni.Description.Contains("VMware", StringComparison.OrdinalIgnoreCase) &&
+                                 !ni.Description.Contains("Bluetooth", StringComparison.OrdinalIgnoreCase) &&
+                                 !ni.Name.Contains("vEthernet", StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(ni => ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Ethernet ? 2 : 
+                                            ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Wireless80211 ? 1 : 0)
+                    .FirstOrDefault();
+
+                if (activePhysical != null)
+                {
+                    var ip = activePhysical.GetIPProperties().UnicastAddresses
+                        .FirstOrDefault(u => u.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && !System.Net.IPAddress.IsLoopback(u.Address));
+                    if (ip != null)
+                    {
+                        return $"http://{ip.Address}:5233/api";
+                    }
+                }
             }
             catch { }
 
-            return "http://martquirante:5233/api";
+            return "http://192.168.1.6:5233/api";
         }
 
         public static readonly string BaseUrl = ResolveNetworkBaseUrl();

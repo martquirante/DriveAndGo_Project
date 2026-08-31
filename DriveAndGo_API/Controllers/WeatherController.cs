@@ -6,6 +6,8 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 
+using DriveAndGo_API.Services;
+
 namespace DriveAndGo_API.Controllers
 {
     [ApiController]
@@ -14,12 +16,14 @@ namespace DriveAndGo_API.Controllers
     {
         private readonly IConfiguration _configuration;
         private readonly string _connectionString;
+        private readonly ITrafficIncidentAggregatorService _trafficService;
         private static readonly HttpClient _httpClient = new HttpClient();
 
-        public WeatherController(IConfiguration configuration)
+        public WeatherController(IConfiguration configuration, ITrafficIncidentAggregatorService trafficService)
         {
             _configuration = configuration;
             _connectionString = configuration.GetConnectionString("DefaultConnection") ?? "";
+            _trafficService = trafficService;
         }
 
         [HttpGet("current")]
@@ -62,7 +66,7 @@ namespace DriveAndGo_API.Controllers
                             condition = conditionText,
                             wind_speed_kmh = windSpeed,
                             pagasa_alert = pagasaSignal,
-                            active_flood_zones_count = 4,
+                            active_flood_zones_count = 9,
                             timestamp = DateTime.UtcNow
                         });
                     }
@@ -112,7 +116,7 @@ namespace DriveAndGo_API.Controllers
                             condition = "Monsoon Surge / Rain",
                             wind_speed_kmh = 18.5,
                             pagasa_alert = pagasaSignal,
-                            active_flood_zones_count = 4,
+                            active_flood_zones_count = 9,
                             timestamp = DateTime.UtcNow
                         });
                     }
@@ -158,7 +162,7 @@ namespace DriveAndGo_API.Controllers
                         condition = condition,
                         wind_speed_kmh = windSpeed,
                         pagasa_alert = rain > 10 ? "PAGASA Yellow Rainfall Advisory" : "Normal Conditions",
-                        active_flood_zones_count = 4,
+                        active_flood_zones_count = 9,
                         timestamp = DateTime.UtcNow
                     });
                 }
@@ -204,7 +208,7 @@ namespace DriveAndGo_API.Controllers
                             condition = desc,
                             wind_speed_kmh = windSpeed,
                             pagasa_alert = rain > 10 ? "PAGASA Yellow Rainfall Advisory" : "Normal Conditions",
-                            active_flood_zones_count = 4,
+                            active_flood_zones_count = 9,
                             timestamp = DateTime.UtcNow
                         });
                     }
@@ -349,8 +353,7 @@ namespace DriveAndGo_API.Controllers
                 if (res.IsSuccessStatusCode)
                 {
                     var jsonStr = await res.Content.ReadAsStringAsync();
-                    using var doc = JsonDocument.Parse(jsonStr);
-                    return Ok(doc.RootElement);
+                    return Content(jsonStr, "application/json");
                 }
             }
             catch (Exception ex)
@@ -388,14 +391,14 @@ namespace DriveAndGo_API.Controllers
         }
 
         [HttpGet("flood-zones")]
-        public async Task<IActionResult> GetFloodZones([FromQuery] double? rainOverride = null)
+        public async Task<IActionResult> GetFloodZones([FromQuery] double? rainOverride = null, [FromQuery] string? region = null)
         {
             var list = new List<object>();
             double liveRain = 0.0;
             string weatherCondition = "Clear Skies";
             int weatherCode = 0;
 
-            // Fetch live rainfall telemetry from Open-Meteo API (Target: Metro Manila)
+            // Fetch live rainfall telemetry from Open-Meteo API (Target: Metro Manila & Central Luzon Hub)
             try
             {
                 var weatherUrl = "https://api.open-meteo.com/v1/forecast?latitude=14.5995&longitude=120.9842&current=precipitation,weather_code,temperature_2m&timezone=Asia%2FManila";
@@ -443,7 +446,20 @@ namespace DriveAndGo_API.Controllers
             {
                 using var conn = new NpgsqlConnection(_connectionString);
                 await conn.OpenAsync();
-                using var cmd = new NpgsqlCommand("SELECT id, zone_name, risk_level, water_depth_level, polygon_coordinates_json, advisory_timestamp, recommended_reroute, is_active FROM flood_hazard_zones WHERE is_active = true ORDER BY id ASC;", conn);
+
+                string sql = "SELECT id, zone_name, risk_level, water_depth_level, polygon_coordinates_json, advisory_timestamp, recommended_reroute, is_active, COALESCE(region, 'Metro Manila') FROM flood_hazard_zones WHERE is_active = true";
+                if (!string.IsNullOrWhiteSpace(region) && region.ToLowerInvariant() != "all")
+                {
+                    sql += " AND LOWER(COALESCE(region, '')) LIKE @reg";
+                }
+                sql += " ORDER BY id ASC;";
+
+                using var cmd = new NpgsqlCommand(sql, conn);
+                if (!string.IsNullOrWhiteSpace(region) && region.ToLowerInvariant() != "all")
+                {
+                    cmd.Parameters.AddWithValue("reg", $"%{region.ToLowerInvariant()}%");
+                }
+
                 using var reader = await cmd.ExecuteReaderAsync();
 
                 while (await reader.ReadAsync())
@@ -456,6 +472,7 @@ namespace DriveAndGo_API.Controllers
                     DateTime advisoryTs = reader.GetDateTime(5);
                     string reroute = reader.GetString(6);
                     bool isActive = reader.GetBoolean(7);
+                    string zoneRegion = reader.GetString(8);
 
                     // Dynamic Water Depth & Risk Level Calculation based on Live Precipitation (mm/hr)
                     string dynamicRisk;
@@ -500,6 +517,7 @@ namespace DriveAndGo_API.Controllers
                     {
                         id,
                         zone_name = zoneName,
+                        region = zoneRegion,
                         risk_level = dynamicRisk,
                         risk_label = riskBadge,
                         water_depth_level = dynamicDepth,
@@ -529,20 +547,60 @@ namespace DriveAndGo_API.Controllers
         {
             try
             {
-                // Open-Meteo Flood API (Copernicus GloFAS River Discharge for Metro Manila / Marikina Basin)
-                var url = "https://flood-api.open-meteo.com/v1/flood?latitude=14.63&longitude=121.09&daily=river_discharge,river_discharge_mean,river_discharge_median&timezone=Asia%2FManila";
+                // Multi-Basin Copernicus GloFAS River Flow (Pampanga River, Angat/Bulacan River, Marikina River)
+                // 15.01, 120.70 = Pampanga River Basin (San Simon / Apalit / Candaba Swamp)
+                // 14.88, 120.96 = Angat / Bulacan River Basin (Bustos / Calumpit Lowlands)
+                // 14.63, 121.09 = Marikina & Pasig River Basin (Metro Manila)
+                var url = "https://flood-api.open-meteo.com/v1/flood?latitude=15.01,14.88,14.63&longitude=120.70,120.96,121.09&daily=river_discharge,river_discharge_mean,river_discharge_median&forecast_days=3&timezone=Asia%2FManila";
                 var res = await _httpClient.GetAsync(url);
                 if (res.IsSuccessStatusCode)
                 {
                     var jsonStr = await res.Content.ReadAsStringAsync();
                     using var doc = JsonDocument.Parse(jsonStr);
+
+                    var basins = new List<object>();
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                    {
+                        var arr = doc.RootElement.EnumerateArray().ToList();
+                        string[] basinNames = new[] { "Pampanga River Basin (Central Luzon / NLEX)", "Angat River Basin (Bulacan)", "Marikina & Pasig River Basin (Metro Manila)" };
+                        string[] regions = new[] { "Pampanga / NLEX", "Bulacan", "Metro Manila" };
+                        double[] dangerThresholds = new[] { 50.0, 30.0, 18.0 };
+
+                        for (int i = 0; i < arr.Count && i < basinNames.Length; i++)
+                        {
+                            var bElem = arr[i];
+                            double curDischarge = 0.0;
+                            if (bElem.TryGetProperty("daily", out var dObj) && dObj.TryGetProperty("river_discharge", out var rdArr) && rdArr.GetArrayLength() > 0)
+                            {
+                                curDischarge = rdArr[0].GetDouble();
+                            }
+
+                            string status = curDischarge >= dangerThresholds[i] ? "OVERFLOW ALERT / DANGER" : curDischarge >= (dangerThresholds[i] * 0.5) ? "MODERATE SURGE" : "NORMAL FLOW";
+
+                            basins.Add(new
+                            {
+                                basin_name = basinNames[i],
+                                region = regions[i],
+                                coordinates = $"{bElem.GetProperty("latitude").GetDouble()}, {bElem.GetProperty("longitude").GetDouble()}",
+                                discharge_m3_s = Math.Round(curDischarge, 2),
+                                danger_threshold_m3_s = dangerThresholds[i],
+                                status = status,
+                                daily = bElem.TryGetProperty("daily", out var dailyProp) ? dailyProp : default
+                            });
+                        }
+                    }
+
+                    // Compute primary discharge (Pampanga or highest active surge)
+                    double primaryDischarge = basins.Count > 0 ? ((dynamic)basins[0]).discharge_m3_s : 79.5;
+
                     return Ok(new
                     {
-                        provider = "Open-Meteo Flood API (GloFAS / Copernicus)",
-                        basin = "Marikina & Pasig River Basin",
-                        coordinates = "14.63, 121.09",
-                        data = doc.RootElement,
+                        provider = "Open-Meteo Flood API (Copernicus GloFAS Multi-Basin)",
                         status = "active",
+                        primary_discharge_m3_s = primaryDischarge,
+                        discharge_m3_s = primaryDischarge,
+                        basins = basins,
+                        data = doc.RootElement,
                         timestamp = DateTime.UtcNow
                     });
                 }
@@ -555,11 +613,31 @@ namespace DriveAndGo_API.Controllers
             return Ok(new
             {
                 provider = "Open-Meteo Flood API",
-                basin = "Marikina & Pasig River Basin",
                 status = "baseline_flow",
-                discharge_m3_s = 24.5,
+                discharge_m3_s = 79.5,
+                primary_discharge_m3_s = 79.5,
+                basins = new[]
+                {
+                    new { basin_name = "Pampanga River Basin (Central Luzon / NLEX)", region = "Pampanga / NLEX", discharge_m3_s = 79.5, status = "OVERFLOW ALERT / DANGER" },
+                    new { basin_name = "Angat River Basin (Bulacan)", region = "Bulacan", discharge_m3_s = 8.5, status = "NORMAL FLOW" },
+                    new { basin_name = "Marikina & Pasig River Basin (Metro Manila)", region = "Metro Manila", discharge_m3_s = 8.9, status = "NORMAL FLOW" }
+                },
                 timestamp = DateTime.UtcNow
             });
+        }
+
+        [HttpGet("crisis-feeds")]
+        public async Task<IActionResult> GetCrisisFeeds()
+        {
+            try
+            {
+                var data = await _trafficService.GetCrisisFeedsAsync();
+                return Ok(data);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error loading crisis feeds: " + ex.Message });
+            }
         }
 
         [HttpPost("trigger-submersion-alert/{vehicleId}")]

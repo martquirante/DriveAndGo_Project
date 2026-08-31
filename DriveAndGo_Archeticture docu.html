@@ -1,0 +1,1738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DriveAndGo — Technical Architecture &amp; System Models</title>
+<style>
+  :root{
+    --ink:#000000;
+    --ink2:#333333;
+    --ink3:#555555;
+    --line:#cccccc;
+    --line2:#999999;
+    --bg:#ffffff;
+    --zebra:#f2f2f2;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:#e9e9e9;}
+  body{
+    font-family:"Times New Roman", Times, "Cambria", serif;
+    color:var(--ink);
+    background:#e9e9e9;
+  }
+  .mono{font-family:"Courier New", "Courier", monospace;}
+
+  /* ============ PAGE / SHEET LAYOUT (screen preview) ============ */
+  .sheet{
+    width:210mm;
+    min-height:297mm;
+    margin:10mm auto;
+    background:#fff;
+    padding:20mm 15mm;
+    box-shadow:0 0 8px rgba(0,0,0,0.25);
+    position:relative;
+  }
+  .sheet.wide{ /* used for very wide diagram pages, still A4 portrait but content scales down */ }
+
+  h1,h2,h3,h4{
+    font-family:"Times New Roman", Times, "Cambria", serif;
+    color:var(--ink);
+    font-weight:bold;
+    margin:0 0 4mm 0;
+  }
+  h1{font-size:22pt; letter-spacing:0.5px; text-align:center;}
+  h2{
+    font-size:15pt;
+    border-bottom:2px solid var(--ink);
+    padding-bottom:2mm;
+    margin-top:0;
+    margin-bottom:6mm;
+  }
+  h3{font-size:12.5pt; margin-top:6mm;}
+  p{font-size:10.5pt; line-height:1.55; color:var(--ink2); text-align:justify;}
+  .subtitle{font-size:12pt; text-align:center; color:var(--ink2); margin-bottom:2mm; font-style:italic;}
+  .byline{font-size:10pt; text-align:center; color:var(--ink3); margin-bottom:10mm;}
+  hr.rule{border:none; border-top:1px solid var(--ink); margin:6mm 0;}
+  hr.rule-thin{border:none; border-top:1px solid var(--line); margin:5mm 0;}
+
+  .section-eyebrow{
+    font-family:"Courier New", monospace;
+    font-size:9pt;
+    letter-spacing:2px;
+    color:var(--ink3);
+    text-transform:uppercase;
+    margin-bottom:2mm;
+  }
+
+  /* ============ COVER PAGE ============ */
+  .cover{
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    height:257mm;
+    text-align:center;
+    border:1.5px double var(--ink);
+    padding:20mm 12mm;
+  }
+  .cover .kicker{
+    font-family:"Courier New", monospace;
+    font-size:11pt;
+    letter-spacing:4px;
+    color:var(--ink3);
+    margin-bottom:10mm;
+  }
+  .cover h1{font-size:30pt; margin-bottom:4mm;}
+  .cover .cover-sub{font-size:14pt; font-style:italic; color:var(--ink2); margin-bottom:14mm;}
+  .cover-divider{width:60mm; border-top:1.5px solid var(--ink); margin:8mm 0;}
+  .cover-meta{font-size:10.5pt; color:var(--ink2); line-height:1.9;}
+  .cover-meta b{color:var(--ink);}
+  .cover-boxes{
+    display:flex; gap:8mm; margin-top:14mm;
+  }
+  .cover-box{
+    border:1px solid var(--ink);
+    padding:4mm 6mm;
+    font-size:9pt;
+    font-family:"Courier New", monospace;
+  }
+
+  /* ============ TOC ============ */
+  .toc-list{list-style:none; margin:0; padding:0; font-size:11pt;}
+  .toc-list li{
+    display:flex;
+    justify-content:space-between;
+    border-bottom:1px dotted var(--line2);
+    padding:2.2mm 0;
+    color:var(--ink2);
+  }
+  .toc-list li b{color:var(--ink); font-weight:bold;}
+  .toc-list .toc-num{font-family:"Courier New", monospace; color:var(--ink3); margin-right:3mm;}
+
+  /* ============ TABLES ============ */
+  table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:8.6pt;
+    margin:4mm 0 6mm 0;
+  }
+  table caption{
+    text-align:left;
+    font-size:9.5pt;
+    font-style:italic;
+    color:var(--ink3);
+    margin-bottom:2mm;
+    caption-side:top;
+  }
+  th,td{
+    border:1px solid var(--ink);
+    padding:2.2mm 2.6mm;
+    text-align:left;
+    vertical-align:top;
+    font-family:"Courier New", monospace;
+    font-size:8.2pt;
+    line-height:1.35;
+  }
+  th{
+    background:var(--ink);
+    color:#fff;
+    font-weight:bold;
+    text-transform:uppercase;
+    font-size:7.6pt;
+    letter-spacing:0.4px;
+  }
+  tbody tr:nth-child(even){background:var(--zebra);}
+  td.desc, th.desc{font-family:"Times New Roman", Times, serif; font-size:8.8pt;}
+  .pk{font-weight:bold;}
+  .fk{font-style:italic;}
+
+  /* ============ DIAGRAM FRAME ============ */
+  .diagram-frame{
+    border:1px solid var(--ink);
+    padding:4mm;
+    margin:4mm 0 3mm 0;
+    background:#fff;
+  }
+  .diagram-frame svg{
+    width:100%;
+    height:auto;
+    display:block;
+  }
+  .fig-caption{
+    text-align:center;
+    font-size:9.5pt;
+    font-style:italic;
+    color:var(--ink3);
+    margin:0 0 6mm 0;
+  }
+  .fig-note{
+    font-size:8.5pt;
+    color:var(--ink3);
+    font-style:italic;
+    margin-top:2mm;
+  }
+
+  /* SVG element helper classes (shared) */
+  svg text{ font-family:"Times New Roman", Times, serif; fill:#000; }
+  svg .mono-t{ font-family:"Courier New", monospace; }
+  svg .box{ fill:#ffffff; stroke:#000000; stroke-width:1.4; }
+  svg .box-alt{ fill:#f2f2f2; stroke:#000000; stroke-width:1.4; }
+  svg .hdr{ fill:#000000; }
+  svg .hdr-text{ fill:#ffffff; font-weight:bold; }
+  svg .divider{ stroke:#000000; stroke-width:0.8; }
+  svg .assoc{ stroke:#444444; stroke-width:1; fill:none; }
+  svg .assoc-strong{ stroke:#000000; stroke-width:1.3; fill:none; }
+  svg .dashed{ stroke:#000000; stroke-width:1; stroke-dasharray:4,3; fill:none; }
+  svg .lifeline{ stroke:#000000; stroke-width:1; stroke-dasharray:3,3; }
+  svg .oval{ fill:#ffffff; stroke:#000000; stroke-width:1.3; }
+  svg .boundary{ fill:#fbfbfb; stroke:#000000; stroke-width:1.6; }
+  svg .proc{ fill:#ffffff; stroke:#000000; stroke-width:1.4; }
+  svg small-label{ font-size:8px; }
+
+  /* ============ UTILITY / PRINT BUTTON ============ */
+  .print-btn{
+    position:fixed;
+    top:14px; right:18px;
+    z-index:999;
+    background:#000; color:#fff;
+    border:none; border-radius:4px;
+    padding:10px 16px;
+    font-family:"Times New Roman", serif;
+    font-size:12.5pt;
+    cursor:pointer;
+    box-shadow:0 2px 6px rgba(0,0,0,0.35);
+  }
+  .print-btn:hover{ background:#333; }
+
+  .page-fixed-header, .page-fixed-footer{ display:none; }
+
+  /* ============ PRINT RULES ============ */
+  @page{
+    size: A4 portrait;
+    margin: 20mm 15mm 20mm 15mm;
+  }
+  @media print{
+    html,body{ background:#fff; }
+    .no-print{ display:none !important; }
+    .sheet{
+      width:auto; min-height:0; margin:0; padding:0;
+      box-shadow:none; page-break-after:always;
+    }
+    .sheet:last-of-type{ page-break-after:auto; }
+    .cover{ height:250mm; }
+
+    .page-fixed-header{
+      display:block;
+      position:fixed;
+      top:-14mm;
+      left:0; right:0;
+      text-align:center;
+      font-family:"Times New Roman", serif;
+      font-size:8pt;
+      letter-spacing:0.5px;
+      color:#333;
+      border-bottom:0.5px solid #999;
+      padding-bottom:1mm;
+    }
+    .page-fixed-footer{
+      display:flex;
+      position:fixed;
+      bottom:-14mm;
+      left:0; right:0;
+      justify-content:space-between;
+      font-family:"Times New Roman", serif;
+      font-size:8pt;
+      color:#333;
+      border-top:0.5px solid #999;
+      padding-top:1mm;
+    }
+    .page-break{ page-break-before:always; }
+    .avoid-break{ break-inside:avoid; page-break-inside:avoid; }
+    h2{ break-after:avoid; }
+    h3{ break-after:avoid; }
+    table{ break-inside:auto; }
+    tr{ break-inside:avoid; }
+    thead{ display:table-header-group; }
+  }
+  @media screen{
+    .page-fixed-header,.page-fixed-footer{ display:none; }
+  }
+</style>
+</head>
+<body>
+
+<button class="print-btn no-print" onclick="window.print()">🖨️ Save as PDF / Print</button>
+
+<!-- ============================================================ -->
+<!-- COVER PAGE -->
+<!-- ============================================================ -->
+<div class="sheet">
+  <div class="page-fixed-header">DriveAndGo — Technical Architecture &amp; System Models</div>
+  <div class="page-fixed-footer"><span>DriveAndGo System Documentation</span><span>Capstone / Thesis Technical Appendix</span></div>
+
+  <div class="cover">
+    <div class="kicker">SYSTEM ARCHITECTURE &amp; TECHNICAL DOCUMENTATION</div>
+    <h1>DRIVEANDGO</h1>
+    <div class="cover-sub">Complete UML, ERD &amp; Data Flow Diagram (DFD) Reference<br>for System Documentation &amp; Thesis Defense</div>
+    <div class="cover-divider"></div>
+    <div class="cover-meta">
+      <b>Document Type:</b> Technical Architecture Appendix<br>
+      <b>Scope:</b> Use Case · Class · Sequence · ERD · Data Dictionary · DFD (L0–L2)<br>
+      <b>Notation:</b> UML 2.5 · Crow's Foot ERD · Gane &amp; Sarson / Yourdon DFD<br>
+      <b>Revision:</b> v1.0 — Formal Manuscript Edition
+    </div>
+    <div class="cover-boxes">
+      <div class="cover-box">23 DATABASE TABLES</div>
+      <div class="cover-box">4 ACTOR ROLES</div>
+      <div class="cover-box">3 DFD LEVELS</div>
+      <div class="cover-box">11 DOMAIN CLASSES</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TABLE OF CONTENTS -->
+<!-- ============================================================ -->
+<div class="sheet">
+  <div class="page-fixed-header">DriveAndGo — Technical Architecture &amp; System Models</div>
+  <div class="page-fixed-footer"><span>DriveAndGo System Documentation</span><span>Table of Contents</span></div>
+  <h2>Table of Contents</h2>
+  <ul class="toc-list">
+    <li><span><span class="toc-num">1.</span>Executive System Overview</span><b>03</b></li>
+    <li><span><span class="toc-num">2.</span>UML Use Case Diagram</span><b>04</b></li>
+    <li><span><span class="toc-num">3.</span>UML Class Diagram (Domain Model)</span><b>05</b></li>
+    <li><span><span class="toc-num">4.</span>UML Sequence Diagram (Booking &amp; Telematics Flow)</span><b>06</b></li>
+    <li><span><span class="toc-num">5.</span>Complete Entity-Relationship Diagram (ERD)</span><b>07</b></li>
+    <li><span><span class="toc-num">6.</span>Comprehensive Data Dictionary</span><b>08</b></li>
+    <li><span><span class="toc-num">7.1</span>DFD Level 0 — Context Diagram</span><b>09</b></li>
+    <li><span><span class="toc-num">7.2</span>DFD Level 1 — System Decomposition</span><b>10</b></li>
+    <li><span><span class="toc-num">7.3</span>DFD Level 2 — Booking &amp; Payment Subsystem</span><b>11</b></li>
+    <li><span><span class="toc-num">8.</span>Summary &amp; Documentation Readiness</span><b>12</b></li>
+  </ul>
+  <p style="margin-top:12mm; font-size:9.5pt; color:var(--ink3); font-style:italic; text-align:center;">
+    This appendix accompanies the DriveAndGo capstone manuscript and is formatted for direct print
+    or PDF export via the browser's Print function (Ctrl+P). Page numbers shown above are indicative
+    of manuscript pagination; enable "Headers and footers" in the print dialog for automatic numbering.
+  </p>
+</div>
+
+<!-- ============================================================ -->
+<!-- 1. EXECUTIVE OVERVIEW -->
+<!-- ============================================================ -->
+<div class="sheet">
+  <div class="page-fixed-header">DriveAndGo — Technical Architecture &amp; System Models</div>
+  <div class="page-fixed-footer"><span>1. Executive System Overview</span><span>DriveAndGo System Documentation</span></div>
+  <div class="section-eyebrow">Section 01</div>
+  <h2>1. Executive System Overview</h2>
+  <p>
+    <b>DriveAndGo</b> is an enterprise-grade car rental and fleet management ecosystem composed of three
+    integrated tiers, engineered to support end-to-end vehicle reservation, chauffeur dispatch, telematics
+    monitoring, and digital settlement.
+  </p>
+  <h3>1.1 Admin Operations Center (Desktop &amp; Web)</h3>
+  <p>
+    A WinForms / WebView2 hybrid React dashboard supporting real-time telematics visualization, fleet
+    assignment, revenue tracking, OCR-based document verification, dynamic pricing, and automated
+    compliance monitoring for the administrative and fleet-management workforce.
+  </p>
+  <h3>1.2 Customer &amp; Driver Mobile Application</h3>
+  <p>
+    A React Native mobile client serving both renters and chauffeurs, providing vehicle discovery, instant
+    reservation, digital key check-in, in-trip GPS routing, driver bidding, split billing among co-travelers,
+    and digital payment receipt issuance.
+  </p>
+  <h3>1.3 Backend Web API Core</h3>
+  <p>
+    A .NET 10 ASP.NET Web API backed by a PostgreSQL relational database, exposing real-time
+    communication through SignalR hubs, securing access via JWT authentication, and persisting
+    documents and media through a multi-tier cloud object storage layer.
+  </p>
+  <hr class="rule-thin">
+  <h3>1.4 Primary Actors</h3>
+  <table>
+    <thead><tr><th style="width:22%;">Actor</th><th class="desc">Role in the System</th></tr></thead>
+    <tbody>
+      <tr><td class="pk">Admin / Fleet Manager</td><td class="desc">Oversees fleet configuration, approves bookings and payments, assigns chauffeurs, monitors telematics and compliance, reviews analytics.</td></tr>
+      <tr><td class="pk">Customer / Renter</td><td class="desc">Browses the fleet, books vehicles with or without a driver, applies promo codes, settles payment, rates completed trips.</td></tr>
+      <tr><td class="pk">Chauffeur / Driver</td><td class="desc">Submits bids for chauffeured trips, receives dispatch assignments, reports incidents, communicates with customers and admin.</td></tr>
+      <tr><td class="pk">External Systems</td><td class="desc">Payment gateways (GCash / Maya / Bank) and IoT telematics / weather sensors that exchange data with the core platform.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<!-- 2. USE CASE DIAGRAM -->
+<!-- ============================================================ -->
+<div class="sheet">
+  <div class="page-fixed-header">DriveAndGo — Technical Architecture &amp; System Models</div>
+  <div class="page-fixed-footer"><span>2. UML Use Case Diagram</span><span>DriveAndGo System Documentation</span></div>
+  <div class="section-eyebrow">Section 02</div>
+  <h2>2. UML Use Case Diagram</h2>
+  <p>
+    The diagram below details the functional boundaries of DriveAndGo and the interactions of its four
+    primary actors — Admin / Fleet Manager, Customer / Renter, Chauffeur / Driver, and External Systems
+    (Payment Gateways, Weather &amp; GPS Telematics) — against sixteen core use cases (UC-01 through UC-16).
+  </p>
+  <div class="diagram-frame avoid-break">
+  <svg viewBox="0 0 1200 970" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#555"/>
+      </marker>
+    </defs>
+
+    <!-- system boundary -->
+    <rect class="boundary" x="260" y="95" width="680" height="800" rx="4"/>
+    <text x="600" y="118" text-anchor="middle" font-size="13" font-weight="bold">« DriveAndGo Core System Boundary »</text>
+
+    <!-- use case ovals -->
+    <g class="mono-t" font-size="8.4">
+      <!-- Row 1 -->
+      <ellipse class="oval" cx="350" cy="170" rx="68" ry="34"/>
+      <text x="350" y="164" text-anchor="middle" font-weight="bold" font-size="9">UC-01</text>
+      <text x="350" y="176" text-anchor="middle">Authentication &amp;</text>
+      <text x="350" y="187" text-anchor="middle">RBAC Login</text>
+
+      <ellipse class="oval" cx="500" cy="170" rx="68" ry="34"/>
+      <text x="500" y="164" text-anchor="middle" font-weight="bold" font-size="9">UC-02</text>
+      <text x="500" y="176" text-anchor="middle">Manage Fleet &amp;</text>
+      <text x="500" y="187" text-anchor="middle">Add Vehicle Units</text>
+
+      <ellipse class="oval" cx="650" cy="170" rx="68" ry="34"/>
+      <text x="650" y="164" text-anchor="middle" font-weight="bold" font-size="9">UC-03</text>
+      <text x="650" y="176" text-anchor="middle">Live GPS Telematics</text>
+      <text x="650" y="187" text-anchor="middle">&amp; Geofence Monitor</text>
+
+      <ellipse class="oval" cx="800" cy="170" rx="68" ry="34"/>
+      <text x="800" y="164" text-anchor="middle" font-weight="bold" font-size="9">UC-04</text>
+      <text x="800" y="176" text-anchor="middle">Browse Fleet &amp;</text>
+      <text x="800" y="187" text-anchor="middle">Book Vehicle</text>
+
+      <!-- Row 2 -->
+      <ellipse class="oval" cx="350" cy="370" rx="68" ry="34"/>
+      <text x="350" y="364" text-anchor="middle" font-weight="bold" font-size="9">UC-05</text>
+      <text x="350" y="376" text-anchor="middle">Select Add-Ons &amp;</text>
+      <text x="350" y="387" text-anchor="middle">Apply Promo Code</text>
+
+      <ellipse class="oval" cx="500" cy="370" rx="68" ry="34"/>
+      <text x="500" y="364" text-anchor="middle" font-weight="bold" font-size="9">UC-06</text>
+      <text x="500" y="376" text-anchor="middle">Process Payment &amp;</text>
+      <text x="500" y="387" text-anchor="middle">Split Billing</text>
+
+      <ellipse class="oval" cx="650" cy="370" rx="68" ry="34"/>
+      <text x="650" y="364" text-anchor="middle" font-weight="bold" font-size="9">UC-07</text>
+      <text x="650" y="376" text-anchor="middle">Verify Payment &amp;</text>
+      <text x="650" y="387" text-anchor="middle">Approve Rental</text>
+
+      <ellipse class="oval" cx="800" cy="370" rx="68" ry="34"/>
+      <text x="800" y="364" text-anchor="middle" font-weight="bold" font-size="9">UC-08</text>
+      <text x="800" y="376" text-anchor="middle">Submit Chauffeur</text>
+      <text x="800" y="387" text-anchor="middle">Bid for Trips</text>
+
+      <!-- Row 3 -->
+      <ellipse class="oval" cx="350" cy="570" rx="68" ry="34"/>
+      <text x="350" y="564" text-anchor="middle" font-weight="bold" font-size="9">UC-09</text>
+      <text x="350" y="576" text-anchor="middle">Assign Chauffeur</text>
+      <text x="350" y="587" text-anchor="middle">to Booking</text>
+
+      <ellipse class="oval" cx="500" cy="570" rx="68" ry="34"/>
+      <text x="500" y="564" text-anchor="middle" font-weight="bold" font-size="9">UC-10</text>
+      <text x="500" y="576" text-anchor="middle">In-Trip Chat &amp;</text>
+      <text x="500" y="587" text-anchor="middle">Dispatch Msg.</text>
+
+      <ellipse class="oval" cx="650" cy="570" rx="68" ry="34"/>
+      <text x="650" y="564" text-anchor="middle" font-weight="bold" font-size="9">UC-11</text>
+      <text x="650" y="576" text-anchor="middle">Report Incident &amp;</text>
+      <text x="650" y="587" text-anchor="middle">Damage Claim</text>
+
+      <ellipse class="oval" cx="800" cy="570" rx="68" ry="34"/>
+      <text x="800" y="564" text-anchor="middle" font-weight="bold" font-size="9">UC-12</text>
+      <text x="800" y="576" text-anchor="middle">Vehicle Health &amp;</text>
+      <text x="800" y="587" text-anchor="middle">Maint. Logging</text>
+
+      <!-- Row 4 -->
+      <ellipse class="oval" cx="350" cy="770" rx="68" ry="34"/>
+      <text x="350" y="764" text-anchor="middle" font-weight="bold" font-size="9">UC-13</text>
+      <text x="350" y="776" text-anchor="middle">OCR Driver Doc.</text>
+      <text x="350" y="787" text-anchor="middle">Verification</text>
+
+      <ellipse class="oval" cx="500" cy="770" rx="68" ry="34"/>
+      <text x="500" y="764" text-anchor="middle" font-weight="bold" font-size="9">UC-14</text>
+      <text x="500" y="776" text-anchor="middle">Rate Vehicle &amp;</text>
+      <text x="500" y="787" text-anchor="middle">Driver Service</text>
+
+      <ellipse class="oval" cx="650" cy="770" rx="68" ry="34"/>
+      <text x="650" y="764" text-anchor="middle" font-weight="bold" font-size="9">UC-15</text>
+      <text x="650" y="776" text-anchor="middle">View Analytics &amp;</text>
+      <text x="650" y="787" text-anchor="middle">Revenue Reports</text>
+
+      <ellipse class="oval" cx="800" cy="770" rx="68" ry="34"/>
+      <text x="800" y="764" text-anchor="middle" font-weight="bold" font-size="9">UC-16</text>
+      <text x="800" y="776" text-anchor="middle">Blockchain Contract</text>
+      <text x="800" y="787" text-anchor="middle">&amp; Audit Log</text>
+    </g>
+
+    <!-- Association lines: Admin -->
+    <g class="assoc" marker-end="url(#arw)">
+      <line x1="82" y1="235" x2="292" y2="175"/>
+      <line x1="82" y1="238" x2="440" y2="178"/>
+      <line x1="84" y1="240" x2="590" y2="178"/>
+      <line x1="86" y1="245" x2="592" y2="378"/>
+      <line x1="90" y1="248" x2="292" y2="575"/>
+      <line x1="92" y1="250" x2="440" y2="575"/>
+      <line x1="94" y1="255" x2="742" y2="578"/>
+      <line x1="96" y1="258" x2="292" y2="775"/>
+      <line x1="98" y1="260" x2="592" y2="778"/>
+      <line x1="100" y1="262" x2="742" y2="778"/>
+    </g>
+    <!-- Association lines: Driver -->
+    <g class="assoc" marker-end="url(#arw)">
+      <line x1="82" y1="545" x2="292" y2="182"/>
+      <line x1="90" y1="550" x2="742" y2="378"/>
+      <line x1="95" y1="555" x2="440" y2="578"/>
+      <line x1="100" y1="558" x2="592" y2="580"/>
+      <line x1="105" y1="562" x2="440" y2="778"/>
+    </g>
+    <!-- Association lines: Customer (right) -->
+    <g class="assoc" marker-end="url(#arw)">
+      <line x1="1118" y1="150" x2="410" y2="172"/>
+      <line x1="1116" y1="155" x2="742" y2="175"/>
+      <line x1="1114" y1="160" x2="410" y2="378"/>
+      <line x1="1112" y1="165" x2="560" y2="378"/>
+      <line x1="1110" y1="172" x2="560" y2="578"/>
+      <line x1="1108" y1="178" x2="702" y2="580"/>
+      <line x1="1106" y1="185" x2="560" y2="778"/>
+    </g>
+    <!-- Association lines: IoT Sensors -->
+    <g class="assoc" marker-end="url(#arw)">
+      <line x1="1118" y1="452" x2="710" y2="182"/>
+      <line x1="1118" y1="460" x2="852" y2="578"/>
+    </g>
+    <!-- Association lines: Payment Gateway -->
+    <g class="assoc" marker-end="url(#arw)">
+      <line x1="1118" y1="752" x2="560" y2="382"/>
+      <line x1="1118" y1="758" x2="702" y2="382"/>
+    </g>
+
+    <!-- Left actors -->
+    <g stroke="#000" stroke-width="1.6" fill="none">
+      <circle cx="70" cy="205" r="12" fill="#fff"/>
+      <line x1="70" y1="217" x2="70" y2="258"/>
+      <line x1="48" y1="230" x2="92" y2="230"/>
+      <line x1="70" y1="258" x2="53" y2="295"/>
+      <line x1="70" y1="258" x2="87" y2="295"/>
+    </g>
+    <text x="70" y="315" text-anchor="middle" font-size="10" font-weight="bold">Admin /</text>
+    <text x="70" y="328" text-anchor="middle" font-size="10" font-weight="bold">Fleet Manager</text>
+
+    <g stroke="#000" stroke-width="1.6" fill="none">
+      <circle cx="70" cy="515" r="12" fill="#fff"/>
+      <line x1="70" y1="527" x2="70" y2="568"/>
+      <line x1="48" y1="540" x2="92" y2="540"/>
+      <line x1="70" y1="568" x2="53" y2="605"/>
+      <line x1="70" y1="568" x2="87" y2="605"/>
+    </g>
+    <text x="70" y="625" text-anchor="middle" font-size="10" font-weight="bold">Chauffeur /</text>
+    <text x="70" y="638" text-anchor="middle" font-size="10" font-weight="bold">Driver</text>
+
+    <!-- Right actors -->
+    <g stroke="#000" stroke-width="1.6" fill="none">
+      <circle cx="1130" cy="120" r="12" fill="#fff"/>
+      <line x1="1130" y1="132" x2="1130" y2="173"/>
+      <line x1="1108" y1="145" x2="1152" y2="145"/>
+      <line x1="1130" y1="173" x2="1113" y2="210"/>
+      <line x1="1130" y1="173" x2="1147" y2="210"/>
+    </g>
+    <text x="1130" y="230" text-anchor="middle" font-size="10" font-weight="bold">Customer /</text>
+    <text x="1130" y="243" text-anchor="middle" font-size="10" font-weight="bold">Renter</text>
+
+    <g stroke="#000" stroke-width="1.4" fill="#fff">
+      <rect x="1095" y="405" width="70" height="46" rx="3"/>
+      <circle cx="1130" cy="415" r="4" fill="none" stroke="#000"/>
+      <line x1="1112" y1="428" x2="1148" y2="428" stroke="#000"/>
+      <line x1="1112" y1="435" x2="1148" y2="435" stroke="#000"/>
+      <line x1="1112" y1="442" x2="1148" y2="442" stroke="#000"/>
+    </g>
+    <text x="1130" y="468" text-anchor="middle" font-size="9" font-weight="bold">IoT Telematics /</text>
+    <text x="1130" y="480" text-anchor="middle" font-size="9" font-weight="bold">Weather API</text>
+
+    <g stroke="#000" stroke-width="1.4" fill="#fff">
+      <rect x="1090" y="705" width="80" height="52" rx="4"/>
+      <line x1="1090" y1="718" x2="1170" y2="718" stroke="#000"/>
+      <line x1="1100" y1="740" x2="1140" y2="740" stroke="#000" stroke-width="3"/>
+    </g>
+    <text x="1130" y="774" text-anchor="middle" font-size="9" font-weight="bold">Payment Gateways</text>
+    <text x="1130" y="786" text-anchor="middle" font-size="8.5">(GCash / Maya / Bank)</text>
+  </svg>
+  </div>
+  <p class="fig-caption">Figure 2.1 — UML Use Case Diagram: Actors, System Boundary, and Sixteen Core Use Cases (UC-01–UC-16)</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- 3. CLASS DIAGRAM -->
+<!-- ============================================================ -->
+<div class="sheet">
+  <div class="page-fixed-header">DriveAndGo — Technical Architecture &amp; System Models</div>
+  <div class="page-fixed-footer"><span>3. UML Class Diagram</span><span>DriveAndGo System Documentation</span></div>
+  <div class="section-eyebrow">Section 03</div>
+  <h2>3. UML Class Diagram (Domain Model &amp; OOP Architecture)</h2>
+  <p>
+    The domain model below reflects the Object-Oriented entities and their business-logic associations
+    as implemented in the C# .NET 10 API backend, including inheritance (<span class="mono">User → Driver</span>),
+    one-to-many bookings, and transactional/audit relationships.
+  </p>
+  <div class="diagram-frame avoid-break">
+  <svg viewBox="0 0 1500 1060" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="assocArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#000"/>
+      </marker>
+      <marker id="inheritArrow" viewBox="0 0 14 12" refX="13" refY="6" markerWidth="14" markerHeight="12" orient="auto-start-reverse">
+        <path d="M0,0 L14,6 L0,12 z" fill="#fff" stroke="#000" stroke-width="1"/>
+      </marker>
+    </defs>
+    <g class="mono-t" font-size="8.3">
+
+    <!-- USER -->
+    <g>
+      <rect class="box" x="40" y="40" width="440" height="248"/>
+      <rect class="hdr" x="40" y="40" width="440" height="22"/>
+      <text class="hdr-text" x="260" y="55" text-anchor="middle" font-size="11">User</text>
+      <line class="divider" x1="40" y1="62" x2="480" y2="62"/>
+      <text x="50" y="76">+ UserId : int</text>
+      <text x="50" y="88">+ FullName : string</text>
+      <text x="50" y="100">+ Email : string</text>
+      <text x="50" y="112">+ PasswordHash : string</text>
+      <text x="50" y="124">+ Phone : string</text>
+      <text x="50" y="136">+ Role : string</text>
+      <text x="50" y="148">+ IdPhotoUrl : string</text>
+      <text x="50" y="160">+ CreatedAt : DateTime</text>
+      <line class="divider" x1="40" y1="170" x2="480" y2="170"/>
+      <text x="50" y="184">+ Register()</text>
+      <text x="50" y="196">+ Login()</text>
+      <text x="50" y="208">+ UpdateProfile()</text>
+    </g>
+
+    <!-- DRIVER -->
+    <g>
+      <rect class="box" x="530" y="40" width="440" height="248"/>
+      <rect class="hdr" x="530" y="40" width="440" height="22"/>
+      <text class="hdr-text" x="750" y="55" text-anchor="middle" font-size="11">Driver</text>
+      <line class="divider" x1="530" y1="62" x2="970" y2="62"/>
+      <text x="540" y="76">+ DriverId : int</text>
+      <text x="540" y="88">+ UserId : int</text>
+      <text x="540" y="100">+ LicenseNo : string</text>
+      <text x="540" y="112">+ LicensePhotoUrl : string</text>
+      <text x="540" y="124">+ Status : string</text>
+      <text x="540" y="136">+ RatingAvg : decimal</text>
+      <text x="540" y="148">+ TotalTrips : int</text>
+      <text x="540" y="160">+ CashOnHand : decimal</text>
+      <line class="divider" x1="530" y1="170" x2="970" y2="170"/>
+      <text x="540" y="184">+ SubmitBid()</text>
+      <text x="540" y="196">+ UpdateStatus()</text>
+    </g>
+
+    <!-- VEHICLE -->
+    <g>
+      <rect class="box" x="1020" y="40" width="440" height="248"/>
+      <rect class="hdr" x="1020" y="40" width="440" height="22"/>
+      <text class="hdr-text" x="1240" y="55" text-anchor="middle" font-size="11">Vehicle</text>
+      <line class="divider" x1="1020" y1="62" x2="1460" y2="62"/>
+      <text x="1030" y="76">+ VehicleId : int</text>
+      <text x="1030" y="88">+ PlateNo : string</text>
+      <text x="1030" y="100">+ Brand / Model / Type : string</text>
+      <text x="1030" y="112">+ CC : int</text>
+      <text x="1030" y="124">+ Status : string</text>
+      <text x="1030" y="136">+ RatePerDay / RateWithDriver : decimal</text>
+      <text x="1030" y="148">+ Latitude / Longitude : double</text>
+      <text x="1030" y="160">+ HealthScore / OdometerKm : int</text>
+      <text x="1030" y="172">+ ExpresswayRfidBalance : decimal</text>
+      <line class="divider" x1="1020" y1="182" x2="1460" y2="182"/>
+      <text x="1030" y="196">+ UpdateLocation()</text>
+      <text x="1030" y="208">+ LockTelematics()</text>
+      <text x="1030" y="220">+ FlagMaintenance()</text>
+    </g>
+
+    <!-- RENTAL -->
+    <g>
+      <rect class="box-alt" x="40" y="340" width="470" height="260"/>
+      <rect class="hdr" x="40" y="340" width="470" height="22"/>
+      <text class="hdr-text" x="275" y="355" text-anchor="middle" font-size="11">Rental</text>
+      <line class="divider" x1="40" y1="362" x2="510" y2="362"/>
+      <text x="50" y="376">+ RentalId : int</text>
+      <text x="50" y="388">+ CustomerId / VehicleId / DriverId : int</text>
+      <text x="50" y="400">+ StartDate / EndDate : DateTime</text>
+      <text x="50" y="412">+ Status : string</text>
+      <text x="50" y="424">+ TotalAmount : decimal</text>
+      <text x="50" y="436">+ PaymentMethod / PaymentStatus : string</text>
+      <text x="50" y="448">+ QrCode : string</text>
+      <line class="divider" x1="40" y1="458" x2="510" y2="458"/>
+      <text x="50" y="472">+ Approve()</text>
+      <text x="50" y="484">+ Reject()</text>
+      <text x="50" y="496">+ StartTrip()</text>
+      <text x="50" y="508">+ CompleteRental()</text>
+    </g>
+
+    <!-- TRANSACTION -->
+    <g>
+      <rect class="box" x="560" y="340" width="380" height="230"/>
+      <rect class="hdr" x="560" y="340" width="380" height="22"/>
+      <text class="hdr-text" x="750" y="355" text-anchor="middle" font-size="11">Transaction</text>
+      <line class="divider" x1="560" y1="362" x2="940" y2="362"/>
+      <text x="570" y="376">+ TransactionId : int</text>
+      <text x="570" y="388">+ RentalId : int</text>
+      <text x="570" y="400">+ Amount : decimal</text>
+      <text x="570" y="412">+ Type / Method : string</text>
+      <text x="570" y="424">+ ProofUrl : string</text>
+      <text x="570" y="436">+ Status : string</text>
+      <text x="570" y="448">+ PaidAt : DateTime</text>
+      <line class="divider" x1="560" y1="458" x2="940" y2="458"/>
+      <text x="570" y="472">+ VerifyProof()</text>
+      <text x="570" y="484">+ ProcessRefund()</text>
+    </g>
+
+    <!-- DRIVERBID -->
+    <g>
+      <rect class="box" x="980" y="340" width="330" height="200"/>
+      <rect class="hdr" x="980" y="340" width="330" height="22"/>
+      <text class="hdr-text" x="1145" y="355" text-anchor="middle" font-size="11">DriverBid</text>
+      <line class="divider" x1="980" y1="362" x2="1310" y2="362"/>
+      <text x="990" y="376">+ BidId : int</text>
+      <text x="990" y="388">+ RentalId / DriverId : int</text>
+      <text x="990" y="400">+ BidAmount : decimal</text>
+      <text x="990" y="412">+ Status : string</text>
+      <text x="990" y="424">+ CreatedAt : DateTime</text>
+      <line class="divider" x1="980" y1="434" x2="1310" y2="434"/>
+      <text x="990" y="448">+ AcceptBid()</text>
+      <text x="990" y="460">+ DeclineBid()</text>
+    </g>
+
+    <!-- ADDON -->
+    <g>
+      <rect class="box" x="40" y="650" width="300" height="150"/>
+      <rect class="hdr" x="40" y="650" width="300" height="22"/>
+      <text class="hdr-text" x="190" y="665" text-anchor="middle" font-size="11">AddOn</text>
+      <line class="divider" x1="40" y1="672" x2="340" y2="672"/>
+      <text x="50" y="686">+ AddOnId : int</text>
+      <text x="50" y="698">+ Name : string</text>
+      <text x="50" y="710">+ DailyRate / FlatRate : decimal</text>
+      <text x="50" y="722">+ IsActive : bool</text>
+    </g>
+
+    <!-- RENTALADDON -->
+    <g>
+      <rect class="box-alt" x="380" y="650" width="300" height="150"/>
+      <rect class="hdr" x="380" y="650" width="300" height="22"/>
+      <text class="hdr-text" x="530" y="665" text-anchor="middle" font-size="10.5">RentalAddOn</text>
+      <line class="divider" x1="380" y1="672" x2="680" y2="672"/>
+      <text x="390" y="686">+ RentalAddOnId : int</text>
+      <text x="390" y="698">+ RentalId / AddOnId : int</text>
+      <text x="390" y="710">+ Quantity : int</text>
+      <text x="390" y="722">+ Subtotal : decimal</text>
+    </g>
+
+    <!-- MAINTENANCELOG -->
+    <g>
+      <rect class="box" x="720" y="650" width="330" height="150"/>
+      <rect class="hdr" x="720" y="650" width="330" height="22"/>
+      <text class="hdr-text" x="885" y="665" text-anchor="middle" font-size="10.5">MaintenanceLog</text>
+      <line class="divider" x1="720" y1="672" x2="1050" y2="672"/>
+      <text x="730" y="686">+ MaintenanceId / VehicleId : int</text>
+      <text x="730" y="698">+ ServiceType : string</text>
+      <text x="730" y="710">+ Cost : decimal</text>
+      <text x="730" y="722">+ OdometerAtService : int</text>
+      <text x="730" y="734">+ ServiceDate : DateTime</text>
+    </g>
+
+    <!-- ISSUE -->
+    <g>
+      <rect class="box" x="1090" y="650" width="360" height="180"/>
+      <rect class="hdr" x="1090" y="650" width="360" height="22"/>
+      <text class="hdr-text" x="1270" y="665" text-anchor="middle" font-size="11">Issue</text>
+      <line class="divider" x1="1090" y1="672" x2="1450" y2="672"/>
+      <text x="1100" y="686">+ IssueId / RentalId / ReporterId : int</text>
+      <text x="1100" y="698">+ IssueType : string</text>
+      <text x="1100" y="710">+ Description : text</text>
+      <text x="1100" y="722">+ ImageUrl : string</text>
+      <text x="1100" y="734">+ Status : string</text>
+      <line class="divider" x1="1090" y1="744" x2="1450" y2="744"/>
+      <text x="1100" y="758">+ Resolve()</text>
+    </g>
+
+    <!-- BLOCKCHAINBLOCK -->
+    <g>
+      <rect class="box-alt" x="40" y="850" width="360" height="165"/>
+      <rect class="hdr" x="40" y="850" width="360" height="22"/>
+      <text class="hdr-text" x="220" y="865" text-anchor="middle" font-size="10.5">BlockchainBlock</text>
+      <line class="divider" x1="40" y1="872" x2="400" y2="872"/>
+      <text x="50" y="886">+ BlockIndex : int</text>
+      <text x="50" y="898">+ PrevHash / CurrentHash : string</text>
+      <text x="50" y="910">+ ActionType : string</text>
+      <text x="50" y="922">+ Timestamp : DateTime</text>
+      <text x="50" y="934">+ DataPayload : string</text>
+    </g>
+    </g>
+
+    <!-- Relationships -->
+    <g>
+      <!-- inheritance Driver -> User -->
+      <line x1="750" y1="40" x2="500" y2="40" transform="translate(0,0)" x1_unused="" style="display:none"/>
+      <path class="assoc-strong" d="M750,40 L750,10 L260,10 L260,40" marker-end="url(#inheritArrow)"/>
+      <text x="505" y="8" text-anchor="middle" font-size="8">specializes</text>
+
+      <!-- User -> Rental (books as Customer) -->
+      <path class="assoc-strong" d="M260,288 L260,340" marker-end="url(#assocArrow)"/>
+      <text x="266" y="318" font-size="7.5">1</text><text x="266" y="336" font-size="7.5">0..*</text>
+      <text x="330" y="326" font-size="7.8" font-style="italic">books as Customer</text>
+
+      <!-- Driver -> Rental (drives) -->
+      <path class="assoc-strong" d="M600,288 L400,340" marker-end="url(#assocArrow)"/>
+      <text x="590" y="300" font-size="7.5">1</text><text x="415" y="335" font-size="7.5">0..*</text>
+      <text x="470" y="310" font-size="7.8" font-style="italic">drives</text>
+
+      <!-- Vehicle -> Rental (rented in) -->
+      <path class="assoc-strong" d="M1150,288 L500,345" marker-end="url(#assocArrow)"/>
+      <text x="1140" y="300" font-size="7.5">1</text><text x="505" y="340" font-size="7.5">0..*</text>
+      <text x="800" y="305" font-size="7.8" font-style="italic">rented in</text>
+
+      <!-- Rental -> Transaction -->
+      <path class="assoc-strong" d="M510,420 L560,420" marker-end="url(#assocArrow)"/>
+      <text x="516" y="415" font-size="7.5">1</text><text x="540" y="415" font-size="7.5">1..*</text>
+      <text x="512" y="435" font-size="7.8" font-style="italic">generates</text>
+
+      <!-- Rental -> DriverBid -->
+      <path class="assoc-strong" d="M510,400 C 750,380 900,390 980,410" marker-end="url(#assocArrow)"/>
+      <text x="960" y="405" font-size="7.5">0..*</text>
+      <text x="700" y="378" font-size="7.8" font-style="italic">receives</text>
+
+      <!-- Rental -> RentalAddOn -->
+      <path class="assoc-strong" d="M260,600 L500,650" marker-end="url(#assocArrow)"/>
+      <text x="270" y="615" font-size="7.5">1</text><text x="480" y="645" font-size="7.5">0..*</text>
+      <text x="330" y="640" font-size="7.8" font-style="italic">includes</text>
+
+      <!-- AddOn -> RentalAddOn -->
+      <path class="assoc-strong" d="M340,700 L380,700" marker-end="url(#assocArrow)"/>
+      <text x="346" y="695" font-size="7.5">1</text><text x="362" y="695" font-size="7.5">0..*</text>
+      <text x="342" y="715" font-size="7.8" font-style="italic">defines</text>
+
+      <!-- Vehicle -> MaintenanceLog -->
+      <path class="assoc-strong" d="M1240,288 C 1100,450 950,600 885,650" marker-end="url(#assocArrow)"/>
+      <text x="1000" y="500" font-size="7.5">1</text><text x="870" y="645" font-size="7.5">0..*</text>
+      <text x="1050" y="470" font-size="7.8" font-style="italic">serviced by</text>
+
+      <!-- Rental -> Issue -->
+      <path class="assoc-strong" d="M510,470 C 800,500 1050,560 1270,650" marker-end="url(#assocArrow)"/>
+      <text x="530" y="465" font-size="7.5">1</text><text x="1255" y="645" font-size="7.5">0..*</text>
+      <text x="850" y="530" font-size="7.8" font-style="italic">reports</text>
+
+      <!-- Rental -> BlockchainBlock -->
+      <path class="assoc-strong" d="M180,600 L220,850" marker-end="url(#assocArrow)"/>
+      <text x="185" y="615" font-size="7.5">1</text><text x="225" y="840" font-size="7.5">0..*</text>
+      <text x="140" y="750" font-size="7.8" font-style="italic">audited by</text>
+    </g>
+  </svg>
+  </div>
+  <p class="fig-caption">Figure 3.1 — UML Class Diagram: Domain Entities, Attributes, Methods, and Cardinalities</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- 4. SEQUENCE DIAGRAM -->
+<!-- ============================================================ -->
+<div class="sheet">
+  <div class="page-fixed-header">DriveAndGo — Technical Architecture &amp; System Models</div>
+  <div class="page-fixed-footer"><span>4. UML Sequence Diagram</span><span>DriveAndGo System Documentation</span></div>
+  <div class="section-eyebrow">Section 04</div>
+  <h2>4. UML Sequence Diagram</h2>
+  <p style="margin-bottom:2mm;">End-to-end Booking, Chauffeur Bidding, Telematics, and Settlement flow across seven lifelines.</p>
+  <div class="diagram-frame avoid-break">
+  <svg viewBox="0 0 1360 1180" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="seqArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#000"/>
+      </marker>
+    </defs>
+    <!-- lifeline headers -->
+    <g class="mono-t" font-size="8.6">
+      <!-- x positions -->
+      <!-- Customer 90 / Admin 270 / Driver 450 / API 660 / Hub 850 / DB 1030 / Storage 1230 -->
+      <g>
+        <rect class="box" x="30" y="20" width="120" height="34"/>
+        <text x="90" y="35" text-anchor="middle" font-weight="bold">Renter</text>
+        <text x="90" y="47" text-anchor="middle" font-size="7.6">(Customer)</text>
+      </g>
+      <g>
+        <rect class="box" x="212" y="20" width="116" height="34"/>
+        <text x="270" y="35" text-anchor="middle" font-weight="bold">Fleet Admin</text>
+        <text x="270" y="47" text-anchor="middle" font-size="7.6">(Admin)</text>
+      </g>
+      <g>
+        <rect class="box" x="392" y="20" width="116" height="34"/>
+        <text x="450" y="35" text-anchor="middle" font-weight="bold">Chauffeur</text>
+        <text x="450" y="47" text-anchor="middle" font-size="7.6">(Driver)</text>
+      </g>
+      <g>
+        <rect class="box" x="590" y="20" width="140" height="34"/>
+        <text x="660" y="35" text-anchor="middle" font-weight="bold">DriveAndGo</text>
+        <text x="660" y="47" text-anchor="middle" font-size="7.6">Web API</text>
+      </g>
+      <g>
+        <rect class="box" x="785" y="20" width="130" height="34"/>
+        <text x="850" y="35" text-anchor="middle" font-weight="bold">SignalR</text>
+        <text x="850" y="47" text-anchor="middle" font-size="7.6">Realtime Hub</text>
+      </g>
+      <g>
+        <rect class="box" x="972" y="20" width="116" height="34"/>
+        <text x="1030" y="35" text-anchor="middle" font-weight="bold">PostgreSQL</text>
+        <text x="1030" y="47" text-anchor="middle" font-size="7.6">Database</text>
+      </g>
+      <g>
+        <rect class="box" x="1165" y="20" width="130" height="34"/>
+        <text x="1230" y="35" text-anchor="middle" font-weight="bold">Cloud Object</text>
+        <text x="1230" y="47" text-anchor="middle" font-size="7.6">Storage</text>
+      </g>
+    </g>
+    <!-- lifelines -->
+    <g class="lifeline">
+      <line x1="90" y1="54" x2="90" y2="1160"/>
+      <line x1="270" y1="54" x2="270" y2="1160"/>
+      <line x1="450" y1="54" x2="450" y2="1160"/>
+      <line x1="660" y1="54" x2="660" y2="1160"/>
+      <line x1="850" y1="54" x2="850" y2="1160"/>
+      <line x1="1030" y1="54" x2="1030" y2="1160"/>
+      <line x1="1230" y1="54" x2="1230" y2="1160"/>
+    </g>
+
+    <!-- Messages: helper pattern manually laid out, spaced 48px -->
+    <g class="mono-t" font-size="7.6">
+    <!-- 1 -->
+    <line class="assoc-strong" x1="90" y1="80" x2="655" y2="80" marker-end="url(#seqArrow)"/>
+    <text x="94" y="76">1. POST /api/rentals (Vehicle, Dates, With-Driver)</text>
+    <!-- 2 -->
+    <line class="assoc-strong" x1="660" y1="112" x2="1025" y2="112" marker-end="url(#seqArrow)"/>
+    <text x="664" y="108">2. INSERT INTO rentals (status='pending')</text>
+    <!-- 3 -->
+    <line class="assoc-strong" x1="660" y1="144" x2="845" y2="144" marker-end="url(#seqArrow)"/>
+    <text x="664" y="140">3. Broadcast 'NewBookingAlert'</text>
+    <!-- 4 -->
+    <line class="dashed" x1="850" y1="176" x2="275" y2="176" marker-end="url(#seqArrow)"/>
+    <text x="664" y="172">4. Show in Admin Dashboard Pending Deck</text>
+    <!-- 5 -->
+    <line class="dashed" x1="850" y1="208" x2="455" y2="208" marker-end="url(#seqArrow)"/>
+    <text x="664" y="204">5. Broadcast Chauffeur Trip Invitation</text>
+    <!-- 6 -->
+    <line class="assoc-strong" x1="450" y1="240" x2="655" y2="240" marker-end="url(#seqArrow)"/>
+    <text x="94" y="236">6. POST /api/driver-bids (BidAmount)</text>
+    <!-- 7 -->
+    <line class="assoc-strong" x1="660" y1="272" x2="1025" y2="272" marker-end="url(#seqArrow)"/>
+    <text x="664" y="268">7. INSERT INTO driver_bids (status='pending')</text>
+    <!-- 8 -->
+    <line class="dashed" x1="660" y1="304" x2="95" y2="304" marker-end="url(#seqArrow)"/>
+    <text x="200" y="300">8. Notify new driver offer received</text>
+    <!-- 9 -->
+    <line class="assoc-strong" x1="270" y1="336" x2="655" y2="336" marker-end="url(#seqArrow)"/>
+    <text x="94" y="332">9. POST /api/rentals/{id}/approve (Assign Driver)</text>
+    <!-- 10 -->
+    <line class="assoc-strong" x1="660" y1="368" x2="1025" y2="368" marker-end="url(#seqArrow)"/>
+    <text x="664" y="364">10. UPDATE rentals SET status='approved', driver_id=X</text>
+    <!-- 11 -->
+    <line class="assoc-strong" x1="660" y1="400" x2="1025" y2="400" marker-end="url(#seqArrow)"/>
+    <text x="664" y="396">11. UPDATE vehicles SET status='rented'</text>
+    <!-- 12 -->
+    <line class="assoc-strong" x1="660" y1="432" x2="1025" y2="432" marker-end="url(#seqArrow)"/>
+    <text x="664" y="428">12. UPDATE drivers SET status='assigned'</text>
+    <!-- 13 -->
+    <line class="assoc-strong" x1="660" y1="464" x2="845" y2="464" marker-end="url(#seqArrow)"/>
+    <text x="664" y="460">13. Notify Driver &amp; Customer 'Booking Approved'</text>
+    <!-- 14 -->
+    <line class="assoc-strong" x1="90" y1="504" x2="1225" y2="504" marker-end="url(#seqArrow)"/>
+    <text x="500" y="500">14. Upload Payment Receipt (GCash / Maya)</text>
+    <!-- 15 -->
+    <line class="dashed" x1="1230" y1="536" x2="95" y2="536" marker-end="url(#seqArrow)"/>
+    <text x="500" y="532">15. Return https://storage.../receipt.jpg</text>
+    <!-- 16 -->
+    <line class="assoc-strong" x1="90" y1="568" x2="655" y2="568" marker-end="url(#seqArrow)"/>
+    <text x="94" y="564">16. POST /api/transactions (RentalId, Amount, ProofUrl)</text>
+    <!-- 17 -->
+    <line class="assoc-strong" x1="660" y1="600" x2="1025" y2="600" marker-end="url(#seqArrow)"/>
+    <text x="664" y="596">17. INSERT INTO transactions (status='pending')</text>
+    <!-- 18 -->
+    <line class="assoc-strong" x1="270" y1="632" x2="655" y2="632" marker-end="url(#seqArrow)"/>
+    <text x="94" y="628">18. POST /api/transactions/{id}/verify</text>
+    <!-- 19 -->
+    <line class="assoc-strong" x1="660" y1="664" x2="1025" y2="664" marker-end="url(#seqArrow)"/>
+    <text x="664" y="660">19. UPDATE transactions SET status='paid'</text>
+    <!-- 20 -->
+    <line class="assoc-strong" x1="660" y1="696" x2="1025" y2="696" marker-end="url(#seqArrow)"/>
+    <text x="664" y="692">20. UPDATE rentals SET payment_status='paid'</text>
+    <!-- 21 -->
+    <line class="assoc-strong" x1="660" y1="728" x2="1025" y2="728" marker-end="url(#seqArrow)"/>
+    <text x="664" y="724">21. INSERT INTO blockchain_ledger (Hash, Action='PaymentVerified')</text>
+    <!-- 22 -->
+    <line class="dashed" x1="660" y1="760" x2="95" y2="760" marker-end="url(#seqArrow)"/>
+    <text x="94" y="756">22. Issue Digital QR Contract &amp; Unlocks Telematics</text>
+    </g>
+
+    <!-- activation bars -->
+    <g fill="#f2f2f2" stroke="#000" stroke-width="1">
+      <rect x="655" y="70" width="10" height="700"/>
+      <rect x="1025" y="104" width="10" height="640"/>
+    </g>
+
+    <!-- lifeline end markers (X) -->
+    <g stroke="#000" stroke-width="1.4">
+      <line x1="80" y1="1150" x2="100" y2="1170"/><line x1="100" y1="1150" x2="80" y2="1170"/>
+      <line x1="260" y1="1150" x2="280" y2="1170"/><line x1="280" y1="1150" x2="260" y2="1170"/>
+      <line x1="440" y1="1150" x2="460" y2="1170"/><line x1="460" y1="1150" x2="440" y2="1170"/>
+    </g>
+  </svg>
+  </div>
+  <p class="fig-caption">Figure 4.1 — UML Sequence Diagram: Booking, Chauffeur Bidding, Telematics Unlock &amp; Settlement (Messages 1–22)</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- 5. ERD -->
+<!-- ============================================================ -->
+<div class="sheet">
+  <div class="page-fixed-header">DriveAndGo — Technical Architecture &amp; System Models</div>
+  <div class="page-fixed-footer"><span>5. Entity-Relationship Diagram</span><span>DriveAndGo System Documentation</span></div>
+  <div class="section-eyebrow">Section 05</div>
+  <h2>5. Complete Entity-Relationship Diagram (ERD)</h2>
+  <p style="margin-bottom:2mm;">
+    Crow's Foot notation across all 23 database tables. The fourteen core transactional entities are
+    rendered with full attribute schemas; nine satellite/reference tables are shown in compact form,
+    linked to their primary parent entity.
+  </p>
+  <div class="diagram-frame avoid-break">
+  <svg viewBox="0 0 1700 1420" xmlns="http://www.w3.org/2000/svg">
+    <g class="mono-t" font-size="7.6">
+
+    <!-- helper: crow's foot "many" tick marks drawn manually per line below -->
+
+    <!-- USERS -->
+    <g>
+      <rect class="box" x="700" y="20" width="260" height="150"/>
+      <rect class="hdr" x="700" y="20" width="260" height="20"/>
+      <text class="hdr-text" x="830" y="34" text-anchor="middle" font-weight="bold">USERS</text>
+      <text x="710" y="52" class="pk">user_id&#160;&#160;PK</text>
+      <text x="710" y="64">full_name</text>
+      <text x="710" y="76">email&#160;&#160;UK</text>
+      <text x="710" y="88">password_hash</text>
+      <text x="710" y="100">phone</text>
+      <text x="710" y="112">role</text>
+      <text x="710" y="124">id_photo_url</text>
+      <text x="710" y="136">selfie_photo_url</text>
+      <text x="710" y="148">created_at</text>
+    </g>
+
+    <!-- DRIVERS -->
+    <g>
+      <rect class="box" x="700" y="240" width="260" height="150"/>
+      <rect class="hdr" x="700" y="240" width="260" height="20"/>
+      <text class="hdr-text" x="830" y="254" text-anchor="middle" font-weight="bold">DRIVERS</text>
+      <text x="710" y="272" class="pk">driver_id&#160;&#160;PK</text>
+      <text x="710" y="284" class="fk">user_id&#160;&#160;FK</text>
+      <text x="710" y="296">license_no&#160;&#160;UK</text>
+      <text x="710" y="308">license_photo_url</text>
+      <text x="710" y="320">status</text>
+      <text x="710" y="332">rating_avg</text>
+      <text x="710" y="344">total_trips</text>
+      <text x="710" y="356">verification_status</text>
+    </g>
+
+    <!-- VEHICLES -->
+    <g>
+      <rect class="box" x="1180" y="240" width="270" height="200"/>
+      <rect class="hdr" x="1180" y="240" width="270" height="20"/>
+      <text class="hdr-text" x="1315" y="254" text-anchor="middle" font-weight="bold">VEHICLES</text>
+      <text x="1190" y="272" class="pk">vehicle_id&#160;&#160;PK</text>
+      <text x="1190" y="284">plate_no&#160;&#160;UK</text>
+      <text x="1190" y="296">brand / model / type</text>
+      <text x="1190" y="308">cc</text>
+      <text x="1190" y="320">status</text>
+      <text x="1190" y="332">rate_per_day / rate_with_driver</text>
+      <text x="1190" y="344">photo_url / color</text>
+      <text x="1190" y="356">latitude / longitude</text>
+      <text x="1190" y="368">odometer_km / health_score</text>
+      <text x="1190" y="380">expressway_rfid_balance</text>
+    </g>
+
+    <!-- RENTALS (hub) -->
+    <g>
+      <rect class="box-alt" x="680" y="500" width="300" height="200"/>
+      <rect class="hdr" x="680" y="500" width="300" height="20"/>
+      <text class="hdr-text" x="830" y="514" text-anchor="middle" font-weight="bold">RENTALS</text>
+      <text x="690" y="532" class="pk">rental_id&#160;&#160;PK</text>
+      <text x="690" y="544" class="fk">customer_id&#160;&#160;FK</text>
+      <text x="690" y="556" class="fk">vehicle_id&#160;&#160;FK</text>
+      <text x="690" y="568" class="fk">driver_id&#160;&#160;FK</text>
+      <text x="690" y="580">start_date / end_date</text>
+      <text x="690" y="592">destination</text>
+      <text x="690" y="604">status</text>
+      <text x="690" y="616">total_amount</text>
+      <text x="690" y="628">payment_method / status</text>
+      <text x="690" y="640">qr_code</text>
+      <text x="690" y="652">created_at</text>
+    </g>
+
+    <!-- ADD_ONS -->
+    <g>
+      <rect class="box" x="60" y="530" width="230" height="140"/>
+      <rect class="hdr" x="60" y="530" width="230" height="20"/>
+      <text class="hdr-text" x="175" y="544" text-anchor="middle" font-weight="bold">ADD_ONS</text>
+      <text x="70" y="562" class="pk">add_on_id&#160;&#160;PK</text>
+      <text x="70" y="574">name</text>
+      <text x="70" y="586">daily_rate</text>
+      <text x="70" y="598">flat_rate</text>
+      <text x="70" y="610">is_active</text>
+    </g>
+
+    <!-- RENTAL_ADD_ONS -->
+    <g>
+      <rect class="box" x="340" y="530" width="260" height="140"/>
+      <rect class="hdr" x="340" y="530" width="260" height="20"/>
+      <text class="hdr-text" x="470" y="544" text-anchor="middle" font-weight="bold">RENTAL_ADD_ONS</text>
+      <text x="350" y="562" class="pk">rental_addon_id&#160;&#160;PK</text>
+      <text x="350" y="574" class="fk">rental_id&#160;&#160;FK</text>
+      <text x="350" y="586" class="fk">add_on_id&#160;&#160;FK</text>
+      <text x="350" y="598">quantity</text>
+      <text x="350" y="610">subtotal</text>
+    </g>
+
+    <!-- DRIVER_BIDS -->
+    <g>
+      <rect class="box" x="1040" y="530" width="240" height="140"/>
+      <rect class="hdr" x="1040" y="530" width="240" height="20"/>
+      <text class="hdr-text" x="1160" y="544" text-anchor="middle" font-weight="bold">DRIVER_BIDS</text>
+      <text x="1050" y="562" class="pk">bid_id&#160;&#160;PK</text>
+      <text x="1050" y="574" class="fk">rental_id&#160;&#160;FK</text>
+      <text x="1050" y="586" class="fk">driver_id&#160;&#160;FK</text>
+      <text x="1050" y="598">bid_amount</text>
+      <text x="1050" y="610">status</text>
+    </g>
+
+    <!-- TRANSACTIONS -->
+    <g>
+      <rect class="box" x="1330" y="530" width="260" height="160"/>
+      <rect class="hdr" x="1330" y="530" width="260" height="20"/>
+      <text class="hdr-text" x="1460" y="544" text-anchor="middle" font-weight="bold">TRANSACTIONS</text>
+      <text x="1340" y="562" class="pk">transaction_id&#160;&#160;PK</text>
+      <text x="1340" y="574" class="fk">rental_id&#160;&#160;FK</text>
+      <text x="1340" y="586">amount</text>
+      <text x="1340" y="598">type / method</text>
+      <text x="1340" y="610">proof_url</text>
+      <text x="1340" y="622">status / paid_at</text>
+    </g>
+
+    <!-- EXTENSIONS -->
+    <g>
+      <rect class="box" x="60" y="760" width="240" height="140"/>
+      <rect class="hdr" x="60" y="760" width="240" height="20"/>
+      <text class="hdr-text" x="180" y="774" text-anchor="middle" font-weight="bold">EXTENSIONS</text>
+      <text x="70" y="792" class="pk">extension_id&#160;&#160;PK</text>
+      <text x="70" y="804" class="fk">rental_id&#160;&#160;FK</text>
+      <text x="70" y="816">added_days</text>
+      <text x="70" y="828">added_fee</text>
+      <text x="70" y="840">status / requested_at</text>
+    </g>
+
+    <!-- ISSUES -->
+    <g>
+      <rect class="box" x="340" y="760" width="260" height="150"/>
+      <rect class="hdr" x="340" y="760" width="260" height="20"/>
+      <text class="hdr-text" x="470" y="774" text-anchor="middle" font-weight="bold">ISSUES</text>
+      <text x="350" y="792" class="pk">issue_id&#160;&#160;PK</text>
+      <text x="350" y="804" class="fk">rental_id&#160;&#160;FK</text>
+      <text x="350" y="816" class="fk">reporter_id&#160;&#160;FK</text>
+      <text x="350" y="828">issue_type / description</text>
+      <text x="350" y="840">image_url / status</text>
+    </g>
+
+    <!-- SPLIT_PAYMENTS -->
+    <g>
+      <rect class="box" x="640" y="760" width="260" height="150"/>
+      <rect class="hdr" x="640" y="760" width="260" height="20"/>
+      <text class="hdr-text" x="770" y="774" text-anchor="middle" font-weight="bold">SPLIT_PAYMENTS</text>
+      <text x="650" y="792" class="pk">split_id&#160;&#160;PK</text>
+      <text x="650" y="804" class="fk">rental_id&#160;&#160;FK</text>
+      <text x="650" y="816">payer_name / phone</text>
+      <text x="650" y="828">share_amount</text>
+      <text x="650" y="840">status</text>
+    </g>
+
+    <!-- BLOCKCHAIN_LEDGER -->
+    <g>
+      <rect class="box-alt" x="940" y="760" width="280" height="160"/>
+      <rect class="hdr" x="940" y="760" width="280" height="20"/>
+      <text class="hdr-text" x="1080" y="774" text-anchor="middle" font-weight="bold">BLOCKCHAIN_LEDGER</text>
+      <text x="950" y="792" class="pk">block_id&#160;&#160;PK</text>
+      <text x="950" y="804">block_index</text>
+      <text x="950" y="816">prev_hash / current_hash</text>
+      <text x="950" y="828" class="fk">rental_id&#160;&#160;FK</text>
+      <text x="950" y="840">action_type</text>
+      <text x="950" y="852">payload_data (jsonb)</text>
+    </g>
+
+    <!-- MAINTENANCE_LOGS -->
+    <g>
+      <rect class="box" x="1270" y="760" width="230" height="120"/>
+      <rect class="hdr" x="1270" y="760" width="230" height="20"/>
+      <text class="hdr-text" x="1385" y="774" text-anchor="middle" font-size="7.2" font-weight="bold">MAINTENANCE_LOGS</text>
+      <text x="1280" y="792" class="pk">log_id&#160;&#160;PK</text>
+      <text x="1280" y="804" class="fk">vehicle_id&#160;&#160;FK</text>
+      <text x="1280" y="816">service_type / cost</text>
+      <text x="1280" y="828">odometer_km</text>
+    </g>
+
+    <!-- EXPENSES -->
+    <g>
+      <rect class="box" x="1330" y="920" width="230" height="120"/>
+      <rect class="hdr" x="1330" y="920" width="230" height="20"/>
+      <text class="hdr-text" x="1445" y="934" text-anchor="middle" font-weight="bold">EXPENSES</text>
+      <text x="1340" y="952" class="pk">expense_id&#160;&#160;PK</text>
+      <text x="1340" y="964" class="fk">vehicle_id&#160;&#160;FK</text>
+      <text x="1340" y="976">category / amount</text>
+      <text x="1340" y="988">receipt_url</text>
+    </g>
+
+    <!-- ===== SATELLITE / REFERENCE TABLES (compact) ===== -->
+    <g font-size="7">
+      <rect class="box" x="1180" y="20" width="180" height="60"/>
+      <text x="1270" y="34" text-anchor="middle" font-weight="bold">NOTIFICATIONS</text>
+      <text x="1190" y="48" class="pk">notification_id PK</text>
+      <text x="1190" y="60" class="fk">user_id FK</text>
+
+      <rect class="box" x="1390" y="20" width="180" height="60"/>
+      <text x="1480" y="34" text-anchor="middle" font-weight="bold">MESSAGES</text>
+      <text x="1400" y="48" class="pk">message_id PK</text>
+      <text x="1400" y="60" class="fk">rental_id / user_id FK</text>
+
+      <rect class="box" x="380" y="30" width="180" height="60"/>
+      <text x="470" y="44" text-anchor="middle" font-weight="bold">RATINGS</text>
+      <text x="390" y="58" class="pk">rating_id PK</text>
+      <text x="390" y="70" class="fk">rental_id FK</text>
+
+      <rect class="box" x="60" y="240" width="220" height="55"/>
+      <text x="170" y="253" text-anchor="middle" font-size="6.6" font-weight="bold">DRIVER_PAYOUT_ACCOUNTS</text>
+      <text x="70" y="266" class="pk">payout_id PK</text>
+      <text x="70" y="278" class="fk">driver_id FK</text>
+
+      <rect class="box" x="60" y="310" width="220" height="55"/>
+      <text x="170" y="323" text-anchor="middle" font-size="6.6" font-weight="bold">DRIVER_EMERGENCY_CONTACTS</text>
+      <text x="70" y="336" class="pk">contact_id PK</text>
+      <text x="70" y="348" class="fk">driver_id FK</text>
+
+      <rect class="box" x="60" y="380" width="220" height="55"/>
+      <text x="170" y="393" text-anchor="middle" font-weight="bold">DRIVER_DOCUMENTS</text>
+      <text x="70" y="406" class="pk">doc_id PK</text>
+      <text x="70" y="418" class="fk">driver_id FK</text>
+
+      <rect class="box" x="60" y="450" width="220" height="55"/>
+      <text x="170" y="463" text-anchor="middle" font-weight="bold">DRIVER_INCIDENTS</text>
+      <text x="70" y="476" class="pk">incident_id PK</text>
+      <text x="70" y="488" class="fk">driver_id FK</text>
+
+      <rect class="box" x="1500" y="240" width="190" height="55"/>
+      <text x="1595" y="253" text-anchor="middle" font-weight="bold">LOCATION_LOGS</text>
+      <text x="1510" y="266" class="pk">log_id PK</text>
+      <text x="1510" y="278" class="fk">vehicle_id FK</text>
+
+      <rect class="box" x="1500" y="310" width="190" height="55"/>
+      <text x="1595" y="323" text-anchor="middle" font-weight="bold">TOLL_LOGS</text>
+      <text x="1510" y="336" class="pk">toll_id PK</text>
+      <text x="1510" y="348" class="fk">vehicle_id FK</text>
+    </g>
+
+    </g>
+
+    <!-- Relationship lines with crow's foot ticks -->
+    <g stroke="#000" stroke-width="1.2" fill="none">
+      <!-- USERS -o| DRIVERS (has profile, 1:0..1) -->
+      <line x1="830" y1="170" x2="830" y2="240"/>
+      <!-- USERS -o{ RENTALS -->
+      <line x1="800" y1="170" x2="800" y2="500"/>
+      <!-- DRIVERS -o{ RENTALS -->
+      <line x1="800" y1="390" x2="800" y2="500"/>
+      <!-- VEHICLES -o{ RENTALS -->
+      <line x1="1180" y1="340" x2="980" y2="560"/>
+      <!-- RENTALS -o{ TRANSACTIONS -->
+      <line x1="980" y1="580" x2="1330" y2="590"/>
+      <!-- RENTALS -o{ RENTAL_ADD_ONS -->
+      <line x1="680" y1="580" x2="600" y2="580"/>
+      <!-- ADD_ONS -o{ RENTAL_ADD_ONS -->
+      <line x1="290" y1="590" x2="340" y2="590"/>
+      <!-- RENTALS -o{ DRIVER_BIDS -->
+      <line x1="980" y1="540" x2="1040" y2="580"/>
+      <!-- RENTALS -o{ EXTENSIONS -->
+      <line x1="700" y1="700" x2="220" y2="760"/>
+      <!-- RENTALS -o{ ISSUES -->
+      <line x1="750" y1="700" x2="480" y2="760"/>
+      <!-- RENTALS -o{ SPLIT_PAYMENTS -->
+      <line x1="800" y1="700" x2="780" y2="760"/>
+      <!-- RENTALS -o{ BLOCKCHAIN_LEDGER -->
+      <line x1="900" y1="700" x2="1030" y2="760"/>
+      <!-- VEHICLES -o{ MAINTENANCE_LOGS -->
+      <line x1="1400" y1="440" x2="1400" y2="760"/>
+      <!-- VEHICLES -o{ EXPENSES -->
+      <line x1="1445" y1="440" x2="1445" y2="920"/>
+      <!-- USERS -o{ NOTIFICATIONS -->
+      <line x1="960" y1="45" x2="1180" y2="45"/>
+      <!-- RENTALS -o{ MESSAGES -->
+      <line x1="980" y1="510" x2="1480" y2="80"/>
+      <!-- RENTALS -o{ RATINGS -->
+      <line x1="700" y1="500" x2="470" y2="90"/>
+      <!-- DRIVERS -o{ (payout/emergency/docs/incidents) -->
+      <line x1="700" y1="270" x2="280" y2="267"/>
+      <line x1="700" y1="290" x2="280" y2="337"/>
+      <line x1="700" y1="310" x2="280" y2="407"/>
+      <line x1="700" y1="330" x2="280" y2="477"/>
+      <!-- VEHICLES -o{ LOCATION_LOGS / TOLL_LOGS -->
+      <line x1="1450" y1="270" x2="1500" y2="267"/>
+      <line x1="1450" y1="300" x2="1500" y2="337"/>
+    </g>
+    <!-- crow's foot "many" ticks (simplified perpendicular hash near many-end) and "one" ticks -->
+    <g stroke="#000" stroke-width="1.2">
+      <line x1="792" y1="492" x2="808" y2="492"/>
+      <line x1="792" y1="498" x2="808" y2="484"/>
+      <line x1="792" y1="498" x2="808" y2="500"/>
+      <line x1="588" y1="576" x2="604" y2="584"/>
+      <line x1="588" y1="584" x2="604" y2="576"/>
+    </g>
+
+    <text x="850" y="1080" font-size="9" font-style="italic" fill="#555">
+      Note: RATINGS and MESSAGES are composite tables referencing multiple parent entities (Users,
+    </text>
+    <text x="850" y="1094" font-size="9" font-style="italic" fill="#555">
+      Drivers, Vehicles, Rentals). Only the primary relationship is drawn here for clarity — see the
+      Data Dictionary (Section 6) for the complete 23-table foreign-key mapping.
+    </text>
+  </svg>
+  </div>
+  <p class="fig-caption">Figure 5.1 — Crow's Foot Entity-Relationship Diagram: 23 Database Tables</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- 6. DATA DICTIONARY -->
+<!-- ============================================================ -->
+<div class="sheet">
+  <div class="page-fixed-header">DriveAndGo — Technical Architecture &amp; System Models</div>
+  <div class="page-fixed-footer"><span>6. Comprehensive Data Dictionary</span><span>DriveAndGo System Documentation</span></div>
+  <div class="section-eyebrow">Section 06</div>
+  <h2>6. Comprehensive Data Dictionary</h2>
+  <table>
+    <caption>Table 6.1 — Core table definitions: primary keys, foreign keys, key columns, and descriptions.</caption>
+    <thead>
+      <tr><th style="width:13%;">Table</th><th style="width:12%;">Primary Key</th><th style="width:15%;">Foreign Keys</th><th style="width:26%;">Key Columns &amp; Types</th><th style="width:34%;" class="desc">Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="pk">users</td><td>user_id (SERIAL)</td><td>None</td><td>email (VARCHAR), role (VARCHAR), password_hash (TEXT)</td><td class="desc">System actors (Customers, Drivers, Admins, SuperAdmins).</td></tr>
+      <tr><td class="pk">drivers</td><td>driver_id (SERIAL)</td><td>user_id → users</td><td>license_no (VARCHAR), status (VARCHAR), rating_avg (NUMERIC)</td><td class="desc">Professional chauffeur workforce profile &amp; performance metrics.</td></tr>
+      <tr><td class="pk">driver_documents</td><td>doc_id (SERIAL)</td><td>driver_id → drivers</td><td>doc_type (VARCHAR), file_url (TEXT), status (VARCHAR)</td><td class="desc">LTO license, NBI, police, drug-test compliance vault.</td></tr>
+      <tr><td class="pk">vehicles</td><td>vehicle_id (SERIAL)</td><td>None</td><td>plate_no (VARCHAR), brand (VARCHAR), rate_per_day (NUMERIC), status (VARCHAR)</td><td class="desc">Fleet repository incl. IoT telematics coordinates, speed, health score.</td></tr>
+      <tr><td class="pk">rentals</td><td>rental_id (SERIAL)</td><td>customer_id, vehicle_id, driver_id</td><td>status (VARCHAR), total_amount (NUMERIC), start_date (TIMESTAMPTZ)</td><td class="desc">Core business contract binding renter, vehicle, driver, and dates.</td></tr>
+      <tr><td class="pk">transactions</td><td>transaction_id (SERIAL)</td><td>rental_id → rentals</td><td>amount (NUMERIC), method (VARCHAR), proof_url (TEXT), status (VARCHAR)</td><td class="desc">Financial audit records for payments, refunds, deposits, extensions.</td></tr>
+      <tr><td class="pk">driver_bids</td><td>bid_id (SERIAL)</td><td>rental_id, driver_id</td><td>bid_amount (NUMERIC), status (VARCHAR)</td><td class="desc">Auction bidding records submitted by drivers for with-driver bookings.</td></tr>
+      <tr><td class="pk">add_ons</td><td>add_on_id (SERIAL)</td><td>None</td><td>name (VARCHAR), daily_rate (NUMERIC), flat_rate (NUMERIC)</td><td class="desc">Accessories catalog (GPS Navigator, Baby Seat, Luggage Rack).</td></tr>
+      <tr><td class="pk">rental_add_ons</td><td>rental_addon_id</td><td>rental_id, add_on_id</td><td>quantity (INT), subtotal (NUMERIC)</td><td class="desc">Line items of add-ons selected per rental reservation.</td></tr>
+      <tr><td class="pk">promo_codes</td><td>promo_id (SERIAL)</td><td>None</td><td>code (VARCHAR), discount_type (VARCHAR), discount_value (NUMERIC)</td><td class="desc">Discount coupons and promotional campaigns.</td></tr>
+      <tr><td class="pk">maintenance_logs</td><td>log_id (SERIAL)</td><td>vehicle_id → vehicles</td><td>service_type (VARCHAR), cost (NUMERIC), odometer_km (INT)</td><td class="desc">Scheduled maintenance, oil changes, brake pads, and repairs.</td></tr>
+      <tr><td class="pk">expenses</td><td>expense_id (SERIAL)</td><td>vehicle_id → vehicles</td><td>category (VARCHAR), amount (NUMERIC), receipt_url (TEXT)</td><td class="desc">Fleet operating costs (Fuel, Cleaning, Tolls, Emergency Repairs).</td></tr>
+      <tr><td class="pk">split_payments</td><td>split_id (SERIAL)</td><td>rental_id → rentals</td><td>payer_name (VARCHAR), share_amount (NUMERIC), status (VARCHAR)</td><td class="desc">Peer-to-peer split billing records for group travel expenses.</td></tr>
+      <tr><td class="pk">issues</td><td>issue_id (SERIAL)</td><td>rental_id, reporter_id</td><td>issue_type (VARCHAR), description (TEXT), image_url (TEXT)</td><td class="desc">Road accidents, vehicle damage, flat tire, or engine issues.</td></tr>
+      <tr><td class="pk">blockchain_ledger</td><td>block_id (SERIAL)</td><td>rental_id → rentals</td><td>prev_hash (TEXT), current_hash (TEXT), action_type (VARCHAR)</td><td class="desc">Immutable SHA-256 cryptographic chain preventing booking fraud.</td></tr>
+    </tbody>
+  </table>
+  <p class="fig-note">
+    The remaining nine satellite tables — notifications, messages, ratings, driver_payout_accounts,
+    driver_emergency_contacts, driver_documents, driver_incidents, location_logs, and toll_logs —
+    complete the full 23-table schema and are represented in compact form in Figure 5.1.
+  </p>
+</div>
+
+<!-- ============================================================ -->
+<!-- 7.1 DFD LEVEL 0 -->
+<!-- ============================================================ -->
+<div class="sheet">
+  <div class="page-fixed-header">DriveAndGo — Technical Architecture &amp; System Models</div>
+  <div class="page-fixed-footer"><span>7.1 DFD Level 0 — Context Diagram</span><span>DriveAndGo System Documentation</span></div>
+  <div class="section-eyebrow">Section 07.1</div>
+  <h2>7.1 DFD Level 0: Context Diagram</h2>
+  <p style="margin-bottom:2mm;">
+    Establishes the highest-level view of information exchange between DriveAndGo and all external entities.
+  </p>
+  <div class="diagram-frame avoid-break">
+  <svg viewBox="0 0 1400 980" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="dfdArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#000"/>
+      </marker>
+    </defs>
+    <!-- central process -->
+    <circle class="proc" cx="700" cy="500" r="130"/>
+    <text x="700" y="490" text-anchor="middle" font-weight="bold" font-size="13">0.0</text>
+    <text x="700" y="508" text-anchor="middle" font-size="11">DriveAndGo Fleet &amp;</text>
+    <text x="700" y="524" text-anchor="middle" font-size="11">Rental System</text>
+
+    <!-- external entities -->
+    <rect class="box" x="60" y="90" width="230" height="60"/>
+    <text x="175" y="125" text-anchor="middle" font-weight="bold" font-size="11">Customer / Renter</text>
+
+    <rect class="box" x="1110" y="90" width="230" height="60"/>
+    <text x="1225" y="125" text-anchor="middle" font-weight="bold" font-size="11">Admin / Fleet Manager</text>
+
+    <rect class="box" x="60" y="830" width="230" height="60"/>
+    <text x="175" y="865" text-anchor="middle" font-weight="bold" font-size="11">Chauffeur / Driver</text>
+
+    <rect class="box" x="1110" y="830" width="230" height="60"/>
+    <text x="1225" y="858" text-anchor="middle" font-weight="bold" font-size="10.5">Payment Gateway</text>
+    <text x="1225" y="874" text-anchor="middle" font-size="9">(GCash / Maya / Bank)</text>
+
+    <rect class="box" x="590" y="20" width="220" height="55"/>
+    <text x="700" y="42" text-anchor="middle" font-weight="bold" font-size="10">IoT Telematics &amp;</text>
+    <text x="700" y="58" text-anchor="middle" font-size="10">Weather Sensors</text>
+
+    <!-- Customer flows -->
+    <line class="assoc-strong" x1="270" y1="145" x2="620" y2="420" marker-end="url(#dfdArrow)"/>
+    <g class="mono-t" font-size="7.6">
+      <text x="300" y="230">• Registration &amp; Login Credentials</text>
+      <text x="300" y="242">• Reservation Requests &amp; Destination</text>
+      <text x="300" y="254">• Payment Proof &amp; QR Codes</text>
+      <text x="300" y="266">• Ratings &amp; Incident Reports</text>
+    </g>
+    <line class="assoc-strong" x1="600" y1="440" x2="200" y2="152" marker-end="url(#dfdArrow)"/>
+    <g class="mono-t" font-size="7.6">
+      <text x="300" y="330">• Available Fleet &amp; Live Rates</text>
+      <text x="300" y="342">• Digital Contract &amp; Booking Confirmation</text>
+      <text x="300" y="354">• Trip Status &amp; In-App Messages</text>
+    </g>
+
+    <!-- Admin flows -->
+    <line class="assoc-strong" x1="1130" y1="145" x2="780" y2="420" marker-end="url(#dfdArrow)"/>
+    <g class="mono-t" font-size="7.6" text-anchor="end">
+      <text x="1105" y="230">Fleet Unit Configuration &amp; Rates •</text>
+      <text x="1105" y="242">Booking Approval / Rejection •</text>
+      <text x="1105" y="254">Driver Compliance &amp; Doc Approval •</text>
+      <text x="1105" y="266">Geofence Boundary &amp; Maint. Orders •</text>
+    </g>
+    <line class="assoc-strong" x1="800" y1="440" x2="1200" y2="152" marker-end="url(#dfdArrow)"/>
+    <g class="mono-t" font-size="7.6" text-anchor="end">
+      <text x="1105" y="330">Live Dashboard Telematics &amp; Fleet Map •</text>
+      <text x="1105" y="342">Financial Ledger &amp; Revenue Insights •</text>
+      <text x="1105" y="354">Critical Alerts (Engine, Flood, Overdue) •</text>
+    </g>
+
+    <!-- Driver flows -->
+    <line class="assoc-strong" x1="270" y1="850" x2="610" y2="580" marker-end="url(#dfdArrow)"/>
+    <g class="mono-t" font-size="7.6">
+      <text x="300" y="720">• License &amp; Compliance Documents</text>
+      <text x="300" y="732">• Trip Bids &amp; Availability Status</text>
+      <text x="300" y="744">• Mileage &amp; Cash-on-Hand Reports</text>
+    </g>
+    <line class="assoc-strong" x1="620" y1="600" x2="200" y2="857" marker-end="url(#dfdArrow)"/>
+    <g class="mono-t" font-size="7.6">
+      <text x="300" y="790">• Trip Assignment &amp; Route Guidance</text>
+      <text x="300" y="802">• Payout Statements &amp; Passenger Details</text>
+    </g>
+
+    <!-- Payment gateway flows -->
+    <line class="assoc-strong" x1="1130" y1="855" x2="790" y2="600" marker-end="url(#dfdArrow)"/>
+    <g class="mono-t" font-size="7.6" text-anchor="end">
+      <text x="1105" y="720">Webhook Payment Settlement Confirmation •</text>
+    </g>
+    <line class="assoc-strong" x1="800" y1="580" x2="1200" y2="847" marker-end="url(#dfdArrow)"/>
+    <g class="mono-t" font-size="7.6" text-anchor="end">
+      <text x="1105" y="780">Payment Verification Query •</text>
+    </g>
+
+    <!-- IoT flows -->
+    <line class="assoc-strong" x1="680" y1="75" x2="680" y2="375" marker-end="url(#dfdArrow)"/>
+    <text x="686" y="150" font-size="7.6">GPS Lat/Lng, Speed,</text>
+    <text x="686" y="162" font-size="7.6">Fuel Level &amp; Weather</text>
+    <line class="assoc-strong" x1="720" y1="375" x2="720" y2="75" marker-end="url(#dfdArrow)"/>
+    <text x="726" y="230" font-size="7.6">Remote Engine Lock /</text>
+    <text x="726" y="242" font-size="7.6">Telematics Command</text>
+  </svg>
+  </div>
+  <p class="fig-caption">Figure 7.1 — DFD Level 0: Context Diagram</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- 7.2 DFD LEVEL 1 -->
+<!-- ============================================================ -->
+<div class="sheet">
+  <div class="page-fixed-header">DriveAndGo — Technical Architecture &amp; System Models</div>
+  <div class="page-fixed-footer"><span>7.2 DFD Level 1 — System Decomposition</span><span>DriveAndGo System Documentation</span></div>
+  <div class="section-eyebrow">Section 07.2</div>
+  <h2>7.2 DFD Level 1: System Decomposition Diagram</h2>
+  <p style="margin-bottom:2mm;">Decomposes the core system into seven major functional processes and six data stores (D1–D6).</p>
+  <div class="diagram-frame avoid-break">
+  <svg viewBox="0 0 1620 1300" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="dfd1Arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#000"/>
+      </marker>
+    </defs>
+    <g class="mono-t" font-size="8">
+
+    <!-- External entities -->
+    <rect class="box" x="20" y="20" width="150" height="46"/><text x="95" y="48" text-anchor="middle" font-weight="bold">Customer</text>
+    <rect class="box" x="20" y="600" width="150" height="46"/><text x="95" y="628" text-anchor="middle" font-weight="bold">Fleet Admin</text>
+    <rect class="box" x="20" y="1180" width="150" height="46"/><text x="95" y="1208" text-anchor="middle" font-weight="bold">Driver</text>
+    <rect class="box" x="1450" y="20" width="150" height="46"/><text x="1525" y="48" text-anchor="middle" font-weight="bold" font-size="7.6">IoT Sensors</text>
+    <rect class="box" x="1450" y="1180" width="150" height="46"/><text x="1525" y="1200" text-anchor="middle" font-weight="bold" font-size="7.6">Payment</text><text x="1525" y="1214" text-anchor="middle" font-weight="bold" font-size="7.6">Gateway</text>
+
+    <!-- Processes -->
+    <circle class="proc" cx="420" cy="120" r="75"/>
+    <text x="420" y="112" text-anchor="middle" font-weight="bold">1.0</text>
+    <text x="420" y="126" text-anchor="middle" font-size="7.4">Authentication &amp;</text>
+    <text x="420" y="138" text-anchor="middle" font-size="7.4">User Mgmt</text>
+
+    <circle class="proc" cx="900" cy="120" r="75"/>
+    <text x="900" y="112" text-anchor="middle" font-weight="bold">2.0</text>
+    <text x="900" y="126" text-anchor="middle" font-size="7.4">Fleet Ops &amp;</text>
+    <text x="900" y="138" text-anchor="middle" font-size="7.4">IoT Telematics</text>
+
+    <circle class="proc" cx="420" cy="450" r="75"/>
+    <text x="420" y="440" text-anchor="middle" font-weight="bold">3.0</text>
+    <text x="420" y="454" text-anchor="middle" font-size="7.2">Booking &amp; Rental</text>
+    <text x="420" y="466" text-anchor="middle" font-size="7.2">Lifecycle Engine</text>
+
+    <circle class="proc" cx="900" cy="450" r="75"/>
+    <text x="900" y="440" text-anchor="middle" font-weight="bold">4.0</text>
+    <text x="900" y="454" text-anchor="middle" font-size="7.2">Payment &amp; Split</text>
+    <text x="900" y="466" text-anchor="middle" font-size="7.2">Billing Engine</text>
+
+    <circle class="proc" cx="1350" cy="450" r="75"/>
+    <text x="1350" y="440" text-anchor="middle" font-weight="bold">5.0</text>
+    <text x="1350" y="454" text-anchor="middle" font-size="7.2">Chauffeur Bidding</text>
+    <text x="1350" y="466" text-anchor="middle" font-size="7.2">&amp; Dispatch</text>
+
+    <circle class="proc" cx="650" cy="800" r="75"/>
+    <text x="650" y="790" text-anchor="middle" font-weight="bold">6.0</text>
+    <text x="650" y="804" text-anchor="middle" font-size="7.2">Maintenance &amp;</text>
+    <text x="650" y="816" text-anchor="middle" font-size="7.2">Expense Control</text>
+
+    <circle class="proc" cx="1050" cy="800" r="75"/>
+    <text x="1050" y="790" text-anchor="middle" font-weight="bold">7.0</text>
+    <text x="1050" y="804" text-anchor="middle" font-size="7.2">AI Insights &amp;</text>
+    <text x="1050" y="816" text-anchor="middle" font-size="7.2">Blockchain Audit</text>
+
+    <!-- Data stores (open rectangle) -->
+    <g stroke="#000" stroke-width="1.3" fill="#fff">
+      <path d="M240,260 h180 M240,282 h180 M240,260 v22 M420,260 v22"/>
+      <text x="330" y="275" text-anchor="middle" font-weight="bold">D1: Users &amp; Driver Profiles</text>
+
+      <path d="M810,260 h190 M810,282 h190 M810,260 v22 M1000,260 v22"/>
+      <text x="905" y="275" text-anchor="middle" font-weight="bold">D2: Fleet &amp; IoT Coordinates</text>
+
+      <path d="M240,570 h190 M240,592 h190 M240,570 v22 M430,570 v22"/>
+      <text x="335" y="585" text-anchor="middle" font-weight="bold">D3: Rentals &amp; Bookings</text>
+
+      <path d="M810,570 h200 M810,592 h200 M810,570 v22 M1010,570 v22"/>
+      <text x="910" y="585" text-anchor="middle" font-weight="bold">D4: Transactions &amp; Ledgers</text>
+
+      <path d="M560,920 h190 M560,942 h190 M560,920 v22 M750,920 v22"/>
+      <text x="655" y="935" text-anchor="middle" font-weight="bold">D5: Maintenance &amp; Expenses</text>
+
+      <path d="M960,920 h190 M960,942 h190 M960,920 v22 M1150,920 v22"/>
+      <text x="1055" y="935" text-anchor="middle" font-weight="bold">D6: Blockchain Audit Vault</text>
+    </g>
+
+    </g>
+
+    <!-- Flows -->
+    <g class="assoc-strong" stroke="#000">
+      <line x1="170" y1="55" x2="352" y2="95" marker-end="url(#dfd1Arrow)"/>
+      <line x1="145" y1="623" x2="380" y2="480" marker-end="url(#dfd1Arrow)"/>
+      <line x1="145" y1="1195" x2="1290" y2="500" marker-end="url(#dfd1Arrow)" stroke-dasharray="0"/>
+      <line x1="420" y1="195" x2="330" y2="260" marker-end="url(#dfd1Arrow)"/>
+      <line x1="330" y1="282" x2="420" y2="375" marker-end="url(#dfd1Arrow)" opacity="0"/>
+      <line x1="1450" y1="50" x2="948" y2="100" marker-end="url(#dfd1Arrow)"/>
+      <line x1="900" y1="195" x2="905" y2="260" marker-end="url(#dfd1Arrow)"/>
+      <line x1="905" y1="282" x2="1470" y2="45" marker-end="url(#dfd1Arrow)"/>
+      <line x1="420" y1="527" x2="335" y2="570" marker-end="url(#dfd1Arrow)"/>
+      <line x1="335" y1="592" x2="420" y2="527" marker-end="url(#dfd1Arrow)" opacity="0"/>
+      <line x1="900" y1="527" x2="910" y2="570" marker-end="url(#dfd1Arrow)"/>
+      <line x1="910" y1="592" x2="900" y2="450" marker-end="url(#dfd1Arrow)"/>
+      <line x1="900" y1="480" x2="1030" y2="820" marker-end="url(#dfd1Arrow)" opacity="0"/>
+      <line x1="1450" y1="1195" x2="948" y2="470" marker-end="url(#dfd1Arrow)"/>
+      <line x1="948" y1="450" x2="1450" y2="1210" marker-end="url(#dfd1Arrow)"/>
+      <line x1="495" y1="450" x2="1275" y2="450" marker-end="url(#dfd1Arrow)"/>
+      <line x1="1275" y1="480" x2="495" y2="480" marker-end="url(#dfd1Arrow)"/>
+      <line x1="650" y1="875" x2="655" y2="920" marker-end="url(#dfd1Arrow)"/>
+      <line x1="655" y1="942" x2="650" y2="875" marker-end="url(#dfd1Arrow)" opacity="0"/>
+      <line x1="420" y1="525" x2="620" y2="780" marker-end="url(#dfd1Arrow)"/>
+      <line x1="1050" y1="875" x2="1055" y2="920" marker-end="url(#dfd1Arrow)"/>
+      <line x1="430" y1="580" x2="1000" y2="800" marker-end="url(#dfd1Arrow)"/>
+      <line x1="910" y1="592" x2="1005" y2="820" marker-end="url(#dfd1Arrow)"/>
+      <line x1="1125" y1="800" x2="1225" y2="200" marker-end="url(#dfd1Arrow)"/>
+    </g>
+
+    <g class="mono-t" font-size="7">
+      <text x="180" y="45">Sign Up / Credentials</text>
+      <text x="200" y="555">Admin Auth</text>
+      <text x="700" y="330">Booking Params · Availability</text>
+      <text x="820" y="640">Verify Txn</text>
+      <text x="1170" y="345">Trigger Open Trips / Assigned Driver</text>
+      <text x="700" y="900">Repair Log / OCR Receipt</text>
+      <text x="1170" y="920">Revenue &amp; Predictive Analytics</text>
+      <text x="600" y="250">Add / Edit Vehicles</text>
+      <text x="960" y="145">Telemetry Lat, Lng, Fuel</text>
+      <text x="960" y="200">Live Telematics Feed</text>
+    </g>
+  </svg>
+  </div>
+  <p class="fig-caption">Figure 7.2 — DFD Level 1: System Decomposition (Processes 1.0–7.0, Data Stores D1–D6)</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- 7.3 DFD LEVEL 2 -->
+<!-- ============================================================ -->
+<div class="sheet">
+  <div class="page-fixed-header">DriveAndGo — Technical Architecture &amp; System Models</div>
+  <div class="page-fixed-footer"><span>7.3 DFD Level 2 — Booking &amp; Payment Subsystem</span><span>DriveAndGo System Documentation</span></div>
+  <div class="section-eyebrow">Section 07.3</div>
+  <h2>7.3 DFD Level 2: Booking &amp; Payment Subsystem</h2>
+  <p style="margin-bottom:2mm;">
+    A microscopic trace of reservation requests flowing through pricing, discount calculation, proof
+    verification, and immutable ledger anchoring.
+  </p>
+  <div class="diagram-frame avoid-break">
+  <svg viewBox="0 0 1500 900" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="dfd2Arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#000"/>
+      </marker>
+    </defs>
+    <rect class="boundary" x="230" y="20" width="1040" height="620" rx="4"/>
+    <text x="750" y="42" text-anchor="middle" font-size="11" font-weight="bold">Level 2 Decomposition: Booking &amp; Settlement</text>
+
+    <g class="mono-t" font-size="7.6">
+    <circle class="proc" cx="330" cy="130" r="62"/>
+    <text x="330" y="122" text-anchor="middle" font-weight="bold">3.1</text>
+    <text x="330" y="135" text-anchor="middle">Validate Vehicle</text>
+    <text x="330" y="146" text-anchor="middle">Availability</text>
+
+    <circle class="proc" cx="530" cy="130" r="62"/>
+    <text x="530" y="122" text-anchor="middle" font-weight="bold">3.2</text>
+    <text x="530" y="135" text-anchor="middle">Calculate Rates &amp;</text>
+    <text x="530" y="146" text-anchor="middle">Add-Ons</text>
+
+    <circle class="proc" cx="730" cy="130" r="62"/>
+    <text x="730" y="122" text-anchor="middle" font-weight="bold">3.3</text>
+    <text x="730" y="135" text-anchor="middle">Apply Promo &amp;</text>
+    <text x="730" y="146" text-anchor="middle">Compute Discount</text>
+
+    <circle class="proc" cx="930" cy="130" r="62"/>
+    <text x="930" y="122" text-anchor="middle" font-weight="bold">3.4</text>
+    <text x="930" y="135" text-anchor="middle">Generate Contract</text>
+    <text x="930" y="146" text-anchor="middle">&amp; Invoice</text>
+
+    <circle class="proc" cx="380" cy="360" r="62"/>
+    <text x="380" y="352" text-anchor="middle" font-weight="bold">4.1</text>
+    <text x="380" y="365" text-anchor="middle">Upload / Parse</text>
+    <text x="380" y="376" text-anchor="middle">Payment Proof (OCR)</text>
+
+    <circle class="proc" cx="620" cy="360" r="62"/>
+    <text x="620" y="352" text-anchor="middle" font-weight="bold">4.2</text>
+    <text x="620" y="365" text-anchor="middle">Admin Settlement</text>
+    <text x="620" y="376" text-anchor="middle">Verification</text>
+
+    <circle class="proc" cx="880" cy="360" r="62"/>
+    <text x="880" y="352" text-anchor="middle" font-weight="bold">4.3</text>
+    <text x="880" y="365" text-anchor="middle">Cryptographic Hash &amp;</text>
+    <text x="880" y="376" text-anchor="middle">Blockchain Seal</text>
+    </g>
+
+    <!-- data stores -->
+    <g stroke="#000" stroke-width="1.3" fill="#fff" class="mono-t" font-size="8">
+      <path d="M50,120 h130 M50,142 h130 M50,120 v22 M180,120 v22"/>
+      <text x="115" y="135" text-anchor="middle" font-weight="bold">D2: Vehicles</text>
+
+      <path d="M1000,120 h130 M1000,142 h130 M1000,120 v22 M1130,120 v22"/>
+      <text x="1065" y="135" text-anchor="middle" font-weight="bold">D3: Rentals</text>
+
+      <path d="M1000,470 h150 M1000,492 h150 M1000,470 v22 M1150,470 v22"/>
+      <text x="1075" y="485" text-anchor="middle" font-weight="bold">D4: Transactions</text>
+
+      <path d="M1000,570 h150 M1000,592 h150 M1000,570 v22 M1150,570 v22"/>
+      <text x="1075" y="585" text-anchor="middle" font-weight="bold">D6: Blockchain</text>
+    </g>
+
+    <!-- entities -->
+    <rect class="box" x="40" y="700" width="200" height="55"/>
+    <text x="140" y="732" text-anchor="middle" font-weight="bold" font-size="10">Customer / Renter</text>
+    <rect class="box" x="1250" y="360" width="200" height="55"/>
+    <text x="1350" y="392" text-anchor="middle" font-weight="bold" font-size="10">Finance / Admin</text>
+
+    <!-- flows -->
+    <g class="assoc-strong" marker-end="url(#dfd2Arrow)">
+      <line x1="180" y1="128" x2="268" y2="128"/>
+      <line x1="330" y1="192" x2="330" y2="215" opacity="0"/>
+      <line x1="392" y1="130" x2="468" y2="130"/>
+      <line x1="592" y1="130" x2="668" y2="130"/>
+      <line x1="792" y1="130" x2="868" y2="130"/>
+      <line x1="992" y1="130" x2="1000" y2="130"/>
+      <line x1="930" y1="192" x2="930" y2="260"/>
+      <line x1="150" y1="700" x2="330" y2="192"/>
+      <line x1="150" y1="702" x2="500" y2="150"/>
+      <line x1="150" y1="704" x2="700" y2="150"/>
+      <line x1="930" y1="192" x2="180" y2="700"/>
+      <line x1="150" y1="720" x2="360" y2="420"/>
+      <line x1="380" y1="422" x2="1000" y2="480"/>
+      <line x1="380" y1="422" x2="200" y2="700"/>
+      <line x1="1250" y1="385" x2="682" y2="360"/>
+      <line x1="620" y1="422" x2="1000" y2="475"/>
+      <line x1="620" y1="422" x2="1000" y2="600"/>
+      <line x1="620" y1="422" x2="200" y2="710"/>
+      <line x1="818" y1="360" x2="558" y2="360"/>
+      <line x1="880" y1="422" x2="1000" y2="585"/>
+    </g>
+    <g class="mono-t" font-size="7.4">
+      <text x="180" y="115">Dates, Vehicle ID</text>
+      <text x="400" y="115">Base Total</text>
+      <text x="600" y="115">Final Net Payable</text>
+      <text x="800" y="115">Store New Booking</text>
+      <text x="945" y="230">Invoice &amp; QR Code</text>
+      <text x="1005" y="115">Check Availability</text>
+      <text x="240" y="450">Upload GCash / Maya Receipt</text>
+      <text x="700" y="470">Store Proof</text>
+      <text x="1080" y="345">Verify Reference No.</text>
+      <text x="820" y="470">Update Status = 'Paid'</text>
+      <text x="900" y="500">Activate Booking</text>
+      <text x="900" y="620">Trigger Audit Anchor</text>
+      <text x="960" y="560">Record Block Hash</text>
+      <text x="300" y="650">Active Rental Voucher</text>
+      <text x="200" y="330">Select Add-Ons</text>
+      <text x="200" y="360">Enter Promo Code</text>
+    </g>
+  </svg>
+  </div>
+  <p class="fig-caption">Figure 7.3 — DFD Level 2: Booking &amp; Payment Subsystem Decomposition</p>
+</div>
+
+<!-- ============================================================ -->
+<!-- 8. SUMMARY -->
+<!-- ============================================================ -->
+<div class="sheet">
+  <div class="page-fixed-header">DriveAndGo — Technical Architecture &amp; System Models</div>
+  <div class="page-fixed-footer"><span>8. Summary &amp; Documentation Readiness</span><span>DriveAndGo System Documentation</span></div>
+  <div class="section-eyebrow">Section 08</div>
+  <h2>8. Summary &amp; Capstone / Documentation Readiness</h2>
+  <table>
+    <thead><tr><th style="width:26%;">Artifact</th><th class="desc">Coverage</th></tr></thead>
+    <tbody>
+      <tr><td class="pk">UML Use Case</td><td class="desc">Fully outlines user interactions and roles of all actors, with system boundaries matching academic software-engineering standards.</td></tr>
+      <tr><td class="pk">UML Class Diagram</td><td class="desc">Maps clean 1-to-Many and Object-Oriented inheritance between Users, Drivers, Fleet Vehicles, Contracts, and Bids.</td></tr>
+      <tr><td class="pk">UML Sequence Diagram</td><td class="desc">Demonstrates synchronous &amp; asynchronous events across WebSockets (SignalR), Controllers, and Cloud Storage.</td></tr>
+      <tr><td class="pk">ERD &amp; Data Dictionary</td><td class="desc">Crow's Foot ERD detailing all 23 database tables with data types, constraints, and relationships.</td></tr>
+      <tr><td class="pk">DFD Levels 0, 1, 2</td><td class="desc">Gane &amp; Sarson / Yourdon notation mapping the inputs, outputs, processes, and data stores of the entire platform.</td></tr>
+    </tbody>
+  </table>
+  <hr class="rule">
+  <p style="text-align:center; font-style:italic; color:var(--ink3);">
+    — End of Technical Architecture Appendix —
+  </p>
+</div>
+
+</body>
+</html>

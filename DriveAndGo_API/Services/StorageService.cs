@@ -1,3 +1,5 @@
+using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
@@ -50,37 +52,87 @@ namespace DriveAndGo_API.Services
                 isProduction = true;
             }
 
+            string targetCategory = folderName.ToLowerInvariant() switch
+            {
+                "vehicles" or "cars" or "fleet" or "mapicons" => "vehicles",
+                "payments" or "payment-proof" or "payment-proofs" or "receipts" => "payment-proofs",
+                _ => "licenses"
+            };
+
+            // ═════════════════════════════════════════════════════════════════
+            // TIER 1 (PRODUCTION PRIMARY): AZURE BLOB STORAGE
+            // ═════════════════════════════════════════════════════════════════
+            var azureConnStr = Environment.GetEnvironmentVariable("AZURE_STORAGE_CONNECTION_STRING") 
+                               ?? _configuration["AzureStorage:ConnectionString"];
+
+            if (isProduction && !string.IsNullOrWhiteSpace(azureConnStr))
+            {
+                try
+                {
+                    var blobServiceClient = new BlobServiceClient(azureConnStr);
+                    var containerClient = blobServiceClient.GetBlobContainerClient(targetCategory);
+                    await containerClient.CreateIfNotExistsAsync(PublicAccessType.Blob);
+
+                    var blobFileName = $"{Guid.NewGuid():N}{extension}";
+                    var blobClient = containerClient.GetBlobClient(blobFileName);
+
+                    using var stream = file.OpenReadStream();
+                    var uploadOptions = new BlobUploadOptions
+                    {
+                        HttpHeaders = new BlobHttpHeaders { ContentType = file.ContentType ?? "image/jpeg" }
+                    };
+                    await blobClient.UploadAsync(stream, uploadOptions);
+
+                    return blobClient.Uri.ToString();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[StorageService] Azure Blob upload failed: {ex.Message}. Cascading to Supabase backup...");
+                }
+            }
+
+            // ═════════════════════════════════════════════════════════════════
+            // TIER 2 (PRODUCTION BACKUP): SUPABASE STORAGE
+            // ═════════════════════════════════════════════════════════════════
             var supabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL") ?? _configuration["Supabase:Url"];
             var supabaseKey = Environment.GetEnvironmentVariable("SUPABASE_SECRET_KEY") ?? _configuration["Supabase:SecretKey"];
 
             if (isProduction && !string.IsNullOrEmpty(supabaseUrl) && !string.IsNullOrEmpty(supabaseKey))
             {
-                // Supabase Storage Bucket: avatars (or user-documents)
-                string bucket = (folderName == "avatars" || folderName == "pfp") ? "avatars" : "user-documents";
-                var fileName = $"{Guid.NewGuid():N}{extension}";
-                var uploadUrl = $"{supabaseUrl.TrimEnd('/')}/storage/v1/object/{bucket}/{fileName}";
-
-                using var request = new HttpRequestMessage(HttpMethod.Post, uploadUrl);
-                request.Headers.Add("apikey", supabaseKey);
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", supabaseKey);
-
-                using var stream = file.OpenReadStream();
-                using var content = new StreamContent(stream);
-                content.Headers.ContentType = new MediaTypeHeaderValue(file.ContentType ?? "image/jpeg");
-                request.Content = content;
-
-                var response = await _httpClient.SendAsync(request);
-                if (response.IsSuccessStatusCode)
+                try
                 {
-                    return $"{supabaseUrl.TrimEnd('/')}/storage/v1/object/public/{bucket}/{fileName}";
+                    var fileName = $"{Guid.NewGuid():N}{extension}";
+                    var uploadUrl = $"{supabaseUrl.TrimEnd('/')}/storage/v1/object/{targetCategory}/{fileName}";
+
+                    using var request = new HttpRequestMessage(HttpMethod.Post, uploadUrl);
+                    request.Headers.Add("apikey", supabaseKey);
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", supabaseKey);
+
+                    using var stream = file.OpenReadStream();
+                    using var content = new StreamContent(stream);
+                    content.Headers.ContentType = new MediaTypeHeaderValue(file.ContentType ?? "image/jpeg");
+                    request.Content = content;
+
+                    var response = await _httpClient.SendAsync(request);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        return $"{supabaseUrl.TrimEnd('/')}/storage/v1/object/public/{targetCategory}/{fileName}";
+                    }
+
+                    var errorText = await response.Content.ReadAsStringAsync();
+                    Console.WriteLine($"[StorageService] Supabase upload failed: {response.StatusCode} - {errorText}");
                 }
-                
-                var errorText = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"Supabase upload failed: {response.StatusCode} - {errorText}");
-                throw new Exception($"Supabase Storage upload failed: {response.ReasonPhrase}");
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[StorageService] Supabase Storage exception: {ex.Message}");
+                }
             }
 
-            // Development Environment: Save locally in wwwroot/uploads
+            // ═════════════════════════════════════════════════════════════════
+            // TIER 3 (TESTING / DEV): DOCKER NAMED VOLUME STORAGE
+            // Stored in the container's /app/wwwroot/uploads which is bound
+            // to Docker volume `api_uploads`, keeping local host clean!
+            // ═════════════════════════════════════════════════════════════════
             var folder = Path.Combine(_environment.ContentRootPath, "wwwroot", "uploads", folderName);
             if (!Directory.Exists(folder))
             {
@@ -95,7 +147,6 @@ namespace DriveAndGo_API.Services
                 await file.CopyToAsync(localStream);
             }
 
-            // Return network-accessible local hosting address
             string serverBase = DriveAndGo_API.Helpers.NetworkHelper.GetServerBaseUrl(_configuration);
             return $"{serverBase}/uploads/{folderName}/{localFileName}";
         }

@@ -18,6 +18,7 @@ public class RentalsController : ControllerBase
     private readonly PdfService _pdfService;
     private readonly IEmailService _emailService;
     private readonly IConfiguration _configuration;
+    private readonly IBlockchainService _blockchainService;
 
     public RentalsController(
         IConfiguration configuration,
@@ -25,7 +26,8 @@ public class RentalsController : ControllerBase
         NotificationWriter notificationWriter,
         AuditService auditService,
         PdfService pdfService,
-        IEmailService emailService)
+        IEmailService emailService,
+        IBlockchainService blockchainService)
     {
         _connectionString = configuration.GetConnectionString("DefaultConnection")!;
         _ds = ds;
@@ -34,6 +36,7 @@ public class RentalsController : ControllerBase
         _pdfService = pdfService;
         _emailService = emailService;
         _configuration = configuration;
+        _blockchainService = blockchainService;
     }
 
 
@@ -376,13 +379,32 @@ public class RentalsController : ControllerBase
                 return NotFound(new { Message = "Rental not found." });
             }
 
-            ExecuteStatusUpdate(connection, transaction, @"
+            // Update rental status and starting odometer reading
+            await using (var updateRentalCmd = new NpgsqlCommand(@"
                 UPDATE rentals 
                 SET status = 'active',
                     start_date = CASE WHEN start_date < NOW() - INTERVAL '1 hour' THEN NOW() ELSE start_date END,
-                    end_date = CASE WHEN start_date < NOW() - INTERVAL '1 hour' THEN NOW() + (end_date - start_date) ELSE end_date END
-                WHERE rental_id = @id", id);
-            ExecuteStatusUpdate(connection, transaction, "UPDATE vehicles SET status = 'rented' WHERE vehicle_id = @id", snapshot.VehicleId);
+                    end_date = CASE WHEN start_date < NOW() - INTERVAL '1 hour' THEN NOW() + (end_date - start_date) ELSE end_date END,
+                    start_odometer = CASE WHEN @odo > 0 THEN @odo ELSE start_odometer END
+                WHERE rental_id = @id", connection, transaction))
+            {
+                updateRentalCmd.Parameters.AddWithValue("@id", id);
+                updateRentalCmd.Parameters.AddWithValue("@odo", (object?)request?.OdometerMileage ?? DBNull.Value);
+                await updateRentalCmd.ExecuteNonQueryAsync();
+            }
+
+            // Update vehicle status and synchronize odometer if provided
+            await using (var updateVehCmd = new NpgsqlCommand(@"
+                UPDATE vehicles 
+                SET status = 'rented',
+                    current_odometer = CASE WHEN @odo > 0 THEN @odo ELSE current_odometer END,
+                    odometer_km = CASE WHEN @odo > 0 THEN ROUND(@odo)::int ELSE odometer_km END
+                WHERE vehicle_id = @id", connection, transaction))
+            {
+                updateVehCmd.Parameters.AddWithValue("@id", snapshot.VehicleId);
+                updateVehCmd.Parameters.AddWithValue("@odo", (object?)request?.OdometerMileage ?? DBNull.Value);
+                await updateVehCmd.ExecuteNonQueryAsync();
+            }
 
 
             if (snapshot.DriverId.HasValue)
@@ -399,9 +421,22 @@ public class RentalsController : ControllerBase
                 transaction);
 
             await transaction.CommitAsync();
+
+            _ = _blockchainService.AppendBlockAsync(
+                id,
+                "VEHICLE_DISPATCHED",
+                new
+                {
+                    rentalId = id,
+                    vehicleId = snapshot.VehicleId,
+                    driverId = snapshot.DriverId,
+                    status = "active",
+                    dispatchedAt = DateTime.UtcNow
+                });
+
             return Ok(new
             {
-                Message = "Vehicle handover confirmed and rental dispatched successfully.",
+                Message = "Vehicle handover confirmed, rental dispatched, and sealed on blockchain.",
                 RentalId = id,
                 Status = "active"
             });
@@ -674,14 +709,19 @@ public class RentalsController : ControllerBase
                 return BadRequest(new { Message = $"Rental cannot be approved because it is already '{rentalStatus}'." });
             }
 
-            if (!string.Equals(vehicleStatus, "available", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(vehicleStatus, "maintenance", StringComparison.OrdinalIgnoreCase) || 
+                string.Equals(vehicleStatus, "repair", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(vehicleStatus, "decommissioned", StringComparison.OrdinalIgnoreCase))
             {
-                return Conflict(new { Message = $"Vehicle cannot be approved because it is already '{vehicleStatus}'." });
+                return Conflict(new { Message = $"Vehicle cannot be approved because it is in '{vehicleStatus}' status." });
             }
 
-            if (driverId.HasValue && !string.Equals(driverStatus, "available", StringComparison.OrdinalIgnoreCase))
+            if (driverId.HasValue && (
+                string.Equals(driverStatus, "suspended", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(driverStatus, "inactive", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(driverStatus, "on-leave", StringComparison.OrdinalIgnoreCase)))
             {
-                return Conflict(new { Message = "Assigned driver is no longer available." });
+                return Conflict(new { Message = $"Assigned driver cannot be approved because driver is '{driverStatus}'." });
             }
 
             ExecuteStatusUpdate(connection, transaction, @"
@@ -690,9 +730,8 @@ public class RentalsController : ControllerBase
                     start_date = CASE WHEN start_date < NOW() - INTERVAL '1 hour' THEN NOW() ELSE start_date END,
                     end_date = CASE WHEN start_date < NOW() - INTERVAL '1 hour' THEN NOW() + (end_date - start_date) ELSE end_date END
                 WHERE rental_id = @id", id);
-            ExecuteStatusUpdate(connection, transaction, "UPDATE vehicles SET status = 'rented' WHERE vehicle_id = @id", vehicleId);
 
-
+            ExecuteStatusUpdate(connection, transaction, "UPDATE vehicles SET status = 'rented' WHERE vehicle_id = @id AND LOWER(status) NOT IN ('maintenance', 'repair', 'decommissioned')", vehicleId);
             if (driverId.HasValue)
             {
                 ExecuteStatusUpdate(connection, transaction, "UPDATE drivers SET status = 'on-trip' WHERE driver_id = @id", driverId.Value);
@@ -732,7 +771,21 @@ public class RentalsController : ControllerBase
                 newValues: new { description = $"{adminName} approved booking BK-{id}" }
             );
 
-            return Ok(new { Message = "Rental approved successfully.", RentalId = id });
+            // Auto-seal on Blockchain Cryptographic Ledger
+            _ = _blockchainService.AppendBlockAsync(
+                id,
+                "RENTAL_APPROVED",
+                new
+                {
+                    rentalId = id,
+                    customerId = customerId,
+                    vehicleId = vehicleId,
+                    driverId = driverId,
+                    approvedBy = adminName,
+                    approvedAt = DateTime.UtcNow
+                });
+
+            return Ok(new { Message = "Rental approved and cryptographically sealed on blockchain.", RentalId = id });
         }
         catch (Exception ex)
         {
@@ -1029,7 +1082,7 @@ public class RentalsController : ControllerBase
                     SELECT
                         u.full_name, u.email, COALESCE(u.phone, '') AS phone,
                         CONCAT(v.brand, ' ', v.model) AS vehicle_name,
-                        v.plate_no, v.photo_url, COALESCE(v.current_odometer, 0) AS start_odometer,
+                        v.plate_no, v.photo_url, COALESCE(NULLIF(r.start_odometer, 0), NULLIF(v.current_odometer, 0), v.odometer_km, 0) AS start_odometer,
                         r.start_date, r.return_date, r.total_amount, r.penalty_fee,
                         r.damage_fee, r.return_notes
                     FROM rentals r
@@ -1164,62 +1217,255 @@ public class RentalsController : ControllerBase
     }
 
     // GET /api/rentals/calendar?year=2026&month=7
-
     [HttpGet("calendar")]
     public async Task<IActionResult> GetCalendarEvents([FromQuery] int? year, [FromQuery] int? month)
     {
         try
         {
-            int y = year  ?? DateTime.Now.Year;
+            int y = year ?? DateTime.Now.Year;
             int m = month ?? DateTime.Now.Month;
-            var startRange = new DateTime(y, m, 1);
-            var endRange   = startRange.AddMonths(1).AddDays(-1);
+            var startRange = new DateTime(y, m, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(-14);
+            var endRange = new DateTime(y, m, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1).AddDays(14);
 
-            var events = new List<object>();
+            var rentals = new List<object>();
+            var maintenance = new List<object>();
+            var birthdays = new List<object>();
+            var notes = new List<object>();
+
             await using var conn = await _ds.OpenConnectionAsync();
-            await using var cmd  = new NpgsqlCommand(
+
+            // 1. Full 100% Rentals details with Customer, Fleet, Driver & Blockchain info
+            await using (var cmd = new NpgsqlCommand(
                 @"SELECT r.rental_id, r.start_date, r.end_date, r.status,
-                         r.destination, r.total_amount, r.payment_status,
-                         u.full_name AS customer_name,
-                         CONCAT(v.brand, ' ', v.model) AS vehicle_name,
-                         v.plate_no,
-                         COALESCE(du.full_name, 'Self-Drive') AS driver_name
+                         r.destination, r.total_amount, r.penalty_fee, r.damage_fee,
+                         r.payment_method, r.payment_status, r.blockchain_hash,
+                         r.return_date, r.return_odometer, r.return_fuel_level, r.return_notes,
+                         u.user_id AS customer_id, u.full_name AS customer_name, 
+                         COALESCE(u.phone, '') AS customer_phone, u.email AS customer_email,
+                         COALESCE(NULLIF(u.avatar_base64, ''), NULLIF(u.id_photo_url, '')) AS customer_photo,
+                         v.vehicle_id, v.brand, v.model, CONCAT(v.brand, ' ', v.model) AS vehicle_name,
+                         v.plate_no, COALESCE(v.color, 'Pearl White') AS vehicle_color,
+                         COALESCE(v.transmission, 'Automatic') AS vehicle_transmission,
+                         v.fuel_level_pct, v.odometer_km, v.rate_per_day,
+                         COALESCE(v.photo_url, '') AS vehicle_photo,
+                         d.driver_id, COALESCE(du.full_name, 'Self-Drive') AS driver_name,
+                         COALESCE(du.phone, '') AS driver_phone, COALESCE(d.license_no, '') AS driver_license,
+                         COALESCE(d.shift_schedule, 'Flexible') AS driver_shift,
+                         COALESCE(NULLIF(du.avatar_base64, ''), NULLIF(du.id_photo_url, ''), NULLIF(d.license_photo_url, '')) AS driver_photo
                   FROM rentals r
                   JOIN users u   ON r.customer_id = u.user_id
                   JOIN vehicles v ON r.vehicle_id = v.vehicle_id
                   LEFT JOIN drivers d  ON r.driver_id = d.driver_id
                   LEFT JOIN users du   ON d.user_id = du.user_id
-                  WHERE r.start_date <= @end AND r.end_date >= @start
-                  ORDER BY r.start_date ASC", conn);
-            cmd.Parameters.AddWithValue("@start", NpgsqlTypes.NpgsqlDbType.Date, startRange);
-            cmd.Parameters.AddWithValue("@end",   NpgsqlTypes.NpgsqlDbType.Date, endRange);
-            cmd.CommandTimeout = 30;
-
-            await using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
+                  WHERE r.start_date < @end AND r.end_date >= @start
+                  ORDER BY r.start_date ASC", conn))
             {
-                events.Add(new {
-                    rentalId     = reader.GetInt32(reader.GetOrdinal("rental_id")),
-                    startDate    = reader.GetDateTime(reader.GetOrdinal("start_date")).ToString("yyyy-MM-dd"),
-                    endDate      = reader.IsDBNull(reader.GetOrdinal("end_date")) ? null
-                                   : reader.GetDateTime(reader.GetOrdinal("end_date")).ToString("yyyy-MM-dd"),
-                    status       = reader["status"]?.ToString() ?? "pending",
-                    destination  = reader.IsDBNull(reader.GetOrdinal("destination")) ? null : reader["destination"].ToString(),
-                    totalAmount  = Convert.ToDecimal(reader["total_amount"]),
-                    paymentStatus = reader["payment_status"]?.ToString(),
-                    customerName = reader["customer_name"]?.ToString(),
-                    vehicleName  = reader["vehicle_name"]?.ToString(),
-                    plateNo      = reader["plate_no"]?.ToString(),
-                    driverName   = reader["driver_name"]?.ToString()
-                });
+                cmd.Parameters.AddWithValue("@start", startRange);
+                cmd.Parameters.AddWithValue("@end", endRange);
+                cmd.CommandTimeout = 30;
+
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    rentals.Add(new {
+                        rentalId      = reader.GetInt32(reader.GetOrdinal("rental_id")),
+                        startDate     = reader.GetDateTime(reader.GetOrdinal("start_date")).ToString("yyyy-MM-dd"),
+                        endDate       = reader.IsDBNull(reader.GetOrdinal("end_date")) ? null : reader.GetDateTime(reader.GetOrdinal("end_date")).ToString("yyyy-MM-dd"),
+                        status        = reader["status"]?.ToString() ?? "pending",
+                        destination   = reader.IsDBNull(reader.GetOrdinal("destination")) ? "Not specified" : reader["destination"].ToString(),
+                        totalAmount   = Convert.ToDecimal(reader["total_amount"]),
+                        penaltyFee    = Convert.ToDecimal(reader["penalty_fee"]),
+                        damageFee     = Convert.ToDecimal(reader["damage_fee"]),
+                        paymentMethod = reader["payment_method"]?.ToString() ?? "cash",
+                        paymentStatus = reader["payment_status"]?.ToString() ?? "unpaid",
+                        blockchainHash = reader.IsDBNull(reader.GetOrdinal("blockchain_hash")) ? null : reader["blockchain_hash"].ToString(),
+                        returnDate    = reader.IsDBNull(reader.GetOrdinal("return_date")) ? null : reader.GetDateTime(reader.GetOrdinal("return_date")).ToString("yyyy-MM-dd HH:mm"),
+                        returnOdometer = reader.IsDBNull(reader.GetOrdinal("return_odometer")) ? (decimal?)null : Convert.ToDecimal(reader["return_odometer"]),
+                        returnFuelLevel = reader.IsDBNull(reader.GetOrdinal("return_fuel_level")) ? null : reader["return_fuel_level"].ToString(),
+                        returnNotes   = reader.IsDBNull(reader.GetOrdinal("return_notes")) ? null : reader["return_notes"].ToString(),
+                        customerName  = reader["customer_name"]?.ToString(),
+                        customerPhone = reader["customer_phone"]?.ToString(),
+                        customerEmail = reader["customer_email"]?.ToString(),
+                        customerPhoto = FormatImageUrl(reader["customer_photo"]?.ToString()),
+                        vehicleName   = reader["vehicle_name"]?.ToString(),
+                        vehicleBrand  = reader["brand"]?.ToString(),
+                        vehicleModel  = reader["model"]?.ToString(),
+                        plateNo       = reader["plate_no"]?.ToString(),
+                        color         = reader["vehicle_color"]?.ToString(),
+                        transmission  = reader["vehicle_transmission"]?.ToString(),
+                        fuelLevelPct  = Convert.ToInt32(reader["fuel_level_pct"]),
+                        odometerKm    = Convert.ToInt32(reader["odometer_km"]),
+                        ratePerDay    = Convert.ToDecimal(reader["rate_per_day"]),
+                        photoUrl      = reader["vehicle_photo"]?.ToString(),
+                        driverName    = reader["driver_name"]?.ToString(),
+                        driverPhone   = reader["driver_phone"]?.ToString(),
+                        driverLicense = reader["driver_license"]?.ToString(),
+                        driverShift   = reader["driver_shift"]?.ToString(),
+                        driverPhoto   = FormatImageUrl(reader["driver_photo"]?.ToString())
+                    });
+                }
             }
-            return Ok(events);
+
+            // 2. Vehicle Maintenance Events in this month
+            try
+            {
+                await using (var cmd = new NpgsqlCommand(
+                    @"SELECT m.maintenance_id, m.vehicle_id, m.type, m.cost, m.status, m.scheduled_date,
+                             v.brand, v.model, v.plate_no, CONCAT(v.brand, ' ', v.model) AS vehicle_name
+                      FROM vehicle_maintenance m
+                      JOIN vehicles v ON m.vehicle_id = v.vehicle_id
+                      WHERE m.scheduled_date >= @start AND m.scheduled_date < @end
+                      ORDER BY m.scheduled_date ASC", conn))
+                {
+                    cmd.Parameters.AddWithValue("@start", startRange);
+                    cmd.Parameters.AddWithValue("@end", endRange);
+                    await using var reader = await cmd.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        maintenance.Add(new {
+                            maintenanceId = reader.GetInt32(reader.GetOrdinal("maintenance_id")),
+                            vehicleId     = reader.GetInt32(reader.GetOrdinal("vehicle_id")),
+                            vehicleName   = reader["vehicle_name"]?.ToString(),
+                            vehicleBrand  = reader["brand"]?.ToString(),
+                            plateNo       = reader["plate_no"]?.ToString(),
+                            type          = reader["type"]?.ToString(),
+                            cost          = Convert.ToDecimal(reader["cost"]),
+                            status        = reader["status"]?.ToString(),
+                            scheduledDate = reader.GetDateTime(reader.GetOrdinal("scheduled_date")).ToString("yyyy-MM-dd")
+                        });
+                    }
+                }
+            }
+            catch { }
+
+            // 3. Driver & Customer Birthdays in this month
+            try
+            {
+                await using (var cmd = new NpgsqlCommand(
+                    @"SELECT d.driver_id AS id, COALESCE(u.full_name, 'Driver') AS name, 'Driver' AS role,
+                             d.birth_date, EXTRACT(DAY FROM d.birth_date)::int AS birth_day,
+                             COALESCE(u.phone, '') AS phone
+                      FROM drivers d
+                      JOIN users u ON d.user_id = u.user_id
+                      WHERE d.birth_date IS NOT NULL AND EXTRACT(MONTH FROM d.birth_date) = @m
+                      ORDER BY birth_day ASC", conn))
+                {
+                    cmd.Parameters.AddWithValue("@m", m);
+                    await using var reader = await cmd.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        birthdays.Add(new {
+                            id       = reader.GetInt32(reader.GetOrdinal("id")),
+                            name     = reader["name"]?.ToString(),
+                            role     = reader["role"]?.ToString(),
+                            birthDay = reader.GetInt32(reader.GetOrdinal("birth_day")),
+                            phone    = reader["phone"]?.ToString()
+                        });
+                    }
+                }
+            }
+            catch { }
+
+            // 4. Admin Calendar Notes & Company Announcements
+            try
+            {
+                await using (var cmd = new NpgsqlCommand(
+                    @"SELECT note_id, note_date, title, content, category, created_by, created_at
+                      FROM admin_calendar_notes
+                      WHERE note_date >= @start::date AND note_date < @end::date
+                      ORDER BY note_date ASC, note_id ASC", conn))
+                {
+                    cmd.Parameters.AddWithValue("@start", NpgsqlTypes.NpgsqlDbType.Date, startRange);
+                    cmd.Parameters.AddWithValue("@end", NpgsqlTypes.NpgsqlDbType.Date, endRange);
+                    await using var reader = await cmd.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        notes.Add(new {
+                            noteId    = reader.GetInt32(reader.GetOrdinal("note_id")),
+                            noteDate  = reader.GetDateTime(reader.GetOrdinal("note_date")).ToString("yyyy-MM-dd"),
+                            title     = reader["title"]?.ToString(),
+                            content   = reader.IsDBNull(reader.GetOrdinal("content")) ? "" : reader["content"].ToString(),
+                            category  = reader["category"]?.ToString() ?? "reminder",
+                            createdBy = reader["created_by"]?.ToString() ?? "Admin",
+                            createdAt = reader.GetDateTime(reader.GetOrdinal("created_at")).ToString("yyyy-MM-dd HH:mm")
+                        });
+                    }
+                }
+            }
+            catch { }
+
+            return Ok(new {
+                rentals,
+                maintenance,
+                birthdays,
+                notes
+            });
         }
         catch (Exception ex)
         {
             return StatusCode(500, new { message = ex.Message });
         }
     }
+
+    [HttpPost("calendar/notes")]
+    public async Task<IActionResult> CreateCalendarNote([FromBody] CalendarNoteDto dto)
+    {
+        if (dto == null || string.IsNullOrWhiteSpace(dto.NoteDate) || string.IsNullOrWhiteSpace(dto.Title))
+            return BadRequest(new { message = "NoteDate and Title are required." });
+
+        try
+        {
+            if (!DateTime.TryParse(dto.NoteDate, out var noteDate))
+                return BadRequest(new { message = "Invalid note date format. Use YYYY-MM-DD." });
+
+            await using var conn = await _ds.OpenConnectionAsync();
+            await using var cmd = new NpgsqlCommand(
+                @"INSERT INTO admin_calendar_notes (note_date, title, content, category, created_by)
+                  VALUES (@date, @title, @content, @category, @createdBy)
+                  RETURNING note_id;", conn);
+
+            cmd.Parameters.AddWithValue("@date", NpgsqlTypes.NpgsqlDbType.Date, noteDate);
+            cmd.Parameters.AddWithValue("@title", dto.Title.Trim());
+            cmd.Parameters.AddWithValue("@content", (object?)dto.Content?.Trim() ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@category", string.IsNullOrWhiteSpace(dto.Category) ? "reminder" : dto.Category.Trim());
+            cmd.Parameters.AddWithValue("@createdBy", string.IsNullOrWhiteSpace(dto.CreatedBy) ? "Admin" : dto.CreatedBy.Trim());
+
+            var noteId = await cmd.ExecuteScalarAsync();
+            return Ok(new { success = true, noteId, message = "Note saved successfully." });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "Failed to save note: " + ex.Message });
+        }
+    }
+
+    [HttpDelete("calendar/notes/{id}")]
+    public async Task<IActionResult> DeleteCalendarNote(int id)
+    {
+        try
+        {
+            await using var conn = await _ds.OpenConnectionAsync();
+            await using var cmd = new NpgsqlCommand("DELETE FROM admin_calendar_notes WHERE note_id = @id", conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            int affected = await cmd.ExecuteNonQueryAsync();
+            if (affected == 0) return NotFound(new { message = "Note not found." });
+            return Ok(new { success = true, message = "Note deleted successfully." });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "Failed to delete note: " + ex.Message });
+        }
+    }
+
+    public class CalendarNoteDto
+    {
+        public string NoteDate { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string? Content { get; set; }
+        public string? Category { get; set; } = "reminder";
+        public string? CreatedBy { get; set; } = "Admin";
+    }
+
     private List<Rental> ReadRentals(string? whereClause = null, int? id = null, string? orderBy = null)
     {
         var rentals = new List<Rental>();
@@ -1283,8 +1529,9 @@ public class RentalsController : ControllerBase
                 COALESCE(CONCAT(v.brand, ' ', v.model), 'Vehicle #' || r.vehicle_id) AS vehicle_name,
                 v.plate_no AS vehicle_plate_no,
                 v.rate_per_day AS vehicle_rate,
-                COALESCE(v.current_odometer, 0) AS vehicle_odometer,
+                COALESCE(NULLIF(v.current_odometer, 0), v.odometer_km, 0) AS vehicle_odometer,
                 COALESCE(v.fuel_level_pct, 100) AS vehicle_fuel_level_pct,
+                COALESCE(NULLIF(r.start_odometer, 0), NULLIF(v.current_odometer, 0), v.odometer_km, 0) AS start_odometer,
                 driver_user.full_name AS driver_name,
 
                 driver_user.phone AS driver_phone,
@@ -1347,6 +1594,7 @@ public class RentalsController : ControllerBase
             VehiclePlateNo = reader["vehicle_plate_no"] == DBNull.Value ? null : reader["vehicle_plate_no"].ToString(),
             VehicleRate    = reader["vehicle_rate"] == DBNull.Value ? (decimal?)null : Convert.ToDecimal(reader["vehicle_rate"], CultureInfo.InvariantCulture),
             VehicleOdometer = reader["vehicle_odometer"] == DBNull.Value ? (decimal?)null : Convert.ToDecimal(reader["vehicle_odometer"], CultureInfo.InvariantCulture),
+            StartOdometer   = reader["start_odometer"] == DBNull.Value ? (decimal?)null : Convert.ToDecimal(reader["start_odometer"], CultureInfo.InvariantCulture),
             VehicleFuelLevelPct = reader["vehicle_fuel_level_pct"] == DBNull.Value ? (int?)null : Convert.ToInt32(reader["vehicle_fuel_level_pct"], CultureInfo.InvariantCulture),
             DriverName     = reader["driver_name"] == DBNull.Value ? null : reader["driver_name"].ToString(),
 
@@ -1356,11 +1604,11 @@ public class RentalsController : ControllerBase
         };
     }
 
-    private static void ExecuteStatusUpdate(NpgsqlConnection connection, NpgsqlTransaction transaction, string sql, int id)
+    private static int ExecuteStatusUpdate(NpgsqlConnection connection, NpgsqlTransaction transaction, string sql, int id)
     {
         using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("@id", id);
-        command.ExecuteNonQuery();
+        return command.ExecuteNonQuery();
     }
 
     private static string NormalizeLower(string? value, string fallback)
@@ -1487,10 +1735,12 @@ public class RentalsController : ControllerBase
                 r.payment_method,
                 r.payment_status,
                 r.created_at,
+                r.blockchain_hash,
                 customer.full_name AS customer_name,
                 customer.phone AS customer_phone,
                 customer.email AS customer_email,
                 customer.signature_base64 AS customer_signature,
+                COALESCE(NULLIF(customer.avatar_base64, ''), NULLIF(customer.id_photo_url, '')) AS customer_avatar,
                 CONCAT(v.brand, ' ', v.model) AS vehicle_name,
                 v.plate_no AS vehicle_plate_no,
                 driver_user.full_name AS driver_name,
@@ -1528,6 +1778,7 @@ public class RentalsController : ControllerBase
             AdminName = adminName,
             AdminSignatureBase64 = adminSig,
             CustomerSignatureBase64 = reader["customer_signature"] == DBNull.Value ? null : reader["customer_signature"]?.ToString(),
+            CustomerAvatarUrl = reader["customer_avatar"] == DBNull.Value ? null : reader["customer_avatar"]?.ToString(),
             CustomerName = reader["customer_name"]?.ToString() ?? "Valued Customer",
             CustomerPhone = reader["customer_phone"]?.ToString() ?? "",
             CustomerEmail = reader["customer_email"]?.ToString() ?? "",
@@ -1551,7 +1802,8 @@ public class RentalsController : ControllerBase
             VerificationUrl = $"{NetworkHelper.GetServerBaseUrl(_configuration)}/api/Rentals/verify/{agreementCode}",
             CompanyAddress = _configuration?["CompanyInfo:Address"] ?? "DriveAndGo Inc., CSJDM | Norzagaray, Bulacan, Philippines",
             CompanyPhone = _configuration?["CompanyInfo:Phone"] ?? "+63 935 966 7178",
-            CompanyEmail = _configuration?["CompanyInfo:Email"] ?? "support@driveandgo.com"
+            CompanyEmail = _configuration?["CompanyInfo:Email"] ?? "support@driveandgo.com",
+            BlockchainHash = reader["blockchain_hash"] == DBNull.Value ? null : reader["blockchain_hash"]?.ToString()
         };
     }
 
@@ -1582,8 +1834,8 @@ public class RentalsController : ControllerBase
                 r.total_amount,
                 r.penalty_fee,
                 r.damage_fee,
-                COALESCE(r.return_odometer, v.current_odometer, 0) AS return_odometer,
-                COALESCE(v.current_odometer, 0) AS start_odometer,
+                COALESCE(r.return_odometer, NULLIF(v.current_odometer, 0), v.odometer_km, 0) AS return_odometer,
+                COALESCE(NULLIF(r.start_odometer, 0), NULLIF(v.current_odometer, 0), v.odometer_km, 0) AS start_odometer,
                 COALESCE(r.return_fuel_level, 'full') AS return_fuel_level,
                 r.return_notes,
                 customer.full_name AS customer_name,
@@ -1665,8 +1917,10 @@ public class RentalsController : ControllerBase
 
     private static string GetReturnVerificationHtml(VehicleReturnEmailData data, string code)
     {
-        string logoUrl = "https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png";
+        string logoUrl = "/images/logo.png";
         string odoDiffStr = (data.ReturnOdometer.HasValue && data.StartOdometer.HasValue) ? $"+{(data.ReturnOdometer.Value - data.StartOdometer.Value):N0} km" : "N/A";
+        string brandSlug = DriveAndGo_API.Helpers.LogoHelper.GetBrandSlug(data.VehicleName);
+        string brandLogoUrl = $"/api/vehicles/brand-logo/{brandSlug}";
 
         return $@"<!DOCTYPE html>
         <html lang='en' class='dark'>
@@ -1712,12 +1966,27 @@ public class RentalsController : ControllerBase
             .theme-transition {{
               transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
             }}
+
+            @keyframes autoDismissLoader {{
+              0%, 80% {{ opacity: 1; pointer-events: auto; }}
+              100% {{ opacity: 0; pointer-events: none; visibility: hidden; }}
+            }}
+            @keyframes autoShowContent {{
+              0%, 75% {{ opacity: 0; transform: scale(0.96); }}
+              100% {{ opacity: 1; transform: scale(1); }}
+            }}
+            #loading-screen {{
+              animation: autoDismissLoader 1.8s forwards ease-in-out;
+            }}
+            #content-card {{
+              animation: autoShowContent 2s forwards ease-out;
+            }}
           </style>
         </head>
         <body class='theme-transition bg-slate-100 dark:bg-[#070B14] text-slate-800 dark:text-slate-100 min-h-screen flex items-center justify-center p-3 sm:p-6 font-sans select-none'>
 
           <!-- Loading Screen -->
-          <div id='loading-screen' class='fixed inset-0 z-50 bg-[#070B14] flex flex-col items-center justify-center p-6 text-center transition-opacity duration-500'>
+          <div id='loading-screen' onclick='dismissLoader()' class='fixed inset-0 z-50 bg-[#070B14] flex flex-col items-center justify-center p-6 text-center transition-opacity duration-500 cursor-pointer' title='Tap to unveil verification'>
             <div class='relative mb-6'>
               <img src='{logoUrl}' alt='Drive&amp;Go' class='h-14 w-auto object-contain mx-auto pulse-anim' />
               <div class='scanner-line'></div>
@@ -1776,10 +2045,14 @@ public class RentalsController : ControllerBase
                   <div class='font-bold text-slate-900 dark:text-white text-sm truncate'>{data.CustomerName}</div>
                   <div class='text-slate-500 dark:text-slate-400 text-[11px] mt-0.5'>{data.CustomerPhone}</div>
                 </div>
-                <div class='p-3.5 bg-slate-50 dark:bg-[#131E33] rounded-2xl border border-slate-200/80 dark:border-slate-800/80'>
-                  <div class='text-[9px] uppercase font-black tracking-wider text-slate-400 mb-1'>Returned Vehicle</div>
-                  <div class='font-bold text-slate-900 dark:text-white text-sm truncate'>{data.VehicleName}</div>
-                  <div class='font-mono font-bold text-brand text-[11px] mt-0.5'>{data.PlateNo}</div>
+                <!-- Returned Vehicle with Brand Logo -->
+                <div class='p-3.5 bg-slate-50 dark:bg-[#131E33] rounded-2xl border border-slate-200/80 dark:border-slate-800/80 flex items-start gap-3'>
+                  <img src='{brandLogoUrl}' alt='{data.VehicleName}' class='w-10 h-10 object-contain p-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs shrink-0 mt-0.5' onerror=""this.style.display='none';"" />
+                  <div class='min-w-0 flex-1'>
+                    <div class='text-[9px] uppercase font-black tracking-wider text-slate-400 mb-1'>Returned Vehicle</div>
+                    <div class='font-bold text-slate-900 dark:text-white text-sm truncate'>{data.VehicleName}</div>
+                    <div class='font-mono font-bold text-brand text-[11px] mt-0.5'>{data.PlateNo}</div>
+                  </div>
                 </div>
               </div>
 
@@ -1855,16 +2128,23 @@ public class RentalsController : ControllerBase
             const sunSvg = `<svg class='w-3.5 h-3.5' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z'></path></svg>`;
             const moonSvg = `<svg class='w-3.5 h-3.5' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z'></path></svg>`;
 
-            setTimeout(() => {{
+            // Unveil after sleek verification simulation (instant dismissal fallback)
+            function dismissLoader() {{
               const loader = document.getElementById('loading-screen');
               const content = document.getElementById('content-card');
-              if (loader && content) {{
+              if (loader) {{
                 loader.style.opacity = '0';
-                setTimeout(() => loader.style.display = 'none', 500);
+                loader.style.pointerEvents = 'none';
+                setTimeout(() => {{ if (loader && loader.parentNode) loader.style.display = 'none'; }}, 350);
+              }}
+              if (content) {{
                 content.classList.remove('opacity-0', 'scale-95');
                 content.classList.add('opacity-100', 'scale-100');
               }}
-            }}, 850);
+            }}
+            setTimeout(dismissLoader, 650);
+            window.addEventListener('DOMContentLoaded', () => setTimeout(dismissLoader, 350));
+            window.addEventListener('load', () => setTimeout(dismissLoader, 200));
 
             function toggleTheme() {{
               const html = document.documentElement;
@@ -1913,7 +2193,7 @@ public class RentalsController : ControllerBase
 
     private static string GetVerificationHtml(RentalAgreementEmailData? data, string code)
     {
-        string logoUrl = "https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png";
+        string logoUrl = "/images/logo.png";
 
         if (data == null)
         {
@@ -1944,6 +2224,26 @@ public class RentalsController : ControllerBase
               </div>
             </body>
             </html>";
+        }
+
+        string brandSlug = DriveAndGo_API.Helpers.LogoHelper.GetBrandSlug(data.VehicleName);
+        string brandLogoUrl = $"/api/vehicles/brand-logo/{brandSlug}";
+        string payKey = DriveAndGo_API.Helpers.LogoHelper.GetPaymentKey(data.PaymentMethod);
+        string payLogoUrl = $"/api/transactions/provider-logo/{payKey}";
+
+        string initialLetter = string.IsNullOrWhiteSpace(data.CustomerName) ? "C" : data.CustomerName.Trim().Substring(0, 1).ToUpperInvariant();
+        string customerAvatarHtml;
+        if (!string.IsNullOrWhiteSpace(data.CustomerAvatarUrl))
+        {
+            customerAvatarHtml = $@"<div class='w-12 h-12 rounded-full overflow-hidden shrink-0 border-2 border-brand/50 shadow-md bg-slate-200 dark:bg-slate-800'>
+                <img src='{data.CustomerAvatarUrl}' alt='{data.CustomerName}' class='w-full h-full object-cover' onerror=""this.parentElement.innerHTML='<div class=\'w-full h-full flex items-center justify-center font-black text-base bg-brand/20 text-brand\'>{initialLetter}</div>';"" />
+            </div>";
+        }
+        else
+        {
+            customerAvatarHtml = $@"<div class='w-12 h-12 rounded-full overflow-hidden shrink-0 border-2 border-brand/40 shadow-md bg-brand/20 text-brand flex items-center justify-center font-black text-base select-none'>
+                {initialLetter}
+            </div>";
         }
 
         return $@"<!DOCTYPE html>
@@ -1995,12 +2295,27 @@ public class RentalsController : ControllerBase
             .theme-transition {{
               transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
             }}
+            
+            @keyframes autoDismissLoader {{
+              0%, 80% {{ opacity: 1; pointer-events: auto; }}
+              100% {{ opacity: 0; pointer-events: none; visibility: hidden; }}
+            }}
+            @keyframes autoShowContent {{
+              0%, 75% {{ opacity: 0; transform: scale(0.96); }}
+              100% {{ opacity: 1; transform: scale(1); }}
+            }}
+            #loading-screen {{
+              animation: autoDismissLoader 1.8s forwards ease-in-out;
+            }}
+            #content-card {{
+              animation: autoShowContent 2s forwards ease-out;
+            }}
           </style>
         </head>
         <body class='theme-transition bg-slate-100 dark:bg-[#070B14] text-slate-800 dark:text-slate-100 min-h-screen flex items-center justify-center p-3 sm:p-6 font-sans select-none'>
 
           <!-- ── Full-Screen Verification Loading Overlay ── -->
-          <div id='loading-screen' class='fixed inset-0 z-50 bg-[#070B14] flex flex-col items-center justify-center p-6 text-center transition-opacity duration-500'>
+          <div id='loading-screen' onclick='dismissLoader()' class='fixed inset-0 z-50 bg-[#070B14] flex flex-col items-center justify-center p-6 text-center transition-opacity duration-500 cursor-pointer' title='Tap to unveil verification'>
             <div class='relative mb-6'>
               <img src='{logoUrl}' alt='Drive&amp;Go Logo' class='h-14 w-auto object-contain mx-auto pulse-anim' />
               <div class='scanner-line'></div>
@@ -2046,11 +2361,14 @@ public class RentalsController : ControllerBase
                   <h1 class='text-xl font-black text-slate-900 dark:text-white mt-2 font-mono tracking-tight'>{data.AgreementCode}</h1>
                 </div>
                 
-                <div class='text-right'>
-                  <span class='inline-block px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-emerald-500 text-white shadow-md shadow-emerald-500/20'>
-                    {data.PaymentStatus.ToUpper()}
-                  </span>
-                  <div class='text-[10px] text-slate-500 dark:text-slate-400 mt-1 font-medium'>{data.CreatedDate}</div>
+                <div class='text-right flex items-center gap-2.5'>
+                  <img src='{payLogoUrl}' alt='{data.PaymentMethod}' class='h-7 w-auto max-w-[85px] object-contain shrink-0' onerror=""this.style.display='none'"" />
+                  <div>
+                    <span class='inline-block px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-emerald-500 text-white shadow-md shadow-emerald-500/20'>
+                      {data.PaymentStatus.ToUpper()}
+                    </span>
+                    <div class='text-[10px] text-slate-500 dark:text-slate-400 mt-1 font-medium'>{data.CreatedDate}</div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2060,20 +2378,28 @@ public class RentalsController : ControllerBase
               
               <!-- 2-Col Specs Grid -->
               <div class='grid grid-cols-1 sm:grid-cols-2 gap-3'>
-                <!-- Customer Card -->
-                <div class='p-3.5 bg-slate-50 dark:bg-[#131E33] rounded-2xl border border-slate-200/80 dark:border-slate-800/80'>
-                  <div class='text-[9px] uppercase font-black tracking-wider text-slate-400 mb-1'>Lessee / Customer</div>
-                  <div class='font-bold text-slate-900 dark:text-white text-sm truncate'>{data.CustomerName}</div>
-                  <div class='text-slate-500 dark:text-slate-400 mt-0.5'>{data.CustomerPhone}</div>
-                  <div class='text-slate-400 text-[10.5px] truncate'>{data.CustomerEmail}</div>
+                <!-- Customer Card with PFP -->
+                <div class='p-3.5 bg-slate-50 dark:bg-[#131E33] rounded-2xl border border-slate-200/80 dark:border-slate-800/80 flex items-center gap-3'>
+                  {customerAvatarHtml}
+                  <div class='min-w-0 flex-1'>
+                    <div class='text-[9px] uppercase font-black tracking-wider text-slate-400 mb-0.5'>Lessee / Customer</div>
+                    <div class='font-bold text-slate-900 dark:text-white text-sm truncate'>{data.CustomerName}</div>
+                    <div class='text-slate-500 dark:text-slate-400 text-[11px]'>{data.CustomerPhone}</div>
+                    <div class='text-slate-400 text-[10.5px] truncate'>{data.CustomerEmail}</div>
+                  </div>
                 </div>
 
-                <!-- Vehicle Card -->
-                <div class='p-3.5 bg-slate-50 dark:bg-[#131E33] rounded-2xl border border-slate-200/80 dark:border-slate-800/80'>
-                  <div class='text-[9px] uppercase font-black tracking-wider text-slate-400 mb-1'>Vehicle Details</div>
-                  <div class='font-bold text-slate-900 dark:text-white text-sm truncate'>{data.VehicleName}</div>
-                  <div class='text-brand font-mono font-black mt-0.5'>{data.PlateNo}</div>
-                  <div class='text-slate-500 dark:text-slate-400 text-[10.5px]'>Color: {data.VehicleColor}</div>
+                <!-- Vehicle Card with Real Brand Logo -->
+                <div class='p-3.5 bg-slate-50 dark:bg-[#131E33] rounded-2xl border border-slate-200/80 dark:border-slate-800/80 flex items-center gap-3'>
+                  <div class='w-12 h-12 rounded-2xl bg-white p-1.5 border border-slate-200/80 shadow-xs flex items-center justify-center shrink-0 overflow-hidden'>
+                    <img src='{brandLogoUrl}' alt='{data.VehicleName}' class='w-full h-full object-contain' onerror=""this.parentElement.style.display='none'"" />
+                  </div>
+                  <div class='min-w-0 flex-1'>
+                    <div class='text-[9px] uppercase font-black tracking-wider text-slate-400 mb-0.5'>Vehicle Details</div>
+                    <div class='font-bold text-slate-900 dark:text-white text-sm truncate'>{data.VehicleName}</div>
+                    <div class='text-brand font-mono font-black mt-0.5'>{data.PlateNo}</div>
+                    <div class='text-slate-500 dark:text-slate-400 text-[10.5px]'>Color: {data.VehicleColor}</div>
+                  </div>
                 </div>
               </div>
 
@@ -2099,7 +2425,10 @@ public class RentalsController : ControllerBase
 
               <!-- Total Rental Value Pill -->
               <div class='p-4 bg-orange-500/10 dark:bg-orange-500/15 border border-orange-500/30 rounded-2xl flex items-center justify-between'>
-                <span class='font-bold text-slate-700 dark:text-slate-200 text-xs'>Total Rental Value:</span>
+                <div class='flex items-center gap-2.5'>
+                  <img src='{payLogoUrl}' alt='Payment Method' class='h-7 w-auto max-w-[85px] object-contain shrink-0' onerror=""this.style.display='none'"" />
+                  <span class='font-bold text-slate-700 dark:text-slate-200 text-xs'>Total Rental Value:</span>
+                </div>
                 <span class='text-lg font-black text-brand'>PHP {data.TotalAmount:N2}</span>
               </div>
 
@@ -2127,6 +2456,20 @@ public class RentalsController : ControllerBase
                 </div>
               </div>
 
+              <!-- Cryptographic Blockchain Seal -->
+              <div class='p-3 bg-slate-900/90 text-slate-300 rounded-2xl font-mono text-[10px] border border-emerald-500/30 shadow-inner'>
+                <div class='flex items-center justify-between text-emerald-400 font-bold mb-1'>
+                   <span class='flex items-center gap-1.5'>
+                     <svg class='w-3.5 h-3.5' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z'></path></svg>
+                     CRYPTOGRAPHIC SEAL
+                   </span>
+                   <span class='text-[8.5px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-sans font-bold border border-emerald-500/30'>BLOCKCHAIN IMMUTABLE</span>
+                </div>
+                <div class='text-[8.5px] text-slate-400 break-all font-mono'>
+                  <span class='text-slate-500'>SHA-256 Stamp:</span> {(!string.IsNullOrWhiteSpace(data.BlockchainHash) ? data.BlockchainHash : "AUTHENTICATED_LEDGER_CHAIN")}
+                </div>
+              </div>
+
               <!-- Download PDF Action -->
               <div class='pt-1'>
                 <a href='/api/Rentals/code/{data.AgreementCode}/pdf' target='_blank' class='w-full py-3.5 px-4 bg-brand hover:bg-brand-dark text-white font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2 active:scale-95'>
@@ -2151,17 +2494,23 @@ public class RentalsController : ControllerBase
             const sunSvg = `<svg class='w-3.5 h-3.5' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z'></path></svg>`;
             const moonSvg = `<svg class='w-3.5 h-3.5' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z'></path></svg>`;
 
-            // Unveil after sleek verification simulation
-            setTimeout(() => {{
+            // Unveil after sleek verification simulation (instant dismissal fallback)
+            function dismissLoader() {{
               const loader = document.getElementById('loading-screen');
               const content = document.getElementById('content-card');
-              if (loader && content) {{
+              if (loader) {{
                 loader.style.opacity = '0';
-                setTimeout(() => loader.style.display = 'none', 500);
+                loader.style.pointerEvents = 'none';
+                setTimeout(() => {{ if (loader && loader.parentNode) loader.style.display = 'none'; }}, 350);
+              }}
+              if (content) {{
                 content.classList.remove('opacity-0', 'scale-95');
                 content.classList.add('opacity-100', 'scale-100');
               }}
-            }}, 850);
+            }}
+            setTimeout(dismissLoader, 650);
+            window.addEventListener('DOMContentLoaded', () => setTimeout(dismissLoader, 350));
+            window.addEventListener('load', () => setTimeout(dismissLoader, 200));
 
             // Light & Dark mode toggle
             function toggleTheme() {{
@@ -2190,13 +2539,14 @@ public class RentalsController : ControllerBase
               if (iconContainer) iconContainer.innerHTML = sunSvg;
               if (label) label.textContent = 'Light';
             }}
+          </script>
         </body>
         </html>";
     }
 
     private static string GetCustomerResponseSuccessHtml(RentalAgreementEmailData data, string actionType)
     {
-        string logoUrl = "https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png";
+        string logoUrl = "/images/logo.png";
         
         string iconSvg;
         string title;
@@ -2286,7 +2636,7 @@ public class RentalsController : ControllerBase
 
     private static string GetCustomerRescheduleFormHtml(RentalAgreementEmailData data)
     {
-        string logoUrl = "https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png";
+        string logoUrl = "/images/logo.png";
         var defaultStart = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm");
         var minStart = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm");
 

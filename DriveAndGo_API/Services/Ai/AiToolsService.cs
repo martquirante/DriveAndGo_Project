@@ -181,9 +181,15 @@ public class AiToolsService
         try
         {
             var result = new TodayRevenueResult();
-            var today = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
-            var startOfWeek = today.AddDays(-(int)today.DayOfWeek);
-            var startOfMonth = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var phtNow = DateTime.UtcNow.AddHours(8);
+            var todayPht = phtNow.Date;
+            var startOfWeekPht = todayPht.AddDays(-(int)todayPht.DayOfWeek);
+            var startOfMonthPht = new DateTime(todayPht.Year, todayPht.Month, 1);
+
+            var todayUtc = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
+            var startOfWeekUtc = todayUtc.AddDays(-(int)todayUtc.DayOfWeek);
+            var startOfMonthUtc = new DateTime(todayUtc.Year, todayUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
             var validStatuses = new[] { "confirmed", "paid", "verified", "completed", "successful", "settled" };
 
             var recentTxns = await _dbContext.Transactions
@@ -193,10 +199,10 @@ public class AiToolsService
             if (recentTxns.Any())
             {
                 Func<Transaction, DateTime> getDate = t => t.PaidAt ?? DateTime.MinValue;
-                result.TodayRevenue      = recentTxns.Where(t => getDate(t) >= today).Sum(t => t.Amount);
-                result.TodayTransactions = recentTxns.Count(t => getDate(t) >= today);
-                result.WeekRevenue       = recentTxns.Where(t => getDate(t) >= startOfWeek).Sum(t => t.Amount);
-                result.MonthRevenue      = recentTxns.Where(t => getDate(t) >= startOfMonth).Sum(t => t.Amount);
+                result.TodayRevenue      = recentTxns.Where(t => getDate(t).Date == todayPht || getDate(t) >= todayUtc).Sum(t => t.Amount);
+                result.TodayTransactions = recentTxns.Count(t => getDate(t).Date == todayPht || getDate(t) >= todayUtc);
+                result.WeekRevenue       = recentTxns.Where(t => getDate(t).Date >= startOfWeekPht || getDate(t) >= startOfWeekUtc).Sum(t => t.Amount);
+                result.MonthRevenue      = recentTxns.Where(t => getDate(t).Date >= startOfMonthPht || getDate(t) >= startOfMonthUtc).Sum(t => t.Amount);
             }
 
             // Fallback: If EF transactions yield 0 revenue, calculate directly from rentals table
@@ -1363,13 +1369,13 @@ public class AiToolsService
     public static object[] GetToolDefinitions() => new object[]
     {
         // ── Core Financial & Operational ──────────────────────────────────────────
-        Tool(ToolGetTodayRevenue,    "Get today's revenue, transaction count, week-to-date, and month-to-date revenue figures."),
-        Tool(ToolGetWeeklyAnalytics, "Get the daily revenue and rental breakdown for the last 7 days."),
-        Tool(ToolGetOverdueRentals,  "Get the list of overdue rentals with customer names, vehicle info, days overdue, and penalty estimates."),
-        Tool(ToolGetFleetCount,      "Get the current fleet availability status: how many vehicles are available, on-rent, or in maintenance."),
-        Tool(ToolGetPendingBookings, "Get the list of pending bookings awaiting admin approval and count of pending extension requests."),
-        Tool(ToolGetMonthlyRevenue,  "Get the monthly revenue breakdown for the last 12 months including transaction counts."),
-        Tool(ToolPredictNextYearSales, "Predict the sales/revenue for the next 12 months based on historical Month-over-Month (MoM) growth."),
+        Tool(ToolGetTodayRevenue,    "Get today's revenue, transaction count, week-to-date, and month-to-date revenue figures. Use for today's sales, daily revenue, kita ngayong araw, or business health summary."),
+        Tool(ToolGetWeeklyAnalytics, "Get daily revenue and rental breakdown for the last 7 days. Use for weekly sales, weekly revenue, or kita nitong linggo."),
+        Tool(ToolGetOverdueRentals,  "Get list of overdue rentals with customer names, vehicle info, days overdue, and penalty estimates. Use for late returns, overdue cars, atraso, or multa."),
+        Tool(ToolGetFleetCount,      "Get current fleet availability status: available, on-rent, and maintenance vehicle counts. Use for fleet status, available na kotse, or sasakyan."),
+        Tool(ToolGetPendingBookings, "Get list of pending bookings awaiting admin approval and count of pending extension requests. Use for pending bookings, aprubahan, or bagong reservation."),
+        Tool(ToolGetMonthlyRevenue,  "Get overall all-time revenue (GrandTotal), total transactions, and monthly breakdown for the last 12 months. ALWAYS call this for overall revenue, total revenue, kabuuang kita, all-time revenue, or monthly earnings."),
+        Tool(ToolPredictNextYearSales, "Predict sales/revenue for the next 12 months based on historical growth. Use for sales forecast, projection, or hula sa sales."),
 
         // ── Fleet & Vehicle Tools ─────────────────────────────────────────────────
         Tool(ToolGetVehicleUtil, "Get per-vehicle revenue and rental count for utilization analysis. Supports period filtering.", new
@@ -1527,13 +1533,13 @@ public class AiToolsService
     {
         functionDeclarations = new object[]
         {
-            GeminiTool("get_today_revenue",    "Get today's revenue, transaction count, week-to-date, and month-to-date revenue figures."),
-            GeminiTool("get_weekly_analytics", "Get the daily revenue and rental breakdown for the last 7 days."),
-            GeminiTool("get_overdue_rentals",  "Get list of overdue rentals with customer names, vehicle info, days overdue, and penalty estimates."),
-            GeminiTool("get_available_fleet_count", "Get current fleet availability: available, on-rent, maintenance vehicle counts."),
-            GeminiTool("get_pending_bookings", "Get pending rentals awaiting admin approval and count of pending extension requests."),
-            GeminiTool("get_monthly_revenue",  "Get monthly revenue breakdown for the last 12 months."),
-            GeminiTool("predict_next_year_sales", "Predict 12-month sales forecast from historical MoM growth."),
+            GeminiTool("get_today_revenue",    "Get today's revenue, transaction count, week-to-date, and month-to-date revenue figures. Use for today's sales, daily revenue, kita ngayong araw, or business health summary."),
+            GeminiTool("get_weekly_analytics", "Get daily revenue and rental breakdown for the last 7 days. Use for weekly sales, weekly revenue, or kita nitong linggo."),
+            GeminiTool("get_overdue_rentals",  "Get list of overdue rentals with customer names, vehicle info, days overdue, and penalty estimates. Use for late returns, overdue cars, atraso, or multa."),
+            GeminiTool("get_available_fleet_count", "Get current fleet availability: available, on-rent, maintenance vehicle counts. Use for fleet status, available na kotse, or sasakyan."),
+            GeminiTool("get_pending_bookings", "Get pending rentals awaiting admin approval and count of pending extension requests. Use for pending bookings, aprubahan, or bagong reservation."),
+            GeminiTool("get_monthly_revenue",  "Get overall all-time revenue (GrandTotal), total transactions, and monthly breakdown for the last 12 months. ALWAYS use for overall revenue, total revenue, kabuuang kita, or monthly earnings."),
+            GeminiTool("predict_next_year_sales", "Predict 12-month sales forecast from historical MoM growth. Use for sales forecast, projection, or hula sa sales."),
             GeminiTool("get_maintenance_alerts", "Get fleet vehicles needing or approaching maintenance."),
             GeminiTool("get_vehicle_utilization", "Get per-vehicle revenue and rental count. Supports period filtering.",
                 GeminiParams(("period", "string", "Time period: 'this_month', 'last_month', 'this_year', or 'all_time'"),

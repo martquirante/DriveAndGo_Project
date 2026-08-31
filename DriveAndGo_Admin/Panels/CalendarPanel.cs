@@ -95,10 +95,20 @@ namespace DriveAndGo_Admin.Panels
                 _tempHtmlPath = Path.Combine(Path.GetTempPath(), "driveandgo_calendar.html");
 
             bool dark = ThemeManager.IsDarkMode;
+            string apiBase = ApiService.ResolveNetworkBaseUrl();
             var html = CalendarHtmlGenerator.Build(
-                _currentYear, _currentMonth, eventsJson, _currentView, dark);
+                _currentYear, _currentMonth, eventsJson, _currentView, dark, apiBase);
             File.WriteAllText(_tempHtmlPath, html, System.Text.Encoding.UTF8);
             _webView.CoreWebView2.Navigate(new Uri(_tempHtmlPath).AbsoluteUri);
+            if (_loadingPanel != null)
+            {
+                if (this.Controls.Contains(_loadingPanel))
+                {
+                    this.Controls.Remove(_loadingPanel);
+                }
+                _loadingPanel.Dispose();
+                _loadingPanel = null;
+            }
         }
 
         private void OnWebMessage(object sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -113,11 +123,47 @@ namespace DriveAndGo_Admin.Panels
                 {
                     _currentYear  = root.GetProperty("year").GetInt32();
                     _currentMonth = root.GetProperty("month").GetInt32();
-                    _ = LoadCalendar();
+                    bool clientHandled = root.TryGetProperty("clientHandled", out var ch) && ch.GetBoolean();
+                    if (!clientHandled)
+                    {
+                        _ = LoadCalendar();
+                    }
                 }
                 else if (action == "viewChanged")
                 {
                     _currentView = root.GetProperty("view").GetString();
+                }
+                else if (action == "saveNote")
+                {
+                    var noteDate = root.GetProperty("noteDate").GetString();
+                    var title = root.GetProperty("title").GetString();
+                    var content = root.TryGetProperty("content", out var cp) ? cp.GetString() : "";
+                    var category = root.TryGetProperty("category", out var catp) ? catp.GetString() : "reminder";
+                    var payload = new {
+                        noteDate,
+                        title,
+                        content,
+                        category,
+                        createdBy = !string.IsNullOrWhiteSpace(SessionManager.FullName) ? SessionManager.FullName : "Admin"
+                    };
+                    _ = Task.Run(async () => {
+                        await ApiService.PostAsync("rentals/calendar/notes", payload);
+                        if (this.IsHandleCreated && !this.IsDisposed)
+                        {
+                            this.BeginInvoke((MethodInvoker)(() => _ = LoadCalendar()));
+                        }
+                    });
+                }
+                else if (action == "deleteNote")
+                {
+                    int noteId = root.GetProperty("noteId").GetInt32();
+                    _ = Task.Run(async () => {
+                        await ApiService.DeleteAsync($"rentals/calendar/notes/{noteId}");
+                        if (this.IsHandleCreated && !this.IsDisposed)
+                        {
+                            this.BeginInvoke((MethodInvoker)(() => _ = LoadCalendar()));
+                        }
+                    });
                 }
             }
             catch { }

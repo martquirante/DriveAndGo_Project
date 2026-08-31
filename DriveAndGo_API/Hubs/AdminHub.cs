@@ -80,5 +80,10 @@ namespace DriveAndGo_API.Hubs
         {
             await Clients.All.SendAsync("ThreadSeen", contactId, viewerId);
         }
+
+        public async Task BroadcastRoadClosuresUpdate()
+        {
+            await Clients.All.SendAsync("ReceiveRoadClosuresUpdate");
+        }
     }
 }

@@ -1,0 +1,10 @@
+{
+  "model": "Meta-Llama-3.3-70B-Instruct",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello! In one sentence, say hello from DriveAndGo AI."
+    }
+  ],
+  "max_tokens": 50
+}

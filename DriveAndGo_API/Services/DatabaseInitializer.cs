@@ -322,6 +322,7 @@ namespace DriveAndGo_API.Services
                     ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS idle_minutes            INT             NOT NULL DEFAULT 0;
                     ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS rfid_balance_autosweep  NUMERIC(10,2)   NOT NULL DEFAULT 500.00;
                     ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS rfid_balance_easytrip   NUMERIC(10,2)   NOT NULL DEFAULT 500.00;
+                    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS expressway_rfid_balance NUMERIC(10,2)   NOT NULL DEFAULT 500.00;
                     ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS or_cr_url               TEXT            NOT NULL DEFAULT '';
                     ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS color                   VARCHAR(50)     NOT NULL DEFAULT 'Pearl White';
                     ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS flood_risk_status       VARCHAR(50)     NOT NULL DEFAULT 'safe';
@@ -350,7 +351,25 @@ namespace DriveAndGo_API.Services
                         health_score = CASE WHEN health_score = 0 THEN ((vehicle_id * 17) % 30 + 70) ELSE health_score END,
                         odometer_km = CASE WHEN odometer_km = 0 THEN ((vehicle_id * 3421) % 45000 + 5000) ELSE odometer_km END,
                         rfid_balance_autosweep = CASE WHEN rfid_balance_autosweep = 0 THEN 750.00 ELSE rfid_balance_autosweep END,
-                        rfid_balance_easytrip = CASE WHEN rfid_balance_easytrip = 0 THEN 600.00 ELSE rfid_balance_easytrip END;
+                        rfid_balance_easytrip = CASE WHEN rfid_balance_easytrip = 0 THEN 600.00 ELSE rfid_balance_easytrip END,
+                        expressway_rfid_balance = CASE WHEN expressway_rfid_balance = 0 OR expressway_rfid_balance IS NULL THEN 750.00 ELSE expressway_rfid_balance END;
+
+                    -- Sync current_odometer with odometer_km if not set or zero
+                    UPDATE vehicles
+                    SET current_odometer = odometer_km
+                    WHERE (current_odometer IS NULL OR current_odometer = 0) AND odometer_km > 0;
+
+                    -- Sync rentals start_odometer with vehicle odometer if unrecorded
+                    UPDATE rentals r
+                    SET start_odometer = v.odometer_km
+                    FROM vehicles v
+                    WHERE r.vehicle_id = v.vehicle_id
+                      AND (r.start_odometer IS NULL OR r.start_odometer = 0)
+                      AND v.odometer_km > 0;
+
+                    -- Update Ford Everest photos to HD clean studio photos
+                    UPDATE vehicles SET photo_url = '/uploads/vehicles/ford_everest_black.jpg' WHERE vehicle_id = 21 OR (model ILIKE '%everest%' AND color ILIKE '%black%');
+                    UPDATE vehicles SET photo_url = '/uploads/vehicles/ford_everest_grey.jpg' WHERE vehicle_id = 28 OR (model ILIKE '%everest%' AND vehicle_id <> 21);
 
                     -- Clean up duplicate plate numbers in PostgreSQL if any exist from test entries
                     UPDATE vehicles v
@@ -379,25 +398,50 @@ namespace DriveAndGo_API.Services
                         is_active BOOLEAN NOT NULL DEFAULT TRUE
                     );
 
+                    ALTER TABLE flood_hazard_zones ADD COLUMN IF NOT EXISTS region VARCHAR(50) NOT NULL DEFAULT 'Metro Manila';
+
                     -- Migration: Convert legacy database snake_case strings to clear human-readable levels
                     UPDATE flood_hazard_zones SET water_depth_level = 'Tire-Deep Level (25 - 35 cm)' WHERE LOWER(water_depth_level) = 'tire_deep';
                     UPDATE flood_hazard_zones SET water_depth_level = 'Waist-Deep Hazard (60 - 80 cm)' WHERE LOWER(water_depth_level) = 'waist_deep';
 
-                    INSERT INTO flood_hazard_zones (zone_name, risk_level, water_depth_level, polygon_coordinates_json, recommended_reroute, is_active)
-                    SELECT 'España Blvd - UST Corridor', 'moderate', 'Tire-Deep Level (25 - 35 cm)', '[[14.6080,120.9880],[14.6120,120.9930],[14.6100,120.9960],[14.6060,120.9910]]', 'Reroute via Lacson Ave or Boulevard Bypass', true
+                    -- Metro Manila Zones
+                    INSERT INTO flood_hazard_zones (zone_name, region, risk_level, water_depth_level, polygon_coordinates_json, recommended_reroute, is_active)
+                    SELECT 'España Blvd - UST Corridor', 'Metro Manila', 'moderate', 'Tire-Deep Level (25 - 35 cm)', '[[14.6080,120.9880],[14.6120,120.9930],[14.6100,120.9960],[14.6060,120.9910]]', 'Reroute via Lacson Ave or Boulevard Bypass', true
                     WHERE NOT EXISTS (SELECT 1 FROM flood_hazard_zones WHERE zone_name = 'España Blvd - UST Corridor');
 
-                    INSERT INTO flood_hazard_zones (zone_name, risk_level, water_depth_level, polygon_coordinates_json, recommended_reroute, is_active)
-                    SELECT 'Araneta Avenue Underpass', 'impassable', 'Waist-Deep Hazard (60 - 80 cm)', '[[14.6200,121.0100],[14.6250,121.0150],[14.6220,121.0200],[14.6170,121.0140]]', 'Reroute via E. Rodriguez Sr. Ave or A. Bonifacio', true
+                    INSERT INTO flood_hazard_zones (zone_name, region, risk_level, water_depth_level, polygon_coordinates_json, recommended_reroute, is_active)
+                    SELECT 'Araneta Avenue Underpass', 'Metro Manila', 'impassable', 'Waist-Deep Hazard (60 - 80 cm)', '[[14.6200,121.0100],[14.6250,121.0150],[14.6220,121.0200],[14.6170,121.0140]]', 'Reroute via E. Rodriguez Sr. Ave or A. Bonifacio', true
                     WHERE NOT EXISTS (SELECT 1 FROM flood_hazard_zones WHERE zone_name = 'Araneta Avenue Underpass');
 
-                    INSERT INTO flood_hazard_zones (zone_name, risk_level, water_depth_level, polygon_coordinates_json, recommended_reroute, is_active)
-                    SELECT 'R-10 Navotas Coastal Slipway', 'severe', 'Waist-Deep Hazard (60 - 80 cm)', '[[14.6500,120.9400],[14.6550,120.9480],[14.6510,120.9530],[14.6460,120.9450]]', 'Reroute via Circumferential Road 4 (C4)', true
+                    INSERT INTO flood_hazard_zones (zone_name, region, risk_level, water_depth_level, polygon_coordinates_json, recommended_reroute, is_active)
+                    SELECT 'R-10 Navotas Coastal Slipway', 'Metro Manila', 'severe', 'Waist-Deep Hazard (60 - 80 cm)', '[[14.6500,120.9400],[14.6550,120.9480],[14.6510,120.9530],[14.6460,120.9450]]', 'Reroute via Circumferential Road 4 (C4)', true
                     WHERE NOT EXISTS (SELECT 1 FROM flood_hazard_zones WHERE zone_name = 'R-10 Navotas Coastal Slipway');
 
-                    INSERT INTO flood_hazard_zones (zone_name, risk_level, water_depth_level, polygon_coordinates_json, recommended_reroute, is_active)
-                    SELECT 'Marikina Riverbank Inundation Area', 'severe', 'Waist-Deep Hazard (60 - 80 cm)', '[[14.6300,121.0900],[14.6350,121.0980],[14.6310,121.1030],[14.6260,121.0950]]', 'Reroute via Marcos Highway or Sumulong Highway', true
+                    INSERT INTO flood_hazard_zones (zone_name, region, risk_level, water_depth_level, polygon_coordinates_json, recommended_reroute, is_active)
+                    SELECT 'Marikina Riverbank Inundation Area', 'Metro Manila', 'severe', 'Waist-Deep Hazard (60 - 80 cm)', '[[14.6300,121.0900],[14.6350,121.0980],[14.6310,121.1030],[14.6260,121.0950]]', 'Reroute via Marcos Highway or Sumulong Highway', true
                     WHERE NOT EXISTS (SELECT 1 FROM flood_hazard_zones WHERE zone_name = 'Marikina Riverbank Inundation Area');
+
+                    -- Central Luzon: Pampanga / NLEX Expressway Corridor (PAGASA Pampanga River Basin)
+                    INSERT INTO flood_hazard_zones (zone_name, region, risk_level, water_depth_level, polygon_coordinates_json, recommended_reroute, is_active)
+                    SELECT 'NLEX San Simon Viaduct / Tulaoc River Spillway', 'Pampanga / NLEX', 'impassable', 'Waist-Deep Hazard (60 - 80 cm)', '[[14.9850,120.7200],[15.0150,120.7300],[15.0100,120.7550],[14.9800,120.7450]]', 'Reroute via MacArthur Highway Apalit or utilize Elevated Viaduct lanes with extreme caution', true
+                    WHERE NOT EXISTS (SELECT 1 FROM flood_hazard_zones WHERE zone_name = 'NLEX San Simon Viaduct / Tulaoc River Spillway');
+
+                    INSERT INTO flood_hazard_zones (zone_name, region, risk_level, water_depth_level, polygon_coordinates_json, recommended_reroute, is_active)
+                    SELECT 'San Fernando - Gapan-San Fernando-Olongapo (GSO) Junction', 'Pampanga / NLEX', 'severe', 'Tire-Deep Level (25 - 35 cm)', '[[15.0250,120.6750],[15.0450,120.6900],[15.0380,120.7050],[15.0180,120.6900]]', 'Reroute via Jose Abad Santos Ave (JASA) or Lazatin Blvd Bypass', true
+                    WHERE NOT EXISTS (SELECT 1 FROM flood_hazard_zones WHERE zone_name = 'San Fernando - Gapan-San Fernando-Olongapo (GSO) Junction');
+
+                    -- Central Luzon: Bulacan River Basin & Lowland Spillways (PAGASA Angat Basin)
+                    INSERT INTO flood_hazard_zones (zone_name, region, risk_level, water_depth_level, polygon_coordinates_json, recommended_reroute, is_active)
+                    SELECT 'MacArthur Highway - Calumpit River Spillway', 'Bulacan', 'impassable', 'Waist-Deep Hazard (60 - 80 cm)', '[[14.9050,120.7500],[14.9250,120.7650],[14.9200,120.7850],[14.9000,120.7700]]', 'Reroute via Pulilan-Calumpit Regional Bypass or NLEX Pulilan Exit', true
+                    WHERE NOT EXISTS (SELECT 1 FROM flood_hazard_zones WHERE zone_name = 'MacArthur Highway - Calumpit River Spillway');
+
+                    INSERT INTO flood_hazard_zones (zone_name, region, risk_level, water_depth_level, polygon_coordinates_json, recommended_reroute, is_active)
+                    SELECT 'Meycauayan - Marilao Lowland Segment', 'Bulacan', 'severe', 'Tire-Deep Level (25 - 35 cm)', '[[14.7450,120.9500],[14.7650,120.9650],[14.7580,120.9800],[14.7380,120.9650]]', 'Reroute via NLEX Meycauayan Interchange or Marilao Bypass', true
+                    WHERE NOT EXISTS (SELECT 1 FROM flood_hazard_zones WHERE zone_name = 'Meycauayan - Marilao Lowland Segment');
+
+                    INSERT INTO flood_hazard_zones (zone_name, region, risk_level, water_depth_level, polygon_coordinates_json, recommended_reroute, is_active)
+                    SELECT 'SJDM Muzon - Tungkong Mangga Creek Crossing', 'Bulacan', 'moderate', 'Tire-Deep Level (25 - 35 cm)', '[[14.8050,121.0350],[14.8250,121.0500],[14.8200,121.0650],[14.8000,121.0500]]', 'Reroute via Quirino Highway or Kaypian Road (Garage Hub Corridor)', true
+                    WHERE NOT EXISTS (SELECT 1 FROM flood_hazard_zones WHERE zone_name = 'SJDM Muzon - Tungkong Mangga Creek Crossing');
                 ", conn))
                 {
                     cmd.ExecuteNonQuery();
@@ -568,7 +612,138 @@ namespace DriveAndGo_API.Services
                     cmd.ExecuteNonQuery();
                 }
 
-                Console.WriteLine("Database tables initialized and fleet/driver statuses reconciled successfully.");
+                // 26. Auto-seed Admin accounts if not existing
+                string defaultHash = BCrypt.Net.BCrypt.HashPassword("Admin@123");
+                using (var cmd = new NpgsqlCommand(@"
+                    INSERT INTO users (full_name, email, password_hash, phone, role)
+                    VALUES 
+                      ('Ray Quirante', 'rayquirante@gmail.com', @hash, '09171234567', 'admin'),
+                      ('Ray Quirante', 'rayuirante@gmail.com', @hash, '09171234567', 'admin'),
+                      ('Super Admin', 'admin@driveandgo.com', @hash, '09170000000', 'superadmin')
+                    ON CONFLICT (email) DO NOTHING;
+                ", conn))
+                {
+                    cmd.Parameters.AddWithValue("@hash", defaultHash);
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 27. Blockchain Cryptographic Ledger & Performance Composite Indexes
+                using (var cmd = new NpgsqlCommand(@"
+                    CREATE TABLE IF NOT EXISTS blockchain_ledger (
+                        block_index SERIAL PRIMARY KEY,
+                        rental_id INT REFERENCES rentals(rental_id) ON DELETE SET NULL,
+                        action_type VARCHAR(50) NOT NULL DEFAULT 'CONTRACT_SEALED',
+                        block_hash TEXT NOT NULL,
+                        previous_hash TEXT NOT NULL DEFAULT '0',
+                        contract_data JSONB NOT NULL,
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    ALTER TABLE rentals ADD COLUMN IF NOT EXISTS blockchain_hash TEXT;
+                    ALTER TABLE blockchain_ledger ADD COLUMN IF NOT EXISTS action_type VARCHAR(50) NOT NULL DEFAULT 'CONTRACT_SEALED';
+
+                    CREATE INDEX IF NOT EXISTS idx_blockchain_rental ON blockchain_ledger(rental_id);
+                    CREATE INDEX IF NOT EXISTS idx_rentals_customer_status ON rentals(customer_id, status);
+                    CREATE INDEX IF NOT EXISTS idx_rentals_vehicle_status ON rentals(vehicle_id, status);
+                    CREATE INDEX IF NOT EXISTS idx_vehicles_status ON vehicles(status);
+
+                    -- Seed Genesis Block if empty and align sequence
+                    INSERT INTO blockchain_ledger (rental_id, action_type, block_hash, previous_hash, contract_data)
+                    SELECT NULL, 'GENESIS', '0000000000000000000000000000000000000000000000000000000000000000', '0', json_build_object('system', 'DriveAndGo Cryptographic Ledger', 'type', 'genesis', 'message', 'Genesis Block Initialized')::jsonb
+                    WHERE NOT EXISTS (SELECT 1 FROM blockchain_ledger LIMIT 1)
+                    ON CONFLICT DO NOTHING;
+
+                    SELECT setval(pg_get_serial_sequence('blockchain_ledger', 'block_index'), COALESCE(MAX(block_index), 1)) FROM blockchain_ledger;
+                ", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 28. admin_calendar_notes table
+                using (var cmd = new NpgsqlCommand(@"
+                    CREATE TABLE IF NOT EXISTS admin_calendar_notes (
+                        note_id SERIAL PRIMARY KEY,
+                        note_date DATE NOT NULL,
+                        title VARCHAR(150) NOT NULL,
+                        content TEXT,
+                        category VARCHAR(50) NOT NULL DEFAULT 'reminder',
+                        created_by VARCHAR(150) NOT NULL DEFAULT 'Admin',
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_calendar_notes_date ON admin_calendar_notes(note_date);
+                ", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
+                // 29. road_closures table for Traffic, Roadworks, Flood & Accident Management
+                using (var cmd = new NpgsqlCommand(@"
+                    CREATE TABLE IF NOT EXISTS road_closures (
+                        closure_id SERIAL PRIMARY KEY,
+                        road_name VARCHAR(150) NOT NULL,
+                        category VARCHAR(50) NOT NULL DEFAULT 'roadworks',
+                        severity VARCHAR(50) NOT NULL DEFAULT 'closed',
+                        latitude DOUBLE PRECISION NOT NULL,
+                        longitude DOUBLE PRECISION NOT NULL,
+                        radius_meters INT DEFAULT 150,
+                        reroute_advice TEXT DEFAULT '',
+                        provider VARCHAR(60) DEFAULT 'DriveAndGo Fleet Intelligence',
+                        source_headline TEXT DEFAULT '',
+                        source_url TEXT DEFAULT '',
+                        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                        reported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        expires_at TIMESTAMPTZ
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_road_closures_active ON road_closures(is_active);
+                    CREATE INDEX IF NOT EXISTS idx_road_closures_category ON road_closures(category);
+
+                    -- Seed real-world Metro Manila closure & hazard benchmarks if empty
+                    INSERT INTO road_closures (road_name, category, severity, latitude, longitude, radius_meters, reroute_advice, provider, source_headline, source_url, is_active)
+                    SELECT 'EDSA Santolan Flyover Reblocking', 'roadworks', 'moderate_delay', 14.6074, 121.0569, 250, 'Use service road or C5 Katipunan corridor during peak hours', 'MMDA / DPWH', 'DPWH Weekend Asphalt Reblocking on EDSA Santolan', 'https://mmda.gov.ph', true
+                    WHERE NOT EXISTS (SELECT 1 FROM road_closures WHERE road_name = 'EDSA Santolan Flyover Reblocking');
+
+                    INSERT INTO road_closures (road_name, category, severity, latitude, longitude, radius_meters, reroute_advice, provider, source_headline, source_url, is_active)
+                    SELECT 'Araneta Ave - G. Araneta Underpass', 'flooding', 'closed', 14.6215, 121.0125, 300, 'Reroute via E. Rodriguez Sr. Ave or A. Bonifacio Ave', 'UP NOAH / MMDA', 'Araneta Underpass impassable to light vehicles during heavy rainfall', 'https://noah.up.edu.ph', true
+                    WHERE NOT EXISTS (SELECT 1 FROM road_closures WHERE road_name = 'Araneta Ave - G. Araneta Underpass');
+
+                    INSERT INTO road_closures (road_name, category, severity, latitude, longitude, radius_meters, reroute_advice, provider, source_headline, source_url, is_active)
+                    SELECT 'España Blvd - UST Pontifical Segment', 'flooding', 'closed', 14.6085, 120.9895, 250, 'Reroute via Lacson Ave or Boulevard Bypass', 'MMDA Flood Monitoring', 'España Blvd flood hazard active - water level critical', 'https://mmda.gov.ph', true
+                    WHERE NOT EXISTS (SELECT 1 FROM road_closures WHERE road_name = 'España Blvd - UST Pontifical Segment');
+
+                    INSERT INTO road_closures (road_name, category, severity, latitude, longitude, radius_meters, reroute_advice, provider, source_headline, source_url, is_active)
+                    SELECT 'R-10 Navotas Coastal Slipway Barrier', 'hazard', 'impassable_light_vehicles', 14.6515, 120.9455, 350, 'Reroute via Circumferential Road 4 (C4) or North Luzon Expressway', 'Navotas CDRRMO', 'Coastal surge and slipway tidal inundation advisory', 'https://navotas.gov.ph', true
+                    WHERE NOT EXISTS (SELECT 1 FROM road_closures WHERE road_name = 'R-10 Navotas Coastal Slipway Barrier');
+
+                    INSERT INTO road_closures (road_name, category, severity, latitude, longitude, radius_meters, reroute_advice, provider, source_headline, source_url, is_active)
+                    SELECT 'Marcos Highway - Marikina River Approach', 'accident', 'moderate_delay', 14.6295, 121.0965, 200, 'Use Sumulong Highway or A. Bonifacio Ave bypass', 'Traffic Patrol PH', 'Multi-vehicle collision reported at westbound approach', 'https://mmda.gov.ph', true
+                    WHERE NOT EXISTS (SELECT 1 FROM road_closures WHERE road_name = 'Marcos Highway - Marikina River Approach');
+
+                    -- Central Luzon: Pampanga & NLEX Closures
+                    INSERT INTO road_closures (road_name, category, severity, latitude, longitude, radius_meters, reroute_advice, provider, source_headline, source_url, is_active)
+                    SELECT 'NLEX San Simon Viaduct / Tulaoc Flood Hazard', 'flooding', 'impassable_light_vehicles', 14.9965, 120.7380, 400, 'Reroute via MacArthur Highway Apalit or utilize elevated viaduct lanes', 'NLEX Corp / Philstar', 'Flooding causes heavy traffic buildup along NLEX San Simon', 'https://philstar.com', true
+                    WHERE NOT EXISTS (SELECT 1 FROM road_closures WHERE road_name = 'NLEX San Simon Viaduct / Tulaoc Flood Hazard');
+
+                    INSERT INTO road_closures (road_name, category, severity, latitude, longitude, radius_meters, reroute_advice, provider, source_headline, source_url, is_active)
+                    SELECT 'San Fernando - GSO Junction Inundation Advisory', 'flooding', 'moderate_delay', 15.0250, 120.6750, 300, 'Reroute via Jose Abad Santos Ave (JASA) or Lazatin Blvd', 'Pampanga PDRRMO', 'Flashflood hazard reported at GSO interchange', 'https://facebook.com/pampangapdrrmo', true
+                    WHERE NOT EXISTS (SELECT 1 FROM road_closures WHERE road_name = 'San Fernando - GSO Junction Inundation Advisory');
+
+                    -- Central Luzon: Bulacan Closures
+                    INSERT INTO road_closures (road_name, category, severity, latitude, longitude, radius_meters, reroute_advice, provider, source_headline, source_url, is_active)
+                    SELECT 'MacArthur Highway - Calumpit River Spillway', 'flooding', 'closed', 14.9150, 120.7650, 350, 'Reroute via Pulilan-Calumpit Regional Bypass or NLEX Pulilan Exit', 'Bulacan PDRRMC / GMA News', 'Calumpit River overflow submerges MacArthur Highway sections', 'https://gmanetwork.com', true
+                    WHERE NOT EXISTS (SELECT 1 FROM road_closures WHERE road_name = 'MacArthur Highway - Calumpit River Spillway');
+
+                    INSERT INTO road_closures (road_name, category, severity, latitude, longitude, radius_meters, reroute_advice, provider, source_headline, source_url, is_active)
+                    SELECT 'Meycauayan - Marilao Lowland Spillway Corridor', 'flooding', 'closed', 14.7570, 120.9610, 300, 'Reroute via NLEX Meycauayan Interchange or Marilao Bypass', 'Bulacan Rescue / News5', 'Low-lying service roads in Marilao waterlogged', 'https://news.tv5.com.ph', true
+                    WHERE NOT EXISTS (SELECT 1 FROM road_closures WHERE road_name = 'Meycauayan - Marilao Lowland Spillway Corridor');
+
+                    INSERT INTO road_closures (road_name, category, severity, latitude, longitude, radius_meters, reroute_advice, provider, source_headline, source_url, is_active)
+                    SELECT 'SJDM Muzon - Fleet Garage Corridor Advisory', 'hazard', 'moderate_delay', 14.8140, 121.0450, 200, 'Reroute via Quirino Highway or Kaypian Road (Garage Hub Corridor)', 'CSJDM CDRRMO', 'Tungkong Mangga creek watch active during monsoon rains', 'https://csjdm.gov.ph', true
+                    WHERE NOT EXISTS (SELECT 1 FROM road_closures WHERE road_name = 'SJDM Muzon - Fleet Garage Corridor Advisory');
+                ", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
+                Console.WriteLine("Database tables initialized, admin accounts verified, blockchain ledger verified, road closures initialized, and fleet/driver statuses reconciled successfully.");
             }
             catch (Exception ex)
             {

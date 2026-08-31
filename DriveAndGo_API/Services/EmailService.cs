@@ -16,7 +16,8 @@ namespace DriveAndGo_API.Services
             string? subject,
             string? personalMessage,
             RentalAgreementEmailData data,
-            byte[]? pdfAttachment = null);
+            byte[]? pdfAttachment = null,
+            byte[]? receiptAttachment = null);
         Task<bool> SendVehicleReturnConfirmationAsync(VehicleReturnEmailData data, byte[]? pdfAttachment = null);
     }
 
@@ -32,7 +33,15 @@ namespace DriveAndGo_API.Services
             _httpClient = httpClient;
         }
 
-        private async Task<bool> TrySendViaSmtpAsync(string toEmail, string? ccEmail, string subject, string htmlBody, byte[]? pdfAttachment = null, string? attachmentFilename = null)
+        private async Task<bool> TrySendViaSmtpAsync(
+            string toEmail,
+            string? ccEmail,
+            string subject,
+            string htmlBody,
+            byte[]? pdfAttachment = null,
+            string? attachmentFilename = null,
+            byte[]? secondAttachment = null,
+            string? secondFilename = null)
         {
             string? smtpEmail = _configuration["Smtp:Email"] ?? Environment.GetEnvironmentVariable("SMTP_EMAIL");
             string? smtpPass = _configuration["Smtp:AppPassword"] ?? _configuration["Smtp:Password"] ?? Environment.GetEnvironmentVariable("SMTP_APP_PASSWORD");
@@ -76,6 +85,13 @@ namespace DriveAndGo_API.Services
                     var stream = new MemoryStream(pdfAttachment);
                     var attachment = new System.Net.Mail.Attachment(stream, attachmentFilename ?? "Rental_Agreement.pdf", "application/pdf");
                     message.Attachments.Add(attachment);
+                }
+
+                if (secondAttachment != null && secondAttachment.Length > 0)
+                {
+                    var stream2 = new MemoryStream(secondAttachment);
+                    var attachment2 = new System.Net.Mail.Attachment(stream2, secondFilename ?? "Official_Receipt.pdf", "application/pdf");
+                    message.Attachments.Add(attachment2);
                 }
 
                 await client.SendMailAsync(message);
@@ -342,7 +358,8 @@ namespace DriveAndGo_API.Services
             string? subject,
             string? personalMessage,
             RentalAgreementEmailData data,
-            byte[]? pdfAttachment = null)
+            byte[]? pdfAttachment = null,
+            byte[]? receiptAttachment = null)
         {
             try
             {
@@ -354,7 +371,7 @@ namespace DriveAndGo_API.Services
                 // 1. Try Gmail SMTP first if configured (Allows sending to ANY recipient email!)
                 try
                 {
-                    if (await TrySendViaSmtpAsync(toEmail, ccEmail, emailSubject, htmlBody, pdfAttachment, $"Rental_Agreement_{data.AgreementCode}.pdf"))
+                    if (await TrySendViaSmtpAsync(toEmail, ccEmail, emailSubject, htmlBody, pdfAttachment, $"Rental_Agreement_{data.AgreementCode}.pdf", receiptAttachment, $"Official_Receipt_{data.AgreementCode}.pdf"))
                     {
                         return (true, "Email dispatched successfully via Gmail SMTP.", "smtp-msg-" + Guid.NewGuid().ToString("N")[..8]);
                     }
@@ -397,16 +414,26 @@ namespace DriveAndGo_API.Services
                     payload["cc"] = ccList;
                 }
 
+                var attachmentsList = new List<object>();
                 if (pdfAttachment != null && pdfAttachment.Length > 0)
                 {
-                    payload["attachments"] = new[]
+                    attachmentsList.Add(new
                     {
-                        new
-                        {
-                            filename = $"Rental_Agreement_{data.AgreementCode}.pdf",
-                            content = Convert.ToBase64String(pdfAttachment)
-                        }
-                    };
+                        filename = $"Rental_Agreement_{data.AgreementCode}.pdf",
+                        content = Convert.ToBase64String(pdfAttachment)
+                    });
+                }
+                if (receiptAttachment != null && receiptAttachment.Length > 0)
+                {
+                    attachmentsList.Add(new
+                    {
+                        filename = $"Official_Receipt_{data.AgreementCode}.pdf",
+                        content = Convert.ToBase64String(receiptAttachment)
+                    });
+                }
+                if (attachmentsList.Count > 0)
+                {
+                    payload["attachments"] = attachmentsList;
                 }
 
                 var requestMessage = new HttpRequestMessage(HttpMethod.Post, "https://api.resend.com/emails");
@@ -577,6 +604,23 @@ namespace DriveAndGo_API.Services
             var verificationUrl = $"{serverBase}/api/Rentals/verify/{data.AgreementCode}";
             var verificationUrlEncoded = System.Web.HttpUtility.UrlEncode(verificationUrl);
             var pdfDownloadUrl = $"{serverBase}/api/Rentals/code/{data.AgreementCode}/pdf";
+            string brandSlug = DriveAndGo_API.Helpers.LogoHelper.GetBrandSlug(data.VehicleName);
+            string brandLogoUrl = $"https://cdn.jsdelivr.net/gh/filippofilip95/car-logos-dataset@master/logos/original/{brandSlug}.png";
+            string brandLogoBlock = $"<img src=\"{brandLogoUrl}\" alt=\"{data.VehicleName}\" width=\"24\" height=\"16\" style=\"display:inline-block; vertical-align:middle; margin-right:6px; object-fit:contain;\" /> ";
+
+            string payKey = DriveAndGo_API.Helpers.LogoHelper.GetPaymentKey(data.PaymentMethod);
+            string payDomain = payKey switch
+            {
+                "gcash" => "gcash.com",
+                "maya" => "maya.ph",
+                "bdo" => "bdo.com.ph",
+                "bpi" => "bpi.com.ph",
+                "unionbank" => "unionbankph.com",
+                "metrobank" => "metrobank.com.ph",
+                _ => "bdo.com.ph"
+            };
+            string payLogoUrl = $"https://unavatar.io/{payDomain}?fallback=https://www.google.com/s2/favicons?domain={payDomain}&sz=64";
+            string payLogoBlock = $"<img src=\"{payLogoUrl}\" alt=\"{data.PaymentMethod}\" width=\"16\" height=\"16\" style=\"display:inline-block; vertical-align:middle; margin-right:6px; border-radius:3px;\" /> ";
             var appDeepLink = $"driveandgo://booking/{data.AgreementCode}";
 
             return template
@@ -584,6 +628,8 @@ namespace DriveAndGo_API.Services
                 .Replace("{{AgreementCode}}", data.AgreementCode)
                 .Replace("{{CustomerName}}", data.CustomerName)
                 .Replace("{{VehicleName}}", data.VehicleName)
+                .Replace("{{VehicleBrandLogoBlock}}", brandLogoBlock)
+                .Replace("{{PaymentMethodLogoBlock}}", payLogoBlock)
                 .Replace("{{PlateNo}}", data.PlateNo)
                 .Replace("{{VehicleColor}}", string.IsNullOrWhiteSpace(data.VehicleColor) ? "Standard" : data.VehicleColor)
                 .Replace("{{PickupDate}}", data.PickupDate)
@@ -694,12 +740,17 @@ namespace DriveAndGo_API.Services
                 htmlBody = $"<html><body><h2>Vehicle Return Confirmed – {data.AgreementCode}</h2><p>Thank you for driving with Drive&amp;Go!</p></body></html>";
             }
 
+            string retBrandSlug = DriveAndGo_API.Helpers.LogoHelper.GetBrandSlug(data.VehicleName);
+            string retBrandLogoUrl = $"https://cdn.jsdelivr.net/gh/filippofilip95/car-logos-dataset@master/logos/original/{retBrandSlug}.png";
+            string retBrandLogoBlock = $"<img src=\"{retBrandLogoUrl}\" alt=\"{data.VehicleName}\" width=\"24\" height=\"16\" style=\"display:inline-block; vertical-align:middle; margin-right:6px; object-fit:contain;\" /> ";
+
             htmlBody = htmlBody
                 .Replace("{{LogoSrc}}",           logoSrc)
                 .Replace("{{AgreementCode}}",     data.AgreementCode)
                 .Replace("{{ReturnTimestamp}}",   data.ReturnDate)
                 .Replace("{{VehicleImageUrl}}",   vehicleImageUrl)
                 .Replace("{{VehicleName}}",       data.VehicleName)
+                .Replace("{{VehicleBrandLogoBlock}}", retBrandLogoBlock)
                 .Replace("{{PlateNo}}",           data.PlateNo)
                 .Replace("{{CustomerName}}",      data.CustomerName)
                 .Replace("{{ReturnOdometer}}",    data.ReturnOdometer?.ToString("N0") ?? "N/A")

@@ -13,10 +13,10 @@ namespace DriveAndGo_Admin.Helpers
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             string[] candidates =
             {
+                WebAssetHelper.GetSharedAssetPath("logo.png", "images"),
+                Path.Combine(baseDir, "WebAssets", "shared", "images", "logo.png"),
                 Path.Combine(baseDir, "WebAssets", "logo.png"),
-                Path.Combine(AppContext.BaseDirectory, "WebAssets", "logo.png"),
-                Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "WebAssets", "logo.png")),
-                Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "..", "DriveAndGo_Admin", "WebAssets", "logo.png"))
+                Path.Combine(AppContext.BaseDirectory, "WebAssets", "logo.png")
             };
 
             return candidates.FirstOrDefault(File.Exists);

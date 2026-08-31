@@ -114,7 +114,7 @@ namespace DriveAndGo_Admin
                 _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
                 _webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
 
-                string htmlPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "AIBusinessInsights.html");
+                string htmlPath = Helpers.WebAssetHelper.GetWebAssetPath("AIBusinessInsights.html", "ai_insights");
                 if (File.Exists(htmlPath))
                 {
                     string currentTheme = ThemeManager.IsDarkMode ? "dark" : "light";

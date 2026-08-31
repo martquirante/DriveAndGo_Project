@@ -1368,7 +1368,7 @@ public class DriversController : ControllerBase
 
     private static string GetDriverVerificationHtml(DriverDetailDto? d, string code)
     {
-        string logoUrl = "https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png";
+        string logoUrl = "/images/logo.png";
         var nowStr = DateTime.UtcNow.AddHours(8).ToString("MMMM dd, yyyy • hh:mm tt", CultureInfo.InvariantCulture);
 
         if (d == null)
@@ -1657,7 +1657,7 @@ public class DriversController : ControllerBase
 
     private static string GetPayslipVerificationHtml(DriverPayslipDto? slip, DriverDetailDto? driver, string stmtNo)
     {
-        string logoUrl = "https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png";
+        string logoUrl = "/images/logo.png";
         var nowStr = DateTime.UtcNow.AddHours(8).ToString("MMMM dd, yyyy • hh:mm tt", CultureInfo.InvariantCulture);
 
         if (slip == null || driver == null)

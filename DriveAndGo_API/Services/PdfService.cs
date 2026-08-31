@@ -172,11 +172,32 @@ namespace DriveAndGo_API.Services
                     .SetPadding(12)
                     .SetMarginLeft(4);
 
-                vehCell.Add(new Paragraph("VEHICLE SPECIFICATIONS")
+                var vehHeaderTbl = new Table(UnitValue.CreatePercentArray(new float[] { 75, 25 }))
+                    .UseAllAvailableWidth()
+                    .SetMarginBottom(6);
+
+                var vhLeft = new Cell().SetBorder(Border.NO_BORDER).SetPadding(0);
+                vhLeft.Add(new Paragraph("VEHICLE SPECIFICATIONS")
                     .SetFont(fontBold)
                     .SetFontColor(BrandOrange)
-                    .SetFontSize(9.5f)
-                    .SetMarginBottom(6));
+                    .SetFontSize(9.5f));
+                vehHeaderTbl.AddCell(vhLeft);
+
+                var vhRight = new Cell().SetBorder(Border.NO_BORDER).SetPadding(0).SetTextAlignment(TextAlignment.RIGHT);
+                var brandBytes = DriveAndGo_API.Helpers.LogoHelper.GetBrandLogoBytes(data.VehicleName);
+                if (brandBytes != null && brandBytes.Length > 0)
+                {
+                    try
+                    {
+                        var brandImg = new iText.Layout.Element.Image(ImageDataFactory.Create(brandBytes))
+                            .ScaleToFit(42f, 22f)
+                            .SetHorizontalAlignment(HorizontalAlignment.RIGHT);
+                        vhRight.Add(brandImg);
+                    }
+                    catch { }
+                }
+                vehHeaderTbl.AddCell(vhRight);
+                vehCell.Add(vehHeaderTbl);
 
                 vehCell.Add(new Paragraph($"Vehicle: {data.VehicleName}").SetFont(fontBold).SetFontSize(10f).SetFontColor(DarkNavy));
                 vehCell.Add(new Paragraph($"Plate Number: {data.PlateNo}").SetFont(fontBold).SetFontSize(10f).SetFontColor(BrandOrange).SetMarginTop(3f));
@@ -190,7 +211,7 @@ namespace DriveAndGo_API.Services
                 document.Add(infoGrid);
 
                 // ── 3. Rental Period & Schedule Banner ──
-                var periodTable = new Table(UnitValue.CreatePercentArray(new float[] { 68, 32 }))
+                var periodTable = new Table(UnitValue.CreatePercentArray(new float[] { 66, 34 }))
                     .UseAllAvailableWidth()
                     .SetBackgroundColor(LightBg)
                     .SetBorder(new SolidBorder(BorderSlate, 1))
@@ -210,7 +231,23 @@ namespace DriveAndGo_API.Services
                 var periodRight = new Cell().SetBorder(Border.NO_BORDER).SetTextAlignment(TextAlignment.CENTER).SetPadding(8);
                 periodRight.Add(new Paragraph("OFFICIAL CONTRACT").SetFont(fontBold).SetFontSize(8.5f).SetFontColor(SlateMuted));
                 periodRight.Add(new Paragraph("VERIFIED").SetFont(fontBold).SetFontSize(13f).SetFontColor(VerifiedGreen).SetMarginTop(3f));
-                periodRight.Add(new Paragraph($"Status: {data.PaymentStatus.ToUpper()}").SetFont(fontBold).SetFontSize(9f).SetFontColor(DarkNavy).SetMarginTop(3f));
+                
+                string payMethod = !string.IsNullOrWhiteSpace(data.PaymentMethod) ? data.PaymentMethod : "Cash";
+                var payLogoBytes = DriveAndGo_API.Helpers.LogoHelper.GetPaymentLogoBytes(payMethod);
+                if (payLogoBytes != null && payLogoBytes.Length > 0)
+                {
+                    try
+                    {
+                        var payImg = new iText.Layout.Element.Image(ImageDataFactory.Create(payLogoBytes))
+                            .ScaleToFit(32f, 16f)
+                            .SetHorizontalAlignment(HorizontalAlignment.CENTER)
+                            .SetMarginTop(3f)
+                            .SetMarginBottom(2f);
+                        periodRight.Add(payImg);
+                    }
+                    catch { }
+                }
+                periodRight.Add(new Paragraph($"{payMethod.ToUpper()} • {data.PaymentStatus.ToUpper()}").SetFont(fontBold).SetFontSize(8f).SetFontColor(DarkNavy).SetMarginTop(2f));
 
                 periodTable.AddCell(periodLeft);
                 periodTable.AddCell(periodRight);
@@ -278,17 +315,17 @@ namespace DriveAndGo_API.Services
                 termsTable.AddCell(termsCell);
                 document.Add(termsTable);
 
-                // ── 6. Official Dual Signature Blocks ──
-                var signTable = new Table(UnitValue.CreatePercentArray(new float[] { 50, 50 }))
+                // ── 6. Official Dual Signature & E-Verification Blocks ──
+                var signTable = new Table(UnitValue.CreatePercentArray(new float[] { 37, 37, 26 }))
                     .UseAllAvailableWidth()
                     .SetMarginTop(8)
                     .SetMarginBottom(10);
 
                 var custSignCell = new Cell()
                     .SetBorder(new SolidBorder(BorderSlate, 1))
-                    .SetPadding(10)
+                    .SetPadding(8)
                     .SetTextAlignment(TextAlignment.CENTER)
-                    .SetMarginRight(4);
+                    .SetMarginRight(3);
 
                 custSignCell.Add(new Paragraph("RENTED / CONFORME BY").SetFont(fontBold).SetFontSize(7.2f).SetFontColor(SlateMuted).SetMarginBottom(2f));
 
@@ -302,7 +339,7 @@ namespace DriveAndGo_API.Services
                         if (commaIdx >= 0) b64 = b64.Substring(commaIdx + 1);
                         byte[] sigBytes = Convert.FromBase64String(b64.Trim());
                         var sigImg = new iText.Layout.Element.Image(ImageDataFactory.Create(sigBytes))
-                            .ScaleToFit(100f, 26f)
+                            .ScaleToFit(90f, 24f)
                             .SetHorizontalAlignment(HorizontalAlignment.CENTER)
                             .SetMarginTop(1f)
                             .SetMarginBottom(1f);
@@ -318,7 +355,7 @@ namespace DriveAndGo_API.Services
                         .SetFont(fontBold)
                         .SetFontSize(8.5f)
                         .SetFontColor(DarkNavy)
-                        .SetMarginTop(22f)
+                        .SetMarginTop(18f)
                         .SetMarginBottom(1f));
                 }
                 else
@@ -341,9 +378,10 @@ namespace DriveAndGo_API.Services
 
                 var adminSignCell = new Cell()
                     .SetBorder(new SolidBorder(BorderSlate, 1))
-                    .SetPadding(10)
+                    .SetPadding(8)
                     .SetTextAlignment(TextAlignment.CENTER)
-                    .SetMarginLeft(4);
+                    .SetMarginLeft(3)
+                    .SetMarginRight(3);
 
                 string dispAdmin = !string.IsNullOrWhiteSpace(data.AdminName) ? data.AdminName : "Raymart Quirante";
                 adminSignCell.Add(new Paragraph("APPROVED & DISPATCHED BY").SetFont(fontBold).SetFontSize(7.2f).SetFontColor(SlateMuted).SetMarginBottom(2f));
@@ -358,7 +396,7 @@ namespace DriveAndGo_API.Services
                         if (commaIdx >= 0) b64 = b64.Substring(commaIdx + 1);
                         byte[] sigBytes = Convert.FromBase64String(b64.Trim());
                         var sigImg = new iText.Layout.Element.Image(ImageDataFactory.Create(sigBytes))
-                            .ScaleToFit(100f, 26f)
+                            .ScaleToFit(90f, 24f)
                             .SetHorizontalAlignment(HorizontalAlignment.CENTER)
                             .SetMarginTop(1f)
                             .SetMarginBottom(1f);
@@ -374,7 +412,7 @@ namespace DriveAndGo_API.Services
                         .SetFont(fontBold)
                         .SetFontSize(8.5f)
                         .SetFontColor(DarkNavy)
-                        .SetMarginTop(22f)
+                        .SetMarginTop(18f)
                         .SetMarginBottom(1f));
                 }
                 else
@@ -395,8 +433,52 @@ namespace DriveAndGo_API.Services
                     .SetPaddingTop(2f)
                     .SetMarginTop(0));
 
+                // Verification QR Code Column
+                var qrSignCell = new Cell()
+                    .SetBorder(new SolidBorder(BorderSlate, 1))
+                    .SetPadding(6)
+                    .SetTextAlignment(TextAlignment.CENTER)
+                    .SetMarginLeft(3);
+
+                byte[]? agreeQrBytes = null;
+                try
+                {
+                    using var qrGen = new QRCoder.QRCodeGenerator();
+                    string vUrl = !string.IsNullOrWhiteSpace(data.VerificationUrl)
+                        ? data.VerificationUrl
+                        : $"https://driveandgo.ph/rentals/verify/{data.AgreementCode}";
+                    var qrData = qrGen.CreateQrCode(vUrl, QRCoder.QRCodeGenerator.ECCLevel.H);
+                    var qrCode = new QRCoder.PngByteQRCode(qrData);
+                    agreeQrBytes = qrCode.GetGraphic(4, new byte[] { 11, 25, 44, 255 }, new byte[] { 255, 255, 255, 255 }, true);
+                }
+                catch { }
+
+                if (agreeQrBytes != null)
+                {
+                    try
+                    {
+                        var qrImg = new iText.Layout.Element.Image(ImageDataFactory.Create(agreeQrBytes))
+                            .ScaleToFit(44f, 44f)
+                            .SetHorizontalAlignment(HorizontalAlignment.CENTER)
+                            .SetMarginBottom(2f);
+                        qrSignCell.Add(qrImg);
+                    }
+                    catch { }
+                }
+
+                qrSignCell.Add(new Paragraph("E-SIGNATURE SEAL")
+                    .SetFont(fontBold)
+                    .SetFontSize(6.5f)
+                    .SetFontColor(VerifiedGreen)
+                    .SetCharacterSpacing(0.4f));
+                qrSignCell.Add(new Paragraph(data.AgreementCode)
+                    .SetFont(fontBold)
+                    .SetFontSize(6.5f)
+                    .SetFontColor(DarkNavy));
+
                 signTable.AddCell(custSignCell);
                 signTable.AddCell(adminSignCell);
+                signTable.AddCell(qrSignCell);
                 document.Add(signTable);
 
                 // ── 7. Document Footer Stamp ──
@@ -461,7 +543,7 @@ namespace DriveAndGo_API.Services
                 try
                 {
                     using var qrGenerator = new QRCoder.QRCodeGenerator();
-                    var qrData   = qrGenerator.CreateQrCode(d.VerificationUrl, QRCoder.QRCodeGenerator.ECCLevel.M);
+                    var qrData   = qrGenerator.CreateQrCode(d.VerificationUrl, QRCoder.QRCodeGenerator.ECCLevel.H);
                     var qrCode   = new QRCoder.PngByteQRCode(qrData);
                     qrBytes      = qrCode.GetGraphic(6);
                 }
@@ -567,7 +649,28 @@ namespace DriveAndGo_API.Services
                     .SetBorder(Border.NO_BORDER)
                     .SetBorderLeft(new SolidBorder(BorderColor, 1))
                     .SetPadding(12);
-                vehCell.Add(new Paragraph("Vehicle").SetFont(fontNormal).SetFontSize(8f).SetFontColor(SlateGray));
+
+                var vehHeadTbl = new Table(UnitValue.CreatePercentArray(new float[] { 75, 25 })).UseAllAvailableWidth();
+                var vhLeft = new Cell().SetBorder(Border.NO_BORDER);
+                vhLeft.Add(new Paragraph("Vehicle").SetFont(fontNormal).SetFontSize(8f).SetFontColor(SlateGray));
+                vehHeadTbl.AddCell(vhLeft);
+
+                var vhRight = new Cell().SetBorder(Border.NO_BORDER).SetTextAlignment(TextAlignment.RIGHT);
+                var retBrandBytes = DriveAndGo_API.Helpers.LogoHelper.GetBrandLogoBytes(d.VehicleName);
+                if (retBrandBytes != null && retBrandBytes.Length > 0)
+                {
+                    try
+                    {
+                        var brandImg = new iText.Layout.Element.Image(ImageDataFactory.Create(retBrandBytes))
+                            .ScaleToFit(40f, 22f)
+                            .SetHorizontalAlignment(HorizontalAlignment.RIGHT);
+                        vhRight.Add(brandImg);
+                    }
+                    catch { }
+                }
+                vehHeadTbl.AddCell(vhRight);
+                vehCell.Add(vehHeadTbl);
+
                 vehCell.Add(new Paragraph(d.VehicleName.ToUpperInvariant()).SetFont(fontBold).SetFontSize(13f).SetFontColor(BlackText).SetMarginBottom(8));
                 vehCell.Add(new Paragraph($"Plate No.   {d.PlateNo}").SetFont(fontNormal).SetFontSize(8.5f).SetFontColor(BlackText).SetMarginBottom(2));
                 vehCell.Add(new Paragraph($"Rental Period:  {d.PickupDate}  -  {d.ReturnDate}  ({d.DurationDays} Days)").SetFont(fontNormal).SetFontSize(8.5f).SetFontColor(BlackText));
@@ -837,7 +940,27 @@ namespace DriveAndGo_API.Services
                 custCell.Add(new Paragraph($"Email: {d.CustomerEmail}").SetFont(fontNormal).SetFontSize(8.5f).SetFontColor(darkNavy).SetMarginTop(2f));
 
                 var vehCell = new Cell().SetBorder(new SolidBorder(borderSlate, 1)).SetBackgroundColor(lightBg).SetPadding(10).SetMarginLeft(4);
-                vehCell.Add(new Paragraph("BOOKING & VEHICLE DETAILS").SetFont(fontBold).SetFontColor(brandOrange).SetFontSize(9f).SetMarginBottom(4));
+                var vehTbl = new Table(UnitValue.CreatePercentArray(new float[] { 75, 25 })).UseAllAvailableWidth().SetMarginBottom(4);
+                var vtLeft = new Cell().SetBorder(Border.NO_BORDER);
+                vtLeft.Add(new Paragraph("BOOKING & VEHICLE DETAILS").SetFont(fontBold).SetFontColor(brandOrange).SetFontSize(9f));
+                vehTbl.AddCell(vtLeft);
+
+                var vtRight = new Cell().SetBorder(Border.NO_BORDER).SetTextAlignment(TextAlignment.RIGHT);
+                var rcptBrandBytes = DriveAndGo_API.Helpers.LogoHelper.GetBrandLogoBytes(d.VehicleName);
+                if (rcptBrandBytes != null && rcptBrandBytes.Length > 0)
+                {
+                    try
+                    {
+                        var brandImg = new iText.Layout.Element.Image(ImageDataFactory.Create(rcptBrandBytes))
+                            .ScaleToFit(38f, 20f)
+                            .SetHorizontalAlignment(HorizontalAlignment.RIGHT);
+                        vtRight.Add(brandImg);
+                    }
+                    catch { }
+                }
+                vehTbl.AddCell(vtRight);
+                vehCell.Add(vehTbl);
+
                 vehCell.Add(new Paragraph($"Rental Reference: {d.RentalCode}").SetFont(fontBold).SetFontSize(9.5f).SetFontColor(brandOrange));
                 vehCell.Add(new Paragraph($"Vehicle Unit: {d.VehicleName} ({d.PlateNo})").SetFont(fontNormal).SetFontSize(8.5f).SetFontColor(darkNavy).SetMarginTop(2f));
                 if (!string.IsNullOrWhiteSpace(d.PickupDate))
@@ -857,7 +980,32 @@ namespace DriveAndGo_API.Services
 
                 var sbLeft = new Cell().SetBorder(Border.NO_BORDER).SetPadding(6);
                 sbLeft.Add(new Paragraph("PAYMENT METHOD & TRANSACTION CHANNEL").SetFont(fontBold).SetFontSize(8.5f).SetFontColor(slateMuted));
-                sbLeft.Add(new Paragraph($"Channel: {d.PaymentMethod.ToUpper()}").SetFont(fontBold).SetFontSize(11f).SetFontColor(darkNavy).SetMarginTop(2f));
+
+                var methodRowTbl = new Table(UnitValue.CreatePercentArray(new float[] { 22, 78 })).UseAllAvailableWidth().SetMarginTop(3f);
+                var payLogBytes = DriveAndGo_API.Helpers.LogoHelper.GetPaymentLogoBytes(d.PaymentMethod);
+                if (payLogBytes != null && payLogBytes.Length > 0)
+                {
+                    try
+                    {
+                        var payLogoImg = new iText.Layout.Element.Image(ImageDataFactory.Create(payLogBytes))
+                            .ScaleToFit(30f, 18f)
+                            .SetHorizontalAlignment(HorizontalAlignment.LEFT);
+                        methodRowTbl.AddCell(new Cell().SetBorder(Border.NO_BORDER).Add(payLogoImg));
+                    }
+                    catch
+                    {
+                        methodRowTbl.AddCell(new Cell().SetBorder(Border.NO_BORDER));
+                    }
+                }
+                else
+                {
+                    methodRowTbl.AddCell(new Cell().SetBorder(Border.NO_BORDER));
+                }
+
+                var methodTextCell = new Cell().SetBorder(Border.NO_BORDER).SetVerticalAlignment(VerticalAlignment.MIDDLE);
+                methodTextCell.Add(new Paragraph($"Channel: {d.PaymentMethod.ToUpper()}").SetFont(fontBold).SetFontSize(11f).SetFontColor(darkNavy));
+                methodRowTbl.AddCell(methodTextCell);
+                sbLeft.Add(methodRowTbl);
 
                 var sbRight = new Cell().SetBorder(Border.NO_BORDER).SetTextAlignment(TextAlignment.RIGHT).SetPadding(6);
                 sbRight.Add(new Paragraph("SETTLEMENT STATUS").SetFont(fontBold).SetFontSize(8f).SetFontColor(slateMuted));
@@ -930,9 +1078,47 @@ namespace DriveAndGo_API.Services
                 var signGrid = new Table(UnitValue.CreatePercentArray(new float[] { 50, 50 })).UseAllAvailableWidth().SetMarginBottom(10);
 
                 var qrSignCell = new Cell().SetBorder(new SolidBorder(borderSlate, 1)).SetPadding(8).SetMarginRight(4);
-                qrSignCell.Add(new Paragraph("ELECTRONIC VERIFICATION SEAL").SetFont(fontBold).SetFontSize(7.5f).SetFontColor(slateMuted).SetMarginBottom(3f));
-                qrSignCell.Add(new Paragraph($"Transaction Reference: TX-{d.TransactionId:D6}\nScan QR code on official receipt to confirm validity on Drive&Go portal.")
-                    .SetFont(fontNormal).SetFontSize(7.2f).SetFontColor(darkNavy));
+                var qrLayoutTable = new Table(UnitValue.CreatePercentArray(new float[] { 32, 68 })).UseAllAvailableWidth();
+
+                byte[]? txQrBytes = null;
+                try
+                {
+                    using var qrGen = new QRCoder.QRCodeGenerator();
+                    string verifyUrl = !string.IsNullOrWhiteSpace(d.VerificationUrl) 
+                        ? d.VerificationUrl 
+                        : $"https://driveandgo.ph/transactions/verify/TX-{d.TransactionId:D6}";
+                    var qrData = qrGen.CreateQrCode(verifyUrl, QRCoder.QRCodeGenerator.ECCLevel.H);
+                    var qrCode = new QRCoder.PngByteQRCode(qrData);
+                    txQrBytes = qrCode.GetGraphic(4, new byte[] { 15, 23, 42, 255 }, new byte[] { 255, 255, 255, 255 }, true);
+                }
+                catch { }
+
+                if (txQrBytes != null)
+                {
+                    try
+                    {
+                        var qrImg = new iText.Layout.Element.Image(ImageDataFactory.Create(txQrBytes))
+                            .ScaleToFit(46f, 46f)
+                            .SetHorizontalAlignment(HorizontalAlignment.LEFT);
+                        qrLayoutTable.AddCell(new Cell().SetBorder(Border.NO_BORDER).Add(qrImg));
+                    }
+                    catch
+                    {
+                        qrLayoutTable.AddCell(new Cell().SetBorder(Border.NO_BORDER));
+                    }
+                }
+                else
+                {
+                    qrLayoutTable.AddCell(new Cell().SetBorder(Border.NO_BORDER));
+                }
+
+                var qrDescCell = new Cell().SetBorder(Border.NO_BORDER).SetPaddingLeft(4);
+                qrDescCell.Add(new Paragraph("ELECTRONIC VERIFICATION SEAL").SetFont(fontBold).SetFontSize(7.5f).SetFontColor(brandOrange).SetMarginBottom(2f));
+                qrDescCell.Add(new Paragraph($"Ref: TX-{d.TransactionId:D6}").SetFont(fontBold).SetFontSize(8f).SetFontColor(darkNavy));
+                qrDescCell.Add(new Paragraph("Scan QR to confirm official receipt validity on Drive&Go portal.")
+                    .SetFont(fontNormal).SetFontSize(7f).SetFontColor(slateMuted).SetMarginTop(2f));
+                qrLayoutTable.AddCell(qrDescCell);
+                qrSignCell.Add(qrLayoutTable);
 
                 var cashierSignCell = new Cell().SetBorder(new SolidBorder(borderSlate, 1)).SetPadding(8).SetTextAlignment(TextAlignment.CENTER).SetMarginLeft(4);
                 cashierSignCell.Add(new Paragraph("ISSUED & VERIFIED BY").SetFont(fontBold).SetFontSize(7.5f).SetFontColor(slateMuted).SetMarginBottom(2f));

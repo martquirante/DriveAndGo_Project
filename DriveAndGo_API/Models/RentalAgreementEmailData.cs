@@ -47,6 +47,12 @@ namespace DriveAndGo_API.Models
         public string? PromoCode { get; set; }
         public string? PromoDescription { get; set; }
         public string? PromoExpiry { get; set; }
+
+        public bool IncludeReceipt { get; set; } = false;
+        public string? ReceiptNumber { get; set; }
+        public string? CustomerAvatarUrl { get; set; }
+
+        public string? BlockchainHash { get; set; }
     }
 }
 

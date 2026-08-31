@@ -85,6 +85,8 @@ namespace DriveAndGo_API.Tests.Fixtures
                 await dbContext.Database.MigrateAsync();
             }
 
+            DriveAndGo_API.Services.DatabaseInitializer.Initialize(ConnectionString);
+
             // Create Respawner
             _respawner = await Respawner.CreateAsync(_dbConnection, new RespawnerOptions
             {
@@ -99,6 +101,7 @@ namespace DriveAndGo_API.Tests.Fixtures
         public async Task ResetDatabaseAsync()
         {
             await _respawner.ResetAsync(_dbConnection);
+            DriveAndGo_API.Services.DatabaseInitializer.Initialize(ConnectionString);
         }
 
         public new async Task DisposeAsync()

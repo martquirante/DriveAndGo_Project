@@ -91,7 +91,7 @@ namespace DriveAndGo_Admin.Panels
         {
             try
             {
-                string htmlPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "FleetOverview.html");
+                string htmlPath = WebAssetHelper.GetWebAssetPath("FleetOverview.html", "fleet");
 
                 if (!File.Exists(htmlPath))
                 {
@@ -116,10 +116,11 @@ namespace DriveAndGo_Admin.Panels
 
                 string token = SessionManager.Token ?? string.Empty;
                 string apiBase = ApiService.BaseUrl.TrimEnd('/');
+                string networkBase = ApiService.ResolveNetworkBaseUrl().TrimEnd('/');
                 string currentTheme = ThemeManager.IsDarkMode ? "dark" : "light";
 
                 await _fleetWebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
-                    $"window.API_BASE_URL = '{apiBase}'; window.AUTH_TOKEN = '{token}'; document.documentElement.setAttribute('data-theme', '{currentTheme}');");
+                    $"window.API_BASE_URL = '{apiBase}'; window.API_NETWORK_URL = '{networkBase}'; window.AUTH_TOKEN = '{token}'; document.documentElement.setAttribute('data-theme', '{currentTheme}');");
 
                 _fleetWebView.CoreWebView2.NavigationCompleted += async (sender, args) =>
                 {
@@ -127,7 +128,7 @@ namespace DriveAndGo_Admin.Panels
                     try
                     {
                         await _fleetWebView.CoreWebView2.ExecuteScriptAsync(
-                            $"window.API_BASE_URL = '{apiBase}'; window.AUTH_TOKEN = '{token}';" +
+                            $"window.API_BASE_URL = '{apiBase}'; window.API_NETWORK_URL = '{networkBase}'; window.AUTH_TOKEN = '{token}';" +
                             $"if(window.setFleetTheme) window.setFleetTheme('{currentTheme}');" +
                             "if(window.refreshFleetData) window.refreshFleetData();");
                     }

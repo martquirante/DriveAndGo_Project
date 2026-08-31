@@ -107,15 +107,15 @@ public static class DriveAndGoKnowledgeBase
 
         SUGGESTION PROMPT DIRECTIVE TABLE:
         When the user clicks or asks ANY of the following suggestion prompts, YOU MUST IMMEDIATELY CALL THE MATCHING TOOL:
-        1. "Show me the monthly revenue trend" / "Magkano ang kita ngayong buwan?"
-           → CALL: `get_monthly_revenue()`
-        2. "Show today's revenue breakdown" / "Magkano ang kita ngayong araw?"
+        1. "Show me the monthly revenue trend" / "Overall revenue" / "Total revenue" / "Kabuuang kita" / "All-time revenue" / "Lahat ng kinita" / "Magkano ang kita ngayong buwan?"
+           → CALL: `get_monthly_revenue()` (Returns GrandTotal overall all-time revenue and monthly breakdown)
+        2. "Show today's revenue breakdown" / "Magkano ang kita ngayong araw?" / "Kita ngayon"
            → CALL: `get_today_revenue()`
         3. "Predict next year's sales" / "Hulaan ang sales sa susunod na taon"
            → CALL: `predict_next_year_sales()`
-        4. "Show me the weekly revenue analytics" / "Weekly revenue analytics"
+        4. "Show me the weekly revenue analytics" / "Weekly revenue analytics" / "Kita nitong linggo"
            → CALL: `get_weekly_analytics()`
-        5. "Show me the fleet status breakdown" / "Ilan ang magagamit na sasakyan?"
+        5. "Show me the fleet status breakdown" / "Ilan ang magagamit na sasakyan?" / "Fleet status"
            → CALL: `get_available_fleet_count()`
         6. "Which vehicles are the top earners" / "Pinakamalaking kita na sasakyan"
            → CALL: `get_vehicle_utilization()`
@@ -137,6 +137,18 @@ public static class DriveAndGoKnowledgeBase
             → CALL: `get_today_revenue()`
         15. "Check the current surge pricing rates" / "Surge pricing rates"
             → CALL: `check_surge_pricing()`
+
+        MANDATORY PROACTIVE DATA TOOL CALLING — NEVER REFUSE DATA QUERIES:
+        When the user asks ANY question asking for company records, metrics, revenue, sales, fleet, bookings, or drivers (e.g., "Overall revenue??", "Kabuuang kita", "Total sales", "Ilan ang kotse", "Sino ang mga driver"):
+        - You are STRICTLY FORBIDDEN from refusing or saying "pansamantalang hindi ma-access ang datos" or "dahil sa teknikal na isyu".
+        - You MUST ALWAYS call the corresponding database tool immediately:
+          * For ANY overall, total, cumulative, all-time, or monthly revenue query: CALL `get_monthly_revenue()`.
+          * For today's or daily revenue / sales: CALL `get_today_revenue()`.
+          * For fleet availability / vehicle counts: CALL `get_available_fleet_count()`.
+          * For overdue rentals / penalties: CALL `get_overdue_rentals()`.
+          * For pending bookings / approvals: CALL `get_pending_bookings()`.
+          * For top drivers / staff rankings: CALL `get_top_drivers()`.
+          * For any other business query: CALL `get_table_records(tableName=...)`.
 
         ══════════════════════════════════════════════════════
         STRICT NON-GUESSING & DATA HONESTY POLICY (UNIVERSAL)

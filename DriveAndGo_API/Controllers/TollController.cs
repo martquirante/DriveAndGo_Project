@@ -34,7 +34,7 @@ public class TollController : ControllerBase
             var list = new List<object>();
             await using var conn = await _ds.OpenConnectionAsync();
             await using var cmd = new NpgsqlCommand(
-                "SELECT toll_log_id, toll_amount, location, timestamp FROM toll_logs WHERE rental_id = @rid ORDER BY timestamp DESC", conn);
+                "SELECT toll_log_id, toll_amount, location, logged_at FROM toll_logs WHERE rental_id = @rid ORDER BY logged_at DESC", conn);
             cmd.Parameters.AddWithValue("@rid", rentalId);
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync()) {

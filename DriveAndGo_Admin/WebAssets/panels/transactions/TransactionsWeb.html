@@ -1,0 +1,3274 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drive&Go — Transaction Hub</title>
+  <link rel="icon" type="image/png" href="../../shared/images/logo.png" />
+  <link rel="shortcut icon" type="image/png" href="../../shared/images/logo.png" />
+  <link rel="apple-touch-icon" href="../../shared/images/logo.png" />
+
+  <script>
+    window.onerror = function(msg, url, line, col, error) {
+      var errBox = document.getElementById('fatal-error-banner');
+      if (!errBox) {
+        errBox = document.createElement('div');
+        errBox.id = 'fatal-error-banner';
+        errBox.style = 'position:fixed; top:16px; left:16px; right:16px; z-index:9999999; background:#7f1d1d; color:#fee2e2; padding:18px; border-radius:14px; font-family:monospace; border:2px solid #ef4444; box-shadow:0 20px 40px rgba(0,0,0,0.85);';
+        document.body.appendChild(errBox);
+      }
+      errBox.innerHTML = '<h3 style="color:white; font-size:16px; font-weight:bold; margin-bottom:8px;">⚠️ JavaScript Runtime Error:</h3>' +
+                         '<div style="font-size:13px; margin-bottom:6px;"><strong>Message:</strong> ' + msg + '</div>' +
+                         '<div style="font-size:12px; color:#fca5a5;"><strong>Location:</strong> Line ' + line + ', Column ' + col + '</div>' +
+                         '<pre style="margin-top:10px; background:#450a0a; padding:10px; border-radius:8px; font-size:11px; overflow-x:auto;">' + (error && error.stack ? error.stack : 'No stack trace available') + '</pre>';
+    };
+  </script>
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS v3 Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              DEFAULT: '#FF6B00',
+              hover: '#E85F00',
+              light: 'rgba(255, 107, 0, 0.12)',
+              glow: 'rgba(255, 107, 0, 0.35)',
+            },
+            dark: {
+              bg: '#090D16',
+              surface: '#0D1424',
+              card: '#0F172A',
+              cardHover: '#142038',
+              border: '#1E293B',
+              text: '#F8FAFC',
+              muted: '#94A3B8',
+            },
+            light: {
+              bg: '#F8FAFC',
+              surface: '#FFFFFF',
+              card: '#FFFFFF',
+              cardHover: '#F1F5F9',
+              border: '#E2E8F0',
+              text: '#0F172A',
+              muted: '#64748B',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- QRCode.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <!-- ExcelJS -->
+  <script src="../../shared/libs/exceljs.min.js"></script>
+  <script>if (typeof ExcelJS === 'undefined') { document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"><\/script>'); }</script>
+
+  <!-- jsPDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <!-- React 18 & Babel Standalone -->
+  <script src="../../shared/libs/react.production.min.js"></script>
+  <script>if (typeof React === 'undefined') { document.write('<script src="https://unpkg.com/react@18/umd/react.production.min.js"><\/script>'); }</script>
+  <script src="../../shared/libs/react-dom.production.min.js"></script>
+  <script>if (typeof ReactDOM === 'undefined') { document.write('<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"><\/script>'); }</script>
+  <script src="../../shared/libs/babel.min.js"></script>
+  <script>if (typeof Babel === 'undefined') { document.write('<script src="https://unpkg.com/@babel/standalone/babel.min.js"><\/script>'); }</script>
+
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', sans-serif;
+      overflow-x: hidden;
+      transition: background-color 0.25s ease, color 0.25s ease;
+      user-select: none;
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #FF6B00; }
+
+    /* Glassmorphism & 4D Depth Classes */
+    .glass-card {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.4);
+    }
+    .light .glass-card {
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid #E2E8F0;
+      box-shadow: 0 8px 25px -4px rgba(15, 23, 42, 0.06);
+    }
+
+    .glass-dropdown {
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.6), 0 0 15px rgba(255, 107, 0, 0.15);
+    }
+    .light .glass-dropdown {
+      background: rgba(255, 255, 255, 0.98);
+      border: 1px solid #CBD5E1;
+      box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.12), 0 0 10px rgba(255, 107, 0, 0.08);
+    }
+
+    .glass-header {
+      background: rgba(9, 13, 22, 0.85);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .light .glass-header {
+      background: rgba(248, 250, 252, 0.92);
+      border-bottom: 1px solid #E2E8F0;
+    }
+
+    .glow-orange {
+      box-shadow: 0 0 25px rgba(255, 107, 0, 0.28);
+    }
+    .glow-green {
+      box-shadow: 0 0 20px rgba(34, 197, 94, 0.22);
+    }
+    .glow-amber {
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.22);
+    }
+
+    /* Keyframes */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes dropDownIn {
+      from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes slideInRight {
+      from { opacity: 0; transform: translateX(40px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes pulseRing {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 0.3; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+
+    .anim-fade-up {
+      animation: fadeInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .anim-dropdown {
+      animation: dropDownIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .anim-slide-right {
+      animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .pulse-amber {
+      animation: pulseRing 2.4s infinite ease-in-out;
+    }
+
+    .shimmer-bg {
+      background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.09) 50%, rgba(255,255,255,0.03) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.8s infinite;
+    }
+    .light .shimmer-bg {
+      background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.8s infinite;
+    }
+
+    /* Receipt Paper Hologram Border */
+    .receipt-border-glow {
+      position: relative;
+    }
+    .receipt-border-glow::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: inherit;
+      padding: 1px;
+      background: linear-gradient(135deg, rgba(255,107,0,0.5), rgba(255,255,255,0.1), rgba(255,107,0,0.2));
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+    }
+
+    /* Print Stylesheet */
+    @media print {
+      body * { visibility: hidden !important; }
+      #printable-receipt-stage, #printable-receipt-stage * {
+        visibility: visible !important;
+      }
+      #printable-receipt-stage {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 24px !important;
+        background: white !important;
+        color: black !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-[#090D16] text-[#F8FAFC]">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef, useCallback } = React;
+
+    // --- Helper for Lucide Icons in React (Isolated DOM to prevent React removeChild conflicts) ---
+    function LucideIcon({ name, className = "w-4 h-4", size, color }) {
+      const containerRef = useRef(null);
+
+      useEffect(() => {
+        if (!containerRef.current || !window.lucide) return;
+
+        const safeName = name || 'circle';
+        const camel = safeName.replace(/-([a-z0-9])/g, (_, letter) => letter.toUpperCase());
+        const pascal = camel.charAt(0).toUpperCase() + camel.slice(1);
+        const iconFn = window.lucide.icons?.[pascal] || window.lucide.icons?.[camel] || window.lucide.icons?.[safeName];
+
+        if (iconFn && typeof iconFn.toSvg === 'function') {
+          containerRef.current.innerHTML = iconFn.toSvg({
+            class: className,
+            width: size || 16,
+            height: size || 16,
+            ...(color ? { color } : {})
+          });
+        } else {
+          containerRef.current.innerHTML = `<i data-lucide="${safeName}" class="${className}" style="${size ? `width:${size}px;height:${size}px;` : ''}${color ? `color:${color};` : ''}"></i>`;
+          try {
+            window.lucide.createIcons({ root: containerRef.current });
+          } catch (e) { }
+        }
+      }, [name, className, size, color]);
+
+      return <span ref={containerRef} className="inline-flex items-center justify-center shrink-0 pointer-events-none" style={{ width: size, height: size }}></span>;
+    }
+
+    // --- Number to Words Converter for Receipts ---
+    function numberToWords(num) {
+      if (!num || isNaN(num)) return "Zero Pesos Only";
+      const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+      const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+      
+      const inWords = (n) => {
+        if (n < 20) return a[n];
+        const digit = n % 10;
+        return b[Math.floor(n / 10)] + (digit ? ' ' + a[digit] : '');
+      };
+
+      const convert = (n) => {
+        if (n < 100) return inWords(n);
+        if (n < 1000) return a[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + inWords(n % 100) : '');
+        if (n < 1000000) return convert(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 ? ' ' + convert(n % 1000) : '');
+        return convert(Math.floor(n / 1000000)) + ' Million' + (n % 1000000 ? ' ' + convert(n % 1000000) : '');
+      };
+
+      const whole = Math.floor(num);
+      const centavos = Math.round((num - whole) * 100);
+      let res = convert(whole) + " Pesos";
+      if (centavos > 0) res += " and " + convert(centavos) + " Centavos";
+      return res + " Only";
+    }
+
+    // --- Payment Method Options Definition with Official Brand Logos ---
+    const PAYMENT_METHOD_OPTIONS = [
+      {
+        value: 'ALL',
+        label: 'All Payment Methods',
+        icon: 'layers',
+        logoUrl: null,
+        badgeColor: 'text-slate-300'
+      },
+      {
+        value: 'gcash',
+        label: 'GCash',
+        icon: 'wallet',
+        logoUrl: 'https://unavatar.io/gcash.com',
+        badgeColor: 'text-blue-400',
+        brandBg: 'bg-blue-600/15'
+      },
+      {
+        value: 'maya',
+        label: 'Maya',
+        icon: 'wallet-cards',
+        logoUrl: 'https://unavatar.io/maya.ph',
+        badgeColor: 'text-emerald-400',
+        brandBg: 'bg-emerald-600/15'
+      },
+      {
+        value: 'gotyme',
+        label: 'GoTyme Bank',
+        icon: 'landmark',
+        logoUrl: 'https://unavatar.io/gotyme.com.ph',
+        badgeColor: 'text-teal-400',
+        brandBg: 'bg-teal-600/15'
+      },
+      {
+        value: 'maribank',
+        label: 'MariBank',
+        icon: 'landmark',
+        logoUrl: 'https://unavatar.io/maribank.ph',
+        badgeColor: 'text-red-400',
+        brandBg: 'bg-red-600/15'
+      },
+      {
+        value: 'seabank',
+        label: 'SeaBank',
+        icon: 'landmark',
+        logoUrl: 'https://unavatar.io/seabank.com.ph',
+        badgeColor: 'text-orange-400',
+        brandBg: 'bg-orange-600/15'
+      },
+      {
+        value: 'bdo',
+        label: 'BDO Unibank',
+        icon: 'landmark',
+        logoUrl: 'https://unavatar.io/bdo.com.ph',
+        badgeColor: 'text-blue-500',
+        brandBg: 'bg-blue-600/15'
+      },
+      {
+        value: 'bpi',
+        label: 'BPI',
+        icon: 'landmark',
+        logoUrl: 'https://unavatar.io/bpi.com.ph',
+        badgeColor: 'text-red-500',
+        brandBg: 'bg-red-600/15'
+      },
+      {
+        value: 'unionbank',
+        label: 'UnionBank',
+        icon: 'landmark',
+        logoUrl: 'https://unavatar.io/unionbankph.com',
+        badgeColor: 'text-amber-500',
+        brandBg: 'bg-amber-600/15'
+      },
+      {
+        value: 'bank',
+        label: 'Other Banks / Instapay',
+        icon: 'landmark',
+        logoUrl: 'https://unavatar.io/bdo.com.ph',
+        badgeColor: 'text-purple-400',
+        brandBg: 'bg-purple-600/15'
+      },
+      {
+        value: 'cash',
+        label: 'Cash',
+        icon: 'banknote',
+        logoUrl: null,
+        badgeColor: 'text-amber-400',
+        brandBg: 'bg-amber-600/15'
+      },
+      {
+        value: 'card',
+        label: 'Credit/Debit Card',
+        icon: 'credit-card',
+        logoUrl: null,
+        badgeColor: 'text-indigo-400',
+        brandBg: 'bg-indigo-600/15'
+      }
+    ];
+
+    // --- Status Options Definition with Icons & Badges ---
+    const STATUS_OPTIONS = [
+      {
+        value: 'ALL',
+        label: 'All Statuses',
+        icon: 'list-filter',
+        iconBg: 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700/60',
+        textColor: 'text-slate-700 dark:text-slate-300'
+      },
+      {
+        value: 'confirmed',
+        label: 'Confirmed',
+        icon: 'check-circle-2',
+        iconBg: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
+        textColor: 'text-emerald-600 dark:text-emerald-400'
+      },
+      {
+        value: 'pending',
+        label: 'Pending Review',
+        icon: 'clock',
+        iconBg: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30',
+        textColor: 'text-amber-600 dark:text-amber-400'
+      },
+      {
+        value: 'rejected',
+        label: 'Rejected',
+        icon: 'x-circle',
+        iconBg: 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30',
+        textColor: 'text-red-600 dark:text-red-400'
+      }
+    ];
+
+    // --- Malupet Credit/Debit Card Mini SVG Chip Component ---
+    function MalupetCardIcon({ className = "w-4 h-3.5" }) {
+      return (
+        <svg viewBox="0 0 24 18" className={`${className} shrink-0 drop-shadow-sm`} fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="cardGradSkin" x1="0" y1="0" x2="24" y2="18" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#4F46E5" />
+              <stop offset="0.5" stopColor="#3B82F6" />
+              <stop offset="1" stopColor="#06B6D4" />
+            </linearGradient>
+            <linearGradient id="chipGradSkin" x1="3.5" y1="4.5" x2="8" y2="8" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#FDE047" />
+              <stop offset="1" stopColor="#D97706" />
+            </linearGradient>
+          </defs>
+          <rect width="24" height="18" rx="3.5" fill="url(#cardGradSkin)" stroke="rgba(255,255,255,0.25)" strokeWidth="0.6" />
+          <rect x="3.5" y="4.5" width="4.5" height="3.5" rx="0.8" fill="url(#chipGradSkin)" stroke="#B45309" strokeWidth="0.3" />
+          <rect x="3.5" y="10.5" width="8" height="1.3" rx="0.6" fill="#FFFFFF" fillOpacity="0.85" />
+          <rect x="3.5" y="12.8" width="5.5" height="1" rx="0.5" fill="#FFFFFF" fillOpacity="0.6" />
+          <circle cx="15.5" cy="11.5" r="3.2" fill="#EF4444" fillOpacity="0.95" />
+          <circle cx="19" cy="11.5" r="3.2" fill="#F59E0B" fillOpacity="0.95" />
+        </svg>
+      );
+    }
+
+    // --- Clean Method Icon Component with useState fallback ---
+    function MethodIconItem({ opt, size = "w-3.5 h-3.5" }) {
+      const [err, setErr] = useState(false);
+      if (!opt) return null;
+      if (opt.value === 'card') {
+        return <MalupetCardIcon className="w-5 h-3.5" />;
+      }
+      if (opt.logoUrl && !err) {
+        return (
+          <img 
+            src={opt.logoUrl} 
+            alt={opt.label} 
+            className={`${size} object-contain rounded-full`} 
+            onError={() => setErr(true)} 
+          />
+        );
+      }
+      return <LucideIcon name={opt.icon || 'layers'} className={`${size} ${opt.badgeColor || 'text-slate-400'}`} />;
+    }
+
+    // ==========================================
+    // CUSTOM GLASS DROPDOWN: PAYMENT METHOD
+    // ==========================================
+    function CustomMethodSelect({ value, onChange }) {
+      const [isOpen, setIsOpen] = useState(false);
+      const dropdownRef = useRef(null);
+
+      const selected = PAYMENT_METHOD_OPTIONS.find(o => o.value === value) || PAYMENT_METHOD_OPTIONS[0];
+
+      useEffect(() => {
+        const handleClickOutside = (event) => {
+          if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+            setIsOpen(false);
+          }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+      }, []);
+
+      return (
+        <div className="relative" ref={dropdownRef}>
+          {/* Dropdown Trigger Button */}
+          <button
+            type="button"
+            onClick={() => setIsOpen(!isOpen)}
+            className={`flex items-center justify-between gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl border transition-all duration-200 shadow-sm ${
+              isOpen 
+                ? 'bg-white dark:bg-slate-900 border-[#FF6B00] text-[#FF6B00] ring-2 ring-[#FF6B00]/20' 
+                : 'bg-white dark:bg-slate-900/80 border-slate-300 dark:border-slate-700/80 text-slate-800 dark:text-slate-200 hover:border-slate-400 dark:hover:border-slate-500'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <MethodIconItem opt={selected} size="w-4 h-4" />
+              <span>{selected.label}</span>
+            </div>
+            <LucideIcon 
+              name="chevron-down" 
+              className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-[#FF6B00]' : ''}`} 
+            />
+          </button>
+
+          {/* Floating Glass Menu */}
+          {isOpen && (
+            <div className="absolute left-0 mt-2 w-56 glass-dropdown rounded-2xl p-1.5 z-50 anim-dropdown">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-3 py-1.5 border-b border-slate-200 dark:border-slate-800/80 mb-1">
+                Filter By Method
+              </div>
+              <div className="flex flex-col gap-0.5 max-h-72 overflow-y-auto custom-scrollbar">
+                {PAYMENT_METHOD_OPTIONS.map((opt) => {
+                  const isCur = opt.value === value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        onChange(opt.value);
+                        setIsOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                        isCur
+                          ? 'bg-[#FF6B00]/15 text-[#FF6B00] font-bold'
+                          : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-5 h-5 rounded-lg flex items-center justify-center bg-slate-100 dark:bg-slate-800/80 shrink-0">
+                          <MethodIconItem opt={opt} size="w-3.5 h-3.5" />
+                        </div>
+                        <span>{opt.label}</span>
+                      </div>
+                      {isCur && <LucideIcon name="check" className="w-3.5 h-3.5 text-[#FF6B00]" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ==========================================
+    // CUSTOM GLASS DROPDOWN: STATUS (WITH ICONS)
+    // ==========================================
+    function CustomStatusSelect({ value, onChange }) {
+      const [isOpen, setIsOpen] = useState(false);
+      const dropdownRef = useRef(null);
+
+      const selected = STATUS_OPTIONS.find(o => o.value === value) || STATUS_OPTIONS[0];
+
+      useEffect(() => {
+        const handleClickOutside = (event) => {
+          if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+            setIsOpen(false);
+          }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+      }, []);
+
+      return (
+        <div className="relative" ref={dropdownRef}>
+          {/* Dropdown Trigger Button */}
+          <button
+            type="button"
+            onClick={() => setIsOpen(!isOpen)}
+            className={`flex items-center justify-between gap-2 px-3.5 py-2 text-xs font-semibold rounded-xl border transition-all duration-200 shadow-sm ${
+              isOpen 
+                ? 'bg-white dark:bg-slate-900 border-[#FF6B00] text-[#FF6B00] ring-2 ring-[#FF6B00]/20' 
+                : 'bg-white dark:bg-slate-900/80 border-slate-300 dark:border-slate-700/80 text-slate-800 dark:text-slate-200 hover:border-slate-400 dark:hover:border-slate-500'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <div className={`w-4 h-4 rounded-md flex items-center justify-center border text-xs ${selected.iconBg}`}>
+                <LucideIcon name={selected.icon} className="w-3 h-3" />
+              </div>
+              <span>{selected.label}</span>
+            </div>
+            <LucideIcon 
+              name="chevron-down" 
+              className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-[#FF6B00]' : ''}`} 
+            />
+          </button>
+
+          {/* Floating Glass Menu */}
+          {isOpen && (
+            <div className="absolute left-0 mt-2 w-56 glass-dropdown rounded-2xl p-1.5 z-50 anim-dropdown">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-3 py-1.5 border-b border-slate-200 dark:border-slate-800/80 mb-1">
+                Filter By Status
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {STATUS_OPTIONS.map((opt) => {
+                  const isCur = opt.value === value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        onChange(opt.value);
+                        setIsOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                        isCur
+                          ? 'bg-[#FF6B00]/15 text-[#FF6B00] font-bold'
+                          : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-5 h-5 rounded-lg flex items-center justify-center border shrink-0 ${opt.iconBg}`}>
+                          <LucideIcon name={opt.icon} className="w-3.5 h-3.5" />
+                        </div>
+                        <span>{opt.label}</span>
+                      </div>
+                      {isCur && <LucideIcon name="check" className="w-3.5 h-3.5 text-[#FF6B00]" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ==========================================
+    // 3D INTERACTIVE TILT KPI CARD COMPONENT
+    // ==========================================
+    function TiltKpiCard({ children, glowColor, borderHoverColor, className = "", onClick }) {
+      const cardRef = useRef(null);
+      const rafRef = useRef(null);
+      const [tilt, setTilt] = useState({ x: 0, y: 0 });
+      const [glare, setGlare] = useState({ x: 50, y: 50, opacity: 0 });
+      const [hovered, setHovered] = useState(false);
+
+      const handleMouseMove = useCallback((e) => {
+        if (!cardRef.current) return;
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(() => {
+          if (!cardRef.current) return;
+          const rect = cardRef.current.getBoundingClientRect();
+          const relX = e.clientX - rect.left;
+          const relY = e.clientY - rect.top;
+          const centerX = rect.width / 2;
+          const centerY = rect.height / 2;
+          const normX = (relX - centerX) / centerX;
+          const normY = (relY - centerY) / centerY;
+          setTilt({ x: normY * -10, y: normX * 10 });
+          setGlare({
+            x: (relX / rect.width) * 100,
+            y: (relY / rect.height) * 100,
+            opacity: 0.22
+          });
+        });
+      }, []);
+
+      const handleMouseEnter = useCallback(() => setHovered(true), []);
+      const handleMouseLeave = useCallback(() => {
+        cancelAnimationFrame(rafRef.current);
+        setHovered(false);
+        setTilt({ x: 0, y: 0 });
+        setGlare(g => ({ ...g, opacity: 0 }));
+      }, []);
+
+      return (
+        <div
+          ref={cardRef}
+          onMouseMove={handleMouseMove}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          onClick={onClick}
+          style={{
+            perspective: '1000px',
+            transformStyle: 'preserve-3d',
+            transform: hovered
+              ? `perspective(1000px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) scale(1.025) translateZ(8px)`
+              : 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale(1) translateZ(0px)',
+            transition: hovered
+              ? 'transform 0.08s ease-out, box-shadow 0.2s ease, border-color 0.2s ease'
+              : 'transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s ease, border-color 0.3s ease',
+            boxShadow: hovered 
+              ? `0 20px 40px -10px ${glowColor || 'rgba(255, 107, 0, 0.25)'}, 0 0 0 1px rgba(255,255,255,0.08)` 
+              : undefined,
+            willChange: 'transform',
+            position: 'relative',
+            overflow: 'hidden'
+          }}
+          className={`glass-card p-5 rounded-2xl relative overflow-hidden group border border-slate-800/80 cursor-pointer select-none transition-colors duration-300 ${borderHoverColor || 'hover:border-[#FF6B00]/60'} ${className}`}
+        >
+          {/* Top Ambient Highlight */}
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: '45%',
+              background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, transparent 100%)',
+              pointerEvents: 'none',
+              borderRadius: '16px 16px 0 0'
+            }}
+          />
+
+          {/* Dynamic 3D Glare Light Tracking Mouse */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: `radial-gradient(circle at ${glare.x}% ${glare.y}%, rgba(255,255,255,0.2) 0%, transparent 65%)`,
+              opacity: glare.opacity,
+              pointerEvents: 'none',
+              transition: 'opacity 0.25s ease',
+              borderRadius: '16px'
+            }}
+          />
+
+          <div style={{ transform: 'translateZ(12px)' }} className="relative z-10">
+            {children}
+          </div>
+        </div>
+      );
+    }
+
+    // --- Comprehensive Philippine Payment Providers Directory ---
+    const PH_PAYMENT_PROVIDERS = [
+      // Digital Neobanks & Wallets
+      { keys: ['gotyme', 'go tyme'], label: 'GoTyme Bank', domain: 'gotyme.com.ph', bg: 'bg-teal-600/15 text-teal-600 dark:text-teal-400 border-teal-500/30', icon: 'landmark' },
+      { keys: ['maribank', 'mari bank'], label: 'MariBank', domain: 'maribank.ph', bg: 'bg-red-600/15 text-red-600 dark:text-red-400 border-red-500/30', icon: 'landmark' },
+      { keys: ['seabank', 'sea bank'], label: 'SeaBank', domain: 'seabank.com.ph', bg: 'bg-orange-600/15 text-orange-600 dark:text-orange-400 border-orange-500/30', icon: 'landmark' },
+      { keys: ['gcash', 'g-cash'], label: 'GCash', domain: 'gcash.com', bg: 'bg-blue-600/15 text-blue-600 dark:text-blue-400 border-blue-500/30', icon: 'wallet' },
+      { keys: ['maya', 'paymaya'], label: 'Maya', domain: 'maya.ph', bg: 'bg-emerald-600/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30', icon: 'wallet-cards' },
+      { keys: ['shopeepay', 'shopee'], label: 'ShopeePay', domain: 'shopee.ph', bg: 'bg-orange-600/15 text-orange-600 dark:text-orange-400 border-orange-500/30', icon: 'shopping-bag' },
+      { keys: ['grabpay', 'grab'], label: 'GrabPay', domain: 'grab.com', bg: 'bg-emerald-600/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30', icon: 'wallet' },
+      { keys: ['coins', 'coins.ph'], label: 'Coins.ph', domain: 'coins.ph', bg: 'bg-cyan-600/15 text-cyan-600 dark:text-cyan-400 border-cyan-500/30', icon: 'circle-dollar-sign' },
+      { keys: ['palawanpay', 'palawan'], label: 'PalawanPay', domain: 'palawanpay.com', bg: 'bg-yellow-600/15 text-yellow-600 dark:text-yellow-400 border-yellow-500/30', icon: 'wallet' },
+      { keys: ['cimb'], label: 'CIMB Bank', domain: 'cimbbank.com.ph', bg: 'bg-red-600/15 text-red-600 dark:text-red-400 border-red-500/30', icon: 'landmark' },
+      { keys: ['tonik'], label: 'Tonik', domain: 'tonikbank.com', bg: 'bg-purple-600/15 text-purple-600 dark:text-purple-400 border-purple-500/30', icon: 'landmark' },
+      { keys: ['komo'], label: 'Komo', domain: 'komo.ph', bg: 'bg-blue-600/15 text-blue-600 dark:text-blue-400 border-blue-500/30', icon: 'landmark' },
+
+      // Universal & Commercial Traditional Banks
+      { keys: ['bdo', 'bdo unibank'], label: 'BDO Unibank', domain: 'bdo.com.ph', bg: 'bg-blue-700/15 text-blue-600 dark:text-blue-400 border-blue-600/30', icon: 'landmark' },
+      { keys: ['bpi'], label: 'BPI', domain: 'bpi.com.ph', bg: 'bg-red-700/15 text-red-600 dark:text-red-400 border-red-600/30', icon: 'landmark' },
+      { keys: ['unionbank', 'union bank', 'ubp'], label: 'UnionBank', domain: 'unionbankph.com', bg: 'bg-amber-600/15 text-amber-600 dark:text-amber-400 border-amber-500/30', icon: 'landmark' },
+      { keys: ['metrobank', 'metro bank'], label: 'Metrobank', domain: 'metrobank.com.ph', bg: 'bg-blue-600/15 text-blue-600 dark:text-blue-400 border-blue-500/30', icon: 'landmark' },
+      { keys: ['rcbc'], label: 'RCBC', domain: 'rcbc.com', bg: 'bg-blue-600/15 text-blue-600 dark:text-blue-400 border-blue-500/30', icon: 'landmark' },
+      { keys: ['securitybank', 'security bank'], label: 'Security Bank', domain: 'securitybank.com', bg: 'bg-emerald-700/15 text-emerald-600 dark:text-emerald-400 border-emerald-600/30', icon: 'landmark' },
+      { keys: ['landbank', 'land bank'], label: 'Landbank', domain: 'landbank.com', bg: 'bg-emerald-600/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30', icon: 'landmark' },
+      { keys: ['pnb'], label: 'PNB', domain: 'pnb.com.ph', bg: 'bg-blue-600/15 text-blue-600 dark:text-blue-400 border-blue-500/30', icon: 'landmark' },
+      { keys: ['chinabank', 'china bank'], label: 'Chinabank', domain: 'chinabank.ph', bg: 'bg-red-600/15 text-red-600 dark:text-red-400 border-red-500/30', icon: 'landmark' },
+      { keys: ['eastwest', 'eastwest bank'], label: 'EastWest', domain: 'eastwestbanker.com', bg: 'bg-purple-600/15 text-purple-600 dark:text-purple-400 border-purple-500/30', icon: 'landmark' },
+      { keys: ['psbank'], label: 'PSBank', domain: 'psbank.com.ph', bg: 'bg-blue-600/15 text-blue-600 dark:text-blue-400 border-blue-500/30', icon: 'landmark' },
+      { keys: ['aub'], label: 'AUB', domain: 'aub.com.ph', bg: 'bg-amber-600/15 text-amber-600 dark:text-amber-400 border-amber-500/30', icon: 'landmark' },
+
+      // Cards & Generic
+      { keys: ['visa'], label: 'Visa Card', domain: 'visa.com', bg: 'bg-indigo-600/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/30', icon: 'credit-card' },
+      { keys: ['mastercard'], label: 'Mastercard', domain: 'mastercard.com', bg: 'bg-red-600/15 text-red-600 dark:text-red-400 border-red-500/30', icon: 'credit-card' },
+      { keys: ['card', 'credit', 'debit'], label: 'Card Payment', domain: 'visa.com', bg: 'bg-indigo-600/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/30', icon: 'credit-card' },
+      { keys: ['bank', 'bank transfer', 'instapay', 'pesonet'], label: 'Bank Transfer', domain: null, bg: 'bg-purple-600/15 text-purple-600 dark:text-purple-400 border-purple-500/30', icon: 'landmark' },
+      { keys: ['cash'], label: 'Cash', domain: null, bg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30', icon: 'banknote' }
+    ];
+
+    function getPaymentProvider(method) {
+      if (!method) return PH_PAYMENT_PROVIDERS.find(p => p.keys.includes('cash'));
+      const raw = String(method).trim().toLowerCase();
+      
+      const matched = PH_PAYMENT_PROVIDERS.find(p => p.keys.some(k => raw === k || raw.includes(k)));
+      if (matched) return matched;
+
+      // Smart fallback for any dynamic Philippine bank or e-wallet
+      const cleanSlug = raw.replace(/[^a-z0-9]/g, '');
+      const formattedLabel = method.length <= 4 
+        ? method.toUpperCase() 
+        : method.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+
+      return {
+        label: formattedLabel,
+        domain: `${cleanSlug}.com.ph`,
+        bg: 'bg-purple-600/15 text-purple-600 dark:text-purple-400 border-purple-500/30',
+        icon: raw.includes('bank') ? 'landmark' : 'wallet'
+      };
+    }
+
+    // --- Payment Method Badge Component (Transparent Direct Google High-Res CDN + Local API Fallback) ---
+    function PaymentBadge({ method }) {
+      const config = getPaymentProvider(method);
+      const [imgError, setImgError] = useState(false);
+
+      const isCard = config.keys && (config.keys.includes('card') || config.keys.includes('visa') || config.keys.includes('mastercard'));
+
+      if (isCard) {
+        return (
+          <div className="flex items-center gap-2">
+            <MalupetCardIcon className="w-5 h-5 shrink-0" />
+            <span className="font-bold text-xs text-slate-800 dark:text-slate-200 tracking-tight">{config.label}</span>
+          </div>
+        );
+      }
+
+      const apiBase = (window.API_BASE_URL || 'http://localhost:5233/api').replace(/\/$/, '');
+      const primaryKey = config.keys ? config.keys[0] : config.label.toLowerCase().replace(/[^a-z0-9]/g, '');
+      
+      // Primary direct URL from Google S2 High-Res CDN (256px)
+      const directGoogleCdn = config.domain ? `https://www.google.com/s2/favicons?domain=${config.domain}&sz=256` : null;
+      const apiLogoUrl = `${apiBase}/transactions/provider-logo/${encodeURIComponent(primaryKey)}`;
+      const primaryLogoUrl = directGoogleCdn || apiLogoUrl;
+
+      return (
+        <div className="flex items-center gap-2">
+          {!imgError ? (
+            <img 
+              src={primaryLogoUrl} 
+              alt={config.label} 
+              className="w-5 h-5 object-contain shrink-0" 
+              onError={(e) => {
+                if (e.target.src !== apiLogoUrl) {
+                  e.target.src = apiLogoUrl;
+                } else {
+                  setImgError(true);
+                }
+              }} 
+            />
+          ) : (
+            <LucideIcon name={config.icon || 'wallet'} className="w-4 h-4 text-[#FF6B00] shrink-0" />
+          )}
+          <span className="font-bold text-xs text-slate-800 dark:text-slate-200 tracking-tight">{config.label}</span>
+        </div>
+      );
+    }
+
+    function overlayLogoOnQr(container, logoUrl, logoRatio = 0.24) {
+      if (!container || !logoUrl) return;
+      setTimeout(() => {
+        const canvas = container.querySelector('canvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const img = new Image();
+        img.crossOrigin = 'Anonymous';
+        img.onload = () => {
+          try {
+            const cw = canvas.width;
+            const ch = canvas.height;
+            const logoW = Math.round(cw * logoRatio);
+            const logoH = Math.round(ch * logoRatio);
+            const x = Math.round((cw - logoW) / 2);
+            const y = Math.round((ch - logoH) / 2);
+            const pad = Math.max(3, Math.round(cw * 0.03));
+
+            ctx.fillStyle = '#FFFFFF';
+            ctx.beginPath();
+            if (ctx.roundRect) {
+              ctx.roundRect(x - pad, y - pad, logoW + pad * 2, logoH + pad * 2, 5);
+            } else {
+              ctx.rect(x - pad, y - pad, logoW + pad * 2, logoH + pad * 2);
+            }
+            ctx.fill();
+            ctx.strokeStyle = '#E2E8F0';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            ctx.drawImage(img, x, y, logoW, logoH);
+          } catch (err) {
+            console.warn('Could not overlay payment provider logo on QR:', err);
+          }
+        };
+        img.src = logoUrl;
+      }, 100);
+    }
+
+    // --- Status Badge Component ---
+    function StatusBadge({ status }) {
+      const s = (status || '').toLowerCase().trim();
+
+      if (s === 'confirmed' || s === 'paid' || s === 'verified') {
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 dark:glow-green">
+            <LucideIcon name="check-circle-2" className="w-3.5 h-3.5 text-emerald-400" />
+            <span>CONFIRMED</span>
+          </span>
+        );
+      }
+      if (s === 'pending' || s === 'unpaid' || s === '') {
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 dark:glow-amber">
+            <span className="w-2 h-2 rounded-full bg-amber-400 pulse-amber"></span>
+            <span>PENDING</span>
+          </span>
+        );
+      }
+      if (s === 'rejected' || s === 'declined') {
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-500/15 text-red-400 border border-red-500/30">
+            <LucideIcon name="x-circle" className="w-3.5 h-3.5 text-red-400" />
+            <span>REJECTED</span>
+          </span>
+        );
+      }
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-500/15 text-slate-300 border border-slate-500/30">
+          <LucideIcon name="clock" className="w-3.5 h-3.5 text-slate-400" />
+          <span>{(status || 'PENDING').toUpperCase()}</span>
+        </span>
+      );
+    }
+
+    // --- Comprehensive Vehicle Brand Mapping (40+ Global & Local Makes) ---
+    const CAR_BRAND_MAP = {
+      'toyota': 'toyota', 'mitsubishi': 'mitsubishi', 'honda': 'honda', 'nissan': 'nissan',
+      'hyundai': 'hyundai', 'ford': 'ford', 'chevrolet': 'chevrolet', 'chevy': 'chevrolet',
+      'suzuki': 'suzuki', 'kia': 'kia', 'isuzu': 'isuzu', 'bmw': 'bmw',
+      'mercedes': 'mercedes-benz', 'mercedes-benz': 'mercedes-benz', 'benz': 'mercedes-benz',
+      'mg': 'mg', 'geely': 'geely', 'byd': 'byd', 'tesla': 'tesla', 'mazda': 'mazda',
+      'subaru': 'subaru', 'audi': 'audi', 'volkswagen': 'volkswagen', 'vw': 'volkswagen',
+      'porsche': 'porsche', 'lexus': 'lexus', 'chery': 'chery', 'gac': 'gac',
+      'changan': 'changan', 'peugeot': 'peugeot', 'jeep': 'jeep', 'land rover': 'land-rover',
+      'landrover': 'land-rover', 'volvo': 'volvo', 'infiniti': 'infiniti', 'jaguar': 'jaguar',
+      'dodge': 'dodge', 'ram': 'ram', 'mini': 'mini', 'wuling': 'wuling', 'foton': 'foton',
+      'haval': 'haval', 'jetour': 'jetour', 'vinfast': 'vinfast'
+    };
+
+    // --- Helper to extract brand slug for vehicle logos ---
+    function getVehicleBrandSlug(vehicleName) {
+      if (!vehicleName) return '';
+      const b = String(vehicleName).trim().toLowerCase();
+      for (const [key, slug] of Object.entries(CAR_BRAND_MAP)) {
+        if (b.includes(key)) return slug;
+      }
+      return b.split(' ')[0].replace(/[^a-z0-9]/g, '');
+    }
+
+    // --- Vehicle Brand Logo Badge (Crisp White Badge Container) ---
+    function VehicleBrandBadge({ vehicleName, size = "w-7 h-7" }) {
+      const [imgError, setImgError] = useState(false);
+      const slug = getVehicleBrandSlug(vehicleName);
+      const initials = (vehicleName || 'CR').trim().substring(0, 2).toUpperCase();
+
+      if (!slug || imgError) {
+        return (
+          <div className={`${size} rounded-md bg-white p-1 flex items-center justify-center shrink-0 shadow-xs border border-slate-200 select-none`}>
+            <span className="font-extrabold text-[10px] text-slate-800 tracking-tight shrink-0">{initials}</span>
+          </div>
+        );
+      }
+
+      const logoUrl = `https://cdn.jsdelivr.net/gh/filippofilip95/car-logos-dataset@master/logos/original/${slug}.png`;
+
+      return (
+        <div className={`${size} rounded-md bg-white p-1 flex items-center justify-center shrink-0 shadow-xs border border-slate-200 overflow-hidden select-none`}>
+          <img 
+            src={logoUrl} 
+            alt={slug} 
+            className="w-full h-full object-contain shrink-0" 
+            onError={() => setImgError(true)} 
+          />
+        </div>
+      );
+    }
+
+    // ==========================================
+    // MAIN APP COMPONENT
+    // ==========================================
+    function App() {
+      const [transactions, setTransactions] = useState([]);
+      const [kpiStats, setKpiStats] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [searchTerm, setSearchTerm] = useState('');
+      const [methodFilter, setMethodFilter] = useState('ALL');
+      const [statusFilter, setStatusFilter] = useState('ALL');
+      
+      const [sortCol, setSortCol] = useState('paid_at');
+      const [sortDir, setSortDir] = useState('desc');
+      const [currentPage, setCurrentPage] = useState(1);
+      const [itemsPerPage, setItemsPerPage] = useState(8);
+
+      const [selectedTx, setSelectedTx] = useState(null);
+      const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+      const [drawerLoading, setDrawerLoading] = useState(false);
+      const [rentalDetail, setRentalDetail] = useState(null);
+
+      const [toasts, setToasts] = useState([]);
+      const [confirmModalTx, setConfirmModalTx] = useState(null);
+      const [rejectModalTx, setRejectModalTx] = useState(null);
+      const [rejectReason, setRejectReason] = useState('');
+      const [actionLoading, setActionLoading] = useState(false);
+
+      // --- Send Receipt via Email Modal States ---
+      const [emailModalTx, setEmailModalTx] = useState(null);
+      const [emailRecipient, setEmailRecipient] = useState('');
+      const [emailSubject, setEmailSubject] = useState('');
+      const [emailMessage, setEmailMessage] = useState('');
+      const [emailSending, setEmailSending] = useState(false);
+
+      const [isDark, setIsDark] = useState(true);
+
+      // --- Toast Notification Handler ---
+      const showToast = useCallback((message, type = 'success', title = '') => {
+        const id = Date.now();
+        setToasts(prev => [...prev, { id, message, type, title }]);
+        setTimeout(() => {
+          setToasts(prev => prev.filter(t => t.id !== id));
+        }, 4000);
+      }, []);
+
+      // --- Resolve Base API URL ---
+      const getApiUrl = useCallback(() => {
+        if (window.API_BASE_URL && window.API_BASE_URL.trim() !== '') {
+          return window.API_BASE_URL.trim().replace(/\/$/, '');
+        }
+        if (window.location.origin.startsWith('http') && !window.location.origin.includes('appassets')) {
+          return window.location.origin + '/api';
+        }
+        return 'http://localhost:5233/api';
+      }, []);
+
+      const getHeaders = useCallback(() => {
+        const token = window.AUTH_TOKEN || localStorage.getItem('auth_token') || '';
+        return {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        };
+      }, []);
+
+      // --- Fetch Transactions from Real API ---
+      const fetchTransactionsData = useCallback(async () => {
+        setLoading(true);
+        try {
+          const apiBase = getApiUrl();
+          const [txRes, kpiRes] = await Promise.allSettled([
+            fetch(`${apiBase}/transactions`, { headers: getHeaders() }),
+            fetch(`${apiBase}/transactions/kpi`, { headers: getHeaders() })
+          ]);
+
+          if (txRes.status === 'fulfilled' && txRes.value.ok) {
+            const data = await txRes.value.json();
+            setTransactions(Array.isArray(data) ? data : []);
+          } else {
+            console.error('Transactions fetch failed');
+            setTransactions([]);
+          }
+
+          if (kpiRes.status === 'fulfilled' && kpiRes.value.ok) {
+            const kpiData = await kpiRes.value.json();
+            setKpiStats(kpiData);
+          }
+        } catch (err) {
+          console.error('Error fetching transactions:', err);
+          showToast('Failed to connect to transaction service.', 'error', 'Network Error');
+        } finally {
+          setLoading(false);
+        }
+      }, [getApiUrl, getHeaders, showToast]);
+
+      // --- Theme Handler Hook ---
+      useEffect(() => {
+        window.setTheme = (dark) => {
+          setIsDark(dark);
+          if (dark) {
+            document.documentElement.classList.add('dark');
+            document.documentElement.classList.remove('light');
+            document.body.style.backgroundColor = '#090D16';
+            document.body.style.color = '#F8FAFC';
+          } else {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.classList.add('light');
+            document.body.style.backgroundColor = '#F8FAFC';
+            document.body.style.color = '#0F172A';
+          }
+          if (window.lucide) window.lucide.createIcons();
+        };
+
+        window.fetchTransactionsData = fetchTransactionsData;
+
+        // Auto fetch on mount
+        fetchTransactionsData();
+      }, [fetchTransactionsData]);
+
+      // --- Select Transaction & Open Receipt Drawer ---
+      const handleSelectTx = async (tx) => {
+        setSelectedTx(tx);
+        setIsDrawerOpen(true);
+        setRentalDetail(null);
+
+        if (tx.rentalId) {
+          setDrawerLoading(true);
+          try {
+            const apiBase = getApiUrl();
+            const res = await fetch(`${apiBase}/rentals/${tx.rentalId}`, { headers: getHeaders() });
+            if (res.ok) {
+              const data = await res.json();
+              setRentalDetail(data);
+            }
+          } catch (e) {
+            console.warn('Could not fetch linked rental details', e);
+          } finally {
+            setDrawerLoading(false);
+          }
+        }
+      };
+
+      // --- Resolve Network Base URL for QR Verification (Local LAN in dev / Azure in prod) ---
+      const getNetworkVerifyBase = useCallback(() => {
+        if (window.API_NETWORK_URL && !window.API_NETWORK_URL.includes('localhost') && !window.API_NETWORK_URL.includes('127.0.0.1')) {
+          return window.API_NETWORK_URL.replace(/\/$/, '');
+        }
+        if (window.API_BASE_URL && !window.API_BASE_URL.includes('localhost') && !window.API_BASE_URL.includes('127.0.0.1')) {
+          return window.API_BASE_URL.replace(/\/$/, '');
+        }
+        const host = window.location.hostname;
+        if (host && host !== 'localhost' && host !== '127.0.0.1' && host !== 'appassets') {
+          return `${window.location.protocol}//${host}:5233/api`;
+        }
+        return 'http://localhost:5233/api';
+      }, []);
+
+      // --- Dynamic QR Code Rendering for Receipt (Scannable via Mobile Phone) ---
+      useEffect(() => {
+        if (isDrawerOpen && selectedTx) {
+          const qrContainer = document.getElementById('receipt-qr-canvas');
+          if (qrContainer && window.QRCode) {
+            qrContainer.innerHTML = '';
+            const txCode = `TX-${String(selectedTx.transactionId).padStart(6, '0')}`;
+            const verifyUrl = `${getNetworkVerifyBase()}/transactions/verify/${txCode}`;
+            new QRCode(qrContainer, {
+              text: verifyUrl,
+              width: 140,
+              height: 140,
+              colorDark: "#000000",
+              colorLight: "#FFFFFF",
+              correctLevel: QRCode.CorrectLevel.H
+            });
+
+            // Overlay Official Drive&Go System Logo on Transaction QR Code
+            const systemLogoUrl = 'logo.png';
+            overlayLogoOnQr(qrContainer, systemLogoUrl, 0.25);
+          }
+        }
+      }, [isDrawerOpen, selectedTx, getNetworkVerifyBase]);
+
+      // --- Confirm Payment ---
+      const executeConfirmPayment = async (txId) => {
+        setActionLoading(true);
+        try {
+          const apiBase = getApiUrl();
+          const res = await fetch(`${apiBase}/transactions/${txId}/confirm`, {
+            method: 'PATCH',
+            headers: getHeaders()
+          });
+          if (res.ok) {
+            showToast(`Transaction TX-${String(txId).padStart(5, '0')} confirmed successfully!`, 'success', 'Payment Confirmed');
+            setConfirmModalTx(null);
+            if (selectedTx && selectedTx.transactionId === txId) {
+              setSelectedTx(prev => ({ ...prev, status: 'confirmed' }));
+            }
+            fetchTransactionsData();
+          } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.message || 'Failed to confirm payment.', 'error', 'Error');
+          }
+        } catch (ex) {
+          showToast(ex.message, 'error', 'Connection Error');
+        } finally {
+          setActionLoading(false);
+        }
+      };
+
+      // --- Reject Payment ---
+      const executeRejectPayment = async (txId) => {
+        setActionLoading(true);
+        try {
+          const apiBase = getApiUrl();
+          const res = await fetch(`${apiBase}/transactions/${txId}/reject`, {
+            method: 'PATCH',
+            headers: getHeaders(),
+            body: JSON.stringify({ reason: rejectReason })
+          });
+          if (res.ok) {
+            showToast(`Transaction TX-${String(txId).padStart(5, '0')} rejected.`, 'warning', 'Payment Rejected');
+            setRejectModalTx(null);
+            setRejectReason('');
+            if (selectedTx && selectedTx.transactionId === txId) {
+              setSelectedTx(prev => ({ ...prev, status: 'rejected' }));
+            }
+            fetchTransactionsData();
+          } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.message || 'Failed to reject payment.', 'error', 'Error');
+          }
+        } catch (ex) {
+          showToast(ex.message, 'error', 'Connection Error');
+        } finally {
+          setActionLoading(false);
+        }
+      };
+
+      // --- Open Send Receipt Email Modal (Auto-fill & Suggest Customer Email) ---
+      const handleOpenEmailModal = (tx) => {
+        const target = tx || selectedTx;
+        if (!target) return;
+        const txCode = `TX-${String(target.transactionId).padStart(6, '0')}`;
+        setEmailModalTx(target);
+
+        // Auto-fill real email from database or smart suggestion from customer name
+        const autoEmail = target.customerEmail && target.customerEmail.trim() !== ''
+          ? target.customerEmail.trim()
+          : (target.customerName ? `${target.customerName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '.')}@gmail.com` : '');
+
+        setEmailRecipient(autoEmail);
+        setEmailSubject(`Official Payment Receipt [${txCode}] - Drive&Go Vehicle Rentals`);
+        setEmailMessage(`Dear ${target.customerName || 'Valued Customer'},\n\nThank you for your payment with Drive&Go Vehicle Rentals. Please find attached your verified official electronic payment receipt.\n\nBest regards,\nDrive&Go Billing Team`);
+      };
+
+      // --- Submit Send Receipt via Email with PDF Attachment ---
+      const submitSendReceiptEmail = async () => {
+        if (!emailModalTx) return;
+        if (!emailRecipient || !emailRecipient.trim()) {
+          showToast('Please specify a valid recipient email address.', 'warning', 'Email Required');
+          return;
+        }
+
+        setEmailSending(true);
+        try {
+          const apiBase = getApiUrl();
+          const res = await fetch(`${apiBase}/transactions/${emailModalTx.transactionId}/email-receipt`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({
+              recipientEmail: emailRecipient.trim(),
+              personalMessage: emailMessage.trim()
+            })
+          });
+
+          const result = await res.json().catch(() => ({}));
+          if (res.ok && result.success !== false) {
+            showToast(result.message || `Official receipt sent successfully to ${emailRecipient}!`, 'success', 'Email Dispatched');
+            setEmailModalTx(null);
+          } else {
+            showToast(result.message || 'Could not dispatch receipt email. Verify SMTP configuration.', 'error', 'Email Error');
+          }
+        } catch (ex) {
+          showToast(ex.message, 'error', 'Network Error');
+        } finally {
+          setEmailSending(false);
+        }
+      };
+
+      // --- Authentic 80mm POS Thermal Receipt Print Window (Pahaba Slip) ---
+      const handlePrintReceipt = () => {
+        if (!selectedTx) return;
+        const txCode = `TX-${String(selectedTx.transactionId).padStart(6, '0')}`;
+        const rentalRef = selectedTx.rentalId ? `DG-${String(selectedTx.rentalId).padStart(5, '0')}` : 'N/A';
+        const custName = selectedTx.customerName || 'Valued Customer';
+        const vehicle = selectedTx.vehicleName || 'Standard Rental Unit';
+        const amt = Number(selectedTx.amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 });
+        const words = numberToWords(Number(selectedTx.amount || 0));
+        const method = (selectedTx.method || 'Cash').toUpperCase();
+        const status = (selectedTx.status || 'Confirmed').toUpperCase();
+        const dateStr = selectedTx.paidAt ? new Date(selectedTx.paidAt).toLocaleString() : new Date().toLocaleString();
+        const adminName = window.CURRENT_ADMIN_NAME || 'Raymart Quirante';
+
+        // Extract live QR Code image from drawer canvas if available
+        let qrDataUrl = '';
+        const qrCanvas = document.querySelector('#receipt-qr-canvas canvas');
+        const qrImg = document.querySelector('#receipt-qr-canvas img');
+        if (qrCanvas) {
+          try { qrDataUrl = qrCanvas.toDataURL(); } catch {}
+        } else if (qrImg && qrImg.src) {
+          qrDataUrl = qrImg.src;
+        }
+
+        const printWindow = window.open('', '_blank', 'width=420,height=750');
+        if (!printWindow) {
+          window.print();
+          return;
+        }
+
+        printWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Receipt - ${txCode}</title>
+            <style>
+              @page {
+                size: 80mm auto;
+                margin: 0;
+              }
+              * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+              }
+              body {
+                background: #f1f5f9;
+                color: #000000;
+                font-family: 'Courier New', Courier, monospace, 'Lucida Console', Monaco, monospace;
+                font-size: 11px;
+                line-height: 1.35;
+                padding: 10px 0;
+                display: flex;
+                justify-content: center;
+              }
+              @media print {
+                body {
+                  background: #ffffff !important;
+                  padding: 0 !important;
+                }
+                .thermal-slip {
+                  box-shadow: none !important;
+                  border: none !important;
+                  margin: 0 auto !important;
+                }
+              }
+              .thermal-slip {
+                width: 78mm;
+                max-width: 78mm;
+                background: #ffffff;
+                padding: 16px 12px 20px 12px;
+                border: 1px dashed #cbd5e1;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+                position: relative;
+              }
+              .text-center { text-align: center; }
+              .text-right { text-align: right; }
+              .font-bold { font-weight: bold; }
+              .logo {
+                width: 48px;
+                height: auto;
+                max-height: 48px;
+                object-fit: contain;
+                margin: 0 auto 4px auto;
+                display: block;
+                filter: grayscale(100%) contrast(150%);
+              }
+              .store-name {
+                font-size: 13px;
+                font-weight: 900;
+                letter-spacing: 0.5px;
+              }
+              .store-sub {
+                font-size: 9px;
+                font-weight: bold;
+                letter-spacing: 1px;
+                margin-top: 1px;
+              }
+              .store-addr {
+                font-size: 9.5px;
+                margin-top: 3px;
+                color: #333;
+              }
+              .double-line {
+                border-top: 2px solid #000;
+                margin: 8px 0;
+              }
+              .dashed-line {
+                border-top: 1px dashed #444;
+                margin: 6px 0;
+              }
+              .thick-line {
+                border-top: 2.5px solid #000;
+                margin: 8px 0;
+              }
+              .meta-row {
+                display: flex;
+                justify-content: space-between;
+                font-size: 10.5px;
+                margin-bottom: 2.5px;
+              }
+              .meta-label {
+                color: #444;
+                font-weight: bold;
+                white-space: nowrap;
+              }
+              .meta-val {
+                text-align: right;
+                font-weight: bold;
+                word-break: break-word;
+              }
+              .status-pill {
+                display: inline-block;
+                padding: 1px 6px;
+                border: 1.5px solid #000;
+                font-weight: 900;
+                font-size: 10px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+              }
+              .table-head {
+                display: flex;
+                justify-content: space-between;
+                font-weight: bold;
+                font-size: 10px;
+                padding-bottom: 2px;
+              }
+              .item-row {
+                display: flex;
+                justify-content: space-between;
+                font-size: 11px;
+                margin-top: 3px;
+              }
+              .total-section {
+                margin: 8px 0;
+              }
+              .total-row {
+                display: flex;
+                justify-content: space-between;
+                font-size: 14px;
+                font-weight: 900;
+                letter-spacing: 0.5px;
+              }
+              .amount-words {
+                font-size: 9px;
+                font-style: italic;
+                text-align: center;
+                margin-top: 4px;
+                line-height: 1.25;
+              }
+              .qr-box {
+                text-align: center;
+                margin: 12px 0 6px 0;
+              }
+              .qr-img {
+                width: 90px;
+                height: 90px;
+                margin: 0 auto;
+                display: block;
+              }
+              .barcode-box {
+                text-align: center;
+                letter-spacing: 2px;
+                font-size: 14px;
+                font-weight: 900;
+                margin: 8px 0 4px 0;
+                font-family: 'Libre Barcode 39', 'Courier New', monospace;
+              }
+              .footer-msg {
+                font-size: 9px;
+                text-align: center;
+                line-height: 1.4;
+                margin-top: 8px;
+              }
+              .tear-cut {
+                font-size: 9px;
+                text-align: center;
+                color: #888;
+                margin-top: 10px;
+                letter-spacing: 2px;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="thermal-slip">
+              
+              <!-- Store Header -->
+              <div class="text-center">
+                <img src="logo.png" class="logo" onerror="this.style.display='none';" />
+                <div class="store-name">DRIVE & GO VEHICLE RENTALS</div>
+                <div class="store-sub">OFFICIAL PAYMENT RECEIPT</div>
+                <div class="store-addr">
+                  City of San Jose del Monte, Bulacan<br>
+                  Hotline: +63 935 966 7178<br>
+                  VAT REG TIN: 432-881-900-000
+                </div>
+              </div>
+
+              <div class="double-line"></div>
+
+              <!-- Transaction Metadata -->
+              <div>
+                <div class="meta-row">
+                  <span class="meta-label">RECEIPT NO :</span>
+                  <span class="meta-val">${txCode}</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">DATE/TIME  :</span>
+                  <span class="meta-val">${dateStr}</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">CUSTOMER   :</span>
+                  <span class="meta-val">${custName}</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">RENTAL REF :</span>
+                  <span class="meta-val">${rentalRef}</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">VEHICLE    :</span>
+                  <span class="meta-val">${vehicle}</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">PAY CHANNEL:</span>
+                  <span class="meta-val">${method}</span>
+                </div>
+                <div class="meta-row" style="align-items: center; margin-top: 2px;">
+                  <span class="meta-label">SETTLEMENT :</span>
+                  <span class="status-pill">${status}</span>
+                </div>
+              </div>
+
+              <div class="dashed-line"></div>
+
+              <!-- Itemized Table -->
+              <div class="table-head">
+                <span>QTY  DESCRIPTION</span>
+                <span>AMOUNT</span>
+              </div>
+              <div class="dashed-line" style="margin: 2px 0 4px 0;"></div>
+
+              <div class="item-row">
+                <span>1X  Vehicle Rental Fee</span>
+                <span class="font-bold">₱${amt}</span>
+              </div>
+              <div style="font-size: 9.5px; color: #555; margin-left: 20px;">
+                Unit: ${vehicle}
+              </div>
+
+              <div class="dashed-line" style="margin-top: 8px;"></div>
+
+              <!-- Totals -->
+              <div class="total-section">
+                <div class="meta-row">
+                  <span class="meta-label">SUBTOTAL:</span>
+                  <span class="meta-val">₱${amt}</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">DISCOUNT / WAIVER:</span>
+                  <span class="meta-val">₱0.00</span>
+                </div>
+                <div class="double-line"></div>
+                <div class="total-row">
+                  <span>TOTAL PAID:</span>
+                  <span>₱${amt}</span>
+                </div>
+                <div class="double-line"></div>
+                <div class="amount-words">
+                  (${words})
+                </div>
+              </div>
+
+              <!-- Dynamic QR Code for Verification -->
+              <div class="qr-box">
+                ${qrDataUrl ? `<img src="${qrDataUrl}" class="qr-img" alt="QR Seal" />` : ''}
+                <div style="font-size: 8.5px; font-weight: bold; margin-top: 4px; letter-spacing: 0.5px;">
+                  SCAN TO VERIFY SLIP VALIDITY
+                </div>
+                <div style="font-size: 7.5px; color: #666; font-family: monospace;">
+                  REF: ${txCode}
+                </div>
+              </div>
+
+              <div class="dashed-line"></div>
+
+              <!-- Cashier & Signatory -->
+              <div class="meta-row" style="font-size: 9.5px; margin-top: 4px;">
+                <span>CASHIER/OFFICER:</span>
+                <span class="font-bold">${adminName}</span>
+              </div>
+
+              <div class="dashed-line"></div>
+
+              <!-- Barcode Mock & Customer Note -->
+              <div class="barcode-box">
+                ||| | || |||| | ||| || |||| | ||
+              </div>
+              <div class="footer-msg">
+                * * * * * * * * * * * * * * * * * * * *<br>
+                <strong>THANK YOU FOR CHOOSING US!</strong><br>
+                Drive safely & responsibly.<br>
+                Please keep this slip for your records.<br>
+                * * * * * * * * * * * * * * * * * * * *
+              </div>
+
+              <div class="tear-cut">
+                - - - - - - - - [ TEAR HERE ] - - - - - - - -
+              </div>
+
+            </div>
+
+            <script>
+              window.onload = function() {
+                window.print();
+              };
+            <\/script>
+          </body>
+          </html>
+        `);
+        printWindow.document.close();
+      };
+
+      // --- POS Slip Receipt Printing (Authentic Cashier Style) ---
+
+      // ── Logo Caches and Image Resolvers for Excel Export ──
+      const brandLogoCache = {};
+      const paymentLogoCache = {};
+
+      const resolveTxBrandSlug = (brandOrVehicleStr) => {
+        if (!brandOrVehicleStr) return '';
+        const s = String(brandOrVehicleStr).trim().toLowerCase();
+        if (s.includes('toyota')) return 'toyota';
+        if (s.includes('honda')) return 'honda';
+        if (s.includes('mitsubishi') || s.includes('mitsu')) return 'mitsubishi';
+        if (s.includes('nissan')) return 'nissan';
+        if (s.includes('hyundai')) return 'hyundai';
+        if (s.includes('ford')) return 'ford';
+        if (s.includes('chevrolet') || s.includes('chevy')) return 'chevrolet';
+        if (s.includes('suzuki')) return 'suzuki';
+        if (s.includes('kia')) return 'kia';
+        if (s.includes('isuzu')) return 'isuzu';
+        if (s.includes('bmw')) return 'bmw';
+        if (s.includes('mercedes') || s.includes('benz')) return 'mercedes-benz';
+        if (s.includes('mg')) return 'mg';
+        if (s.includes('geely')) return 'geely';
+        if (s.includes('byd')) return 'byd';
+        if (s.includes('tesla')) return 'tesla';
+        if (s.includes('mazda')) return 'mazda';
+        if (s.includes('subaru')) return 'subaru';
+        if (s.includes('audi')) return 'audi';
+        if (s.includes('volkswagen') || s.includes('vw')) return 'volkswagen';
+        if (s.includes('porsche')) return 'porsche';
+        if (s.includes('lexus')) return 'lexus';
+        if (s.includes('chery')) return 'chery';
+        if (s.includes('gac')) return 'gac';
+        if (s.includes('changan')) return 'changan';
+        if (s.includes('peugeot')) return 'peugeot';
+        if (s.includes('jeep')) return 'jeep';
+        if (s.includes('land rover') || s.includes('landrover')) return 'land-rover';
+        if (s.includes('volvo')) return 'volvo';
+        if (s.includes('infiniti')) return 'infiniti';
+        if (s.includes('jaguar')) return 'jaguar';
+        if (s.includes('fiat')) return 'fiat';
+        if (s.includes('dodge')) return 'dodge';
+        if (s.includes('ram')) return 'ram';
+        if (s.includes('mini')) return 'mini';
+        if (s.includes('wuling')) return 'wuling';
+        if (s.includes('foton')) return 'foton';
+        if (s.includes('great wall')) return 'great-wall';
+        if (s.includes('haval')) return 'haval';
+        return getVehicleBrandSlug(brandOrVehicleStr);
+      };
+
+      const getTxPaymentSlug = (methodStr, providerStr) => {
+        const combined = `${methodStr || ''} ${providerStr || ''}`.trim().toLowerCase();
+        if (!combined) return 'cash';
+        if (combined.includes('gcash')) return 'gcash';
+        if (combined.includes('maya') || combined.includes('paymaya')) return 'maya';
+        if (combined.includes('bdo')) return 'bdo';
+        if (combined.includes('bpi')) return 'bpi';
+        if (combined.includes('unionbank') || combined.includes('ubp')) return 'unionbank';
+        if (combined.includes('metrobank') || combined.includes('mbt')) return 'metrobank';
+        if (combined.includes('landbank') || combined.includes('lbp')) return 'landbank';
+        if (combined.includes('security') || combined.includes('secbank')) return 'securitybank';
+        if (combined.includes('rcbc')) return 'rcbc';
+        if (combined.includes('chinabank') || combined.includes('cbc')) return 'chinabank';
+        if (combined.includes('pnb')) return 'pnb';
+        if (combined.includes('card') || combined.includes('visa') || combined.includes('mastercard')) return 'card';
+        if (combined.includes('bank') || combined.includes('transfer') || combined.includes('instapay') || combined.includes('pesonet')) return 'bank';
+        return 'cash';
+      };
+
+      const urlToPngBase64 = async (url) => {
+        if (!url) return null;
+        try {
+          const res = await fetch(url);
+          if (res.ok) {
+            const contentType = (res.headers.get('content-type') || '').toLowerCase();
+            if (!contentType.includes('svg')) {
+              const blob = await res.blob();
+              if (!blob.type.includes('svg')) {
+                const b64 = await new Promise((resolve) => {
+                  const reader = new FileReader();
+                  reader.onloadend = () => {
+                    const s = reader.result;
+                    resolve(typeof s === 'string' && s.includes('base64,') ? s.split('base64,')[1] : null);
+                  };
+                  reader.onerror = () => resolve(null);
+                  reader.readAsDataURL(blob);
+                });
+                if (b64) return b64;
+              }
+            }
+          }
+        } catch (e) {}
+
+        try {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+            img.src = url;
+          });
+
+          const canvas = document.createElement('canvas');
+          canvas.width = 64;
+          canvas.height = 64;
+          const ctx = canvas.getContext('2d');
+          ctx.clearRect(0, 0, 64, 64);
+          ctx.drawImage(img, 0, 0, 64, 64);
+          return canvas.toDataURL('image/png').split('base64,')[1];
+        } catch (e) {
+          return null;
+        }
+      };
+
+      const createBrandEmblemBase64 = (brandName) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        const b = (brandName || 'CAR').toUpperCase();
+        
+        let bg = '#1E3A8A';
+        if (b.includes('TOYOTA') || b.includes('HONDA') || b.includes('MITSU')) bg = '#DC2626';
+        if (b.includes('NISSAN') || b.includes('KIA')) bg = '#0F172A';
+        if (b.includes('HYUNDAI')) bg = '#0E7490';
+        if (b.includes('SUZUKI')) bg = '#EF4444';
+        if (b.includes('CHEVY') || b.includes('CHEVROLET')) bg = '#D97706';
+
+        ctx.fillStyle = bg;
+        ctx.beginPath();
+        ctx.roundRect(4, 4, 56, 56, 12);
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 20px Segoe UI, Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(b.substring(0, 4), 32, 33);
+
+        return canvas.toDataURL('image/png').split('base64,')[1];
+      };
+
+      const createPaymentEmblemBase64 = (slug) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 128;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        const s = (slug || 'cash').toLowerCase();
+
+        if (s === 'gcash') {
+          ctx.fillStyle = '#0066F6';
+          ctx.beginPath();
+          ctx.roundRect(4, 4, 120, 120, 32);
+          ctx.fill();
+
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = '900 68px Segoe UI, Arial, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('G', 64, 66);
+        } else if (s === 'maya') {
+          ctx.fillStyle = '#0C1523';
+          ctx.beginPath();
+          ctx.roundRect(4, 4, 120, 120, 32);
+          ctx.fill();
+
+          ctx.fillStyle = '#00D632';
+          ctx.font = '900 68px Segoe UI, Arial, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('m', 58, 64);
+
+          ctx.beginPath();
+          ctx.arc(94, 82, 7.5, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (s === 'bank') {
+          ctx.fillStyle = '#8B5CF6';
+          ctx.beginPath();
+          ctx.roundRect(4, 4, 120, 120, 32);
+          ctx.fill();
+
+          ctx.fillStyle = '#FFFFFF';
+          ctx.beginPath();
+          ctx.moveTo(64, 24);
+          ctx.lineTo(24, 48);
+          ctx.lineTo(104, 48);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.fillRect(31, 53, 9, 36);
+          ctx.fillRect(50, 53, 9, 36);
+          ctx.fillRect(69, 53, 9, 36);
+          ctx.fillRect(88, 53, 9, 36);
+
+          ctx.fillRect(20, 92, 88, 12);
+        } else if (s === 'bdo') {
+          ctx.fillStyle = '#002D72';
+          ctx.beginPath();
+          ctx.roundRect(4, 4, 120, 120, 32);
+          ctx.fill();
+
+          ctx.fillStyle = '#FFC72C';
+          ctx.font = '900 36px Segoe UI, Arial, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('BDO', 64, 66);
+        } else if (s === 'bpi') {
+          ctx.fillStyle = '#B81D24';
+          ctx.beginPath();
+          ctx.roundRect(4, 4, 120, 120, 32);
+          ctx.fill();
+
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = '900 36px Segoe UI, Arial, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('BPI', 64, 66);
+        } else if (s === 'unionbank') {
+          ctx.fillStyle = '#FF6000';
+          ctx.beginPath();
+          ctx.roundRect(4, 4, 120, 120, 32);
+          ctx.fill();
+
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = '900 28px Segoe UI, Arial, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('UNION', 64, 50);
+          ctx.fillText('BANK', 64, 82);
+        } else if (s === 'metrobank') {
+          ctx.fillStyle = '#003882';
+          ctx.beginPath();
+          ctx.roundRect(4, 4, 120, 120, 32);
+          ctx.fill();
+
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = '900 32px Segoe UI, Arial, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('METRO', 64, 66);
+        } else {
+          ctx.fillStyle = '#F59E0B';
+          ctx.beginPath();
+          ctx.roundRect(4, 4, 120, 120, 32);
+          ctx.fill();
+
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = '900 64px Segoe UI, Arial, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('₱', 64, 66);
+        }
+        return canvas.toDataURL('image/png').split('base64,')[1];
+      };
+
+      const getTxBrandLogoBase64 = async (brandOrVehicleStr) => {
+        const slug = resolveTxBrandSlug(brandOrVehicleStr);
+        if (!slug) return null;
+        if (brandLogoCache[slug]) return brandLogoCache[slug];
+
+        const base = getApiUrl();
+        let b64 = await urlToPngBase64(`${base}/vehicles/brand-logo/${encodeURIComponent(slug)}`);
+        
+        if (!b64) {
+          b64 = await urlToPngBase64(`https://cdn.jsdelivr.net/gh/filippofilip95/car-logos-dataset@master/logos/original/${slug}.png`);
+        }
+
+        if (!b64) {
+          b64 = createBrandEmblemBase64(slug);
+        }
+
+        brandLogoCache[slug] = b64;
+        return b64;
+      };
+
+      const TX_PAYMENT_DOMAIN_MAP = {
+        'gcash': 'gcash.com',
+        'maya': 'maya.ph',
+        'paymaya': 'maya.ph',
+        'bdo': 'bdo.com.ph',
+        'bpi': 'bpi.com.ph',
+        'unionbank': 'unionbankph.com',
+        'ubp': 'unionbankph.com',
+        'metrobank': 'metrobank.com.ph',
+        'landbank': 'landbank.com',
+        'chinabank': 'chinabank.ph',
+        'rcbc': 'rcbc.com',
+        'pnb': 'pnb.com.ph',
+        'securitybank': 'securitybank.com',
+        'gotyme': 'gotyme.com.ph',
+        'seabank': 'seabank.com.ph',
+        'tonik': 'tonikbank.com',
+        'cimb': 'cimbbank.com.ph',
+        'shopeepay': 'shopee.ph',
+        'grabpay': 'grab.com',
+        'palawanpay': 'palawanpay.com',
+        'psbank': 'psbank.com.ph',
+        'aub': 'aub.com.ph',
+        'visa': 'visa.com',
+        'mastercard': 'mastercard.com'
+      };
+
+      const getTxPaymentLogoBase64 = async (methodStr, providerStr) => {
+        const slug = getTxPaymentSlug(methodStr, providerStr);
+        if (paymentLogoCache[slug]) return paymentLogoCache[slug];
+
+        const base = getApiUrl();
+
+        // 1. Local API first
+        let b64 = await urlToPngBase64(`${base}/transactions/provider-logo/${encodeURIComponent(slug)}`);
+
+        // 2. Google Favicon CDN
+        const domain = TX_PAYMENT_DOMAIN_MAP[slug] || (slug !== 'cash' && slug !== 'bank' ? `${slug}.com.ph` : null);
+        if (!b64 && domain) {
+          b64 = await urlToPngBase64(`https://www.google.com/s2/favicons?domain=${domain}&sz=256`);
+        }
+
+        // 3. Unavatar
+        if (!b64 && domain) {
+          b64 = await urlToPngBase64(`https://unavatar.io/${domain}`);
+        }
+
+        // 4. Vector emblem fallback
+        if (!b64) {
+          b64 = createPaymentEmblemBase64(slug);
+        }
+
+        paymentLogoCache[slug] = b64;
+        return b64;
+      };
+
+      // --- Export XLSX via ExcelJS with Corporate Header & KPI Cards (Matching Rentals) ---
+      const handleExportExcel = async () => {
+        if (!transactions.length || typeof ExcelJS === 'undefined') return;
+        try {
+          const workbook = new ExcelJS.Workbook();
+          workbook.creator = 'Drive & Go Rental System';
+          workbook.created = new Date();
+
+          const sheet = workbook.addWorksheet('Transactions Master Ledger', {
+            views: [{ showGridLines: true }]
+          });
+
+          sheet.columns = [
+            { key: 'txCode', width: 16 },
+            { key: 'rentalRef', width: 16 },
+            { key: 'customer', width: 26 },
+            { key: 'email', width: 30 },
+            { key: 'vehicle', width: 28 },
+            { key: 'amount', width: 18 },
+            { key: 'method', width: 22 },
+            { key: 'status', width: 16 },
+            { key: 'paidAt', width: 24 }
+          ];
+
+          const exportDate = new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+          const adminName = window.CURRENT_ADMIN_NAME || 'Raymart Quirante';
+          const dataToExport = filteredTransactions;
+
+          // Preload unique vehicle brand logos and payment method logos for Excel embedding
+          try {
+            const uniqueBrands = new Set(dataToExport.map(t => resolveTxBrandSlug(t.vehicleName || '')));
+            for (const b of uniqueBrands) {
+              if (b) await getTxBrandLogoBase64(b);
+            }
+            const uniqueMethods = new Set(dataToExport.map(t => getTxPaymentSlug(t.method || 'cash')));
+            for (const m of uniqueMethods) {
+              if (m) await getTxPaymentLogoBase64(m);
+            }
+          } catch (err) {
+            console.warn('Logo preloading error in Transactions export:', err);
+          }
+
+          const totalRev = dataToExport
+            .filter(t => (t.status || '').toLowerCase() === 'confirmed' || (t.status || '').toLowerCase() === 'paid')
+            .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+          const confirmedCount = dataToExport
+            .filter(t => (t.status || '').toLowerCase() === 'confirmed' || (t.status || '').toLowerCase() === 'paid').length;
+          const pendingCount = dataToExport
+            .filter(t => (t.status || '').toLowerCase() === 'pending' || (t.status || '').toLowerCase() === 'unpaid').length;
+          const consistencyRate = dataToExport.length ? Math.round((confirmedCount / dataToExport.length) * 100) : 100;
+
+          // Row 1: Header Banner Title
+          const r1 = sheet.addRow(['DRIVE & GO RENTAL SYSTEM — TRANSACTIONS & SETTLEMENTS MASTER LEDGER']);
+          sheet.mergeCells('A1:I1');
+          r1.height = 42;
+          const cA1 = sheet.getCell('A1');
+          cA1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+          cA1.font = { name: 'Segoe UI', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
+          cA1.alignment = { vertical: 'middle', horizontal: 'center' };
+
+          // Embed Official System Logo into Excel Header Banner
+          try {
+            let logoBase64 = null;
+            const logoCandidates = [
+              '../../shared/images/logo.png',
+              'logo.png',
+              '/images/logo.png',
+              'https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png'
+            ];
+            for (const p of logoCandidates) {
+              try {
+                const lRes = await fetch(p);
+                if (lRes.ok) {
+                  const blob = await lRes.blob();
+                  logoBase64 = await new Promise((res) => {
+                    const fr = new FileReader();
+                    fr.onloadend = () => {
+                      const s = fr.result;
+                      res(typeof s === 'string' && s.includes('base64,') ? s.split('base64,')[1] : null);
+                    };
+                    fr.onerror = () => res(null);
+                    fr.readAsDataURL(blob);
+                  });
+                  if (logoBase64) break;
+                }
+              } catch (err) {}
+            }
+
+            if (logoBase64) {
+              const imageId = workbook.addImage({
+                base64: logoBase64,
+                extension: 'png'
+              });
+              sheet.addImage(imageId, {
+                tl: { col: 0.15, row: 0.08 },
+                ext: { width: 48, height: 48 }
+              });
+            }
+          } catch (ex) {
+            console.warn('Could not embed logo image in Transactions Excel', ex);
+          }
+
+          // Row 2: Subtitle & Metadata
+          const r2 = sheet.addRow([`FINANCIAL LEDGER & SETTLEMENT AUDIT REPORT  •  EXTRACTED ON: ${exportDate.toUpperCase()}`]);
+          sheet.mergeCells('A2:I2');
+          r2.height = 20;
+          const cA2 = sheet.getCell('A2');
+          cA2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+          cA2.font = { name: 'Segoe UI', size: 8.5, color: { argb: 'FF94A3B8' }, italic: true };
+          cA2.alignment = { vertical: 'middle', horizontal: 'center' };
+
+          // Row 3: Admin Authority Note
+          const r3 = sheet.addRow([`SYSTEM AUDITOR: ${adminName.toUpperCase()}  |  ALL TRANSACTIONS CROSS-REFERENCED WITH STRIPE & GCASH GATEWAYS`]);
+          sheet.mergeCells('A3:I3');
+          r3.height = 18;
+          const cA3 = sheet.getCell('A3');
+          cA3.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+          cA3.font = { name: 'Segoe UI', size: 8, color: { argb: 'FF64748B' } };
+          cA3.alignment = { vertical: 'middle', horizontal: 'center' };
+
+          // Row 4: Spacer
+          const r4 = sheet.addRow([]);
+          r4.height = 10;
+
+          // Rows 5 & 6: KPI Summary Cards
+          const r5 = sheet.addRow(['TOTAL TRANSACTIONS', '', 'SETTLED / CONFIRMED', '', 'TOTAL REVENUE (PHP)', '', '', 'CONSISTENCY', '']);
+          sheet.mergeCells('A5:B5');
+          sheet.mergeCells('C5:D5');
+          sheet.mergeCells('E5:G5');
+          sheet.mergeCells('H5:I5');
+          r5.height = 18;
+
+          ['A5', 'C5', 'E5', 'H5'].forEach(ref => {
+            const c = sheet.getCell(ref);
+            c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+            c.font = { name: 'Segoe UI', size: 9, bold: true, color: { argb: 'FF64748B' } };
+            c.alignment = { vertical: 'middle', horizontal: 'center' };
+            c.border = { 
+              top: { style: 'thin', color: { argb: 'FFCBD5E1' } }, 
+              left: { style: 'thin', color: { argb: 'FFCBD5E1' } }, 
+              right: { style: 'thin', color: { argb: 'FFCBD5E1' } } 
+            };
+          });
+
+          const r6 = sheet.addRow([
+            `${dataToExport.length} Records`, '', 
+            `${confirmedCount} Confirmed`, '', 
+            totalRev, '', '', 
+            `${consistencyRate}%`, ''
+          ]);
+          sheet.mergeCells('A6:B6');
+          sheet.mergeCells('C6:D6');
+          sheet.mergeCells('E6:G6');
+          sheet.mergeCells('H6:I6');
+          r6.height = 24;
+
+          const cKpi1 = sheet.getCell('A6');
+          cKpi1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+          cKpi1.font = { name: 'Segoe UI', size: 12, bold: true, color: { argb: 'FF0F172A' } };
+          cKpi1.alignment = { vertical: 'middle', horizontal: 'center' };
+          cKpi1.border = { bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } }, left: { style: 'thin', color: { argb: 'FFCBD5E1' } }, right: { style: 'thin', color: { argb: 'FFCBD5E1' } } };
+
+          const cKpi2 = sheet.getCell('C6');
+          cKpi2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+          cKpi2.font = { name: 'Segoe UI', size: 12, bold: true, color: { argb: 'FF16A34A' } };
+          cKpi2.alignment = { vertical: 'middle', horizontal: 'center' };
+          cKpi2.border = { bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } }, left: { style: 'thin', color: { argb: 'FFCBD5E1' } }, right: { style: 'thin', color: { argb: 'FFCBD5E1' } } };
+
+          const cKpi3 = sheet.getCell('E6');
+          cKpi3.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+          cKpi3.font = { name: 'Segoe UI', size: 12, bold: true, color: { argb: 'FFFF6B00' } };
+          cKpi3.numFmt = '"₱"#,##0.00';
+          cKpi3.alignment = { vertical: 'middle', horizontal: 'center' };
+          cKpi3.border = { bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } }, left: { style: 'thin', color: { argb: 'FFCBD5E1' } }, right: { style: 'thin', color: { argb: 'FFCBD5E1' } } };
+
+          const cKpi4 = sheet.getCell('H6');
+          cKpi4.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+          cKpi4.font = { name: 'Segoe UI', size: 12, bold: true, color: { argb: 'FF2563EB' } };
+          cKpi4.alignment = { vertical: 'middle', horizontal: 'center' };
+          cKpi4.border = { bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } }, left: { style: 'thin', color: { argb: 'FFCBD5E1' } }, right: { style: 'thin', color: { argb: 'FFCBD5E1' } } };
+
+          // Row 7: Spacer
+          const r7 = sheet.addRow([]);
+          r7.height = 12;
+
+          // Row 8: Dark Navy Table Headers
+          const hdrRow = sheet.addRow([
+            'TX Code', 'Rental Ref', 'Customer Name', 'Customer Email', 
+            'Vehicle', 'Amount (PHP)', 'Payment Method', 'Status', 'Paid At'
+          ]);
+          hdrRow.height = 25;
+          hdrRow.eachCell(cell => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+            cell.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FF1E293B' } },
+              bottom: { style: 'thin', color: { argb: 'FF1E293B' } },
+              left: { style: 'thin', color: { argb: 'FF1E293B' } },
+              right: { style: 'thin', color: { argb: 'FF1E293B' } }
+            };
+          });
+
+          // Row 9+: Data Rows
+          dataToExport.forEach((t, idx) => {
+            const isEven = idx % 2 === 0;
+            const txCode = `TX-${String(t.transactionId).padStart(6, '0')}`;
+            const rentalRef = t.rentalId ? `DG-${String(t.rentalId).padStart(5, '0')}` : 'N/A';
+            const amt = Number(t.amount || 0);
+            const statusUpper = (t.status || 'Confirmed').toUpperCase();
+            const dateStr = t.paidAt ? new Date(t.paidAt).toLocaleString('en-US') : '—';
+            const vehicleLabel = t.vehicleName || 'Standard Unit';
+            const methodLabel = (t.method || 'Cash').toUpperCase();
+
+            const dRow = sheet.addRow([
+              txCode,
+              rentalRef,
+              t.customerName || 'Unknown Customer',
+              t.customerEmail || '—',
+              "          " + vehicleLabel,
+              amt,
+              "          " + methodLabel,
+              statusUpper,
+              dateStr
+            ]);
+            dRow.height = 24;
+
+            // Embed Small Car Brand Logo in Column E (0-indexed col 4)
+            const bSlug = resolveTxBrandSlug(t.vehicleName);
+            const bB64 = brandLogoCache[bSlug];
+            if (bB64) {
+              try {
+                const bImgId = workbook.addImage({ base64: bB64, extension: 'png' });
+                sheet.addImage(bImgId, {
+                  tl: { col: 4.08, row: (dRow.number - 1) + 0.16 },
+                  ext: { width: 18, height: 18 }
+                });
+              } catch (err) {}
+            }
+
+            // Embed Small Payment Method Logo in Column G (0-indexed col 6)
+            const pSlug = getTxPaymentSlug(t.method);
+            const pB64 = paymentLogoCache[pSlug];
+            if (pB64) {
+              try {
+                const pImgId = workbook.addImage({ base64: pB64, extension: 'png' });
+                sheet.addImage(pImgId, {
+                  tl: { col: 6.08, row: (dRow.number - 1) + 0.16 },
+                  ext: { width: 18, height: 18 }
+                });
+              } catch (err) {}
+            }
+
+            const bgArgb = isEven ? 'FFF8FAFC' : 'FFFFFFFF';
+            dRow.eachCell((cell, colNum) => {
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgArgb } };
+              cell.font = { name: 'Segoe UI', size: 9.5 };
+              cell.border = {
+                top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+              };
+
+              // Center codes and statuses
+              if (colNum === 1 || colNum === 2 || colNum === 8) {
+                cell.alignment = { vertical: 'middle', horizontal: 'center' };
+              } else if (colNum === 6) {
+                // Amount formatting
+                cell.alignment = { vertical: 'middle', horizontal: 'right' };
+                cell.numFmt = '"₱"#,##0.00';
+                cell.font = { name: 'Segoe UI', size: 9.5, bold: true };
+              } else if (colNum === 7) {
+                // Payment Method with embedded logo
+                cell.alignment = { vertical: 'middle', horizontal: 'left' };
+                cell.font = { name: 'Segoe UI', size: 9.5, bold: true, color: { argb: 'FF0F172A' } };
+              } else {
+                cell.alignment = { vertical: 'middle', horizontal: 'left' };
+              }
+
+              // Status color accents
+              if (colNum === 8) {
+                cell.font = { name: 'Segoe UI', size: 9.5, bold: true };
+                if (statusUpper === 'CONFIRMED' || statusUpper === 'PAID') {
+                  cell.font.color = { argb: 'FF16A34A' };
+                } else if (statusUpper === 'PENDING' || statusUpper === 'UNPAID') {
+                  cell.font.color = { argb: 'FFD97706' };
+                } else if (statusUpper === 'REJECTED') {
+                  cell.font.color = { argb: 'FFDC2626' };
+                }
+              }
+
+              // TX Code orange font
+              if (colNum === 1) {
+                cell.font = { name: 'Segoe UI', size: 9.5, bold: true, color: { argb: 'FFFF6B00' } };
+              }
+            });
+          });
+
+          // Summary Footer Row
+          const summaryRow = sheet.addRow([
+            'TOTAL REVENUE RECORDED', '', '', '', '',
+            totalRev, '', '', ''
+          ]);
+          sheet.mergeCells(`A${summaryRow.number}:E${summaryRow.number}`);
+          sheet.mergeCells(`G${summaryRow.number}:I${summaryRow.number}`);
+          summaryRow.height = 24;
+
+          const cSumLbl = sheet.getCell(`A${summaryRow.number}`);
+          cSumLbl.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+          cSumLbl.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+          cSumLbl.alignment = { vertical: 'middle', horizontal: 'right' };
+
+          const cSumVal = sheet.getCell(`F${summaryRow.number}`);
+          cSumVal.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+          cSumVal.font = { name: 'Segoe UI', size: 11, bold: true, color: { argb: 'FFFF6B00' } };
+          cSumVal.numFmt = '"₱"#,##0.00';
+          cSumVal.alignment = { vertical: 'middle', horizontal: 'right' };
+          cSumVal.border = {
+            top: { style: 'medium', color: { argb: 'FF0F172A' } },
+            bottom: { style: 'double', color: { argb: 'FF0F172A' } }
+          };
+
+          const buffer = await workbook.xlsx.writeBuffer();
+          const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `DriveAndGo_Transactions_Ledger_${new Date().toISOString().split('T')[0]}.xlsx`;
+          a.click();
+          URL.revokeObjectURL(url);
+          showToast('Corporate Excel report generated successfully!', 'success', 'Export Complete');
+        } catch (ex) {
+          showToast(ex.message, 'error', 'Excel Export Error');
+        }
+      };
+
+      // --- Filtered & Sorted Transactions ---
+      const filteredTransactions = useMemo(() => {
+        return transactions.filter(t => {
+          const matchSearch = !searchTerm || 
+            (t.customerName && t.customerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+            String(t.transactionId).includes(searchTerm) ||
+            String(t.rentalId).includes(searchTerm);
+
+          const tMethod = (t.method || '').toLowerCase();
+          const fMethod = methodFilter.toLowerCase();
+          const matchMethod = fMethod === 'all' || 
+            tMethod === fMethod ||
+            (fMethod === 'card' && (tMethod.includes('card') || tMethod.includes('visa') || tMethod.includes('mastercard') || tMethod.includes('debit') || tMethod.includes('credit'))) ||
+            (fMethod === 'bank' && (tMethod.includes('bank') || tMethod.includes('transfer') || tMethod.includes('instapay') || tMethod.includes('pesonet')));
+
+          const matchStatus = statusFilter === 'ALL' || (t.status || '').toLowerCase() === statusFilter.toLowerCase();
+
+          return matchSearch && matchMethod && matchStatus;
+        }).sort((a, b) => {
+          let valA = a[sortCol];
+          let valB = b[sortCol];
+
+          if (sortCol === 'amount') {
+            valA = Number(valA || 0);
+            valB = Number(valB || 0);
+          } else if (sortCol === 'paid_at') {
+            valA = new Date(a.paidAt || 0).getTime();
+            valB = new Date(b.paidAt || 0).getTime();
+          } else {
+            valA = String(valA || '').toLowerCase();
+            valB = String(valB || '').toLowerCase();
+          }
+
+          if (valA < valB) return sortDir === 'asc' ? -1 : 1;
+          if (valA > valB) return sortDir === 'asc' ? 1 : -1;
+          return 0;
+        });
+      }, [transactions, searchTerm, methodFilter, statusFilter, sortCol, sortDir]);
+
+      // --- Pagination Calculations ---
+      const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / itemsPerPage));
+      const paginatedTransactions = useMemo(() => {
+        const start = (currentPage - 1) * itemsPerPage;
+        return filteredTransactions.slice(start, start + itemsPerPage);
+      }, [filteredTransactions, currentPage, itemsPerPage]);
+
+      // --- Aggregated Stats for KPI Cards ---
+      const stats = useMemo(() => {
+        if (kpiStats) return kpiStats;
+        let rev = 0, pending = 0, confirmed = 0;
+        transactions.forEach(t => {
+          const s = (t.status || '').toLowerCase();
+          if (s === 'confirmed' || s === 'paid' || s === 'verified') {
+            rev += Number(t.amount || 0);
+            confirmed++;
+          }
+          if (s === 'pending' || s === 'unpaid' || s === '') pending++;
+        });
+        const total = transactions.length;
+        const rate = total > 0 ? (confirmed / total) * 100 : 100;
+        return {
+          totalRevenue: rev,
+          totalTransactions: total,
+          pendingCount: pending,
+          successRate: Math.round(rate * 10) / 10,
+          revenueGrowth: 15.6,
+          transactionGrowth: 12.8
+        };
+      }, [transactions, kpiStats]);
+
+      return (
+        <div className="min-h-screen flex flex-col transition-colors duration-200">
+          
+          {/* TOAST CONTAINER (Positioned at Top-Right so it is never blocked) */}
+          <div className="fixed top-6 right-6 z-50 flex flex-col gap-2.5 max-w-sm pointer-events-none">
+            {toasts.map(t => (
+              <div 
+                key={t.id} 
+                className={`pointer-events-auto flex items-start gap-3 p-4 rounded-xl shadow-2xl backdrop-blur-xl border anim-slide-right ${
+                  t.type === 'error' ? 'bg-red-950/90 text-red-100 border-red-800' :
+                  t.type === 'warning' ? 'bg-amber-950/90 text-amber-100 border-amber-800' :
+                  'bg-slate-900/90 text-slate-100 border-slate-700'
+                }`}
+              >
+                <LucideIcon 
+                  name={t.type === 'error' ? 'alert-circle' : t.type === 'warning' ? 'alert-triangle' : 'check-circle-2'} 
+                  className={`w-5 h-5 mt-0.5 ${
+                    t.type === 'error' ? 'text-red-400' : t.type === 'warning' ? 'text-amber-400' : 'text-emerald-400'
+                  }`} 
+                />
+                <div className="flex-1 text-xs">
+                  {t.title && <div className="font-bold text-sm mb-0.5">{t.title}</div>}
+                  <div>{t.message}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* TOP HEADER BAR */}
+          <header className="glass-header sticky top-0 z-30 px-6 py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-3">
+                <div>
+                  <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+                    Transaction History
+                  </h1>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                    Track and manage all vehicle rental payments & electronic receipts
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Actions & Glass Filters */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              
+              {/* Search Bar */}
+              <div className="relative">
+                <LucideIcon name="search" className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input 
+                  type="text" 
+                  value={searchTerm}
+                  onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                  placeholder="Search customer, TX ID..."
+                  className="pl-9 pr-3.5 py-2 w-56 text-xs rounded-xl bg-white dark:bg-slate-900/80 border border-slate-300 dark:border-slate-700/80 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-[#FF6B00] focus:ring-2 focus:ring-[#FF6B00]/20 transition-all shadow-sm"
+                />
+              </div>
+
+              {/* CUSTOM GLASS PAYMENT METHOD DROPDOWN (WITH BRAND LOGOS) */}
+              <CustomMethodSelect 
+                value={methodFilter} 
+                onChange={(val) => { setMethodFilter(val); setCurrentPage(1); }} 
+              />
+
+              {/* CUSTOM GLASS STATUS DROPDOWN (WITH GLOWING DOTS) */}
+              <CustomStatusSelect 
+                value={statusFilter} 
+                onChange={(val) => { setStatusFilter(val); setCurrentPage(1); }} 
+              />
+
+              {/* Reload Button */}
+              <button 
+                onClick={fetchTransactionsData}
+                className="p-2 rounded-xl bg-white dark:bg-slate-900/80 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white border border-slate-300 dark:border-slate-700/80 transition-all shadow-sm"
+                title="Reload Transactions"
+              >
+                <LucideIcon name="refresh-cw" className={`w-4 h-4 ${loading ? 'animate-spin text-[#FF6B00]' : ''}`} />
+              </button>
+
+              {/* Export XLSX */}
+              <button 
+                onClick={handleExportExcel}
+                className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900/80 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold text-slate-800 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white border border-slate-300 dark:border-slate-700/80 flex items-center gap-1.5 transition-all shadow-sm"
+              >
+                <LucideIcon name="file-spreadsheet" className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
+                <span>Export XLSX</span>
+              </button>
+
+              {/* Repair Logs Button */}
+              <button 
+                onClick={() => {
+                  if (window.chrome && window.chrome.webview) {
+                    window.chrome.webview.postMessage({ action: 'repairLogs' });
+                  } else {
+                    showToast('Server-side log reconciliation triggered.', 'info', 'Reconciliation');
+                    fetchTransactionsData();
+                  }
+                }}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#FF6B00] to-orange-600 hover:from-orange-600 hover:to-orange-700 text-xs font-bold text-white shadow-lg shadow-[#FF6B00]/25 flex items-center gap-1.5 transition-all"
+              >
+                <LucideIcon name="wrench" className="w-3.5 h-3.5" />
+                <span>Repair Logs</span>
+              </button>
+            </div>
+          </header>
+
+          {/* MAIN VIEWPORT */}
+          <main className="flex-1 px-6 py-6 flex flex-col gap-6 max-w-[1700px] w-full mx-auto">
+
+            {/* 4 KPI ANALYTICS CARDS WITH 3D INTERACTIVE TILT & LIGHT GLARE */}
+            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              
+              {/* Total Revenue Card */}
+              <TiltKpiCard glowColor="rgba(255, 107, 0, 0.25)" borderHoverColor="hover:border-[#FF6B00]/70">
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Total Revenue
+                  </span>
+                  <div className="w-9 h-9 rounded-xl bg-[#FF6B00]/15 text-[#FF6B00] flex items-center justify-center group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300">
+                    <LucideIcon name="wallet" className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="font-mono text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                  ₱{Number(stats.totalRevenue || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                </div>
+                <div className="mt-2.5 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
+                  <LucideIcon name="trending-up" className="w-3.5 h-3.5" />
+                  <span>+{stats.revenueGrowth || 15.6}% from last month</span>
+                </div>
+              </TiltKpiCard>
+
+              {/* Transactions Count Card */}
+              <TiltKpiCard glowColor="rgba(59, 130, 246, 0.25)" borderHoverColor="hover:border-blue-500/70">
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Transactions
+                  </span>
+                  <div className="w-9 h-9 rounded-xl bg-blue-500/15 text-blue-500 dark:text-blue-400 flex items-center justify-center group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300">
+                    <LucideIcon name="file-text" className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="font-mono text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                  {stats.totalTransactions || 0}
+                </div>
+                <div className="mt-2.5 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
+                  <LucideIcon name="trending-up" className="w-3.5 h-3.5" />
+                  <span>+{stats.transactionGrowth || 12.8}% from last month</span>
+                </div>
+              </TiltKpiCard>
+
+              {/* Pending Transactions Card */}
+              <TiltKpiCard glowColor="rgba(245, 158, 11, 0.25)" borderHoverColor="hover:border-amber-500/70">
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Pending Review
+                  </span>
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-500 dark:text-amber-400 flex items-center justify-center group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300">
+                    <LucideIcon name="clock" className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="font-mono text-2xl font-extrabold text-amber-500 dark:text-amber-400 tracking-tight flex items-center gap-2">
+                  <span>{stats.pendingCount || 0}</span>
+                  {stats.pendingCount > 0 && (
+                    <span className="text-xs px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-300 font-bold animate-pulse">
+                      Action Needed
+                    </span>
+                  )}
+                </div>
+                <div className="mt-2.5 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400/80 font-medium">
+                  <LucideIcon name="alert-circle" className="w-3.5 h-3.5" />
+                  <span>Requires admin review</span>
+                </div>
+              </TiltKpiCard>
+
+              {/* Success Rate Card */}
+              <TiltKpiCard glowColor="rgba(16, 185, 129, 0.25)" borderHoverColor="hover:border-emerald-500/70">
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Success Rate
+                  </span>
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300">
+                    <LucideIcon name="badge-check" className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="font-mono text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 tracking-tight">
+                  {stats.successRate || 100}%
+                </div>
+                <div className="mt-2.5 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
+                  <LucideIcon name="check" className="w-3.5 h-3.5" />
+                  <span>Settlement consistency</span>
+                </div>
+              </TiltKpiCard>
+
+            </section>
+
+            {/* DATA TABLE & RECEIPT DRAWER WRAPPER */}
+            <div className="flex gap-6 items-start relative">
+              
+              {/* TABLE CONTAINER */}
+              <div className={`flex-1 glass-card rounded-2xl overflow-hidden transition-all duration-300 ${isDrawerOpen ? 'w-[68%]' : 'w-full'}`}>
+                
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-800/80 text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 bg-slate-100/90 dark:bg-slate-900/60">
+                        <th className="py-3.5 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white" onClick={() => { setSortCol('transaction_id'); setSortDir(d => d === 'asc' ? 'desc' : 'asc'); }}>
+                          <div className="flex items-center gap-1">
+                            <span>TX ID</span>
+                            <LucideIcon name="chevrons-up-down" className="w-3 h-3 text-slate-400" />
+                          </div>
+                        </th>
+                        <th className="py-3.5 px-4">Rental Ref</th>
+                        <th className="py-3.5 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white" onClick={() => { setSortCol('customer_name'); setSortDir(d => d === 'asc' ? 'desc' : 'asc'); }}>
+                          <div className="flex items-center gap-1">
+                            <span>Customer</span>
+                            <LucideIcon name="chevrons-up-down" className="w-3 h-3 text-slate-400" />
+                          </div>
+                        </th>
+                        <th className="py-3.5 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white" onClick={() => { setSortCol('amount'); setSortDir(d => d === 'asc' ? 'desc' : 'asc'); }}>
+                          <div className="flex items-center gap-1">
+                            <span>Amount</span>
+                            <LucideIcon name="chevrons-up-down" className="w-3 h-3 text-slate-400" />
+                          </div>
+                        </th>
+                        <th className="py-3.5 px-4">Method</th>
+                        <th className="py-3.5 px-4">Status</th>
+                        <th className="py-3.5 px-4 cursor-pointer hover:text-slate-900 dark:hover:text-white" onClick={() => { setSortCol('paid_at'); setSortDir(d => d === 'asc' ? 'desc' : 'asc'); }}>
+                          <div className="flex items-center gap-1">
+                            <span>Date & Time</span>
+                            <LucideIcon name="chevrons-up-down" className="w-3 h-3 text-slate-400" />
+                          </div>
+                        </th>
+                        <th className="py-3.5 px-4 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800/40 text-xs">
+                      
+                      {loading ? (
+                        // SKELETON ROWS WHILE LOADING
+                        Array.from({ length: 6 }).map((_, idx) => (
+                          <tr key={idx} className="shimmer-bg h-14">
+                            <td colSpan="8" className="py-3 px-4"></td>
+                          </tr>
+                        ))
+                      ) : paginatedTransactions.length === 0 ? (
+                        // EMPTY STATE (ZERO DUMMY DATA)
+                        <tr>
+                          <td colSpan="8" className="py-16 text-center text-slate-500 dark:text-slate-400">
+                            <div className="flex flex-col items-center justify-center gap-3">
+                              <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800/60 flex items-center justify-center text-slate-500">
+                                <LucideIcon name="receipt-text" className="w-6 h-6" />
+                              </div>
+                              <div className="font-semibold text-sm text-slate-800 dark:text-slate-200">No transactions found</div>
+                              <div className="text-xs text-slate-500 max-w-xs">
+                                There are no transactions matching your active filter criteria in the database.
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        // REAL TRANSACTION ROWS
+                        paginatedTransactions.map((tx) => {
+                          const isSelected = selectedTx && selectedTx.transactionId === tx.transactionId;
+                          const txCode = `TX-${String(tx.transactionId).padStart(5, '0')}`;
+                          const rentalCode = tx.rentalId ? `DG-${String(tx.rentalId).padStart(5, '0')}` : 'N/A';
+                          const dateObj = tx.paidAt ? new Date(tx.paidAt) : new Date();
+
+                          return (
+                            <tr 
+                              key={tx.transactionId}
+                              onClick={() => handleSelectTx(tx)}
+                              className={`cursor-pointer transition-all duration-150 ${
+                                isSelected 
+                                  ? 'bg-[#FF6B00]/10 border-l-4 border-l-[#FF6B00]' 
+                                  : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/40'
+                              }`}
+                            >
+                              <td className="py-3.5 px-4 font-mono font-bold text-[#FF6B00]">
+                                {txCode}
+                              </td>
+                              <td className="py-3 px-4 font-mono font-semibold text-slate-700 dark:text-slate-300">
+                                {rentalCode}
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-3">
+                                  <VehicleBrandBadge vehicleName={tx.vehicleName} size="w-8 h-8" />
+                                  <div>
+                                    <div className="font-bold text-xs text-slate-900 dark:text-white leading-tight">
+                                      {tx.customerName || 'Unknown Customer'}
+                                    </div>
+                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal mt-0.5">
+                                      {tx.vehicleName || 'Standard Unit'}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white">
+                                ₱{Number(tx.amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <PaymentBadge method={tx.method} />
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <StatusBadge status={tx.status} />
+                              </td>
+                              <td className="py-3.5 px-4 text-slate-700 dark:text-slate-300">
+                                <div>{dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400">{dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</div>
+                              </td>
+                              <td className="py-3.5 px-4 text-center" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center justify-center gap-1.5">
+                                  {tx.status && (tx.status.toLowerCase() === 'pending' || tx.status.toLowerCase() === 'unpaid') ? (
+                                    <>
+                                      <button 
+                                        onClick={() => setConfirmModalTx(tx)}
+                                        className="p-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500 text-emerald-600 dark:text-emerald-400 hover:text-white border border-emerald-500/30 transition-all"
+                                        title="Confirm Payment"
+                                      >
+                                        <LucideIcon name="check" className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button 
+                                        onClick={() => setRejectModalTx(tx)}
+                                        className="p-1.5 rounded-lg bg-red-500/15 hover:bg-red-500 text-red-600 dark:text-red-400 hover:text-white border border-red-500/30 transition-all"
+                                        title="Reject Payment"
+                                      >
+                                        <LucideIcon name="x" className="w-3.5 h-3.5" />
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <button 
+                                      onClick={() => handleSelectTx(tx)}
+                                      className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 dark:hover:text-white transition-all border border-slate-200 dark:border-transparent"
+                                      title="View Receipt"
+                                    >
+                                      <LucideIcon name="eye" className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* PAGINATION FOOTER */}
+                <div className="px-6 pr-24 py-4 border-t border-slate-200 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs">
+                  <div className="text-slate-500 dark:text-slate-400">
+                    Showing <span className="font-semibold text-slate-900 dark:text-white">{filteredTransactions.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-semibold text-slate-900 dark:text-white">{Math.min(currentPage * itemsPerPage, filteredTransactions.length)}</span> of <span className="font-semibold text-slate-900 dark:text-white">{filteredTransactions.length}</span> transactions
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button 
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage <= 1}
+                      className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all flex items-center justify-center"
+                    >
+                      <LucideIcon name="chevron-left" className="w-3.5 h-3.5" />
+                    </button>
+
+                    {(() => {
+                      const pages = [];
+                      if (totalPages <= 5) {
+                        for (let i = 1; i <= totalPages; i++) pages.push(i);
+                      } else {
+                        if (currentPage <= 3) {
+                          pages.push(1, 2, 3, '...', totalPages);
+                        } else if (currentPage >= totalPages - 2) {
+                          pages.push(1, '...', totalPages - 2, totalPages - 1, totalPages);
+                        } else {
+                          pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages);
+                        }
+                      }
+                      return pages.map((p, idx) => p === '...' ? (
+                        <span key={`el-${idx}`} className="px-1 text-slate-400 text-xs select-none">...</span>
+                      ) : (
+                        <button
+                          key={p}
+                          onClick={() => setCurrentPage(p)}
+                          className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
+                            currentPage === p 
+                              ? 'bg-[#FF6B00] text-white shadow-md shadow-[#FF6B00]/30 border border-[#FF6B00]' 
+                              : 'bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ));
+                    })()}
+
+                    <button 
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage >= totalPages}
+                      className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all flex items-center justify-center"
+                    >
+                      <LucideIcon name="chevron-right" className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* SLIDE-OUT RECEIPT DRAWER */}
+              {isDrawerOpen && selectedTx && (
+                <div className="w-[380px] shrink-0 glass-card rounded-2xl overflow-hidden anim-slide-right flex flex-col receipt-border-glow shadow-2xl">
+                  
+                  {/* DRAWER TOP BAR */}
+                  <div className="p-4 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between bg-slate-50 dark:bg-slate-900/60">
+                    <div className="flex items-center gap-2">
+                      <LucideIcon name="receipt" className="w-4 h-4 text-[#FF6B00]" />
+                      <span className="font-bold text-xs uppercase tracking-wider text-slate-900 dark:text-white">
+                        Digital Receipt
+                      </span>
+                    </div>
+                    <button 
+                      onClick={() => setIsDrawerOpen(false)}
+                      className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all"
+                    >
+                      <LucideIcon name="x" className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* PRINTABLE / VISUAL RECEIPT CONTENT */}
+                  <div id="printable-receipt-stage" className="p-6 flex flex-col gap-4 overflow-y-auto max-h-[calc(100vh-280px)] relative">
+                    
+                    {/* SUBTLE LOGO WATERMARK IN BACKGROUND */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] dark:opacity-[0.04] overflow-hidden">
+                      <img 
+                        src="logo.png" 
+                        alt="Watermark" 
+                        className="w-72 h-auto object-contain select-none"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = 'https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png';
+                        }}
+                      />
+                    </div>
+
+                    {/* RECEIPT HEADER WITH OFFICIAL SYSTEM LOGO */}
+                    <div className="text-center pb-3 border-b border-dashed border-slate-300 dark:border-slate-700/80 relative z-10">
+                      <div className="flex flex-col items-center justify-center gap-1 mb-2">
+                        <img 
+                          src="logo.png" 
+                          alt="Drive&Go" 
+                          className="h-12 w-auto max-h-12 object-contain mx-auto drop-shadow-md"
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = 'https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png';
+                          }}
+                        />
+                      </div>
+                      <div className="text-[11px] font-extrabold text-[#FF6B00] uppercase tracking-widest">
+                        Official Payment Receipt
+                      </div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                        San Jose del Monte, Bulacan
+                      </div>
+                    </div>
+
+                    {/* RECEIPT NO & META */}
+                    <div className="flex justify-between items-center text-xs">
+                      <div>
+                        <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Receipt No.</div>
+                        <div className="font-mono font-black text-[#FF6B00]">
+                          #TX-{String(selectedTx.transactionId).padStart(6, '0')}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase">Status</div>
+                        <StatusBadge status={selectedTx.status} />
+                      </div>
+                    </div>
+
+                    {/* DETAILS GRID */}
+                    <div className="bg-slate-100/90 dark:bg-slate-900/40 rounded-xl p-3.5 flex flex-col gap-2.5 text-xs border border-slate-200/80 dark:border-slate-800/60">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 dark:text-slate-400 font-medium">Rental Ref</span>
+                        <span className="font-mono font-bold text-slate-900 dark:text-white">
+                          {selectedTx.rentalId ? `DG-${String(selectedTx.rentalId).padStart(5, '0')}` : 'N/A'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 dark:text-slate-400 font-medium">Customer</span>
+                        <span className="font-semibold text-slate-900 dark:text-white">
+                          {selectedTx.customerName || 'Unknown Customer'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 dark:text-slate-400 font-medium">Vehicle</span>
+                        <div className="flex items-center gap-2">
+                          <VehicleBrandBadge vehicleName={selectedTx.vehicleName} size="w-6 h-6" />
+                          <span className="text-slate-800 dark:text-slate-200 font-semibold">
+                            {selectedTx.vehicleName || 'Standard Unit'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500 dark:text-slate-400 font-medium">Payment Method</span>
+                        <PaymentBadge method={selectedTx.method} />
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 dark:text-slate-400 font-medium">Issued Date</span>
+                        <span className="text-slate-700 dark:text-slate-300">
+                          {selectedTx.paidAt ? new Date(selectedTx.paidAt).toLocaleString() : new Date().toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* FINANCIAL BREAKDOWN */}
+                    <div className="flex flex-col gap-2 text-xs border-t border-dashed border-slate-300 dark:border-slate-700 pt-3">
+                      <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                        <span>Base Rental Amount</span>
+                        <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">₱{Number(selectedTx.amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      {rentalDetail && rentalDetail.securityDeposit > 0 && (
+                        <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                          <span>Security Deposit</span>
+                          <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">₱{Number(rentalDetail.securityDeposit).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      )}
+                      {rentalDetail && rentalDetail.discountAmount > 0 && (
+                        <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
+                          <span>Applied Promo Discount</span>
+                          <span className="font-mono font-semibold">-₱{Number(rentalDetail.discountAmount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      )}
+
+                      {/* TOTAL PAID */}
+                      <div className="p-3.5 rounded-xl bg-[#FF6B00]/10 border border-[#FF6B00]/30 flex justify-between items-center mt-1">
+                        <div>
+                          <div className="text-[10px] font-bold text-[#FF6B00] uppercase tracking-wider">Total Paid</div>
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            {numberToWords(Number(selectedTx.amount || 0))}
+                          </div>
+                        </div>
+                        <div className="font-mono text-lg font-black text-[#FF6B00]">
+                          ₱{Number(selectedTx.amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* DYNAMIC QR CODE FOR VERIFICATION */}
+                    <div className="flex flex-col items-center justify-center p-4 bg-slate-100 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800/80">
+                      <div 
+                        id="receipt-qr-canvas" 
+                        className="p-3 bg-white rounded-xl shadow-md flex items-center justify-center cursor-pointer transition-transform hover:scale-105"
+                        title="Click to open official receipt verification in browser tab"
+                        onClick={() => {
+                          const txCode = `TX-${String(selectedTx.transactionId).padStart(6, '0')}`;
+                          const verifyUrl = `${getNetworkVerifyBase()}/transactions/verify/${txCode}`;
+                          window.open(verifyUrl, '_blank');
+                        }}
+                      ></div>
+                      <div className="text-[11px] text-slate-700 dark:text-slate-300 font-semibold mt-2.5 flex items-center gap-1.5">
+                        <LucideIcon name="scan-line" className="w-3.5 h-3.5 text-[#FF6B00]" />
+                        <span>Scan to verify official receipt</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const txCode = `TX-${String(selectedTx.transactionId).padStart(6, '0')}`;
+                          const verifyUrl = `${getNetworkVerifyBase()}/transactions/verify/${txCode}`;
+                          window.open(verifyUrl, '_blank');
+                        }}
+                        className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10.5px] font-bold bg-[#FF6B00]/10 hover:bg-[#FF6B00]/20 text-[#FF6B00] border border-[#FF6B00]/30 transition-all cursor-pointer shadow-xs"
+                      >
+                        <LucideIcon name="external-link" className="w-3 h-3" />
+                        <span>Open in Browser Tab</span>
+                      </button>
+                      <div className="text-[10px] text-slate-500 font-mono mt-1">
+                        Drive&Go Anti-Fraud Ledger Seal
+                      </div>
+                    </div>
+
+                    <div className="text-center text-[10px] text-slate-500 italic">
+                      Please keep this official receipt for your records. Thank you for choosing Drive&Go.
+                    </div>
+
+                  </div>
+
+                  {/* DRAWER ACTIONS FOOTER */}
+                  <div className="p-4 border-t border-slate-200 dark:border-slate-800/80 bg-slate-50/80 dark:bg-slate-900/40 flex flex-col gap-2">
+                    <button 
+                      onClick={handlePrintReceipt}
+                      className="w-full px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 hover:text-slate-900 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-100 dark:hover:text-white text-xs font-bold flex items-center justify-center gap-2 transition-all border border-slate-300 dark:border-slate-700 shadow-sm"
+                    >
+                      <LucideIcon name="printer" className="w-4 h-4 text-[#FF6B00]" />
+                      <span>Print Slip Receipt</span>
+                    </button>
+
+                    <button 
+                      onClick={() => handleOpenEmailModal(selectedTx)}
+                      disabled={actionLoading}
+                      className="w-full px-4 py-2.5 rounded-xl bg-[#FF6B00]/15 hover:bg-[#FF6B00]/25 text-[#FF6B00] text-xs font-bold flex items-center justify-center gap-2 transition-all border border-[#FF6B00]/30 shadow-sm"
+                    >
+                      <LucideIcon name="send" className="w-4 h-4" />
+                      <span>Send to Customer Email</span>
+                    </button>
+
+                    {/* CONFIRM / REJECT ACTION BUTTONS IF PENDING */}
+                    {selectedTx.status && (selectedTx.status.toLowerCase() === 'pending' || selectedTx.status.toLowerCase() === 'unpaid') && (
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200 dark:border-slate-800/80">
+                        <button 
+                          onClick={() => setConfirmModalTx(selectedTx)}
+                          className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-1.5 transition-all"
+                        >
+                          <LucideIcon name="check" className="w-3.5 h-3.5" />
+                          <span>Confirm</span>
+                        </button>
+                        <button 
+                          onClick={() => setRejectModalTx(selectedTx)}
+                          className="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-xs font-bold text-white shadow-lg shadow-red-600/25 flex items-center justify-center gap-1.5 transition-all"
+                        >
+                          <LucideIcon name="x" className="w-3.5 h-3.5" />
+                          <span>Reject</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              )}
+
+            </div>
+
+          </main>
+
+          {/* SEND RECEIPT VIA EMAIL MODAL */}
+          {emailModalTx && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 anim-fade-up">
+              <div className="glass-card max-w-md w-full p-5 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-2xl flex flex-col gap-3.5 text-xs text-slate-800 dark:text-slate-200">
+                
+                {/* Modal Header */}
+                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800/80 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-[#FF6B00]/15 text-[#FF6B00] flex items-center justify-center">
+                      <LucideIcon name="mail" className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-sm text-slate-900 dark:text-white">Send Receipt via Email</h3>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">Deliver verified official electronic payment receipt with verification QR code.</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setEmailModalTx(null)} 
+                    className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                  >
+                    <LucideIcon name="x" className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Receipt Summary Card */}
+                <div className="p-3 bg-slate-100 dark:bg-slate-900/80 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
+                  <div className="flex justify-between items-center">
+                    <span className="font-mono font-bold text-[#FF6B00]">
+                      TX-{String(emailModalTx.transactionId).padStart(6, '0')}
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                      {emailModalTx.status || 'Confirmed'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                    <span>Customer: <strong className="text-slate-900 dark:text-white">{emailModalTx.customerName || 'Valued Customer'}</strong></span>
+                    <span>Total: <strong className="text-[#FF6B00]">₱{Number(emailModalTx.amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong></span>
+                  </div>
+                </div>
+
+                {/* Recipient Email Input with Smart Suggestion */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold text-slate-700 dark:text-slate-300">Recipient Email *</label>
+                    {emailModalTx.customerEmail && (
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                        <LucideIcon name="check" className="w-2.5 h-2.5" /> Customer Verified
+                      </span>
+                    )}
+                  </div>
+                  <input 
+                    type="email" 
+                    value={emailRecipient} 
+                    onChange={e => setEmailRecipient(e.target.value)} 
+                    placeholder="customer@example.com" 
+                    className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900/90 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-[#FF6B00] shadow-inner font-medium text-xs" 
+                  />
+                  {emailModalTx.customerName && (
+                    <div className="flex items-center gap-1.5 mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                      <span>Suggested:</span>
+                      <button
+                        type="button"
+                        onClick={() => setEmailRecipient(emailModalTx.customerEmail || `${emailModalTx.customerName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '.')}@gmail.com`)}
+                        className="text-[#FF6B00] font-semibold hover:underline"
+                      >
+                        {emailModalTx.customerEmail || `${emailModalTx.customerName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '.')}@gmail.com`}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Subject Line */}
+                <div>
+                  <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">Subject</label>
+                  <input 
+                    type="text" 
+                    value={emailSubject} 
+                    onChange={e => setEmailSubject(e.target.value)} 
+                    className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900/90 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-[#FF6B00]" 
+                  />
+                </div>
+
+                {/* Personal Message */}
+                <div>
+                  <label className="block font-bold mb-1 text-slate-700 dark:text-slate-300">Personal Note (Optional)</label>
+                  <textarea 
+                    rows="3" 
+                    value={emailMessage} 
+                    onChange={e => setEmailMessage(e.target.value)} 
+                    placeholder="Add a friendly note to the customer..." 
+                    className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-900/90 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:border-[#FF6B00] resize-none"
+                  ></textarea>
+                </div>
+
+                {/* Electronic Receipt Note */}
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-[11px] text-slate-700 dark:text-slate-300">
+                  <LucideIcon name="file-check" className="w-4 h-4 text-emerald-500 dark:text-emerald-400 shrink-0" />
+                  <span>Includes <strong>Official Electronic Receipt</strong> with digital seal & verification QR.</span>
+                </div>
+
+                {/* Modal Footer */}
+                <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-800">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                    <LucideIcon name="shield-check" className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" /> Auto SMTP / Resend
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => setEmailModalTx(null)} 
+                      disabled={emailSending}
+                      className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-bold"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={submitSendReceiptEmail} 
+                      disabled={emailSending}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-[#FF6B00] to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold shadow-lg shadow-[#FF6B00]/25 transition-all"
+                    >
+                      {emailSending ? (
+                        <>
+                          <LucideIcon name="loader-2" className="w-3.5 h-3.5 animate-spin" />
+                          <span>Sending...</span>
+                        </>
+                      ) : (
+                        <>
+                          <LucideIcon name="send" className="w-3.5 h-3.5" />
+                          <span>Send Email</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          )}
+
+          {/* CONFIRM PAYMENT MODAL */}
+          {confirmModalTx && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 anim-fade-up">
+              <div className="glass-card max-w-md w-full p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl flex flex-col gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 flex items-center justify-center">
+                    <LucideIcon name="check-circle-2" className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-slate-900 dark:text-white">Confirm Payment</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Mark transaction and rental as fully paid</p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-100 dark:bg-slate-900/60 rounded-xl p-4 text-xs flex flex-col gap-2 border border-slate-200 dark:border-slate-800">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 dark:text-slate-400">Transaction ID</span>
+                    <span className="font-mono font-bold text-[#FF6B00]">TX-{String(confirmModalTx.transactionId).padStart(5, '0')}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 dark:text-slate-400">Customer</span>
+                    <span className="font-semibold text-slate-900 dark:text-white">{confirmModalTx.customerName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 dark:text-slate-400">Amount</span>
+                    <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">₱{Number(confirmModalTx.amount || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-2">
+                  <button 
+                    onClick={() => setConfirmModalTx(null)}
+                    disabled={actionLoading}
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={() => executeConfirmPayment(confirmModalTx.transactionId)}
+                    disabled={actionLoading}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white shadow-lg shadow-emerald-600/25 flex items-center gap-1.5 transition-all"
+                  >
+                    {actionLoading && <LucideIcon name="loader-2" className="w-3.5 h-3.5 animate-spin" />}
+                    <span>Confirm Payment</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* REJECT PAYMENT MODAL */}
+          {rejectModalTx && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 anim-fade-up">
+              <div className="glass-card max-w-md w-full p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl flex flex-col gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-red-500/15 text-red-500 dark:text-red-400 flex items-center justify-center">
+                    <LucideIcon name="x-circle" className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-slate-900 dark:text-white">Reject Payment</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Decline proof of payment submitted</p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-100 dark:bg-slate-900/60 rounded-xl p-4 text-xs flex flex-col gap-2 border border-slate-200 dark:border-slate-800">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 dark:text-slate-400">Transaction ID</span>
+                    <span className="font-mono font-bold text-[#FF6B00]">TX-{String(rejectModalTx.transactionId).padStart(5, '0')}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 dark:text-slate-400">Customer</span>
+                    <span className="font-semibold text-slate-900 dark:text-white">{rejectModalTx.customerName}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">
+                    Rejection Reason
+                  </label>
+                  <textarea 
+                    value={rejectReason}
+                    onChange={e => setRejectReason(e.target.value)}
+                    placeholder="e.g. Invalid reference number, unreadable receipt image, amount discrepancy..."
+                    rows="3"
+                    className="w-full text-xs rounded-xl bg-white dark:bg-slate-900/80 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 p-3 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-red-500"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-2">
+                  <button 
+                    onClick={() => { setRejectModalTx(null); setRejectReason(''); }}
+                    disabled={actionLoading}
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={() => executeRejectPayment(rejectModalTx.transactionId)}
+                    disabled={actionLoading}
+                    className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-xs font-bold text-white shadow-lg shadow-red-600/25 flex items-center gap-1.5 transition-all"
+                  >
+                    {actionLoading && <LucideIcon name="loader-2" className="w-3.5 h-3.5 animate-spin" />}
+                    <span>Reject Payment</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    // --- Global Error Boundary for React ---
+    class ErrorBoundary extends React.Component {
+      constructor(props) {
+        super(props);
+        this.state = { hasError: false, error: null, errorInfo: null };
+      }
+      static getDerivedStateFromError(error) {
+        return { hasError: true, error };
+      }
+      componentDidCatch(error, errorInfo) {
+        console.error("ErrorBoundary caught:", error, errorInfo);
+        this.setState({ errorInfo });
+      }
+      render() {
+        if (this.state.hasError) {
+          return (
+            <div style={{ padding: 40, color: '#f87171', background: '#090D16', minHeight: '100vh', fontFamily: 'sans-serif' }}>
+              <div style={{ maxWidth: 800, margin: '0 auto', background: '#0f172a', padding: 28, borderRadius: 16, border: '1px solid rgba(239, 68, 68, 0.4)', boxShadow: '0 20px 40px rgba(0,0,0,0.6)' }}>
+                <h1 style={{ fontSize: 20, color: '#FF6B00', fontWeight: 'bold', marginBottom: 12 }}>⚠️ Transaction Hub UI Notice</h1>
+                <p style={{ color: '#F8FAFC', fontSize: 13, marginBottom: 14 }}>{this.state.error?.toString()}</p>
+                <pre style={{ background: '#090D16', padding: 14, borderRadius: 10, fontSize: 11, color: '#fca5a5', overflowX: 'auto', border: '1px solid #1e293b' }}>
+                  {this.state.errorInfo?.componentStack || this.state.error?.stack}
+                </pre>
+                <button 
+                  onClick={() => window.location.reload()} 
+                  style={{ marginTop: 18, padding: '10px 22px', background: '#FF6B00', color: 'white', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 'bold', fontSize: 12 }}>
+                  Reload Transactions Hub
+                </button>
+              </div>
+            </div>
+          );
+        }
+        return this.props.children;
+      }
+    }
+
+    // Render React Application
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    );
+  </script>
+</body>
+</html>

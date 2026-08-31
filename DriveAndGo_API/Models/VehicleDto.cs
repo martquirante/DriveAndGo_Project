@@ -60,6 +60,10 @@ namespace DriveAndGo_API.Models
         public int IdleMinutes { get; set; } = 0;
         public decimal RfidBalanceAutosweep { get; set; } = 500m;
         public decimal RfidBalanceEasytrip { get; set; } = 500m;
+        [JsonPropertyName("expresswayRfidBalance")]
+        public decimal ExpresswayRfidBalanceCamel => ExpresswayRfidBalance;
+        [JsonPropertyName("expressway_rfid_balance")]
+        public decimal ExpresswayRfidBalance { get; set; } = 500m;
         public string Color { get; set; } = "Pearl White";
         public string FloodRiskStatus { get; set; } = "safe";
         public bool EngineWaterIngressAlert { get; set; } = false;
@@ -110,9 +114,16 @@ namespace DriveAndGo_API.Models
         public int? IdleMinutes { get; set; }
         public decimal? RfidBalanceAutosweep { get; set; }
         public decimal? RfidBalanceEasytrip { get; set; }
+        public decimal? ExpresswayRfidBalance { get; set; }
         public DateTime? LtoExpiryDate { get; set; }
         public DateTime? InsuranceExpiryDate { get; set; }
         public double? Latitude { get; set; }
         public double? Longitude { get; set; }
+    }
+
+    public class RfidTopupRequest
+    {
+        public decimal Amount { get; set; }
+        public decimal? Balance { get; set; }
     }
 }

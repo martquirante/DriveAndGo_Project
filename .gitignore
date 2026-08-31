@@ -1,6 +1,11 @@
 [Bb]in/
 [Oo]bj/
 .env
+.env.*
+!.env*.example
+**/.env
+**/.env.*
+!**/.env*.example
 node_modules/
 build_check_*/
 Test.cs

@@ -117,14 +117,9 @@ namespace DriveAndGo_Admin
 
             try
             {
-                string webAssetsFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets");
-                string htmlPath = Path.Combine(webAssetsFolder, "ChatOverlay.html");
-
-                if (!File.Exists(htmlPath))
-                {
-                    Console.WriteLine("[ChatOverlayPanel] WebAsset file not found: " + htmlPath);
-                    return;
-                }
+                string htmlPath = Helpers.WebAssetHelper.GetWebAssetPath("ChatOverlay.html", "chat");
+                string chatFolder = Path.GetDirectoryName(htmlPath) ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "panels", "chat");
+                string webAssetsFolder = Path.GetDirectoryName(Path.GetDirectoryName(chatFolder)) ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets");
 
                 _webView = new WebView2 { Dock = DockStyle.Fill, DefaultBackgroundColor = ThemeManager.CurrentBackground };
                 this.Controls.Add(_webView);
@@ -214,6 +209,7 @@ namespace DriveAndGo_Admin
                 {
                     if (!string.IsNullOrWhiteSpace(args.Uri) &&
                         !args.Uri.StartsWith("http://chatassets.local", StringComparison.OrdinalIgnoreCase) &&
+                        !args.Uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase) &&
                         !args.Uri.StartsWith("about:blank", StringComparison.OrdinalIgnoreCase))
                     {
                         args.Cancel = true;
@@ -239,7 +235,9 @@ namespace DriveAndGo_Admin
                 };
 
                 _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
-                _webView.CoreWebView2.Navigate("http://chatassets.local/ChatOverlay.html");
+
+                // Navigate via virtual host HTTP origin so Babel standalone and React can fetch JSX files without CORS/file:// restrictions
+                _webView.CoreWebView2.Navigate("http://chatassets.local/panels/chat/ChatOverlay.html?v=" + DateTime.UtcNow.Ticks);
                 _isInitialized = true;
             }
             catch (Exception ex)
@@ -285,8 +283,16 @@ namespace DriveAndGo_Admin
                             messageId
                         });
 
-                        if (senderId != "admin")
+                        bool isAi = senderId == "@Drive&Go AI" || senderId == "Drive&Go AI" || senderId == "ai_copilot" || (!string.IsNullOrEmpty(senderId) && senderId.Contains("AI"));
+
+                        if (isAi)
                         {
+                            NotificationSoundHelper.PlayAiResponseSound();
+                            ShowBalloonNotification("Drive&Go AI Response", body);
+                        }
+                        else if (senderId != "admin")
+                        {
+                            NotificationSoundHelper.PlayChatReceiveSound();
                             ShowBalloonNotification($"Message from {senderId}", body);
                         }
                     }));
@@ -458,6 +464,16 @@ namespace DriveAndGo_Admin
                         {
                             ShowBalloonNotification(titleProp.GetString(), msgProp.GetString());
                         }
+                        break;
+
+                    case "playAiSound":
+                    case "PLAY_AI_SOUND":
+                        NotificationSoundHelper.PlayAiResponseSound();
+                        break;
+
+                    case "playChatSound":
+                    case "PLAY_CHAT_SOUND":
+                        NotificationSoundHelper.PlayChatReceiveSound();
                         break;
 
                     case "log":

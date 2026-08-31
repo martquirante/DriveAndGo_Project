@@ -48,7 +48,7 @@ namespace DriveAndGo_Admin.Panels
         {
             try
             {
-                string htmlPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "DashboardOverview.html");
+                string htmlPath = WebAssetHelper.GetWebAssetPath("DashboardOverview.html", "dashboard");
 
                 if (!System.IO.File.Exists(htmlPath))
                 {

@@ -113,6 +113,9 @@ public class AiOrchestrationService : IAiOrchestrationService
     {
         string senderIdStr = adminUserId > 1 ? $"admin_{adminUserId}" : "admin";
 
+        // Auto-heal / ensure session exists in ai_copilot_sessions to avoid FK violation
+        sessionId = await EnsureSessionExistsAsync(sessionId, adminUserId);
+
         // 1. Persist the user message immediately in ai_copilot_messages
         await PersistMessageAsync(sessionId, "admin", "user", userMessage, null, null, null, null, null);
 
@@ -941,6 +944,8 @@ public class AiOrchestrationService : IAiOrchestrationService
 
         string[] fallbackChain = new[]
         {
+            "nvidia/nemotron-3.5-lightning:free",
+            "liquid/lfm-2.5-2.6b:free",
             "meta-llama/llama-3.3-70b-instruct:free",
             "qwen/qwen-2.5-72b-instruct:free",
             "google/gemma-2-9b-it:free",
@@ -1217,7 +1222,15 @@ public class AiOrchestrationService : IAiOrchestrationService
         string url;
         string model;
 
-        if (provider.Contains("SambaNova", StringComparison.OrdinalIgnoreCase))
+        if (provider.Contains("Mistral", StringComparison.OrdinalIgnoreCase))
+        {
+            client.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _mistralKey);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveAndGo/1.0");
+            url = MistralUrl;
+            model = provider.Contains("pixtral", StringComparison.OrdinalIgnoreCase) ? "pixtral-12b-2409" : "mistral-small-latest";
+        }
+        else if (provider.Contains("SambaNova", StringComparison.OrdinalIgnoreCase))
         {
             client.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _sambaNovaKey);
@@ -1229,7 +1242,17 @@ public class AiOrchestrationService : IAiOrchestrationService
             client.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _groqKey);
             url = GroqUrl;
-            model = "openai/gpt-oss-120b";
+            model = provider.Contains("oss-20b", StringComparison.OrdinalIgnoreCase) ? "openai/gpt-oss-20b"
+                  : provider.Contains("qwen", StringComparison.OrdinalIgnoreCase) ? "qwen/qwen3.6-27b"
+                  : "openai/gpt-oss-120b";
+        }
+        else if (provider.Contains("HuggingFace", StringComparison.OrdinalIgnoreCase))
+        {
+            client.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _huggingFaceKey);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveAndGo/1.0");
+            url = HuggingFaceUrl;
+            model = "meta-llama/Llama-3.3-70B-Instruct";
         }
         else
         {
@@ -1719,12 +1742,24 @@ public class AiOrchestrationService : IAiOrchestrationService
         {
             // If the model missed the delimiter but included markdown JSON at the end
             int jsonStart = rawText.LastIndexOf("```json", StringComparison.OrdinalIgnoreCase);
-            if (jsonStart == -1) jsonStart = rawText.IndexOf('{');
+            if (jsonStart == -1)
+            {
+                int braceIdx = rawText.IndexOf('{');
+                if (braceIdx > 0 && (rawText.Contains("\"ui_component\"") || rawText.Contains("\"data\"")))
+                {
+                    jsonStart = braceIdx;
+                }
+            }
             
-            if (jsonStart >= 0)
+            if (jsonStart > 0)
             {
                 textPart = rawText.Substring(0, jsonStart).Trim();
                 jsonPart = rawText.Substring(jsonStart).Trim();
+            }
+            else if (rawText.Trim().StartsWith("{") && (rawText.Contains("\"ui_component\"") || rawText.Contains("\"data\"")))
+            {
+                jsonPart = rawText.Trim();
+                textPart = "";
             }
         }
 
@@ -1749,7 +1784,7 @@ public class AiOrchestrationService : IAiOrchestrationService
         {
              return new AiCopilotResponse
              {
-                 Text         = textPart,
+                 Text         = string.IsNullOrWhiteSpace(textPart) ? rawText : textPart,
                  UiComponent  = "Text Only",
                  ProviderUsed = provider
              };
@@ -1783,6 +1818,39 @@ public class AiOrchestrationService : IAiOrchestrationService
                         };
                     }
                     data.Add(dict);
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(textPart))
+            {
+                if (root.TryGetProperty("text", out var tEl) && !string.IsNullOrWhiteSpace(tEl.GetString()))
+                {
+                    textPart = tEl.GetString()!;
+                }
+                else if (root.TryGetProperty("message", out var mEl) && !string.IsNullOrWhiteSpace(mEl.GetString()))
+                {
+                    textPart = mEl.GetString()!;
+                }
+                else if (data.Count > 0)
+                {
+                    var sb = new System.Text.StringBuilder();
+                    foreach (var item in data)
+                    {
+                        var label = item.TryGetValue("label", out var l) ? l?.ToString() : null;
+                        var val = item.TryGetValue("value", out var v) ? v?.ToString() : null;
+                        if (!string.IsNullOrWhiteSpace(label) && val != null)
+                        {
+                            if (decimal.TryParse(val, out var decVal) && decVal > 100)
+                                sb.AppendLine($"• **{label}:** ₱{decVal:N2}");
+                            else
+                                sb.AppendLine($"• **{label}:** {val}");
+                        }
+                    }
+                    textPart = sb.Length > 0 ? sb.ToString().Trim() : rawText;
+                }
+                else
+                {
+                    textPart = rawText;
                 }
             }
 
@@ -1946,6 +2014,60 @@ public class AiOrchestrationService : IAiOrchestrationService
             "UPDATE ai_copilot_sessions SET updated_at = NOW() WHERE session_id = @sid", conn);
         cmd.Parameters.AddWithValue("@sid", sessionId);
         await cmd.ExecuteNonQueryAsync();
+    }
+
+    private async Task<int> EnsureSessionExistsAsync(int sessionId, int adminUserId)
+    {
+        try
+        {
+            await using var conn = await _ds.OpenConnectionAsync();
+            if (sessionId > 0)
+            {
+                await using var checkCmd = new NpgsqlCommand(
+                    "SELECT session_id FROM ai_copilot_sessions WHERE session_id = @sid", conn);
+                checkCmd.Parameters.AddWithValue("@sid", sessionId);
+                var existing = await checkCmd.ExecuteScalarAsync();
+                if (existing != null && existing != DBNull.Value)
+                {
+                    return Convert.ToInt32(existing);
+                }
+
+                // If specific ID requested (e.g. 1), try inserting with that ID
+                try
+                {
+                    await using var insertSpecific = new NpgsqlCommand(@"
+                        INSERT INTO ai_copilot_sessions (session_id, admin_user_id, title)
+                        OVERRIDING SYSTEM VALUE
+                        VALUES (@sid, @uid, 'Enterprise Copilot')
+                        ON CONFLICT (session_id) DO UPDATE SET updated_at = NOW()
+                        RETURNING session_id;", conn);
+                    insertSpecific.Parameters.AddWithValue("@sid", sessionId);
+                    insertSpecific.Parameters.AddWithValue("@uid", adminUserId > 0 ? adminUserId : 1);
+                    var created = await insertSpecific.ExecuteScalarAsync();
+                    if (created != null && created != DBNull.Value)
+                    {
+                        return Convert.ToInt32(created);
+                    }
+                }
+                catch
+                {
+                    // Fallback to normal serial insert
+                }
+            }
+
+            await using var insertCmd = new NpgsqlCommand(@"
+                INSERT INTO ai_copilot_sessions (admin_user_id, title)
+                VALUES (@uid, 'Enterprise Copilot')
+                RETURNING session_id;", conn);
+            insertCmd.Parameters.AddWithValue("@uid", adminUserId > 0 ? adminUserId : 1);
+            int newId = Convert.ToInt32(await insertCmd.ExecuteScalarAsync());
+            return newId;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to ensure AI copilot session exists");
+            return sessionId > 0 ? sessionId : 1;
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -2119,6 +2241,7 @@ public class AiOrchestrationService : IAiOrchestrationService
 
             decimal GetDec(JsonElement el, params string[] names)
             {
+                if (el.ValueKind != JsonValueKind.Object) return 0m;
                 foreach (var name in names)
                 {
                     if (el.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.Number && p.TryGetDecimal(out var dec)) return dec;
@@ -2128,6 +2251,7 @@ public class AiOrchestrationService : IAiOrchestrationService
 
             int GetInt(JsonElement el, params string[] names)
             {
+                if (el.ValueKind != JsonValueKind.Object) return 0;
                 foreach (var name in names)
                 {
                     if (el.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.Number && p.TryGetInt32(out var i)) return i;
@@ -2137,6 +2261,7 @@ public class AiOrchestrationService : IAiOrchestrationService
 
             string GetStr(JsonElement el, params string[] names)
             {
+                if (el.ValueKind != JsonValueKind.Object) return "";
                 foreach (var name in names)
                 {
                     if (el.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String)
@@ -2150,6 +2275,7 @@ public class AiOrchestrationService : IAiOrchestrationService
 
             JsonElement? GetProp(JsonElement el, params string[] names)
             {
+                if (el.ValueKind != JsonValueKind.Object) return null;
                 foreach (var name in names)
                 {
                     if (el.TryGetProperty(name, out var p)) return p;
@@ -2187,12 +2313,12 @@ public class AiOrchestrationService : IAiOrchestrationService
             }
 
             // 2. TODAY REVENUE
-            if (lowerTool.Contains("today") || lowerTool.Contains("daily"))
+            if (lowerTool.Contains("today") || lowerTool.Contains("daily") || lowerTool == "get_today_revenue")
             {
-                decimal todayRev = GetDec(root, "TodayRevenue", "todayRevenue");
-                int todayTxns = GetInt(root, "TodayTransactions", "todayTransactions");
-                decimal weekRev = GetDec(root, "WeekRevenue", "weekRevenue");
-                decimal monthRev = GetDec(root, "MonthRevenue", "monthRevenue");
+                decimal todayRev = GetDec(root, "TodayRevenue", "todayRevenue", "today_revenue", "today", "Revenue", "revenue");
+                int todayTxns = GetInt(root, "TodayTransactions", "todayTransactions", "today_transactions", "today_txns", "transactions", "txns");
+                decimal weekRev = GetDec(root, "WeekRevenue", "weekRevenue", "week_revenue", "weekTotal");
+                decimal monthRev = GetDec(root, "MonthRevenue", "monthRevenue", "month_revenue", "monthTotal");
 
                 var sb = new System.Text.StringBuilder();
                 sb.AppendLine("### Today's Revenue Summary\n");
@@ -2556,6 +2682,43 @@ public class AiOrchestrationService : IAiOrchestrationService
                         }
                     }
                     return sb.ToString();
+                }
+            }
+            catch { }
+        }
+
+        if (!string.IsNullOrWhiteSpace(toolResult))
+        {
+            try
+            {
+                using var objDoc = JsonDocument.Parse(toolResult);
+                if (objDoc.RootElement.ValueKind == JsonValueKind.Object)
+                {
+                    var props = objDoc.RootElement.EnumerateObject().ToList();
+                    if (props.Count > 0)
+                    {
+                        var sb = new System.Text.StringBuilder();
+                        sb.AppendLine($"📊 **System Data Report ({toolName})**\n");
+                        foreach (var p in props)
+                        {
+                            if (p.Value.ValueKind == JsonValueKind.Number && p.Value.TryGetDecimal(out var dec))
+                            {
+                                if (p.Name.Contains("Rev", StringComparison.OrdinalIgnoreCase) || p.Name.Contains("Total", StringComparison.OrdinalIgnoreCase) || p.Name.Contains("Fee", StringComparison.OrdinalIgnoreCase) || p.Name.Contains("Amount", StringComparison.OrdinalIgnoreCase) || p.Name.Contains("Price", StringComparison.OrdinalIgnoreCase))
+                                    sb.AppendLine($"• **{p.Name}:** ₱{dec:N2}");
+                                else
+                                    sb.AppendLine($"• **{p.Name}:** {dec}");
+                            }
+                            else if (p.Value.ValueKind == JsonValueKind.String)
+                            {
+                                sb.AppendLine($"• **{p.Name}:** {p.Value.GetString()}");
+                            }
+                            else
+                            {
+                                sb.AppendLine($"• **{p.Name}:** {p.Value.GetRawText()}");
+                            }
+                        }
+                        return sb.ToString().Trim();
+                    }
                 }
             }
             catch { }

@@ -399,6 +399,30 @@ namespace DriveAndGo_Admin
                     }));
                 });
 
+                _hubConnection.On<JsonElement>("TelematicsUpdated", (telematics) =>
+                {
+                    if (this.IsDisposed || !this.IsHandleCreated) return;
+                    this.BeginInvoke((System.Windows.Forms.MethodInvoker)(() =>
+                    {
+                        try
+                        {
+                            if (_activePanel is FleetPanel fleet)
+                            {
+                                int vid = telematics.TryGetProperty("vehicleId", out var pVid) ? pVid.GetInt32() : 0;
+                                double lat = telematics.TryGetProperty("lat", out var pLat) ? pLat.GetDouble() : 0.0;
+                                double lng = telematics.TryGetProperty("lng", out var pLng) ? pLng.GetDouble() : 0.0;
+                                double spd = telematics.TryGetProperty("speed", out var pSpd) ? pSpd.GetDouble() : 0.0;
+
+                                if (vid > 0 && lat != 0.0 && lng != 0.0)
+                                {
+                                    fleet.ExecuteScriptAsync($"if(window.liveUpdateGPS) window.liveUpdateGPS({vid}, {lat}, {lng}, {spd});");
+                                }
+                            }
+                        }
+                        catch { }
+                    }));
+                });
+
                 _hubConnection.On("ReceiveDashboardUpdate", () =>
                 {
                     if (this.IsDisposed || !this.IsHandleCreated) return;
@@ -466,11 +490,34 @@ namespace DriveAndGo_Admin
                     if (this.IsDisposed || !this.IsHandleCreated) return;
                     this.BeginInvoke((System.Windows.Forms.MethodInvoker)(() =>
                     {
+                        bool isAi = senderId == "@Drive&Go AI" || senderId == "Drive&Go AI" || senderId == "ai_copilot" || (!string.IsNullOrEmpty(senderId) && senderId.Contains("AI"));
+
+                        if (isAi)
+                        {
+                            NotificationSoundHelper.PlayAiResponseSound();
+                        }
+                        else if (senderId != "admin")
+                        {
+                            NotificationSoundHelper.PlayChatReceiveSound();
+                        }
+
                         if (!_chatVisible && senderId != "admin")
                         {
-                            NotificationSoundHelper.PlayNotificationSound();
                             _unreadChatCount++;
+                            UpdateFabRegion();
                             _fabPanel?.Invalidate();
+
+                            try
+                            {
+                                string toastTitle = isAi ? "🤖 Drive&Go AI Response" : $"💬 Message from {senderId}";
+                                string toastBody = body?.Length > 120 ? body.Substring(0, 117) + "..." : (body ?? "");
+                                var tt = new ToolTip { AutoPopDelay = 4000, InitialDelay = 100, ToolTipIcon = ToolTipIcon.Info, ToolTipTitle = toastTitle };
+                                if (_fabPanel != null && _fabPanel.Visible)
+                                {
+                                    tt.Show(toastBody, _fabPanel, -100, -50, 4000);
+                                }
+                            }
+                            catch { }
                         }
                     }));
                 });
@@ -1763,28 +1810,95 @@ namespace DriveAndGo_Admin
                 g.FillPath(shineBrush, shinePath);
 
                 // ── Chat icon ──
-                string icon = _chatVisible ? "✕" : "💬";
-                using var iconFont = new Font("Segoe UI Emoji", _chatVisible ? 16F : 18F, FontStyle.Bold);
-                using var fmt      = new StringFormat
-                    { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-                g.DrawString(icon, iconFont, Brushes.White,
-                    new RectangleF(0, 0, FabSize, FabSize), fmt);
+                if (_chatVisible)
+                {
+                    using var closePen = new Pen(Color.White, 2.5f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+                    int cx = FabSize / 2;
+                    int cy = FabSize / 2;
+                    int sz = 7;
+                    g.DrawLine(closePen, cx - sz, cy - sz, cx + sz, cy + sz);
+                    g.DrawLine(closePen, cx + sz, cy - sz, cx - sz, cy + sz);
+                }
+                else
+                {
+                    // Vector speech bubble (crisp antialiased vector art, zero emoji distortion)
+                    using var bubblePath = new GraphicsPath();
+                    int bw = 26, bh = 20;
+                    int bx = (FabSize - bw) / 2;
+                    int by = (FabSize - bh) / 2 - 1;
 
-                // ── Unread message badge ──
+                    int rBubble = 6;
+                    int dBubble = rBubble * 2;
+                    bubblePath.AddArc(bx, by, dBubble, dBubble, 180, 90);
+                    bubblePath.AddArc(bx + bw - dBubble, by, dBubble, dBubble, 270, 90);
+                    bubblePath.AddArc(bx + bw - dBubble, by + bh - dBubble, dBubble, dBubble, 0, 90);
+                    bubblePath.AddLine(bx + 14, by + bh, bx + 7, by + bh + 5);
+                    bubblePath.AddLine(bx + 7, by + bh + 5, bx + 10, by + bh);
+                    bubblePath.AddArc(bx, by + bh - dBubble, dBubble, dBubble, 90, 90);
+                    bubblePath.CloseFigure();
+
+                    using var fillBrush = new SolidBrush(Color.White);
+                    g.FillPath(fillBrush, bubblePath);
+
+                    // 3 indicator dots inside bubble
+                    using var dotBrush = new SolidBrush(Color.FromArgb(234, 88, 12));
+                    float dotY = by + (bh / 2f) - 1.5f;
+                    float dotSz = 3.2f;
+                    g.FillEllipse(dotBrush, bx + 6.5f, dotY, dotSz, dotSz);
+                    g.FillEllipse(dotBrush, bx + 11.5f, dotY, dotSz, dotSz);
+                    g.FillEllipse(dotBrush, bx + 16.5f, dotY, dotSz, dotSz);
+                }
+
+                // ── Unread message badge (Zero-clipping overlay, crystal clear centering) ──
                 if (_unreadChatCount > 0 && !_chatVisible)
                 {
                     string badgeText = _unreadChatCount > 99 ? "99+" : _unreadChatCount.ToString();
-                    int bSize = 18;
-                    int bx = FabSize - bSize - 4;
-                    int by = 3;
-                    var bRect = new Rectangle(bx, by, bSize, bSize);
-                    using var badgeBrush = new SolidBrush(Color.FromArgb(239, 68, 68));
-                    g.FillEllipse(badgeBrush, bRect);
-                    using var borderPen = new Pen(Color.White, 1.5f);
-                    g.DrawEllipse(borderPen, bRect);
                     using var bFont = new Font("Segoe UI", 7.5f, FontStyle.Bold);
-                    using var bFmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-                    g.DrawString(badgeText, bFont, Brushes.White, bRect, bFmt);
+                    var txtSize = g.MeasureString(badgeText, bFont);
+                    int badgeH = 19;
+                    int badgeW = _unreadChatCount <= 9 ? 19 : Math.Max(19, (int)txtSize.Width + 6);
+                    int bx = FabSize - badgeW - 4;
+                    int by = 3;
+                    var bRect = new Rectangle(bx, by, badgeW, badgeH);
+
+                    // Soft badge shadow
+                    using (var shadowBrush = new SolidBrush(Color.FromArgb(90, 0, 0, 0)))
+                    {
+                        if (badgeW == badgeH)
+                            g.FillEllipse(shadowBrush, bx, by + 1, badgeW, badgeH);
+                        else
+                        {
+                            using var sp = GetRoundedRect(new Rectangle(bx, by + 1, badgeW, badgeH), badgeH / 2);
+                            g.FillPath(shadowBrush, sp);
+                        }
+                    }
+
+                    // Badge fill with vibrant red gradient
+                    using var badgeBrush = new LinearGradientBrush(
+                        bRect, Color.FromArgb(248, 113, 113), Color.FromArgb(220, 38, 38),
+                        LinearGradientMode.Vertical);
+
+                    if (badgeW == badgeH)
+                    {
+                        g.FillEllipse(badgeBrush, bRect);
+                        using var borderPen = new Pen(Color.White, 2f);
+                        g.DrawEllipse(borderPen, bRect);
+                    }
+                    else
+                    {
+                        using var bp = GetRoundedRect(bRect, badgeH / 2);
+                        g.FillPath(badgeBrush, bp);
+                        using var borderPen = new Pen(Color.White, 2f);
+                        g.DrawPath(borderPen, bp);
+                    }
+
+                    // Badge text centered
+                    using var bFmt = new StringFormat
+                    {
+                        Alignment = StringAlignment.Center,
+                        LineAlignment = StringAlignment.Center
+                    };
+                    g.DrawString(badgeText, bFont, Brushes.White, new RectangleF(bRect.X, bRect.Y, bRect.Width, bRect.Height), bFmt);
                 }
             };
 
@@ -1793,15 +1907,41 @@ namespace DriveAndGo_Admin
             _fabPanel.MouseLeave += (s, e) => { _fabGlowTarget = 0f; _fabPulseTimer?.Start(); };
             _fabPanel.Click      += (s, e) => ToggleChatFloat();
 
-            // Circular hit region
-            using (var circlePath = new GraphicsPath())
-            {
-                circlePath.AddEllipse(0, 0, FabSize, FabSize);
-                _fabPanel.Region = new Region(circlePath);
-            }
+            UpdateFabRegion();
 
             this.Controls.Add(_fabPanel);
             _fabPanel.BringToFront();
+        }
+
+        private void UpdateFabRegion()
+        {
+            if (_fabPanel == null || _fabPanel.IsDisposed) return;
+
+            using var regionPath = new GraphicsPath();
+            regionPath.AddEllipse(0, 0, FabSize, FabSize);
+
+            if (_unreadChatCount > 0 && !_chatVisible)
+            {
+                string badgeText = _unreadChatCount > 99 ? "99+" : _unreadChatCount.ToString();
+                using var bFont = new Font("Segoe UI", 7.5f, FontStyle.Bold);
+                int badgeH = 19;
+                int badgeW = _unreadChatCount <= 9 ? 19 : Math.Max(19, badgeText.Length * 7 + 8);
+                int bx = FabSize - badgeW - 4;
+                int by = 3;
+                var bRect = new Rectangle(bx - 1, by - 1, badgeW + 3, badgeH + 3);
+
+                if (badgeW == badgeH)
+                    regionPath.AddEllipse(bRect);
+                else
+                {
+                    using var rPath = GetRoundedRect(bRect, badgeH / 2);
+                    regionPath.AddPath(rPath, false);
+                }
+            }
+
+            var oldRegion = _fabPanel.Region;
+            _fabPanel.Region = new Region(regionPath);
+            oldRegion?.Dispose();
         }
 
         // ══════════════════════════════════════════════════════════════════════════
@@ -1823,6 +1963,7 @@ namespace DriveAndGo_Admin
                         if (!_chatVisible)
                         {
                             _unreadChatCount = count;
+                            UpdateFabRegion();
                             _fabPanel?.Invalidate();
                         }
                     }));
@@ -1926,6 +2067,7 @@ namespace DriveAndGo_Admin
                 // ── Show ──
                 _chatVisible = true;
                 _unreadChatCount = 0;
+                UpdateFabRegion();
                 _fabPanel?.Invalidate();
 
                 EnsureChatOverlayInitialized();
@@ -1965,6 +2107,7 @@ namespace DriveAndGo_Admin
             {
                 // ── Hide (ease-out-expo lerp) ──
                 _chatVisible = false;
+                UpdateFabRegion();
                 _fabPanel?.Invalidate();
 
                 if (_chatFloatHost == null || _chatFloatHost.IsDisposed) return;
@@ -3139,7 +3282,7 @@ namespace DriveAndGo_Admin
                     catch { }
                 };
 
-                string htmlPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "NotificationsFlyout.html");
+                string htmlPath = Helpers.WebAssetHelper.GetWebAssetPath("NotificationsFlyout.html", "notifications");
                 _globalNotifWebView.CoreWebView2.Navigate("file:///" + htmlPath.Replace('\\', '/') + "?v=" + DateTime.UtcNow.Ticks);
             }
             catch (Exception ex)

@@ -17,6 +17,7 @@ RUN dotnet publish "DriveAndGo_API.csproj" -c Release -o /app/publish /p:UseAppH
 # Final runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
+ENV PORT=8080
 EXPOSE 8080
 EXPOSE 8081
 COPY --from=publish /app/publish .

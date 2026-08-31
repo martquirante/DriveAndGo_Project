@@ -143,7 +143,8 @@ public class AiCopilotController : ControllerBase
                 text         = Services.UserFriendlyErrorMessage.Clean(ex.Message),
                 ui_component = "Text Only",
                 data         = Array.Empty<object>(),
-                Message      = Services.UserFriendlyErrorMessage.Clean(ex.Message)
+                Message      = Services.UserFriendlyErrorMessage.Clean(ex.Message),
+                errorDetails = ex.ToString()
             });
         }
     }

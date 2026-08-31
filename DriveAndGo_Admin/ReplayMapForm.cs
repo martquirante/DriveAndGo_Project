@@ -134,7 +134,7 @@ namespace DriveAndGo_Admin
                 _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
                 _webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
 
-                _htmlPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "ReplayMap.html");
+                _htmlPath = Helpers.WebAssetHelper.GetWebAssetPath("ReplayMap.html", "fleet");
                 
                 if (File.Exists(_htmlPath))
                 {

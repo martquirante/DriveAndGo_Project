@@ -14,16 +14,20 @@ public class TransactionsController : ControllerBase
     private readonly IConfiguration _configuration;
     private readonly NotificationWriter _notificationWriter;
     private readonly IEmailService _emailService;
+    private readonly IBlockchainService _blockchainService;
+    private readonly PdfService _pdfService = new PdfService();
 
     public TransactionsController(
         IConfiguration configuration, 
         NotificationWriter notificationWriter, 
-        IEmailService emailService)
+        IEmailService emailService,
+        IBlockchainService blockchainService)
     {
         _configuration = configuration;
         _connectionString = configuration.GetConnectionString("DefaultConnection")!;
         _notificationWriter = notificationWriter;
         _emailService = emailService;
+        _blockchainService = blockchainService;
     }
 
     [HttpGet]
@@ -61,10 +65,16 @@ public class TransactionsController : ControllerBase
         }
 
         var normalizedMethod = NormalizeMethod(transaction.Method);
-        var validMethods = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "cash", "gcash", "maya", "bank" };
+        var validMethods = new HashSet<string>(StringComparer.OrdinalIgnoreCase) 
+        { 
+            "cash", "gcash", "maya", "paymaya", "bank", 
+            "bdo", "bpi", "unionbank", "metrobank", "landbank", 
+            "securitybank", "rcbc", "pnb", "chinabank", "eastwest", 
+            "gotyme", "cimb", "instapay", "pesonet", "card", "visa", "mastercard" 
+        };
         if (!validMethods.Contains(normalizedMethod))
         {
-            return BadRequest(new { Message = "Valid methods: cash, gcash, maya, bank" });
+            return BadRequest(new { Message = "Valid methods: cash, gcash, maya, bank, bdo, bpi, unionbank, metrobank, landbank, securitybank, rcbc, pnb, chinabank, eastwest, gotyme, cimb" });
         }
 
         try
@@ -209,7 +219,21 @@ public class TransactionsController : ControllerBase
                 "Your payment has been confirmed. Your rental record is now marked as paid.",
                 "payment");
 
-            return Ok(new { Message = "Payment confirmed successfully.", TransactionId = id, RentalId = rentalId });
+            // Auto-seal payment verification onto Blockchain Cryptographic Ledger
+            _ = _blockchainService.AppendBlockAsync(
+                rentalId,
+                "PAYMENT_VERIFIED",
+                new
+                {
+                    transactionId = id,
+                    rentalId = rentalId,
+                    customerId = customerId,
+                    status = "confirmed",
+                    paymentStatus = "paid",
+                    verifiedAt = DateTime.UtcNow
+                });
+
+            return Ok(new { Message = "Payment confirmed successfully and cryptographically sealed on blockchain.", TransactionId = id, RentalId = rentalId });
         }
         catch (Exception ex)
         {
@@ -404,6 +428,29 @@ public class TransactionsController : ControllerBase
 
 
 
+    [HttpGet("{id:int}/receipt")]
+    [HttpGet("{id:int}/receipt-pdf")]
+    [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+    public async Task<IActionResult> DownloadReceiptPdf(int id, [FromQuery] string? adminName)
+    {
+        try
+        {
+            var data = await FetchTransactionReceiptDataAsync(id, adminName);
+            if (data == null)
+            {
+                return NotFound(new { Message = $"Transaction #{id} not found." });
+            }
+
+            byte[] pdfBytes = _pdfService.GenerateTransactionReceiptPdf(data);
+            string fileName = $"DriveAndGo_Receipt_{data.ReceiptNumber}.pdf";
+            return File(pdfBytes, "application/pdf", fileName);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "Error generating receipt PDF: " + ex.Message });
+        }
+    }
+
     [HttpPost("{id:int}/email-receipt")]
     public async Task<IActionResult> EmailReceipt(int id, [FromBody] EmailReceiptRequest? req)
     {
@@ -544,36 +591,82 @@ public class TransactionsController : ControllerBase
 
         string key = provider.Trim().ToLowerInvariant().Replace(" ", "").Replace("_", "").Replace("-", "");
 
-        // 0. Generic Bank Transfer / InstaPay / PESONet vector landmark icon
-        if (key == "bank" || key == "banktransfer" || key == "instapay" || key == "pesonet")
+        // Smart Canonical Payment Key Normalization
+        key = key switch
         {
-            string bankSvg = @"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='96' height='96' fill='none' stroke='#A855F7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>
-              <rect width='24' height='24' rx='6' fill='#581C87' fill-opacity='0.25' stroke='none'/>
-              <line x1='3' y1='21' x2='21' y2='21' stroke='#C084FC'/>
-              <line x1='3' y1='10' x2='21' y2='10' stroke='#C084FC'/>
-              <polygon points='12 3 2 10 22 10' fill='#A855F7' stroke='#C084FC'/>
-              <line x1='6' y1='14' x2='6' y2='18' stroke='#E9D5FF'/>
-              <line x1='10' y1='14' x2='10' y2='18' stroke='#E9D5FF'/>
-              <line x1='14' y1='14' x2='14' y2='18' stroke='#E9D5FF'/>
-              <line x1='18' y1='14' x2='18' y2='18' stroke='#E9D5FF'/>
+            "globe" or "gcashqr" or "gcashapp" or "gcashwallet" => "gcash",
+            "paymaya" or "mayawallet" or "mayabusiness" => "maya",
+            "cashonhand" or "cod" or "cashpayment" or "overthecounter" or "otc" => "cash",
+            "bancodeoro" => "bdo",
+            "bankofthephilippineislands" => "bpi",
+            "ubp" or "unionbankph" => "unionbank",
+            "banktransfer" or "instapay" or "pesonet" or "onlinebanking" or "wire" or "directdeposit" => "bank",
+            _ => key
+        };
+
+        // 1. Check local cached payment PNG/SVG image in wwwroot/payments/ FIRST
+        try
+        {
+            string[] extensions = { ".png", ".svg" };
+            string[] possibleDirs = {
+                Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "payments"),
+                Path.Combine(AppContext.BaseDirectory, "wwwroot", "payments")
+            };
+
+            foreach (var dir in possibleDirs)
+            {
+                foreach (var ext in extensions)
+                {
+                    string p = Path.Combine(dir, $"{key}{ext}");
+                    if (System.IO.File.Exists(p))
+                    {
+                        var bytes = await System.IO.File.ReadAllBytesAsync(p);
+                        Response.Headers["Cache-Control"] = "public, max-age=604800";
+                        string mime = ext == ".svg" ? "image/svg+xml" : "image/png";
+                        return File(bytes, mime);
+                    }
+                }
+            }
+        }
+        catch { }
+
+        // Special handling for universal non-domain methods (Cash / Bank)
+        if (key == "cash")
+        {
+            string cashSvg = @"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' width='100' height='100'>
+              <rect width='100' height='100' rx='22' fill='#059669'/>
+              <rect x='14' y='24' width='72' height='44' rx='6' fill='#10B981' stroke='#FFFFFF' stroke-width='2.5'/>
+              <circle cx='50' cy='46' r='14' fill='#047857' stroke='#FFFFFF' stroke-width='1.8'/>
+              <text x='50' y='54' font-family='Arial Black, Impact, sans-serif' font-size='22' font-weight='900' fill='#FFFFFF' text-anchor='middle'>₱</text>
+              <circle cx='24' cy='46' r='4' fill='#34D399'/>
+              <circle cx='76' cy='46' r='4' fill='#34D399'/>
+              <text x='50' y='88' font-family='Arial Black, sans-serif' font-size='11' font-weight='900' fill='#FFFFFF' text-anchor='middle' letter-spacing='1'>CASH</text>
+            </svg>";
+            Response.Headers["Cache-Control"] = "public, max-age=604800";
+            return File(System.Text.Encoding.UTF8.GetBytes(cashSvg), "image/svg+xml");
+        }
+
+        if (key == "bank")
+        {
+            string bankSvg = @"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' width='100' height='100'>
+              <rect width='100' height='100' rx='22' fill='#4338CA'/>
+              <g transform='translate(18, 14)'>
+                <polygon points='32,6 60,20 4,20' fill='#FFFFFF'/>
+                <rect x='4' y='20' width='56' height='4' fill='#A5B4FC'/>
+                <rect x='8' y='24' width='7' height='24' rx='1.5' fill='#FFFFFF'/>
+                <rect x='22' y='24' width='7' height='24' rx='1.5' fill='#FFFFFF'/>
+                <rect x='35' y='24' width='7' height='24' rx='1.5' fill='#FFFFFF'/>
+                <rect x='49' y='24' width='7' height='24' rx='1.5' fill='#FFFFFF'/>
+                <rect x='4' y='48' width='56' height='6' rx='2' fill='#A5B4FC'/>
+                <circle cx='32' cy='15' r='3' fill='#4338CA'/>
+              </g>
+              <text x='50' y='88' font-family='Arial Black, sans-serif' font-size='9' font-weight='900' fill='#FFFFFF' text-anchor='middle' letter-spacing='0.5'>BANKING</text>
             </svg>";
             Response.Headers["Cache-Control"] = "public, max-age=604800";
             return File(System.Text.Encoding.UTF8.GetBytes(bankSvg), "image/svg+xml");
         }
 
-        // 1. Check local payment icons in wwwroot/payments/
-        try
-        {
-            string wwwPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "payments", $"{key}.png");
-            if (System.IO.File.Exists(wwwPath))
-            {
-                var bytes = await System.IO.File.ReadAllBytesAsync(wwwPath);
-                return File(bytes, "image/png");
-            }
-        }
-        catch { }
-
-        // 2. Resolve domain
+        // 2. Resolve Domain for Any Brand / Bank / E-Wallet Dynamically
         string domain = "bdo.com.ph";
         if (PaymentProviderMap.TryGetValue(key, out var meta))
         {
@@ -584,38 +677,54 @@ public class TransactionsController : ControllerBase
             domain = $"{key}.com.ph";
         }
 
-        // 3. Fetch from Unavatar or Google Favicon CDN
+        // 3. Multi-API Waterfall Strategy: Google S2 (256px) -> Unavatar -> Clearbit -> DuckDuckGo
+        string[] candidateApiUrls = {
+            $"https://www.google.com/s2/favicons?domain={domain}&sz=256",
+            $"https://unavatar.io/{domain}?fallback=false",
+            $"https://logo.clearbit.com/{domain}",
+            $"https://icons.duckduckgo.com/ip3/{domain}.ico"
+        };
+
         try
         {
             using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
-            var unavatarUrl = $"https://unavatar.io/{domain}?fallback=https://www.google.com/s2/favicons?domain={domain}&sz=128";
-            var resp = await httpClient.GetAsync(unavatarUrl);
-            if (resp.IsSuccessStatusCode)
+            httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) DriveAndGo/1.0");
+
+            foreach (var apiUrl in candidateApiUrls)
             {
-                var bytes = await resp.Content.ReadAsByteArrayAsync();
-                var contentType = resp.Content.Headers.ContentType?.MediaType ?? "image/png";
-                Response.Headers["Cache-Control"] = "public, max-age=604800";
-                return File(bytes, contentType);
+                try
+                {
+                    var resp = await httpClient.GetAsync(apiUrl);
+                    if (resp.IsSuccessStatusCode)
+                    {
+                        var bytes = await resp.Content.ReadAsByteArrayAsync();
+                        if (bytes != null && bytes.Length > 150)
+                        {
+                            var contentType = resp.Content.Headers.ContentType?.MediaType ?? "image/png";
+
+                            // Automatically cache to disk so future loads are instantaneous and work offline
+                            try
+                            {
+                                string wwwDir1 = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "payments");
+                                string wwwDir2 = Path.Combine(AppContext.BaseDirectory, "wwwroot", "payments");
+                                Directory.CreateDirectory(wwwDir1);
+                                Directory.CreateDirectory(wwwDir2);
+                                await System.IO.File.WriteAllBytesAsync(Path.Combine(wwwDir1, $"{key}.png"), bytes);
+                                await System.IO.File.WriteAllBytesAsync(Path.Combine(wwwDir2, $"{key}.png"), bytes);
+                            }
+                            catch { }
+
+                            Response.Headers["Cache-Control"] = "public, max-age=604800";
+                            return File(bytes, contentType);
+                        }
+                    }
+                }
+                catch { }
             }
         }
         catch { }
 
-        // 4. Secondary Fallback to Google Favicon 128px
-        try
-        {
-            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
-            var gUrl = $"https://www.google.com/s2/favicons?domain={domain}&sz=128";
-            var resp = await httpClient.GetAsync(gUrl);
-            if (resp.IsSuccessStatusCode)
-            {
-                var bytes = await resp.Content.ReadAsByteArrayAsync();
-                Response.Headers["Cache-Control"] = "public, max-age=604800";
-                return File(bytes, "image/png");
-            }
-        }
-        catch { }
-
-        // 5. Dynamic Fail-Safe: Return high-contrast vector SVG badge so image never breaks
+        // 4. Dynamic Fail-Safe: Return high-contrast vector SVG badge so image never breaks
         string init = provider.Trim().Length >= 2 ? provider.Trim()[..2].ToUpperInvariant() : provider.Trim().ToUpperInvariant();
         string pSvg = $@"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' width='100' height='100'>
           <rect width='100' height='100' rx='24' fill='#0F172A'/>
@@ -740,6 +849,11 @@ public class TransactionsController : ControllerBase
 <html>
 <head>
 <meta charset='utf-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1.0'>
+<title>Drive&amp;Go • Official Payment Receipt {d.ReceiptNumber}</title>
+<link rel='icon' type='image/png' href='/images/logo.png'>
+<link rel='shortcut icon' type='image/png' href='/images/logo.png'>
+<link rel='apple-touch-icon' href='/images/logo.png'>
 <style>
   body {{ font-family: 'Segoe UI', Arial, sans-serif; background-color: #f4f5fa; margin: 0; padding: 24px; color: #1e293b; }}
   .card {{ max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.06); }}
@@ -762,7 +876,7 @@ public class TransactionsController : ControllerBase
 <body>
   <div class='card'>
     <div class='header'>
-      <img src='https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png' alt='Drive&Go' style='height:48px;width:auto;object-fit:contain;margin:0 auto 10px auto;display:block;' />
+      <img src='/images/logo.png' alt='Drive&Go' style='height:48px;width:auto;object-fit:contain;margin:0 auto 10px auto;display:block;' />
       <h1>DRIVE&GO VEHICLE RENTALS</h1>
       <p>San Jose del Monte, Bulacan · Official Electronic Payment Receipt</p>
       <div class='badge'>{d.Status.ToUpper()}</div>
@@ -1009,7 +1123,7 @@ public class TransactionsController : ControllerBase
     private static string GetReceiptVerificationHtml(TransactionReceiptPdfData? d, string code)
     {
         bool found = d != null;
-        string logoUrl = "https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png";
+        string logoUrl = "/images/logo.png";
 
         if (!found)
         {
@@ -1018,7 +1132,10 @@ public class TransactionsController : ControllerBase
 <head>
   <meta charset='utf-8'/>
   <meta name='viewport' content='width=device-width, initial-scale=1.0'/>
-  <title>Invalid Receipt - Drive&Go Verification</title>
+  <title>Invalid Receipt - Drive&amp;Go Verification</title>
+  <link rel='icon' type='image/png' href='{logoUrl}'>
+  <link rel='shortcut icon' type='image/png' href='{logoUrl}'>
+  <link rel='apple-touch-icon' href='{logoUrl}'>
   <script src='https://cdn.tailwindcss.com'></script>
 </head>
 <body class='bg-[#090D16] text-white min-h-screen flex items-center justify-center p-4 font-sans'>
@@ -1048,13 +1165,44 @@ public class TransactionsController : ControllerBase
         string dateStr = d.TransactionDate;
         string admin = d.AdminName;
         string words = d.AmountInWords;
+        string brandSlug = DriveAndGo_API.Helpers.LogoHelper.GetBrandSlug(vehicle);
+        string brandLogoUrl = $"https://cdn.jsdelivr.net/gh/filippofilip95/car-logos-dataset@master/logos/original/{brandSlug}.png";
+        string payKey = DriveAndGo_API.Helpers.LogoHelper.GetPaymentKey(d.PaymentMethod);
+        string payDomain = payKey switch
+        {
+            "gcash" => "gcash.com",
+            "maya" or "paymaya" => "maya.ph",
+            "bdo" => "bdo.com.ph",
+            "bpi" => "bpi.com.ph",
+            "unionbank" or "ubp" => "unionbankph.com",
+            "metrobank" or "mbt" => "metrobank.com.ph",
+            "landbank" => "landbank.com",
+            "chinabank" => "chinabank.ph",
+            "rcbc" => "rcbc.com",
+            "pnb" => "pnb.com.ph",
+            "securitybank" => "securitybank.com",
+            "gotyme" => "gotyme.com.ph",
+            "seabank" => "seabank.com.ph",
+            "tonik" => "tonikbank.com",
+            "cimb" => "cimbbank.com.ph",
+            "shopeepay" => "shopee.ph",
+            "grabpay" => "grab.com",
+            "palawanpay" => "palawanpay.com",
+            "psbank" => "psbank.com.ph",
+            "aub" => "aub.com.ph",
+            _ => $"{payKey}.com.ph"
+        };
+        string payLogoUrl = $"https://www.google.com/s2/favicons?domain={payDomain}&sz=256";
 
         return $@"<!DOCTYPE html>
 <html lang='en' class='dark'>
 <head>
   <meta charset='utf-8'/>
   <meta name='viewport' content='width=device-width, initial-scale=1.0'/>
-  <title>Verified Receipt - {txCode}</title>
+  <title>Verified Receipt - {txCode} | Drive&amp;Go</title>
+  <link rel='icon' type='image/png' href='{logoUrl}'>
+  <link rel='shortcut icon' type='image/png' href='{logoUrl}'>
+  <link rel='apple-touch-icon' href='{logoUrl}'>
   <script src='https://cdn.tailwindcss.com'></script>
   <script>
     tailwind.config = {{
@@ -1133,18 +1281,25 @@ public class TransactionsController : ControllerBase
           <div class='font-bold text-slate-900 dark:text-white truncate'>{custName}</div>
           <div class='text-[10.5px] text-slate-500 dark:text-slate-400 truncate mt-0.5'>{custEmail}</div>
         </div>
-        <div class='p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/80 transition-colors'>
-          <div class='text-[9.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1'>Rental & Unit</div>
-          <div class='font-mono font-bold text-[#FF6B00]'>{rentalCode}</div>
-          <div class='text-[10.5px] text-slate-900 dark:text-white truncate mt-0.5'>{vehicle} ({plate})</div>
+        <!-- Rental & Unit with Brand Logo -->
+        <div class='p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/80 transition-colors flex items-start gap-2.5'>
+          <img src='{brandLogoUrl}' alt='{vehicle}' class='w-8 h-8 object-contain shrink-0 mt-0.5' onerror=""this.style.display='none';"" />
+          <div class='min-w-0 flex-1'>
+            <div class='text-[9.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1'>Rental & Unit</div>
+            <div class='font-mono font-bold text-[#FF6B00]'>{rentalCode}</div>
+            <div class='text-[10.5px] text-slate-900 dark:text-white truncate mt-0.5'>{vehicle} ({plate})</div>
+          </div>
         </div>
       </div>
 
-      <!-- Settlement Status Row -->
+      <!-- Settlement Status Row with Payment Logo -->
       <div class='p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/80 flex items-center justify-between transition-colors'>
-        <div>
-          <div class='text-[9.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider'>Payment Channel</div>
-          <div class='text-xs font-bold text-slate-900 dark:text-white mt-0.5'>{method}</div>
+        <div class='flex items-center gap-2.5'>
+          <img src='{payLogoUrl}' alt='{method}' class='w-6 h-6 object-contain shrink-0' onerror=""this.style.display='none';"" />
+          <div>
+            <div class='text-[9.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider'>Payment Channel</div>
+            <div class='text-xs font-bold text-slate-900 dark:text-white mt-0.5'>{method}</div>
+          </div>
         </div>
         <span class='px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'>
           {status}

@@ -1,0 +1,9 @@
+{
+  "model": "nvidia/nemotron-3.5-lightning:free",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello! In one sentence, say hello from DriveAndGo AI."
+    }
+  ]
+}

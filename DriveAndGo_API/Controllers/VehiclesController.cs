@@ -1,6 +1,7 @@
 using DriveAndGo_API.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Caching.Memory;
 using Npgsql;
 
 namespace DriveAndGo_API.Controllers;
@@ -12,15 +13,18 @@ public class VehiclesController : ControllerBase
     private readonly string _connectionString;
     private readonly Microsoft.AspNetCore.SignalR.IHubContext<DriveAndGo_API.Hubs.AdminHub> _hubContext;
     private readonly DriveAndGo_API.Services.AuditService _auditService;
+    private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache _cache;
 
     public VehiclesController(
         IConfiguration configuration,
         Microsoft.AspNetCore.SignalR.IHubContext<DriveAndGo_API.Hubs.AdminHub> hubContext,
-        DriveAndGo_API.Services.AuditService auditService)
+        DriveAndGo_API.Services.AuditService auditService,
+        Microsoft.Extensions.Caching.Memory.IMemoryCache cache)
     {
         _connectionString = configuration.GetConnectionString("DefaultConnection")!;
         _hubContext = hubContext;
         _auditService = auditService;
+        _cache = cache;
     }
 
     private string GetAdminName()
@@ -43,7 +47,17 @@ public class VehiclesController : ControllerBase
             Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
             Response.Headers["Pragma"] = "no-cache";
             Response.Headers["Expires"] = "0";
-            return Ok(ReadVehicles());
+
+            const string cacheKey = "active_vehicles_catalog";
+            if (!_cache.TryGetValue(cacheKey, out List<VehicleDto>? vehicles) || vehicles == null)
+            {
+                vehicles = ReadVehicles();
+                var cacheOptions = new Microsoft.Extensions.Caching.Memory.MemoryCacheEntryOptions()
+                    .SetAbsoluteExpiration(TimeSpan.FromSeconds(30));
+                _cache.Set(cacheKey, vehicles, cacheOptions);
+            }
+
+            return Ok(vehicles);
         }
         catch (Exception ex)
         {
@@ -266,6 +280,7 @@ public class VehiclesController : ControllerBase
                 newValues: new { description = $"{adminName} added vehicle {vehicle.Brand} {vehicle.Model} ({vehicle.PlateNo})", plateNo = vehicle.PlateNo }
             );
 
+            _cache.Remove("active_vehicles_catalog");
             await _hubContext.Clients.All.SendAsync("ReceiveVehicleUpdate");
             await _hubContext.Clients.All.SendAsync("ReceiveDashboardUpdate");
 
@@ -399,6 +414,7 @@ public class VehiclesController : ControllerBase
                 newValues: new { description = $"{adminName} updated vehicle {vehicle.Brand} {vehicle.Model} ({vehicle.PlateNo})", status = vehicle.Status }
             );
 
+            _cache.Remove("active_vehicles_catalog");
             await _hubContext.Clients.All.SendAsync("ReceiveVehicleUpdate");
             await _hubContext.Clients.All.SendAsync("ReceiveDashboardUpdate");
 
@@ -540,6 +556,7 @@ public class VehiclesController : ControllerBase
                 newValues: new { reason = finalReason, notes = finalNotes, description = $"{adminNameDel} decommissioned vehicle {vehicleBrand} {vehicleModel} ({vehiclePlate}). Reason: {finalReason}" }
             );
 
+            _cache.Remove("active_vehicles_catalog");
             await _hubContext.Clients.All.SendAsync("ReceiveVehicleUpdate");
             await _hubContext.Clients.All.SendAsync("ReceiveDashboardUpdate");
 
@@ -728,6 +745,7 @@ public class VehiclesController : ControllerBase
                     idle_minutes          = COALESCE(@idle_minutes, idle_minutes),
                     rfid_balance_autosweep = COALESCE(@rfid_balance_autosweep, rfid_balance_autosweep),
                     rfid_balance_easytrip  = COALESCE(@rfid_balance_easytrip, rfid_balance_easytrip),
+                    expressway_rfid_balance = COALESCE(@expressway_rfid_balance, @rfid_balance_autosweep, expressway_rfid_balance),
                     lto_expiry_date       = COALESCE(@lto_expiry_date, lto_expiry_date),
                     insurance_expiry_date = COALESCE(@insurance_expiry_date, insurance_expiry_date),
                     latitude              = COALESCE(@latitude, latitude),
@@ -744,6 +762,7 @@ public class VehiclesController : ControllerBase
             cmd.Parameters.AddWithValue("@idle_minutes",          request.IdleMinutes.HasValue ? request.IdleMinutes.Value : DBNull.Value);
             cmd.Parameters.AddWithValue("@rfid_balance_autosweep",request.RfidBalanceAutosweep.HasValue ? request.RfidBalanceAutosweep.Value : DBNull.Value);
             cmd.Parameters.AddWithValue("@rfid_balance_easytrip", request.RfidBalanceEasytrip.HasValue ? request.RfidBalanceEasytrip.Value : DBNull.Value);
+            cmd.Parameters.AddWithValue("@expressway_rfid_balance", request.ExpresswayRfidBalance.HasValue ? request.ExpresswayRfidBalance.Value : (request.RfidBalanceAutosweep.HasValue ? request.RfidBalanceAutosweep.Value : DBNull.Value));
             cmd.Parameters.AddWithValue("@lto_expiry_date",       request.LtoExpiryDate.HasValue ? request.LtoExpiryDate.Value : DBNull.Value);
             cmd.Parameters.AddWithValue("@insurance_expiry_date", request.InsuranceExpiryDate.HasValue ? request.InsuranceExpiryDate.Value : DBNull.Value);
             cmd.Parameters.AddWithValue("@latitude",              request.Latitude.HasValue ? request.Latitude.Value : DBNull.Value);
@@ -764,6 +783,7 @@ public class VehiclesController : ControllerBase
                 odometerKm         = request.OdometerKm,
                 rfidBalanceAutosweep = request.RfidBalanceAutosweep,
                 rfidBalanceEasytrip  = request.RfidBalanceEasytrip,
+                expresswayRfidBalance = request.ExpresswayRfidBalance ?? request.RfidBalanceAutosweep,
                 latitude           = request.Latitude,
                 longitude          = request.Longitude,
                 timestamp          = DateTime.UtcNow
@@ -777,6 +797,76 @@ public class VehiclesController : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, new { Message = "Telemetry Update Error: " + ex.Message });
+        }
+    }
+
+    // ── POST /api/vehicles/{id}/rfid/topup ────────────────────────────────────
+    [HttpPost("{id}/rfid/topup")]
+    public async Task<IActionResult> TopupVehicleRfid(int id, [FromBody] RfidTopupRequest request)
+    {
+        try
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            connection.Open();
+
+            decimal newBalance = 0;
+            if (request.Balance.HasValue && request.Balance.Value >= 0)
+            {
+                newBalance = Math.Round(request.Balance.Value, 2);
+                using var setCmd = new NpgsqlCommand(@"
+                    UPDATE vehicles 
+                    SET expressway_rfid_balance = @bal,
+                        rfid_balance_autosweep  = @bal,
+                        last_update = NOW()
+                    WHERE vehicle_id = @id
+                    RETURNING expressway_rfid_balance;", connection);
+                setCmd.Parameters.AddWithValue("@bal", newBalance);
+                setCmd.Parameters.AddWithValue("@id", id);
+                var res = setCmd.ExecuteScalar();
+                if (res == null || res == DBNull.Value)
+                    return NotFound(new { Message = "Vehicle not found." });
+                newBalance = Convert.ToDecimal(res);
+            }
+            else
+            {
+                using var addCmd = new NpgsqlCommand(@"
+                    UPDATE vehicles 
+                    SET expressway_rfid_balance = GREATEST(0, COALESCE(expressway_rfid_balance, rfid_balance_autosweep, 500.00) + @amount),
+                        rfid_balance_autosweep  = GREATEST(0, COALESCE(expressway_rfid_balance, rfid_balance_autosweep, 500.00) + @amount),
+                        last_update = NOW()
+                    WHERE vehicle_id = @id
+                    RETURNING expressway_rfid_balance;", connection);
+                addCmd.Parameters.AddWithValue("@amount", Math.Round(request.Amount, 2));
+                addCmd.Parameters.AddWithValue("@id", id);
+                var res = addCmd.ExecuteScalar();
+                if (res == null || res == DBNull.Value)
+                    return NotFound(new { Message = "Vehicle not found." });
+                newBalance = Convert.ToDecimal(res);
+            }
+
+            // Real-time broadcast
+            await _hubContext.Clients.All.SendAsync("TelematicsUpdated", new
+            {
+                vehicleId = id,
+                expresswayRfidBalance = newBalance,
+                rfidBalanceAutosweep = newBalance,
+                rfidBalancePHP = newBalance,
+                timestamp = DateTime.UtcNow
+            });
+
+            await _hubContext.Clients.All.SendAsync("ReceiveVehicleUpdate");
+            await _hubContext.Clients.All.SendAsync("ReceiveDashboardUpdate");
+
+            return Ok(new
+            {
+                VehicleId = id,
+                ExpresswayRfidBalance = newBalance,
+                Message = $"Expressway RFID balance updated to ₱{newBalance:N2} successfully."
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { Message = "RFID Top-up Error: " + ex.Message });
         }
     }
 
@@ -1096,6 +1186,7 @@ public class VehiclesController : ControllerBase
                 COALESCE(v.idle_minutes, 0) AS idle_minutes,
                 COALESCE(v.rfid_balance_autosweep, 500.00) AS rfid_balance_autosweep,
                 COALESCE(v.rfid_balance_easytrip, 500.00) AS rfid_balance_easytrip,
+                COALESCE(v.expressway_rfid_balance, v.rfid_balance_autosweep, 500.00) AS expressway_rfid_balance,
                 COALESCE(v.color, 'Pearl White') AS color,
                 COALESCE(v.flood_risk_status, 'safe') AS flood_risk_status,
                 COALESCE(v.engine_water_ingress_alert, false) AS engine_water_ingress_alert,
@@ -1167,6 +1258,7 @@ public class VehiclesController : ControllerBase
             IdleMinutes      = reader["idle_minutes"] == DBNull.Value ? 0 : Convert.ToInt32(reader["idle_minutes"]),
             RfidBalanceAutosweep = reader["rfid_balance_autosweep"] == DBNull.Value ? 500m : Convert.ToDecimal(reader["rfid_balance_autosweep"]),
             RfidBalanceEasytrip  = reader["rfid_balance_easytrip"] == DBNull.Value ? 500m : Convert.ToDecimal(reader["rfid_balance_easytrip"]),
+            ExpresswayRfidBalance = reader["expressway_rfid_balance"] == DBNull.Value ? 500m : Convert.ToDecimal(reader["expressway_rfid_balance"]),
             Color                = reader["color"]?.ToString() ?? "Pearl White",
             FloodRiskStatus      = reader["flood_risk_status"]?.ToString() ?? "safe",
             EngineWaterIngressAlert = reader["engine_water_ingress_alert"] != DBNull.Value && Convert.ToBoolean(reader["engine_water_ingress_alert"]),
@@ -1195,17 +1287,19 @@ public class VehiclesController : ControllerBase
                 v = ReadVehicles().FirstOrDefault(x => 
                     (x.PlateNo ?? "").Replace("-", "").Replace(" ", "").ToLowerInvariant() == cleanPlate);
             }
-            return Content(GetVehicleVerificationHtml(v, plateOrId), "text/html");
+            var verifyUrl = $"{Request.Scheme}://{Request.Host}/api/vehicles/verify/{Uri.EscapeDataString(plateOrId)}";
+            return Content(GetVehicleVerificationHtml(v, plateOrId, verifyUrl), "text/html");
         }
         catch
         {
-            return Content(GetVehicleVerificationHtml(null, plateOrId), "text/html");
+            var verifyUrl = $"{Request.Scheme}://{Request.Host}/api/vehicles/verify/{Uri.EscapeDataString(plateOrId)}";
+            return Content(GetVehicleVerificationHtml(null, plateOrId, verifyUrl), "text/html");
         }
     }
 
-    private static string GetVehicleVerificationHtml(DriveAndGo_API.Models.VehicleDto? v, string code)
+    private static string GetVehicleVerificationHtml(DriveAndGo_API.Models.VehicleDto? v, string code, string verifyUrl = "")
     {
-        string logoUrl = "https://raw.githubusercontent.com/martquirante/DriveAndGo_Project/main/DriveAndGo_Admin/WebAssets/logo.png";
+        string logoUrl = "/images/logo.png";
         var nowStr = DateTime.UtcNow.AddHours(8).ToString("MMMM dd, yyyy • hh:mm tt", System.Globalization.CultureInfo.InvariantCulture);
 
         if (v == null)
@@ -1266,6 +1360,25 @@ public class VehiclesController : ControllerBase
             ? $"<img src='{v.PhotoUrl}' class='w-full h-full object-cover' alt='Vehicle Photo' />"
             : $"<span class='text-2xl font-black text-orange-500 dark:text-orange-400'>{System.Web.HttpUtility.HtmlEncode(v.Brand)}</span>";
 
+        string qrBase64 = "";
+        if (!string.IsNullOrWhiteSpace(verifyUrl))
+        {
+            try
+            {
+                using var qrGen = new QRCoder.QRCodeGenerator();
+                var qrData = qrGen.CreateQrCode(verifyUrl, QRCoder.QRCodeGenerator.ECCLevel.H);
+                var qrCode = new QRCoder.PngByteQRCode(qrData);
+                var qrBytes = qrCode.GetGraphic(5, new byte[] { 15, 23, 42, 255 }, new byte[] { 255, 255, 255, 255 }, true);
+                qrBase64 = "data:image/png;base64," + Convert.ToBase64String(qrBytes);
+            }
+            catch
+            {
+                qrBase64 = $"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={Uri.EscapeDataString(verifyUrl)}";
+            }
+        }
+
+        string brandLogoUrl = $"/api/vehicles/brand-logo/{Uri.EscapeDataString(v.Brand)}";
+
         return $@"<!DOCTYPE html>
         <html lang='en' class='dark'>
         <head>
@@ -1320,18 +1433,29 @@ public class VehiclesController : ControllerBase
               
               <!-- Vehicle Identity & Status -->
               <div class='flex items-center justify-between py-2 px-4 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-black tracking-wider uppercase shadow-xs'>
-                <span class='w-2 h-2 rounded-full bg-emerald-500 animate-pulse'></span>
-                VERIFIED FLEET VEHICLE &bull; {v.Status.ToUpper()}
+                <div class='flex items-center gap-2'>
+                  <span class='w-2 h-2 rounded-full bg-emerald-500 animate-pulse'></span>
+                  <span>VERIFIED FLEET VEHICLE</span>
+                </div>
+                <div class='flex items-center gap-1.5'>
+                  <img src='{brandLogoUrl}' class='w-4 h-4 object-contain rounded-full bg-white p-0.5' alt='{System.Web.HttpUtility.HtmlEncode(v.Brand)}' onerror='this.remove()' />
+                  <span>{v.Status.ToUpper()}</span>
+                </div>
               </div>
 
-              <!-- Vehicle Photo & Name Card -->
+              <!-- Vehicle Photo & Name Card with Brand Logo -->
               <div class='flex items-center gap-4 bg-slate-50 dark:bg-slate-900/80 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-inner'>
                 <div class='w-24 h-20 rounded-xl border border-slate-200 dark:border-white/20 overflow-hidden bg-slate-200 dark:bg-slate-800 flex items-center justify-center flex-shrink-0 shadow-md relative'>
                   {photoHtml}
                 </div>
                 <div class='min-w-0 flex-1'>
-                  <h1 class='text-base font-black text-slate-900 dark:text-white uppercase truncate'>{System.Web.HttpUtility.HtmlEncode(v.Brand)} {System.Web.HttpUtility.HtmlEncode(v.Model)}</h1>
-                  <p class='mono text-sm font-black text-orange-600 dark:text-orange-400 mt-0.5'>{System.Web.HttpUtility.HtmlEncode(v.PlateNo)}</p>
+                  <div class='flex items-center gap-2 mb-1'>
+                    <div class='w-7 h-7 rounded-lg bg-white p-0.5 shadow-sm border border-slate-200 dark:border-slate-700 flex items-center justify-center flex-shrink-0'>
+                      <img src='{brandLogoUrl}' class='w-full h-full object-contain' alt='{System.Web.HttpUtility.HtmlEncode(v.Brand)} Emblem' onerror='this.remove()' />
+                    </div>
+                    <h1 class='text-base font-black text-slate-900 dark:text-white uppercase truncate'>{System.Web.HttpUtility.HtmlEncode(v.Brand)} {System.Web.HttpUtility.HtmlEncode(v.Model)}</h1>
+                  </div>
+                  <p class='mono text-sm font-black text-orange-600 dark:text-orange-400'>{System.Web.HttpUtility.HtmlEncode(v.PlateNo)}</p>
                   <p class='text-[10px] text-slate-400 uppercase tracking-widest mt-1'>{System.Web.HttpUtility.HtmlEncode(v.Type)} &bull; {v.SeatCapacity} Seats</p>
                 </div>
               </div>
@@ -1356,15 +1480,42 @@ public class VehiclesController : ControllerBase
                 </div>
               </div>
 
-              <!-- RFID Toll Balances -->
+              <!-- Expressway RFID Balance -->
               <div class='bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs'>
-                <div>
-                  <span class='text-[9.5px] font-bold text-slate-400 uppercase block'>AUTOSWEEP RFID</span>
-                  <span class='mono font-bold text-slate-800 dark:text-slate-200 text-xs'>₱{v.RfidBalanceAutosweep:N2}</span>
+                <div class='flex items-center gap-2.5'>
+                  <div class='w-7 h-7 rounded-lg bg-orange-500/10 text-orange-600 dark:text-orange-400 flex items-center justify-center font-black text-xs'>₱</div>
+                  <div>
+                    <span class='text-[9.5px] font-bold text-slate-400 uppercase block'>EXPRESSWAY RFID</span>
+                    <span class='text-[10px] text-emerald-600 dark:text-emerald-400 font-bold'>Active Tollway Pass</span>
+                  </div>
                 </div>
                 <div class='text-right'>
-                  <span class='text-[9.5px] font-bold text-slate-400 uppercase block'>EASYTRIP RFID</span>
-                  <span class='mono font-bold text-slate-800 dark:text-slate-200 text-xs'>₱{v.RfidBalanceEasytrip:N2}</span>
+                  <span class='mono font-black text-slate-900 dark:text-white text-sm'>₱{v.ExpresswayRfidBalance:N2}</span>
+                </div>
+              </div>
+
+              <!-- Official Digital Vehicle QR Pass with Centered Brand Emblem -->
+              <div class='bg-slate-50 dark:bg-slate-900/70 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col items-center text-center space-y-3 shadow-xs'>
+                <div class='flex items-center gap-2 text-[11px] font-black text-orange-600 dark:text-orange-400 uppercase tracking-wider'>
+                  <svg class='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24' stroke-width='2.2'><rect width='5' height='5' x='3' y='3' rx='1'></rect><rect width='5' height='5' x='16' y='3' rx='1'></rect><rect width='5' height='5' x='3' y='16' rx='1'></rect><path d='M21 16h-3a2 2 0 0 0-2 2v3'></path><path d='M21 21v.01'></path><path d='M12 7v3a2 2 0 0 1-2 2H7'></path><path d='M3 12h.01'></path><path d='M12 3h.01'></path><path d='M12 16v.01'></path><path d='M16 12h1'></path><path d='M21 12v.01'></path><path d='M12 21v-1'></path></svg>
+                  <span>OFFICIAL DIGITAL VEHICLE PASS</span>
+                </div>
+                
+                <div class='p-3 bg-white rounded-2xl border border-slate-200 dark:border-white/10 shadow-md flex items-center justify-center relative'>
+                  <img src='{qrBase64}' alt='Vehicle Verification QR' class='w-40 h-40 object-contain' />
+                  <div class='absolute inset-0 flex items-center justify-center pointer-events-none'>
+                    <div class='bg-white p-1 rounded-lg border border-slate-200 shadow-md flex items-center justify-center w-10 h-10'>
+                      <img src='{brandLogoUrl}' class='w-7 h-7 object-contain' alt='{System.Web.HttpUtility.HtmlEncode(v.Brand)} Logo' onerror='this.remove()' />
+                    </div>
+                  </div>
+                </div>
+
+                <div class='space-y-1'>
+                  <div class='flex items-center justify-center gap-2'>
+                    <span class='mono text-xs font-black text-slate-900 dark:text-white tracking-widest'>{System.Web.HttpUtility.HtmlEncode(v.PlateNo)}</span>
+                    <span class='px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[9px] font-extrabold uppercase border border-emerald-500/30'>AUTHENTIC</span>
+                  </div>
+                  <p class='text-[10px] text-slate-500 dark:text-slate-400'>Scan to authenticate live vehicle telematics, registration &amp; turnover status</p>
                 </div>
               </div>
 
@@ -1388,34 +1539,93 @@ public class VehiclesController : ControllerBase
         </html>";
     }
 
+    private static readonly HashSet<string> KnownBrands = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "acura", "alfa-romeo", "aston-martin", "audi", "bentley", "bmw", "buick", "byd",
+        "cadillac", "changan", "chery", "chevrolet", "chrysler", "citroen", "dodge",
+        "ferrari", "fiat", "ford", "foton", "gac", "geely", "gmc", "great-wall", "haval",
+        "honda", "hyundai", "infiniti", "isuzu", "jaguar", "jeep", "jetour", "kia",
+        "lamborghini", "land-rover", "lexus", "lincoln", "lucid", "maserati", "mazda",
+        "mercedes-benz", "mg", "mini", "mitsubishi", "nissan", "omoda", "peugeot",
+        "polestar", "porsche", "ram", "renault", "rivian", "rolls-royce", "subaru",
+        "suzuki", "tesla", "toyota", "vinfast", "volkswagen", "volvo", "wuling", "zeekr"
+    };
+
+    private static readonly Dictionary<string, string> BrandAliases = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["merc"] = "mercedes-benz",
+        ["mercedes"] = "mercedes-benz",
+        ["benz"] = "mercedes-benz",
+        ["chevy"] = "chevrolet",
+        ["vw"] = "volkswagen",
+        ["landrover"] = "land-rover",
+        ["land rover"] = "land-rover",
+        ["range rover"] = "land-rover",
+        ["alfa"] = "alfa-romeo",
+        ["aston"] = "aston-martin",
+        ["great wall"] = "great-wall",
+        ["gwm"] = "great-wall",
+        ["rolls royce"] = "rolls-royce"
+    };
+
+    private static string ResolveBrandSlug(string rawBrand)
+    {
+        if (string.IsNullOrWhiteSpace(rawBrand)) return "vehicle";
+        string s = rawBrand.Trim().ToLowerInvariant().Replace("/", " ").Replace("\\", " ").Replace("_", " ");
+        
+        // Direct Alias match
+        foreach (var kv in BrandAliases)
+        {
+            if (s == kv.Key || s.StartsWith(kv.Key + " ") || s.EndsWith(" " + kv.Key))
+                return kv.Value;
+        }
+
+        // Direct or Substring match against Known Brands
+        foreach (var b in KnownBrands)
+        {
+            if (s == b || s.StartsWith(b + " ") || s.EndsWith(" " + b) || s.Contains(" " + b + " "))
+                return b;
+            string bNoDash = b.Replace("-", " ");
+            if (s == bNoDash || s.StartsWith(bNoDash + " ") || s.EndsWith(" " + bNoDash) || s.Contains(" " + bNoDash + " "))
+                return b;
+        }
+
+        // First token fallback
+        var tokens = s.Split(new[] { ' ', '-' }, StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Length > 0)
+        {
+            string first = tokens[0];
+            if (BrandAliases.TryGetValue(first, out var aliasVal)) return aliasVal;
+            if (KnownBrands.Contains(first)) return first;
+        }
+
+        return System.Text.RegularExpressions.Regex.Replace(s, @"\s+", "-");
+    }
+
     [HttpGet("brand-logo/{brand}")]
     [ResponseCache(Duration = 86400, Location = ResponseCacheLocation.Any)]
     public async Task<IActionResult> GetBrandLogo(string brand)
     {
         if (string.IsNullOrWhiteSpace(brand)) return NotFound();
 
-        string slug = brand.Trim().ToLowerInvariant().Replace(" ", "-").Replace("_", "-");
+        string slug = ResolveBrandSlug(brand);
 
-        // Canonical Brand Mapping
-        slug = slug switch
-        {
-            "merc" or "mercedes" or "benz" => "mercedes-benz",
-            "chevy" => "chevrolet",
-            "vw" => "volkswagen",
-            "landrover" or "land rover" => "land-rover",
-            "alfa" => "alfa-romeo",
-            "aston" => "aston-martin",
-            _ => slug
-        };
-
-        // 1. Check local wwwroot/brands/
+        // 1. Check local wwwroot/brands/ in both current directory and binary base directory
         try
         {
-            string wwwPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "brands", $"{slug}.png");
-            if (System.IO.File.Exists(wwwPath))
+            string[] possibleDirs = {
+                Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "brands"),
+                Path.Combine(AppContext.BaseDirectory, "wwwroot", "brands")
+            };
+            foreach (var dir in possibleDirs)
             {
-                var bytes = await System.IO.File.ReadAllBytesAsync(wwwPath);
-                return File(bytes, "image/png");
+                string p = Path.Combine(dir, $"{slug}.png");
+                if (System.IO.File.Exists(p))
+                {
+                    var bytes = await System.IO.File.ReadAllBytesAsync(p);
+                    Response.Headers["Cache-Control"] = "public, max-age=604800";
+                    return File(bytes, "image/png");
+                }
             }
         }
         catch { }
@@ -1423,13 +1633,21 @@ public class VehiclesController : ControllerBase
         // 2. Fetch from Master High-Res Car Logos Repository CDN
         try
         {
-            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(4) };
             var url = $"https://cdn.jsdelivr.net/gh/filippofilip95/car-logos-dataset@master/logos/original/{slug}.png";
             var response = await httpClient.GetAsync(url);
             if (response.IsSuccessStatusCode)
             {
                 var bytes = await response.Content.ReadAsByteArrayAsync();
-                Response.Headers["Cache-Control"] = "public, max-age=604800"; // 7-day browser & proxy cache
+                try
+                {
+                    string dir = Path.Combine(AppContext.BaseDirectory, "wwwroot", "brands");
+                    Directory.CreateDirectory(dir);
+                    await System.IO.File.WriteAllBytesAsync(Path.Combine(dir, $"{slug}.png"), bytes);
+                }
+                catch { }
+
+                Response.Headers["Cache-Control"] = "public, max-age=604800";
                 return File(bytes, "image/png");
             }
         }
@@ -1450,11 +1668,41 @@ public class VehiclesController : ControllerBase
         }
         catch { }
 
-        // 4. Dynamic Fail-Safe: Return high-contrast vector monogram SVG so image never breaks
+        // 4. Fetch from Clearbit / Unavatar Web Favicon CDN
+        try
+        {
+            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+            var url = $"https://unavatar.io/{slug}.com?fallback=https://www.google.com/s2/favicons?domain={slug}.com&sz=128";
+            var response = await httpClient.GetAsync(url);
+            if (response.IsSuccessStatusCode && response.Content.Headers.ContentLength > 200)
+            {
+                var bytes = await response.Content.ReadAsByteArrayAsync();
+                string ct = response.Content.Headers.ContentType?.MediaType ?? "image/png";
+                return File(bytes, ct);
+            }
+        }
+        catch { }
+
+        // 5. Dynamic Luxury Automotive Emblem Vector (Ensures NO broken images for any custom brand)
+        string displayName = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(brand.Trim().ToLower());
         string initials = brand.Trim().Length >= 2 ? brand.Trim()[..2].ToUpperInvariant() : brand.Trim().ToUpperInvariant();
-        string svg = $@"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' width='100' height='100'>
-          <rect width='100' height='100' rx='22' fill='#ffffff'/>
-          <text x='50%' y='55%' dominant-baseline='middle' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-weight='900' font-size='42' fill='#0F172A'>{initials}</text>
+        string svg = $@"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120' width='120' height='120'>
+          <defs>
+            <linearGradient id='metalGrad' x1='0%' y1='0%' x2='100%' y2='100%'>
+              <stop offset='0%' stop-color='#334155'/>
+              <stop offset='50%' stop-color='#1E293B'/>
+              <stop offset='100%' stop-color='#0F172A'/>
+            </linearGradient>
+            <linearGradient id='silverRing' x1='0%' y1='0%' x2='100%' y2='100%'>
+              <stop offset='0%' stop-color='#E2E8F0'/>
+              <stop offset='50%' stop-color='#94A3B8'/>
+              <stop offset='100%' stop-color='#64748B'/>
+            </linearGradient>
+          </defs>
+          <rect width='120' height='120' rx='28' fill='url(#metalGrad)'/>
+          <circle cx='60' cy='52' r='36' fill='none' stroke='url(#silverRing)' stroke-width='3.5'/>
+          <text x='60' y='59' dominant-baseline='middle' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-weight='900' font-size='28' fill='#F8FAFC' letter-spacing='1'>{initials}</text>
+          <text x='60' y='104' dominant-baseline='middle' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-weight='800' font-size='11' fill='#94A3B8' letter-spacing='1.5'>{displayName.ToUpper()}</text>
         </svg>";
         var svgBytes = System.Text.Encoding.UTF8.GetBytes(svg);
         Response.Headers["Cache-Control"] = "public, max-age=86400";

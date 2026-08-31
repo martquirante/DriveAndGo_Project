@@ -1,5 +1,7 @@
+using DriveAndGo_API.Hubs;
 using DriveAndGo_API.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Npgsql;
 using System.Globalization;
 
@@ -10,14 +12,16 @@ namespace DriveAndGo_API.Controllers
     public class LocationsController : ControllerBase
     {
         private readonly string _connectionString;
+        private readonly IHubContext<AdminHub> _hubContext;
 
-        public LocationsController(IConfiguration configuration)
+        public LocationsController(IConfiguration configuration, IHubContext<AdminHub> hubContext)
         {
             _connectionString = configuration.GetConnectionString("DefaultConnection")!;
+            _hubContext = hubContext;
         }
 
         [HttpPost("update")]
-        public IActionResult UpdateLocation([FromBody] LocationLog log)
+        public async Task<IActionResult> UpdateLocation([FromBody] LocationLog log)
         {
             if (log.RentalId == 0 || log.VehicleId == 0 || log.Latitude == 0 || log.Longitude == 0)
                 return BadRequest(new { Message = "RentalId, VehicleId, Latitude, and Longitude are required." });
@@ -87,6 +91,25 @@ namespace DriveAndGo_API.Controllers
                 vehicleCmd.ExecuteNonQuery();
 
                 tx.Commit();
+
+                // ── Dual-Path: Instant Real-time WebSocket Broadcast via SignalR (~20ms Zero-Delay) ──
+                try
+                {
+                    await _hubContext.Clients.All.SendAsync("TelematicsUpdated", new
+                    {
+                        vehicleId = log.VehicleId,
+                        rentalId = log.RentalId,
+                        lat = Convert.ToDouble(log.Latitude),
+                        lng = Convert.ToDouble(log.Longitude),
+                        speed = Convert.ToDouble(speed),
+                        timestamp = loggedAt
+                    });
+                }
+                catch (Exception hubEx)
+                {
+                    // Non-blocking: DB write was committed successfully even if a client disconnects
+                    Console.WriteLine($"[LocationsController] SignalR push warning: {hubEx.Message}");
+                }
 
                 return Ok(new { Message = "Location updated successfully." });
             }

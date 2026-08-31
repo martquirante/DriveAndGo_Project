@@ -1,0 +1,9 @@
+{
+  "model": "command-r-08-2024",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello! In one sentence, say hello from DriveAndGo AI."
+    }
+  ]
+}

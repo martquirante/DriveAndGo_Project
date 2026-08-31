@@ -120,7 +120,7 @@ namespace DriveAndGo_Admin
                     catch { }
                 };
 
-                string htmlPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "WebAssets", "promos_manager.html");
+                string htmlPath = Helpers.WebAssetHelper.GetWebAssetPath("promos_manager.html", "promos");
                 if (File.Exists(htmlPath))
                 {
                     string navUrl = "file:///" + htmlPath.Replace('\\', '/') + "?theme=" + theme;

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace DriveAndGo_API.Models
 {
@@ -13,6 +13,7 @@ namespace DriveAndGo_API.Models
         public DateTime LoggedAt { get; set; } = DateTime.UtcNow;
 
         // 🟢 MGA DAGDAG PARA SA UI BINDING:
+        [System.Text.Json.Serialization.JsonIgnore]
         public decimal? SpeedKmH { get => SpeedKmh; set => SpeedKmh = value; } // Fix para sa capital 'H'
         public string? VehicleName { get; set; }
         public string? PlateNumber { get; set; }

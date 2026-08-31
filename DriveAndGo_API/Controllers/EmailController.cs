@@ -64,10 +64,51 @@ namespace DriveAndGo_API.Controllers
                 rentalData.DeclineBookingUrl = $"{serverBase}/api/Rentals/respond/{rentalData.AgreementCode}?action=decline";
 
 
+                rentalData.IncludeReceipt = request.IncludeReceipt;
+                rentalData.ReceiptNumber = $"TX-RN{request.RentalId:D5}";
+
                 byte[]? pdfBytes = null;
                 if (request.AttachPdf)
                 {
                     pdfBytes = _pdfService.GenerateRentalAgreementPdf(rentalData);
+                }
+
+                byte[]? receiptBytes = null;
+                if (request.IncludeReceipt)
+                {
+                    var receiptData = new TransactionReceiptPdfData
+                    {
+                        TransactionId = request.RentalId,
+                        ReceiptNumber = rentalData.ReceiptNumber,
+                        RentalCode = rentalData.AgreementCode,
+                        RentalId = request.RentalId,
+                        CustomerName = rentalData.CustomerName,
+                        CustomerEmail = request.RecipientEmail.Trim(),
+                        CustomerPhone = rentalData.CustomerPhone,
+                        VehicleName = rentalData.VehicleName,
+                        PlateNo = rentalData.PlateNo,
+                        VehicleColor = rentalData.VehicleColor,
+                        PickupDate = rentalData.PickupDate,
+                        DropoffDate = rentalData.DropoffDate,
+                        DurationDays = rentalData.DurationDays,
+                        DailyRate = rentalData.DailyRate,
+                        RentalSubtotal = rentalData.DailyTotal,
+                        SecurityDeposit = 0m,
+                        DiscountAmount = 0m,
+                        TotalAmount = rentalData.TotalAmount,
+                        AmountInWords = DriveAndGo_API.Helpers.NumberToWordsHelper.ConvertNumberToWords(rentalData.TotalAmount),
+                        PaymentMethod = string.IsNullOrWhiteSpace(rentalData.PaymentMethod) ? "CASH" : rentalData.PaymentMethod.ToUpperInvariant(),
+                        Status = string.IsNullOrWhiteSpace(rentalData.PaymentStatus) ? "PAID" : rentalData.PaymentStatus.ToUpperInvariant(),
+                        TransactionDate = DateTime.Now.ToString("MMM dd, yyyy hh:mm tt"),
+                        AdminName = "Raymart Quirante",
+                        VerificationUrl = rentalData.VerificationUrl,
+                        CompanyAddress = rentalData.CompanyAddress,
+                        CompanyPhone = rentalData.CompanyPhone,
+                        CompanyEmail = rentalData.CompanyEmail,
+                        PersonalMessage = request.PersonalMessage
+                    };
+
+                    receiptBytes = _pdfService.GenerateTransactionReceiptPdf(receiptData);
                 }
 
                 var result = await _emailService.SendRentalAgreementAsync(
@@ -76,7 +117,8 @@ namespace DriveAndGo_API.Controllers
                     request.Subject,
                     request.PersonalMessage,
                     rentalData,
-                    pdfBytes);
+                    pdfBytes,
+                    receiptBytes);
 
                 if (result.Success)
                 {
@@ -121,6 +163,7 @@ namespace DriveAndGo_API.Controllers
                     customer.full_name AS customer_name,
                     customer.phone AS customer_phone,
                     customer.email AS customer_email,
+                    COALESCE(NULLIF(customer.avatar_base64, ''), NULLIF(customer.id_photo_url, '')) AS customer_avatar,
                     CONCAT(v.brand, ' ', v.model) AS vehicle_name,
                     v.plate_no AS vehicle_plate_no,
                     driver_user.full_name AS driver_name,
@@ -155,6 +198,7 @@ namespace DriveAndGo_API.Controllers
             return new RentalAgreementEmailData
             {
                 AgreementCode = agreementCode,
+                CustomerAvatarUrl = reader["customer_avatar"] == DBNull.Value ? null : reader["customer_avatar"]?.ToString(),
                 CustomerName = reader["customer_name"]?.ToString() ?? "Valued Customer",
                 CustomerPhone = reader["customer_phone"]?.ToString() ?? "",
                 CustomerEmail = reader["customer_email"]?.ToString() ?? "",

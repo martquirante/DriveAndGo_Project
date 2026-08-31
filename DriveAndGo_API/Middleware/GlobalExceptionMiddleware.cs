@@ -27,12 +27,13 @@ namespace DriveAndGo_API.Middleware
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "An unhandled exception occurred on request: {Path}", context.Request.Path);
-                await HandleExceptionAsync(context, ex);
+                string traceId = context.TraceIdentifier ?? Guid.NewGuid().ToString("N");
+                _logger.LogError(ex, "Unhandled exception [{TraceId}] on {Method} {Path}", traceId, context.Request.Method, context.Request.Path);
+                await HandleExceptionAsync(context, ex, traceId);
             }
         }
 
-        private static Task HandleExceptionAsync(HttpContext context, Exception exception)
+        private static Task HandleExceptionAsync(HttpContext context, Exception exception, string traceId)
         {
             context.Response.ContentType = "application/problem+json";
             
@@ -47,6 +48,7 @@ namespace DriveAndGo_API.Middleware
                 Instance = context.Request.Path,
                 Detail = friendlyDetail
             };
+            problem.Extensions["traceId"] = traceId;
 
             // Custom validations or standard client errors
             if (exception is ArgumentException || exception is InvalidOperationException)

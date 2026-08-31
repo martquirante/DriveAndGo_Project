@@ -3,10 +3,12 @@ using DriveAndGo_API.Data;
 using DriveAndGo_API.Services;
 using DriveAndGo_API.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Serilog;
 
 // ─────────────────────────────────────────────────────────────
 //  1.  Load .env file (before anything else reads configuration)
@@ -16,6 +18,27 @@ using Microsoft.OpenApi.Models;
 DotNetEnv.Env.TraversePath().Load();
 
 var builder = WebApplication.CreateBuilder(args);
+
+var logsDir = Path.Combine(builder.Environment.ContentRootPath, "logs");
+if (!Directory.Exists(logsDir))
+{
+    Directory.CreateDirectory(logsDir);
+}
+
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.AspNetCore.Hosting.Diagnostics", Serilog.Events.LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .WriteTo.Console()
+    .WriteTo.File(
+        path: Path.Combine(logsDir, "driveandgo-.log"),
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 30,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] ({SourceContext}) {Message:lj}{NewLine}{Exception}")
+    .CreateLogger();
+
+builder.Host.UseSerilog();
 
 // ─────────────────────────────────────────────────────────────
 //  1b. Override Configuration with .env secrets dynamically
@@ -71,6 +94,20 @@ var envSmtpPass = Environment.GetEnvironmentVariable("SMTP_APP_PASSWORD")
 if (!string.IsNullOrWhiteSpace(envSmtpPass))
 {
     builder.Configuration["Smtp:AppPassword"] = envSmtpPass;
+}
+
+var envSupabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL")
+    ?? Environment.GetEnvironmentVariable("Supabase__Url");
+if (!string.IsNullOrWhiteSpace(envSupabaseUrl))
+{
+    builder.Configuration["Supabase:Url"] = envSupabaseUrl;
+}
+
+var envSupabaseKey = Environment.GetEnvironmentVariable("SUPABASE_SECRET_KEY")
+    ?? Environment.GetEnvironmentVariable("Supabase__SecretKey");
+if (!string.IsNullOrWhiteSpace(envSupabaseKey))
+{
+    builder.Configuration["Supabase:SecretKey"] = envSupabaseKey;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -130,18 +167,33 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(optio
 builder.WebHost.ConfigureKestrel(kestrel =>
 {
     kestrel.Limits.MaxRequestBodySize = null; // Unlimited max request body size
-    kestrel.Listen(System.Net.IPAddress.Any, 5233);
+
+    // Azure App Service / Container Apps dynamic port detection
+    var portEnv = Environment.GetEnvironmentVariable("PORT")
+               ?? Environment.GetEnvironmentVariable("WEBSITES_PORT");
+
+    int port = 5233; // Default local testing port
+    if (!string.IsNullOrWhiteSpace(portEnv) && int.TryParse(portEnv, out int customPort))
+    {
+        port = customPort;
+    }
+
+    kestrel.ListenAnyIP(port);
 });
 
 // ─────────────────────────────────────────────────────────────
 bool useLocalDb = string.Equals(Environment.GetEnvironmentVariable("USE_LOCAL_DB"), "true", StringComparison.OrdinalIgnoreCase);
+bool useBackupDb = string.Equals(Environment.GetEnvironmentVariable("USE_BACKUP_DB"), "true", StringComparison.OrdinalIgnoreCase);
 
 var connectionString = useLocalDb
     ? (Environment.GetEnvironmentVariable("LOCAL_DB_CONNECTION")
        ?? "Host=localhost;Port=5432;Database=driveandgo_test_db;Username=postgres;Password=postgres_local_password;")
-    : (Environment.GetEnvironmentVariable("SUPABASE_CONNECTION_STRING")
-       ?? Environment.GetEnvironmentVariable("DEFAULT_CONNECTION")
-       ?? builder.Configuration.GetConnectionString("DefaultConnection"));
+    : (useBackupDb
+       ? (Environment.GetEnvironmentVariable("SUPABASE_CONNECTION_STRING") ?? Environment.GetEnvironmentVariable("DEFAULT_CONNECTION"))
+       : (Environment.GetEnvironmentVariable("AZURE_POSTGRES_CONNECTION_STRING")
+          ?? Environment.GetEnvironmentVariable("DEFAULT_CONNECTION")
+          ?? Environment.GetEnvironmentVariable("SUPABASE_CONNECTION_STRING")
+          ?? builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Configuration["ConnectionStrings:DefaultConnection"] = connectionString;
 
@@ -164,8 +216,35 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(dataSource));
 
 // ─────────────────────────────────────────────────────────────
-//  4.  Application Services (DI)
+//  Application Services & Enterprise Infrastructure (DI)
 // ─────────────────────────────────────────────────────────────
+builder.Services.AddMemoryCache();
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddFixedWindowLimiter("AuthPolicy", opt =>
+    {
+        opt.PermitLimit = 5;
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
+        opt.QueueLimit = 0;
+    });
+    options.AddSlidingWindowLimiter("GeneralPolicy", opt =>
+    {
+        opt.PermitLimit = 120;
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.SegmentsPerWindow = 4;
+        opt.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
+        opt.QueueLimit = 2;
+    });
+});
+
+// Dual-Cloud Automatic Failover Engine & Blockchain Ledger Service
+builder.Services.AddSingleton<IDbFailoverEngine, DbFailoverEngine>();
+builder.Services.AddHostedService(sp => (DbFailoverEngine)sp.GetRequiredService<IDbFailoverEngine>());
+builder.Services.AddScoped<IBlockchainService, BlockchainService>();
+
 builder.Services.AddHealthChecks();
 builder.Services.AddScoped<DbService>();
 builder.Services.AddScoped<NotificationWriter>();
@@ -178,6 +257,11 @@ builder.Services.AddScoped<EmailService>();
 builder.Services.AddScoped<IStorageService, StorageService>();
 builder.Services.AddScoped<DriveAndGo_API.Services.AuditService>();
 builder.Services.AddHostedService<DriveAndGo_API.Services.RentalComplianceWorker>();
+builder.Services.AddHostedService<DriveAndGo_API.Services.TrafficClosureWorker>();
+
+// ── Traffic & Flood Incident Intelligence Service ─────────────────────
+builder.Services.AddScoped<DriveAndGo_API.Services.ITrafficIncidentAggregatorService,
+                           DriveAndGo_API.Services.TrafficIncidentAggregatorService>();
 
 // ── Fleet & Driver Operations Service (Phase 3) ──────────────────────
 builder.Services.AddScoped<DriveAndGo_API.Services.Operations.IFleetOperationsService,
@@ -196,7 +280,7 @@ builder.Services.AddScoped<DriveAndGo_API.Services.Ai.IAiOrchestrationService,
 
 
 // ─────────────────────────────────────────────────────────────
-//  5.  JWT Authentication
+//  JWT Authentication
 // ─────────────────────────────────────────────────────────────
 var jwtKey     = Environment.GetEnvironmentVariable("JWT_SECRET_KEY")
     ?? builder.Configuration["Jwt:SecretKey"]
@@ -228,7 +312,7 @@ builder.Services
 builder.Services.AddAuthorization();
 
 // ─────────────────────────────────────────────────────────────
-//  6.  CORS
+//  CORS
 // ─────────────────────────────────────────────────────────────
 builder.Services.AddCors(options =>
 {
@@ -241,14 +325,20 @@ builder.Services.AddCors(options =>
 });
 
 // ─────────────────────────────────────────────────────────────
-//  7.  Build & Middleware Pipeline
+//  Build & Middleware Pipeline
 // ─────────────────────────────────────────────────────────────
 var app = builder.Build();
 
 app.UseMiddleware<GlobalExceptionMiddleware>();
+app.UseSerilogRequestLogging();
+app.UseRateLimiter();
 
-app.UseSwagger();
-app.UseSwaggerUI();
+// Enable Swagger in Development/Testing, or when ENABLE_SWAGGER="true"
+if (app.Environment.IsDevelopment() || string.Equals(Environment.GetEnvironmentVariable("ENABLE_SWAGGER"), "true", StringComparison.OrdinalIgnoreCase))
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 app.UseCors("AllowAll");
 
 var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "uploads");

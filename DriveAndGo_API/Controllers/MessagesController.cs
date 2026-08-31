@@ -766,10 +766,11 @@ public class MessagesController : ControllerBase
     //  Includes live unreadCount per thread from the database.
     // ══════════════════════════════════════════════════════════════════
     [HttpGet("conversations")]
-    public async Task<IActionResult> GetConversations([FromQuery] string userId)
+    public async Task<IActionResult> GetConversations([FromQuery] string? userId)
     {
         try
         {
+            userId = string.IsNullOrWhiteSpace(userId) ? "admin" : userId;
             var list    = new List<object>();
             var seenIds = new HashSet<string>();
 
